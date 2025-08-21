@@ -9,10 +9,12 @@ Terima kasih telah tertarik berkontribusi pada Authence!
 4. Pastikan semua test lulus dengan `cargo test`.
 5. Buat pull request ke branch `main`.
 
+
 ## Standar Kode
 - Ikuti idiom Rust dan gunakan clippy/lint.
 - Jaga struktur modular dan separation of concern.
 - Tambahkan dokumentasi pada fungsi/endpoint baru.
+- Pastikan fitur keamanan (JWT, session, TOTP, middleware) diuji dan tidak ada secret yang pernah ditulis ke disk/log.
 
 ## Commit
 - Gunakan pesan commit yang jelas dan deskriptif.
@@ -22,9 +24,11 @@ Terima kasih telah tertarik berkontribusi pada Authence!
 - PR akan direview oleh maintainer.
 - Diskusi dan revisi sangat dianjurkan.
 
+
 ## Lain-lain
 - Lihat `README.md` dan `docs/EXAMPLES.md` untuk referensi API.
 - Laporkan bug/fitur di Issues.
+- Kontribusi pada fitur keamanan, compliance, dan best practice sangat diutamakan.
 
 ## Informasi Tambahan
 - Lihat [CHANGELOG.md](CHANGELOG.md) untuk riwayat perubahan.

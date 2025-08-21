@@ -4,12 +4,18 @@
 
 Authence adalah authentication & authorization server berbasis Rust, terinspirasi best practice Keycloak.
 
+
 ## Fitur
 - Multi-tenant (realm)
-- User, role, permission, RBAC
+- User, group, role, permission, RBAC
 - Audit log
 - API documented (OpenAPI)
 - Modular & testable
+- JWT & session management (login, logout, revoke, list)
+- MFA (TOTP, pure Rust)
+- Middleware autentikasi JWT (zero trust)
+- Rate limiting, i18n, metrics, plugin system
+- Advanced error handling & compliance
 
 ## Struktur
 - `core/` - Core authentication and authorization logic
@@ -34,14 +40,23 @@ Authence adalah authentication & authorization server berbasis Rust, terinspiras
 ## Contributing
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 
+cargo build
+cargo test
+
 ## Build & Test
-```
+```bash
 cargo build
 cargo test
 ```
 
 ## CI/CD
 - Otomatis build & test di GitHub Actions setiap push/PR ke `main`.
+
+
+## Keamanan
+- Zero trust, session & token revocation, forever unknown secret
+- Tidak ada secret yang pernah ditulis ke disk/log
+- Siap untuk audit, compliance, dan deployment production
 
 ## Lisensi
 MIT
