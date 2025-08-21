@@ -38,6 +38,12 @@ pub async fn run_server() -> std::io::Result<()> {
 	let role_store = web::Data::new(services::role_store::RoleStore::new());
 	let permission_store = web::Data::new(services::permission_store::PermissionStore::new());
 	let audit_log_store = web::Data::new(services::audit_log_store::AuditLogStore::new());
+	let group_store = web::Data::new(services::group_store::GroupStore::new());
+	let totp_store = web::Data::new(services::totp_store::TotpStore::new());
+	let session_store = web::Data::new(services::session_store::SessionStore::new());
+	use std::sync::Arc;
+	use api::auth_middleware::AuthMiddleware;
+	let auth_middleware = AuthMiddleware { session_store: Arc::clone(&session_store) };
 	HttpServer::new(move || {
 		App::new()
 			.wrap(prometheus.clone())
@@ -46,13 +52,18 @@ pub async fn run_server() -> std::io::Result<()> {
 			.app_data(role_store.clone())
 			.app_data(permission_store.clone())
 			.app_data(audit_log_store.clone())
+			.app_data(group_store.clone())
+			.app_data(totp_store.clone())
+			.app_data(session_store.clone())
 			.app_data(web::Data::from(i18n.clone()))
 			.service(
 				web::scope("/v1")
 					.route("/health", web::get().to(health))
 					.service(api::auth::login)
-					.service(api::user::get_users)
 					.service(api::create_user)
+					// Protected endpoints
+					.wrap(auth_middleware.clone())
+					.service(api::user::get_users)
 					.service(api::get_user_by_id)
 					.service(api::update_user)
 					.service(api::delete_user)
@@ -75,6 +86,22 @@ pub async fn run_server() -> std::io::Result<()> {
 					.service(api::check_user_permission)
 					.service(api::add_audit_log)
 					.service(api::get_audit_logs)
+					// Group endpoints
+					.service(api::group::create_group)
+					.service(api::group::get_groups)
+					.service(api::group::get_group_by_id)
+					.service(api::group::delete_group)
+					.service(api::group::add_group_member)
+					.service(api::group::remove_group_member)
+					.service(api::group::add_group_role)
+					.service(api::group::remove_group_role)
+					// TOTP endpoints
+					.service(api::totp::enable_totp)
+					.service(api::totp::disable_totp)
+					.service(api::totp_verify::verify_totp)
+					// Session endpoints
+					.service(api::session::list_sessions)
+					.service(api::session::logout)
 			)
 	})
 	.bind(("127.0.0.1", 8080))?

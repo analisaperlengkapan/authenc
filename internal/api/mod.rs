@@ -5,6 +5,11 @@ pub mod realm;
 pub mod role;
 pub mod permission;
 pub mod audit;
+pub mod group;
+pub mod totp;
+pub mod totp_verify;
+pub mod session;
+pub mod auth_middleware;
 
 pub use auth::login;
 pub use user::{get_users, create_user, get_user_by_id, update_user, delete_user, update_password};

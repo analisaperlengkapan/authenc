@@ -4,4 +4,7 @@ pub mod realm_store;
 pub mod role_store;
 pub mod permission_store;
 pub mod audit_log_store;
+pub mod group_store;
+pub mod totp_store;
+pub mod session_store;
 // ...existing code for other submodules...
