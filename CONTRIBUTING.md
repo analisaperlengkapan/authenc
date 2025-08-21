@@ -4,7 +4,7 @@ Terima kasih telah tertarik berkontribusi pada Authence!
 
 ## Cara Kontribusi
 1. Fork repository ini dan buat branch baru dari `main`.
-2. Lakukan perubahan yang diinginkan.
+2. Lakukan perubahan yang diinginkan (fitur baru, perbaikan bug, dsb).
 3. Tambahkan/memperbarui test jika perlu.
 4. Pastikan semua test lulus dengan `cargo test`.
 5. Buat pull request ke branch `main`.
@@ -14,7 +14,9 @@ Terima kasih telah tertarik berkontribusi pada Authence!
 - Ikuti idiom Rust dan gunakan clippy/lint.
 - Jaga struktur modular dan separation of concern.
 - Tambahkan dokumentasi pada fungsi/endpoint baru.
-- Pastikan fitur keamanan (JWT, session, TOTP, middleware) diuji dan tidak ada secret yang pernah ditulis ke disk/log.
+- Pastikan fitur keamanan (JWT, session, TOTP, middleware, RBAC, audit log) diuji dan tidak ada secret yang pernah ditulis ke disk/log.
+- Untuk endpoint baru: tambahkan test, dokumentasi, dan pastikan terdaftar di modul API.
+- Untuk plugin: pastikan API stabil dan dokumentasi jelas.
 
 ## Commit
 - Gunakan pesan commit yang jelas dan deskriptif.
@@ -28,12 +30,11 @@ Terima kasih telah tertarik berkontribusi pada Authence!
 ## Lain-lain
 - Lihat `README.md` dan `docs/EXAMPLES.md` untuk referensi API.
 - Laporkan bug/fitur di Issues.
-- Kontribusi pada fitur keamanan, compliance, dan best practice sangat diutamakan.
+- Kontribusi pada fitur keamanan, compliance, modularisasi, plugin, dan best practice sangat diutamakan.
 
 ## Informasi Tambahan
 - Lihat [CHANGELOG.md](CHANGELOG.md) untuk riwayat perubahan.
 - Lihat [LICENSE](LICENSE) untuk lisensi proyek.
 
 Terima kasih atas kontribusinya!
-
 Selamat berkontribusi!
