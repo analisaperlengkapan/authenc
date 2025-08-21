@@ -3,38 +3,35 @@
 Terima kasih telah tertarik berkontribusi pada Authence!
 
 ## Cara Kontribusi
-1. Fork repository ini dan buat branch baru dari `main`.
-2. Lakukan perubahan yang diinginkan (fitur baru, perbaikan bug, dsb).
+1. Fork repository dan buat branch baru dari `main`.
+2. Lakukan perubahan (fitur, bugfix, dsb) secara modular.
 3. Tambahkan/memperbarui test jika perlu.
-4. Pastikan semua test lulus dengan `cargo test`.
+4. Pastikan semua test lulus dengan `cargo test` dan kode lolos `cargo clippy`.
 5. Buat pull request ke branch `main`.
 
-
 ## Standar Kode
-- Ikuti idiom Rust dan gunakan clippy/lint.
-- Jaga struktur modular dan separation of concern.
-- Tambahkan dokumentasi pada fungsi/endpoint baru.
-- Pastikan fitur keamanan (JWT, session, TOTP, middleware, RBAC, audit log) diuji dan tidak ada secret yang pernah ditulis ke disk/log.
-- Untuk endpoint baru: tambahkan test, dokumentasi, dan pastikan terdaftar di modul API.
-- Untuk plugin: pastikan API stabil dan dokumentasi jelas.
+- Ikuti idiom Rust, gunakan clippy/lint.
+- Modular, separation of concern, dokumentasi pada fungsi/endpoint baru.
+- Fitur keamanan (JWT, session, TOTP, RBAC, audit log) wajib diuji, tidak ada secret ke disk/log.
+- Endpoint baru: wajib test, dokumentasi, dan terdaftar di modul API.
+- Plugin: API stabil, dokumentasi jelas.
 
 ## Commit
-- Gunakan pesan commit yang jelas dan deskriptif.
+- Pesan commit jelas dan deskriptif.
 - Satu commit untuk satu perubahan logis.
 
 ## Review
-- PR akan direview oleh maintainer.
-- Diskusi dan revisi sangat dianjurkan.
-
+- PR direview maintainer, diskusi/revisi sangat dianjurkan.
 
 ## Lain-lain
 - Lihat `README.md` dan `docs/EXAMPLES.md` untuk referensi API.
-- Laporkan bug/fitur di Issues.
-- Kontribusi pada fitur keamanan, compliance, modularisasi, plugin, dan best practice sangat diutamakan.
+- Bug/fitur via Issues.
+- Kontribusi keamanan, compliance, modularisasi, plugin, best practice sangat diutamakan.
 
 ## Informasi Tambahan
-- Lihat [CHANGELOG.md](CHANGELOG.md) untuk riwayat perubahan.
-- Lihat [LICENSE](LICENSE) untuk lisensi proyek.
+- [CHANGELOG.md](CHANGELOG.md) untuk riwayat perubahan.
+- [LICENSE](LICENSE) untuk lisensi proyek.
 
 Terima kasih atas kontribusinya!
 Selamat berkontribusi!
+- Lihat [LICENSE](LICENSE) untuk lisensi proyek.
