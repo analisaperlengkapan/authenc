@@ -1,9 +1,12 @@
 
 use actix_web::{post, web, HttpResponse, Responder};
 use crate::services::user_store::UserStore;
+use crate::services::federation_provider::FederationRegistry;
 use crate::services::totp_store::TotpStore;
 use crate::services::session_store::SessionStore;
+use crate::services::brute_force_protector::BruteForceProtector;
 use serde::Deserialize;
+use crate::services::anomaly_detector::AnomalyDetector;
 use totp_rs::{Algorithm, TOTP};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::Serialize;
@@ -22,16 +25,49 @@ struct Claims {
 	exp: usize,
 }
 
+
 #[post("/login")]
 pub async fn login(
 	user_store: web::Data<UserStore>,
 	totp_store: web::Data<TotpStore>,
 	session_store: web::Data<SessionStore>,
+	brute_force: web::Data<BruteForceProtector>,
+	anomaly_detector: web::Data<AnomalyDetector>,
+	federation_registry: web::Data<FederationRegistry>,
 	req: web::Json<LoginRequest>,
+	req_head: actix_web::HttpRequest,
 ) -> impl Responder {
-	if !user_store.verify_password(&req.username, &req.password) {
+	let key = &req.username;
+	if brute_force.register_attempt(key) {
+		return HttpResponse::TooManyRequests().body("Too many failed attempts. Please try again later.");
+	}
+
+	// Try local user store first
+	let mut user = user_store.get_by_username(&req.username);
+	let mut valid = user.as_ref().map(|_| user_store.verify_password(&req.username, &req.password)).unwrap_or(false);
+	// If not found or invalid, try federation
+	if !valid {
+		user = federation_registry.get_user_by_username(&req.username);
+		valid = user.as_ref().map(|_| federation_registry.verify_password(&req.username, &req.password)).unwrap_or(false);
+	}
+	if !valid {
 		return HttpResponse::Unauthorized().body("invalid credentials");
 	}
+	// On success, clear attempts
+	brute_force.clear(key);
+	// Anomaly detection: check if login from new IP
+	if let Some(ref user) = user {
+		let ip = req_head.connection_info().realip_remote_addr().unwrap_or("").to_string();
+		let is_new_ip = anomaly_detector.is_new_ip(&user.id, &ip);
+		if is_new_ip {
+			// TODO: log anomaly, send notification, or require extra verification
+			println!("[ANOMALY] User {} login from new IP: {}", user.username, ip);
+		}
+	}
+	let user = match user {
+		Some(u) => u,
+		None => return HttpResponse::Unauthorized().body("invalid credentials"),
+	};
 
 	// Check if user has TOTP enabled
 	let user = match user_store.get_by_username(&req.username) {

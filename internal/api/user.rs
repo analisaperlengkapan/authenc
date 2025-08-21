@@ -1,6 +1,7 @@
 use actix_web::{get, post, put, delete, web, HttpResponse, Responder};
 use crate::services::user_store::UserStore;
 use crate::model::user::User;
+use crate::services::password_policy::PasswordPolicy;
 use serde::Deserialize;
 
 #[get("/users")]
@@ -29,6 +30,10 @@ pub async fn create_user(
 	user_store: web::Data<UserStore>,
 	req: web::Json<CreateUserRequest>,
 ) -> impl Responder {
+	let policy = PasswordPolicy::default();
+	if let Err(msg) = policy.validate(&req.password) {
+		return HttpResponse::BadRequest().body(format!("Password policy violation: {}", msg));
+	}
 	let user = User {
 		id: uuid::Uuid::new_v4().to_string(),
 		username: req.username.clone(),
@@ -55,8 +60,27 @@ pub async fn delete_user() -> impl Responder {
 	HttpResponse::Ok().body("delete_user")
 }
 
+#[derive(Deserialize)]
+pub struct UpdatePasswordRequest {
+	pub password: String,
+}
+
 #[post("/users/{id}/password")]
-pub async fn update_password() -> impl Responder {
-	HttpResponse::Ok().body("update_password")
+pub async fn update_password(
+	user_store: web::Data<UserStore>,
+	path: web::Path<String>,
+	req: web::Json<UpdatePasswordRequest>,
+) -> impl Responder {
+	let policy = PasswordPolicy::default();
+	if let Err(msg) = policy.validate(&req.password) {
+		return HttpResponse::BadRequest().body(format!("Password policy violation: {}", msg));
+	}
+	let id = path.into_inner();
+	let updated = user_store.update(&id, None, None, Some(&req.password), None);
+	if updated.is_some() {
+		HttpResponse::Ok().body("Password updated")
+	} else {
+		HttpResponse::NotFound().body("User not found")
+	}
 }
 // Stub for api::user

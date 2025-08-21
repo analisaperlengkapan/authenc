@@ -41,6 +41,13 @@ pub async fn run_server() -> std::io::Result<()> {
 	let group_store = web::Data::new(services::group_store::GroupStore::new());
 	let totp_store = web::Data::new(services::totp_store::TotpStore::new());
 	let session_store = web::Data::new(services::session_store::SessionStore::new());
+	let brute_force = web::Data::new(services::brute_force_protector::BruteForceProtector::new(5, 300)); // 5 attempts per 5 minutes
+	let anomaly_detector = web::Data::new(services::anomaly_detector::AnomalyDetector::new());
+	let oidc_code_store = web::Data::new(services::oidc_code_store::OidcCodeStore::new(600)); // 10 min TTL
+	let oidc_client_store = web::Data::new(services::oidc_client_store::OidcClientStore::new());
+	let mut federation_registry = services::federation_provider::FederationRegistry::new();
+	federation_registry.register(Box::new(services::federation_provider::DummyFederationProvider));
+	let federation_registry = web::Data::new(federation_registry);
 	use std::sync::Arc;
 	use api::auth_middleware::AuthMiddleware;
 	let auth_middleware = AuthMiddleware { session_store: Arc::clone(&session_store) };
@@ -54,13 +61,28 @@ pub async fn run_server() -> std::io::Result<()> {
 			.app_data(audit_log_store.clone())
 			.app_data(group_store.clone())
 			.app_data(totp_store.clone())
-			.app_data(session_store.clone())
-			.app_data(web::Data::from(i18n.clone()))
+		.app_data(session_store.clone())
+	.app_data(brute_force.clone())
+	.app_data(anomaly_detector.clone())
+	.app_data(web::Data::from(i18n.clone()))
+	.app_data(oidc_code_store.clone())
+	.app_data(oidc_client_store.clone())
+		.app_data(federation_registry.clone())
 			.service(
 				web::scope("/v1")
 					.route("/health", web::get().to(health))
 					.service(api::auth::login)
 					.service(api::create_user)
+					// OIDC endpoints
+					.service(api::oidc_discovery)
+					.service(api::oidc_authorize)
+					.service(api::oidc_token)
+					.service(api::oidc_userinfo)
+					.service(api::oidc_jwks)
+					// OIDC client admin endpoints
+					.service(api::list_oidc_clients)
+					.service(api::create_oidc_client)
+					.service(api::delete_oidc_client)
 					// Protected endpoints
 					.wrap(auth_middleware.clone())
 					.service(api::user::get_users)

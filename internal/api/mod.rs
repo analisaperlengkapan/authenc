@@ -1,3 +1,9 @@
+pub mod oidc_client;
+pub use oidc_client::{list_oidc_clients, create_oidc_client, delete_oidc_client};
+pub mod oidc_keys;
+pub mod oidc_jwt;
+pub mod oidc_provider;
+pub use oidc_provider::{oidc_discovery, oidc_authorize, oidc_token, oidc_userinfo, oidc_jwks};
 // Re-export all submodules for the api module
 pub mod auth;
 pub mod user;
