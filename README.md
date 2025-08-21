@@ -25,6 +25,15 @@ Authence adalah authentication & authorization server berbasis Rust, terinspiras
 - [Contoh API](docs/EXAMPLES.md)
 - [Kontribusi](CONTRIBUTING.md)
 
+## Changelog
+- [CHANGELOG.md](CHANGELOG.md)
+
+## License
+- [LICENSE](LICENSE)
+
+## Contributing
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+
 ## Build & Test
 ```
 cargo build

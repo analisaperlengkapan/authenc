@@ -26,4 +26,10 @@ Terima kasih telah tertarik berkontribusi pada Authence!
 - Lihat `README.md` dan `docs/EXAMPLES.md` untuk referensi API.
 - Laporkan bug/fitur di Issues.
 
+## Informasi Tambahan
+- Lihat [CHANGELOG.md](CHANGELOG.md) untuk riwayat perubahan.
+- Lihat [LICENSE](LICENSE) untuk lisensi proyek.
+
+Terima kasih atas kontribusinya!
+
 Selamat berkontribusi!
