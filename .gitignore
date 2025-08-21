@@ -1,0 +1,10 @@
+/target/
+**/*.rs.bk
+Cargo.lock
+.env
+.idea/
+*.swp
+*.swo
+.DS_Store
+/tests/output/
+/node_modules/

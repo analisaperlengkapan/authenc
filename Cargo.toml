@@ -1,0 +1,30 @@
+
+[package]
+name = "authence"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "internal/lib.rs"
+
+[[bin]]
+name = "authence"
+path = "internal/main.rs"
+
+[dependencies]
+actix-web = "4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+jsonwebtoken = "9"
+argon2 = "0.5"
+rand = "0.8"
+thiserror = "1.0"
+log = "0.4"
+uuid = { version = "1", features = ["v4"] }
+actix-limitation = "0.4"
+fluent-bundle = "0.15"
+unic-langid = "0.9"
+actix-web-prometheus = "0.1.2-beta.10"
+libloading = "0.8"
+env_logger = "0.10"
