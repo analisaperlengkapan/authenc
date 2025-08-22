@@ -1,17 +1,20 @@
 
+
 [package]
-name = "authence"
+name = "authenc"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-path = "internal/lib.rs"
+path = "lib.rs"
 
 [[bin]]
-name = "authence"
-path = "internal/main.rs"
+name = "authenc"
+path = "src/main.rs"
 
 [dependencies]
+anyhow = "1"
+rdkafka = { version = "0.38", features = ["tokio"] }
 actix-web = "4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -21,7 +24,7 @@ argon2 = "0.5"
 rand = "0.8"
 thiserror = "1.0"
 log = "0.4"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 actix-limitation = "0.4"
 fluent-bundle = "0.15"
 unic-langid = "0.9"
@@ -29,8 +32,14 @@ actix-web-prometheus = "0.1.2-beta.10"
 libloading = "0.8"
 env_logger = "0.10"
 totp-rs = "5.7.0"
-chrono = "0.4.41"
+chrono = { version = "0.4.41", features = ["serde"] }
 futures = "0.3.31"
 rsa = "0.9.8"
 base64ct = "1.8.0"
 once_cell = "1.21.3"
+# PostgreSQL for persistent audit log
+tokio-postgres = "0.7"
+deadpool-postgres = "0.10"
+serde_qs = "0.7"
+async-trait = "0.1"
+num_cpus = "1.16"

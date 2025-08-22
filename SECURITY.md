@@ -1,7 +1,7 @@
 # Security Policy
 
 ## Supported Versions
-- Only the latest version of Authence is actively maintained and patched.
+- Only the latest version of Authenc is actively maintained and patched.
 
 ## Reporting a Vulnerability
 - Jika Anda menemukan kerentanan keamanan, harap segera laporkan melalui email ke maintainer atau gunakan fitur Issues dengan label `security` (jika tidak sensitif).
