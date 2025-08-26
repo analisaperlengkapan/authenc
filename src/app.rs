@@ -111,11 +111,59 @@ impl ApplicationBuilder {
             }
         })
         .workers(workers.unwrap_or_else(|| num_cpus::get().max(1)))
-        .max_connections(max_conns)
-        .bind((host.as_str(), port))?;
+        .max_connections(max_conns);
 
-        server.run().await
-    } 
+        // TLS/mTLS support (rustls 0.23+ API)
+        if self.config.server.tls_enable {
+            use std::fs::File;
+            use std::io::BufReader;
+            use rustls::server::{ServerConfig, WebPkiClientVerifier};
+            use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+            use rustls_pemfile::{certs, pkcs8_private_keys};
+
+            let cert_file = self.config.server.tls_cert_file.as_ref().expect("TLS_CERT_FILE required if TLS_ENABLE=true");
+            let key_file = self.config.server.tls_key_file.as_ref().expect("TLS_KEY_FILE required if TLS_ENABLE=true");
+            let mut cert_reader = BufReader::new(File::open(cert_file).expect("Failed to open TLS cert file"));
+            let mut key_reader = BufReader::new(File::open(key_file).expect("Failed to open TLS key file"));
+            let cert_chain: Vec<CertificateDer> = certs(&mut cert_reader)
+                .unwrap_or_default()
+                .into_iter()
+                .map(CertificateDer::from)
+                .collect();
+            let mut keys: Vec<PrivatePkcs8KeyDer> = pkcs8_private_keys(&mut key_reader)
+                .unwrap_or_default()
+                .into_iter()
+                .map(PrivatePkcs8KeyDer::from)
+                .collect();
+            let key: PrivateKeyDer = keys.remove(0).into();
+
+            let config = if self.config.server.mtls_enable {
+                use rustls::RootCertStore;
+                use std::sync::Arc;
+                let truststore_file = self.config.server.tls_truststore_file.as_ref().expect("TLS_TRUSTSTORE_FILE required if MTLS_ENABLE=true");
+                let mut truststore_reader = BufReader::new(File::open(truststore_file).expect("Failed to open truststore file"));
+                let mut root_store = RootCertStore::empty();
+                for cert in certs(&mut truststore_reader).unwrap_or_default() {
+                    root_store.add(CertificateDer::from(cert)).unwrap();
+                }
+                let verifier = rustls::server::WebPkiClientVerifier::builder(Arc::new(root_store))
+                    .build()
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("mTLS verifier error: {e}")))?;
+                rustls::server::ServerConfig::builder()
+                    .with_client_cert_verifier(verifier)
+                    .with_single_cert(cert_chain, key)
+                    .expect("Invalid TLS cert/key")
+            } else {
+                rustls::server::ServerConfig::builder()
+                    .with_no_client_auth()
+                    .with_single_cert(cert_chain, key)
+                    .expect("Invalid TLS cert/key")
+            };
+            return server.bind_rustls((host.as_str(), port), config)?.run().await;
+        } else {
+            return server.bind((host.as_str(), port))?.run().await;
+        }
+    }
 }
 
 pub fn initialize_logging(config: &AppConfig) -> Result<()> {

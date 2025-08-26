@@ -1,3 +1,9 @@
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecretonConfig {
+    pub endpoint: String,
+    pub token: String,
+}
+
 use crate::error::{AuthencError, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -10,6 +16,7 @@ pub struct AppConfig {
     pub security: SecurityConfig,
     pub observability: ObservabilityConfig,
     pub features: FeatureConfig,
+    pub secreton: Option<SecretonConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,6 +25,13 @@ pub struct ServerConfig {
     pub port: u16,
     pub workers: Option<usize>,
     pub max_connections: usize,
+    // TLS/mTLS
+    pub tls_cert_file: Option<String>,
+    pub tls_key_file: Option<String>,
+    pub tls_enable: bool,
+    pub mtls_enable: bool,
+    pub tls_truststore_file: Option<String>,
+    pub tls_truststore_password: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,7 +76,7 @@ pub struct FeatureConfig {
 impl AppConfig {
     /// Load configuration from environment variables with sensible defaults
     pub fn from_env() -> Result<Self> {
-        Ok(Self {
+    Ok(Self {
             server: ServerConfig {
                 host: env::var("AUTHENC_HOST").or_else(|_| env::var("AUTHENCE_HOST")).unwrap_or_else(|_| "0.0.0.0".to_string()),
                 port: env::var("AUTHENC_PORT").or_else(|_| env::var("AUTHENCE_PORT"))
@@ -72,6 +86,12 @@ impl AppConfig {
                 max_connections: env::var("AUTHENC_MAX_CONNECTIONS").or_else(|_| env::var("AUTHENCE_MAX_CONNECTIONS"))
                     .unwrap_or_else(|_| "1000".to_string())
                     .parse()?,
+                tls_cert_file: env::var("TLS_CERT_FILE").ok(),
+                tls_key_file: env::var("TLS_KEY_FILE").ok(),
+                tls_enable: env::var("TLS_ENABLE").unwrap_or_else(|_| "false".to_string()).parse().unwrap_or(false),
+                mtls_enable: env::var("MTLS_ENABLE").unwrap_or_else(|_| "false".to_string()).parse().unwrap_or(false),
+                tls_truststore_file: env::var("TLS_TRUSTSTORE_FILE").ok(),
+                tls_truststore_password: env::var("TLS_TRUSTSTORE_PASSWORD").ok(),
             },
             database: DatabaseConfig {
                 url: env::var("DATABASE_URL")
@@ -143,6 +163,10 @@ impl AppConfig {
                     .unwrap_or_else(|_| "true".to_string())
                     .parse()?,
             },
+            secreton: match (env::var("SECRETON_ENDPOINT"), env::var("SECRETON_TOKEN")) {
+                (Ok(endpoint), Ok(token)) => Some(SecretonConfig { endpoint, token }),
+                _ => None,
+            },
         })
     }
 
@@ -170,7 +194,7 @@ impl AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self::from_env().unwrap_or_else(|_| AppConfig {
+    Self::from_env().unwrap_or_else(|_| AppConfig {
             server: ServerConfig {
                 host: "0.0.0.0".to_string(),
                 port: 8080,
@@ -208,6 +232,7 @@ impl Default for AppConfig {
                 enable_audit_logging: true,
                 enable_rate_limiting: true,
             },
+            secreton: None,
         })
     }
 }

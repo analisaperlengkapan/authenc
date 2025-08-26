@@ -14,6 +14,12 @@
 - **JWT & Session management** - Secure token-based and session-based authentication
 - **Multi-Factor Authentication (MFA)** - TOTP support with pure Rust implementation
 
+### Secret Management & Vault
+- **Modular Vault Abstraction** - Pluggable secret store interface for maximum security
+- **File-based Vault Provider** - Secure file-based secret backend (Kubernetes/OpenShift compatible)
+- **Secreton Provider** - Integration point for custom Rust-based secret manager
+- **Zero trust, forever unknown secret** - No secrets ever written to disk/log; runtime secret fetch from vault
+
 ### Security & Middleware
 - **Rate limiting** - Global and path-specific request throttling
 - **Security headers** - Comprehensive HTTP security headers (CSP, HSTS, XSS protection)
@@ -30,7 +36,23 @@
 - **Comprehensive test coverage** - Unit and integration tests for all components
 - **Configuration-driven** - Environment variable and file-based configuration
 - **Metrics & observability** - Built-in health checks and metrics endpoints
-- **API documentation** - OpenAPI/Swagger documentation
+- **API documentation** - OpenAPI/Swagger documentation (OpenAPI 3.1.0 compliant)
+
+## 🔒 Vault & Secret Management
+- Modular vault abstraction: file, keystore, HashiCorp Vault, KMS, Secreton
+- File-based vault: mount secrets as files (Kubernetes/OpenShift)
+- Secreton: custom Rust-based secret manager integration
+- No secrets ever written to disk/log; always fetched at runtime
+
+### Secreton Vault Configuration
+To use Secreton as your secret backend, set the following environment variables:
+
+```bash
+SECRETON_ENDPOINT=https://secreton.example.com
+SECRETON_TOKEN=your-access-token
+```
+
+These can be set in your environment, `.env` file, or deployment configuration. Authenc will automatically use SecretonVault if these are set.
 
 ## 📁 Architecture
 
@@ -54,6 +76,10 @@ tests/                  # Integration and unit tests
 - Rust 1.75+
 - PostgreSQL 12+
 
+#### Optional (for Vault/Secret Management)
+- File-based vault: directory for secrets (Kubernetes/OpenShift compatible)
+- Secreton: running Secreton server and credentials
+
 ### Installation
 
 ```bash
@@ -64,12 +90,26 @@ cargo build --release
 
 ### Configuration
 
+
 Set environment variables or create a `.env` file:
 
 ```bash
 # Server configuration
 AUTHENC_HOST=0.0.0.0
 AUTHENC_PORT=8080
+
+# TLS/mTLS configuration
+# Enable TLS (set to true to enable HTTPS)
+TLS_ENABLE=false
+# Path to TLS certificate and key (PEM format)
+TLS_CERT_FILE=/etc/ssl/certs/authenc.crt
+TLS_KEY_FILE=/etc/ssl/private/authenc.key
+# Enable mutual TLS (set to true to require client certificates)
+MTLS_ENABLE=false
+# Path to CA truststore file (PEM, for mTLS)
+TLS_TRUSTSTORE_FILE=/etc/ssl/certs/ca.pem
+# Password for truststore file (optional)
+TLS_TRUSTSTORE_PASSWORD=your-truststore-password
 
 # Database
 DATABASE_URL=postgresql://username:password@localhost:5432/authenc
@@ -82,6 +122,10 @@ PASSWORD_MIN_LENGTH=8
 ENABLE_AUDIT_LOGGING=true
 ENABLE_RATE_LIMITING=true
 ENABLE_TOTP=true
+
+# Secreton Vault (optional)
+SECRETON_ENDPOINT=https://secreton.example.com
+SECRETON_TOKEN=your-access-token
 ```
 
 ### Running
@@ -116,14 +160,22 @@ cargo test security
 
 ## 🔧 Configuration Options
 
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `AUTHENC_HOST` | `0.0.0.0` | Server bind address |
-| `AUTHENC_PORT` | `8080` | Server port |
-| `DATABASE_URL` | `postgresql://...` | PostgreSQL connection string |
-| `JWT_SECRET` | `change-me` | JWT signing secret |
-| `LOG_LEVEL` | `info` | Logging level |
-| `ENABLE_METRICS` | `true` | Enable metrics endpoint |
+| Environment Variable        | Default         | Description |
+|----------------------------|-----------------|-------------|
+| `AUTHENC_HOST`             | `0.0.0.0`       | Server bind address |
+| `AUTHENC_PORT`             | `8080`          | Server port |
+| `DATABASE_URL`             | `postgresql://...` | PostgreSQL connection string |
+| `JWT_SECRET`               | `change-me`     | JWT signing secret |
+| `LOG_LEVEL`                | `info`          | Logging level |
+| `ENABLE_METRICS`           | `true`          | Enable metrics endpoint |
+| `TLS_ENABLE`               | `false`         | Enable TLS/HTTPS |
+| `TLS_CERT_FILE`            | *(none)*        | Path to TLS certificate file (PEM) |
+| `TLS_KEY_FILE`             | *(none)*        | Path to TLS private key file (PEM) |
+| `MTLS_ENABLE`              | `false`         | Enable mutual TLS (client cert required) |
+| `TLS_TRUSTSTORE_FILE`      | *(none)*        | Path to CA truststore file (PEM, for mTLS) |
+| `TLS_TRUSTSTORE_PASSWORD`  | *(none)*        | Password for truststore file (optional) |
+| `SECRETON_ENDPOINT`        | *(none)*        | Secreton API endpoint (optional) |
+| `SECRETON_TOKEN`           | *(none)*        | Secreton API token (optional) |
 
 ## Contributing
 Lihat [CONTRIBUTING.md](CONTRIBUTING.md) untuk panduan kontribusi.

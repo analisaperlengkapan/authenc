@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-08-26
+
+### Added
+- **Vault/Secret Store Abstraction**: Modular vault trait for pluggable secret providers (file, keystore, HashiCorp Vault, KMS, Secreton)
+- **File-based Vault Provider**: Secure file-based secret backend (Kubernetes/OpenShift compatible)
+- **Secreton Provider Stub**: Integration point for custom Rust-based secret manager
+- **Async Test Infrastructure**: Added async test support and integration test for file vault
+- **Copilot Instructions**: `.github/copilot-instructions.md` for next-gen security and secret management
+
+### Changed
+- **OpenAPI Spec**: Upgraded to OpenAPI 3.1.0 for improved standards compliance
+- **Public API**: Exposed `vault` module in crate root for integration testing and extensibility
+
+### Fixed
+- Integration test visibility for new modules
+
+
 ## [0.2.0] - 2025-08-22
 
 ### Added

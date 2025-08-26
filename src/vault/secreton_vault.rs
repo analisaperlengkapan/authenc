@@ -3,23 +3,41 @@
 
 use super::{Secret, Vault};
 use async_trait::async_trait;
+use reqwest::Client;
+use serde::Deserialize;
 
-// Example: Secreton client stub (replace with actual client if available)
 pub struct SecretonClient {
-    // Add fields for endpoint, credentials, etc.
+    endpoint: String,
+    token: String,
+    client: Client,
 }
 
 impl SecretonClient {
-    pub fn new(/* params */) -> Self {
+    pub fn new(endpoint: String, token: String) -> Self {
         SecretonClient {
-            // ...
+            endpoint,
+            token,
+            client: Client::new(),
         }
     }
 
-    pub async fn get_secret(&self, _key: &str, _realm: Option<&str>) -> Option<String> {
-        // TODO: Replace with actual Secreton API call
-        // Example: fetch secret from Secreton server
-        None
+    pub async fn get_secret(&self, key: &str, realm: Option<&str>) -> Option<String> {
+        let url = if let Some(realm) = realm {
+            format!("{}/v1/secret/data/{}/{}", self.endpoint, realm, key)
+        } else {
+            format!("{}/v1/secret/data/{}", self.endpoint, key)
+        };
+        let req = self.client.get(&url).bearer_auth(&self.token);
+        let resp = req.send().await.ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        #[derive(Deserialize)]
+        struct SecretResp {
+            data: Option<std::collections::HashMap<String, String>>,
+        }
+        let secret_resp: SecretResp = resp.json().await.ok()?;
+        secret_resp.data?.values().next().cloned()
     }
 }
 
