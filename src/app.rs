@@ -121,7 +121,7 @@ impl ApplicationBuilder {
         let internal_prefix = self.config.server.internal_prefix.clone();
 
     let enable_metrics = self.config.observability.enable_metrics || self.config.observability.metrics_enabled;
-    let server = HttpServer::new(move || {
+        let server = HttpServer::new(move || {
             let mut app = actix_web::App::new().app_data(state.clone());
             // Public endpoints
             app = app.service(
@@ -148,7 +148,37 @@ impl ApplicationBuilder {
         })
         .workers(workers)
         .max_connections(max_conns);
-        server.bind((host.as_str(), port))?.run().await
+
+            // TLS support only (no mTLS, see README for mTLS via reverse proxy)
+            if self.config.server.tls_enable {
+                use std::fs::File;
+                use std::io::BufReader;
+                use rustls::{Certificate, PrivateKey, ServerConfig};
+                use rustls_pemfile::{certs, pkcs8_private_keys};
+                let cert_file = self.config.server.tls_cert_file.as_ref().expect("TLS_CERT_FILE required if TLS_ENABLE=true");
+                let key_file = self.config.server.tls_key_file.as_ref().expect("TLS_KEY_FILE required if TLS_ENABLE=true");
+                let mut cert_reader = BufReader::new(File::open(cert_file).expect("Failed to open TLS cert file"));
+                let mut key_reader = BufReader::new(File::open(key_file).expect("Failed to open TLS key file"));
+                let cert_chain: Vec<Certificate> = certs(&mut cert_reader)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(Certificate)
+                    .collect();
+                let mut keys: Vec<PrivateKey> = pkcs8_private_keys(&mut key_reader)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(PrivateKey)
+                    .collect();
+                let key = keys.remove(0);
+                let config = ServerConfig::builder()
+                    .with_safe_defaults()
+                    .with_no_client_auth()
+                    .with_single_cert(cert_chain, key)
+                    .expect("Invalid TLS cert/key");
+                return server.bind_rustls((host.as_str(), port), config)?.run().await;
+            } else {
+                return server.bind((host.as_str(), port))?.run().await;
+            }
     }
 }
 

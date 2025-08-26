@@ -1,4 +1,84 @@
 # Authenc by Cipherce
+# ⚠️ Production mTLS Best Practice
+
+> **Note:** Native mTLS (mutual TLS) is not currently supported in actix-web due to ecosystem limitations. For enterprise-grade security, deploy Authenc behind a reverse proxy (such as Nginx or Envoy) that enforces mTLS at the edge. The proxy should validate client certificates and forward only trusted requests to Authenc over standard TLS.
+
+### Example: Nginx mTLS Reverse Proxy
+
+```nginx
+server {
+		listen 443 ssl;
+		server_name authenc.example.com;
+
+		ssl_certificate     /etc/ssl/certs/fullchain.pem;
+		ssl_certificate_key /etc/ssl/private/privkey.pem;
+		ssl_client_certificate /etc/ssl/certs/ca.pem;
+		ssl_verify_client on;
+
+		location / {
+				proxy_pass http://127.0.0.1:8080;
+				proxy_set_header Host $host;
+				proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+				proxy_set_header X-Client-Cert $ssl_client_cert;
+		}
+}
+```
+
+### Example: Envoy mTLS Reverse Proxy
+
+```yaml
+static_resources:
+	listeners:
+	- name: listener_0
+		address:
+			socket_address: { address: 0.0.0.0, port_value: 443 }
+		filter_chains:
+		- filters:
+			- name: envoy.filters.network.http_connection_manager
+				typed_config:
+					'@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+					stat_prefix: ingress_http
+					route_config:
+						name: local_route
+						virtual_hosts:
+						- name: backend
+							domains: ["*"]
+							routes:
+							- match: { prefix: "/" }
+								route: { cluster: authenc }
+					http_filters:
+					- name: envoy.filters.http.router
+			transport_socket:
+				name: envoy.transport_sockets.tls
+				typed_config:
+					'@type': type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+					common_tls_context:
+						tls_certificates:
+							- certificate_chain: { filename: "/etc/ssl/certs/fullchain.pem" }
+								private_key: { filename: "/etc/ssl/private/privkey.pem" }
+						validation_context:
+							trusted_ca: { filename: "/etc/ssl/certs/ca.pem" }
+							require_client_certificate: true
+	clusters:
+	- name: authenc
+		connect_timeout: 0.25s
+		type: logical_dns
+		lb_policy: round_robin
+		load_assignment:
+			cluster_name: authenc
+			endpoints:
+			- lb_endpoints:
+				- endpoint:
+						address:
+							socket_address: { address: 127.0.0.1, port_value: 8080 }
+```
+
+**Summary:**
+- Terminate TLS/mTLS at the proxy (Nginx/Envoy)
+- Proxy forwards only trusted requests to Authenc (no client cert required by backend)
+- Use `X-Client-Cert` or similar header for audit/logging if needed
+
+See [CHANGELOG.md](CHANGELOG.md) for details.
 
 [![Build Status](https://github.com/cipherce/authenc/workflows/CI/badge.svg)](https://github.com/cipherce/authenc/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security & Deployment
+- **[IMPORTANT]** Native mTLS support is not available due to Rust/actix-web ecosystem limitations. For production-grade mTLS, deploy Authenc behind a reverse proxy (Nginx/Envoy) that enforces client certificate validation. See README for best-practice configuration.
+
 ## [0.3.0] - 2025-08-26
 
 ### Added

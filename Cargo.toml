@@ -37,15 +37,15 @@ actix-service = "2.0"
 rsa = "0.9.8"
 base64ct = "1.8.0"
 once_cell = "1.21.3"
-reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.11", default-features = false, features = ["json"] }
 # PostgreSQL for persistent audit log
 tokio-postgres = "0.7"
-rustls = "0.22"
 rustls-pemfile = "1"
 deadpool-postgres = "0.10"
 serde_qs = "0.7"
 async-trait = "0.1"
 num_cpus = "1.16"
+rustls = "0.20"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
