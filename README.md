@@ -177,6 +177,40 @@ cargo test security
 | `SECRETON_ENDPOINT`        | *(none)*        | Secreton API endpoint (optional) |
 | `SECRETON_TOKEN`           | *(none)*        | Secreton API token (optional) |
 
+## 🆕 What's New in 0.3.0
+- **Endpoint separation:** Public, admin, and internal API scopes (`PUBLIC_PREFIX`, `ADMIN_PREFIX`, `INTERNAL_PREFIX`)
+- **Feature flags:** OIDC, SAML, UI, MultiDb, and more (see below)
+- **Config stubs:** OIDC, SAML, UI, MultiDb for future extensibility
+- **Metrics endpoint:** Now feature-flagged
+- **All configuration:** Now environment-driven, with robust defaults
+
+## 🔀 Endpoint Separation
+- Public endpoints: `${PUBLIC_PREFIX}` (default `/api/public`)
+- Admin endpoints: `${ADMIN_PREFIX}` (default `/api/admin`)
+- Internal endpoints: `${INTERNAL_PREFIX}` (default `/api/internal`)
+
+## 🏁 Feature Flags & Advanced Config
+| Environment Variable        | Default         | Description |
+|----------------------------|-----------------|-------------|
+| `ENABLE_OIDC`              | `false`         | Enable OIDC provider stub |
+| `ENABLE_SAML`              | `false`         | Enable SAML provider stub |
+| `ENABLE_UI`                | `false`         | Enable UI stub |
+| `ENABLE_MULTI_DB`          | `false`         | Enable multi-database config |
+| `OIDC_ISSUER`              | *(none)*        | OIDC issuer URL (if enabled) |
+| `OIDC_CLIENT_ID`           | *(none)*        | OIDC client ID (if enabled) |
+| `OIDC_CLIENT_SECRET`       | *(none)*        | OIDC client secret (if enabled) |
+| `OIDC_REDIRECT_URI`        | *(none)*        | OIDC redirect URI (if enabled) |
+| `SAML_ENTITY_ID`           | *(none)*        | SAML entity ID (if enabled) |
+| `SAML_SSO_URL`             | *(none)*        | SAML SSO URL (if enabled) |
+| `SAML_CERTIFICATE`         | *(none)*        | SAML certificate (if enabled) |
+| `UI_THEME`                 | *(none)*        | UI theme (if enabled) |
+| `MULTI_DB_URLS`            | *(none)*        | Comma-separated DB URLs (if enabled) |
+| `PUBLIC_PREFIX`            | `/api/public`   | Public API prefix |
+| `ADMIN_PREFIX`             | `/api/admin`    | Admin API prefix |
+| `INTERNAL_PREFIX`          | `/api/internal` | Internal API prefix |
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
+
 ## Contributing
 Lihat [CONTRIBUTING.md](CONTRIBUTING.md) untuk panduan kontribusi.
 

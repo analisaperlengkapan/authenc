@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-08-26
+
+### Added
+- Endpoint separation: public, admin, and internal API scopes
+- Feature flags for OIDC, SAML, UI, MultiDb, and more
+- OIDC, SAML, UI, MultiDb config stubs for future extensibility
+- Metrics endpoint is now feature-flagged
+- Environment-driven configuration for all features and endpoints
+
+### Changed
+- Major refactor of `AppConfig` and `ServerConfig` for modularity and extensibility
+- ApplicationBuilder and AppState initialization are now explicit and robust
+- Removed legacy/experimental files (`app_corrupted.rs`, `app_new.rs`)
+- Cleaned up duplicate test modules and unused imports
+
+### Fixed
+- All build-blocking errors and warnings resolved
+- Codebase is now clean, modular, and ready for incremental feature growth
+
+### Migration Guide
+- Review new environment variables for endpoint prefixes and feature flags
+- See README for updated configuration and feature documentation
+
 ## [0.2.1] - 2025-08-26
 
 ### Added
