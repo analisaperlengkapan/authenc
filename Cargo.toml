@@ -1,5 +1,3 @@
-
-
 [package]
 name = "authenc"
 version = "0.1.0"
@@ -43,3 +41,7 @@ deadpool-postgres = "0.10"
 serde_qs = "0.7"
 async-trait = "0.1"
 num_cpus = "1.16"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tempfile = "3"

@@ -10,6 +10,7 @@ pub mod handlers;
 pub mod services;
 pub mod models;
 pub mod utils;
+pub mod vault;
 
 // NOTE: The binary entrypoint `src/main.rs` is NOT included in the library module tree.
 // Removing `pub mod main;` prevents circular/self crate import issues when the bin

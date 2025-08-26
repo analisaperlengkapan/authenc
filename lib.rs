@@ -12,4 +12,5 @@ pub use src::handlers;
 pub use src::middleware;
 pub use src::models;
 pub use src::utils;
+pub use src::vault;
 
