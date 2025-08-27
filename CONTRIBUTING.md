@@ -2,28 +2,70 @@
 
 Thank you for your interest in contributing to Authenc! We welcome contributions from developers of all skill levels.
 
-## 🚀 Getting Started
+## 🚀 Development Roadmap Overview
 
-1. **Fork the repository** on GitHub
-2. **Clone your fork** locally:
-   ```bash
-   git clone https://github.com/yourusername/authenc.git
-   cd authenc
-   ```
-3. **Create a new branch** for your feature/bugfix:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
+Authenc is currently in an exciting phase of development with a clear 3-phase roadmap:
+
+### Phase 1 (Q3 2025): Database & Security Foundation 🔴 CRITICAL
+- **Database Integration**: PostgreSQL persistence for all services
+- **Security Hardening**: Production-ready security infrastructure
+- **Performance Optimization**: Enterprise-grade performance tuning
+
+### Phase 2 (Q4 2025): Enterprise Features 🟡 HIGH
+- **Social Login**: 10+ OAuth2/OIDC providers
+- **LDAP/AD Integration**: Enterprise directory support
+- **Fine-grained Authorization**: RGAC with UMA 2.0
+- **Clustering & HA**: Production clustering capabilities
+
+### Phase 3 (Q1 2026): UI & Integration 🟢 MEDIUM
+- **Web Admin UI**: Complete administrative interface
+- **Account Management UI**: Self-service user interface
+- **Kubernetes Operator**: Cloud-native deployment
+- **Advanced Monitoring**: Enterprise observability
+
+## 🎯 Current Development Focus
+
+### Immediate Priorities (Phase 1)
+We're currently focused on **Database Integration & Security Hardening**. Here's how you can contribute:
+
+#### Database Integration Tasks
+- Implement PostgreSQL operations for device management
+- Add WebAuthn credential storage with encryption
+- Create OAuth2 token persistence layer
+- Build organization and user data persistence
+- Develop SAML federation configuration storage
+
+#### Security Hardening Tasks
+- Implement comprehensive security headers middleware
+- Add distributed rate limiting with Redis
+- Create secure session management
+- Build CSRF protection mechanisms
+- Develop input validation and sanitization
+
+### Getting Involved in Current Phase
+1. **Check existing issues** labeled `phase-1` or `database-integration`
+2. **Focus on test coverage** - we need comprehensive tests for all database operations
+3. **Security review** - all database operations must be secure by design
+4. **Documentation** - document all new database schemas and operations
+
+### Future Phase Opportunities
+- **Phase 2**: Social login providers, LDAP integration, clustering
+- **Phase 3**: React/TypeScript UI development, Kubernetes operator
 
 ## 🛠 Development Setup
 
 ### Prerequisites
 - Rust 1.75+ (latest stable)
-- PostgreSQL 12+ (for integration tests)
+- PostgreSQL 12+ (for database integration)
+- Redis 6+ (for caching and rate limiting)
 - Git
 
 ### Local Development
 ```bash
+# Clone the repository
+git clone https://github.com/cipherce/authenc.git
+cd authenc
+
 # Install dependencies
 cargo build
 
@@ -36,6 +78,9 @@ cargo run
 # Check code quality
 cargo clippy
 cargo fmt --check
+
+# Security audit
+cargo audit
 ```
 
 ## 📝 Contribution Guidelines
