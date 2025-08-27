@@ -5,6 +5,12 @@ pub struct PermissionStore {
     pub permissions: Mutex<Vec<Permission>>,
 }
 
+impl Default for PermissionStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PermissionStore {
     pub fn new() -> Self {
         Self {

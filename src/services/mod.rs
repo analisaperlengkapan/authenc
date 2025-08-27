@@ -29,6 +29,39 @@ pub mod pg_audit_log_store;
 
 // Federation services
 pub mod federation_provider;
+pub mod federation;
+pub mod broker;
+
+// Authorization services
+pub mod authorization;
+
+// Zero Trust services
+pub mod zero_trust;
+
+// Social login services
+pub mod social;
+
+// Admin services
+pub mod admin;
+
+// WebAuthn services
+pub mod webauthn;
+
+// Organization services
+pub mod organization;
+
+// SAML services
+pub mod saml;
+
+// Device management services
+pub mod device;
+
+// Enterprise-grade services
+pub mod vault;
+pub mod fips;
+pub mod observability;
+pub mod clustering;
+pub mod compliance;
 
 // Re-exports for convenience
 pub use anomaly_detector::AnomalyDetector;

@@ -8,6 +8,12 @@ pub struct HashiCorpVault {
     // fields for Vault address, token, etc.
 }
 
+impl Default for HashiCorpVault {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HashiCorpVault {
     pub fn new(/* params */) -> Self {
         HashiCorpVault {

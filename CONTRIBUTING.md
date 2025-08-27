@@ -47,6 +47,13 @@ cargo fmt --check
 - **Security first**: Security-related changes require extra scrutiny
 - **Modular design**: Maintain separation of concerns
 
+### Security Requirements
+- **Security audit mandatory**: All changes must pass `cargo audit` and `cargo deny check`
+- **No unsafe code**: Contributions introducing unsafe blocks require security review
+- **Cryptography changes**: Require additional security review and testing
+- **License compliance**: All new dependencies must use OSI-approved licenses
+- **Vulnerability testing**: Security-related changes need comprehensive testing
+
 ### Testing Requirements
 - **Unit tests** for individual functions and modules
 - **Integration tests** for API endpoints and middleware

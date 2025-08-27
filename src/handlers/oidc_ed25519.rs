@@ -1,9 +1,10 @@
 use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
+use crate::error::AuthencError;
 use crate::utils::crypto_monitor::CryptoMonitor;
 use axum::{
     extract::Query,
-    http::StatusCode,
-    response::Json,
+    http::{StatusCode, HeaderMap},
+    response::{Json, Redirect},
 };
 use chrono::Utc;
 use ed25519_dalek::{Signature, Signer};
@@ -86,7 +87,7 @@ pub fn generate_ed25519_jwt(
 }
 
 /// OIDC JWKS endpoint with Ed25519 keys - replaces RSA JWKS
-pub async fn oidc_jwks_ed25519() -> Result<Json<serde_json::Value>, StatusCode> {
+pub async fn oidc_jwks_ed25519() -> Result<Json<serde_json::Value>, AuthencError> {
     let jwk = get_ed25519_jwk();
     let jwks = serde_json::json!({
         "keys": [jwk]
@@ -97,12 +98,12 @@ pub async fn oidc_jwks_ed25519() -> Result<Json<serde_json::Value>, StatusCode> 
 /// OIDC token endpoint using Ed25519 - secure replacement for RSA
 pub async fn oidc_token_ed25519(
     Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<serde_json::Value>, AuthencError> {
     // Simplified token endpoint for demonstration
-    let grant_type = params.get("grant_type").ok_or(StatusCode::BAD_REQUEST)?;
+    let grant_type = params.get("grant_type").ok_or(AuthencError::validation("Bad request"))?;
     
     if grant_type != "authorization_code" {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(AuthencError::validation("Bad request"));
     }
 
     // Generate tokens using Ed25519
@@ -134,7 +135,7 @@ pub async fn oidc_token_ed25519(
 }
 
 /// OIDC discovery endpoint with Ed25519 algorithm support
-pub async fn oidc_discovery_ed25519() -> Result<Json<serde_json::Value>, StatusCode> {
+pub async fn oidc_discovery_ed25519() -> Result<Json<serde_json::Value>, AuthencError> {
     let discovery = serde_json::json!({
         "issuer": "http://localhost:8080/v1",
         "authorization_endpoint": "http://localhost:8080/v1/oidc/authorize",
@@ -148,8 +149,66 @@ pub async fn oidc_discovery_ed25519() -> Result<Json<serde_json::Value>, StatusC
         "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
         "claims_supported": ["iss", "sub", "aud", "exp", "iat", "email", "name", "role"]
     });
-    
+
     Ok(Json(discovery))
+}
+
+/// OIDC userinfo endpoint with Ed25519 - secure replacement for RSA
+pub async fn oidc_userinfo_ed25519(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AuthencError> {
+    // Extract Authorization header
+    let auth_header = headers.get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .ok_or(AuthencError::unauthorized("Unauthorized"))?;
+
+    // In a real implementation, this would:
+    // 1. Validate the access token
+    // 2. Extract user information from the token
+    // 3. Return appropriate user claims based on scope
+
+    // For demonstration, return mock user info
+    let userinfo = serde_json::json!({
+        "sub": "user123",
+        "email": "user@example.com",
+        "email_verified": true,
+        "name": "Demo User",
+        "role": "user",
+        "updated_at": chrono::Utc::now().timestamp()
+    });
+
+    Ok(Json(userinfo))
+}
+
+/// OIDC authorize endpoint with Ed25519 - secure replacement for RSA
+pub async fn oidc_authorize_ed25519(
+    Query(params): Query<OidcAuthorizeQuery>,
+) -> Result<Redirect, StatusCode> {
+    // Validate required parameters
+    if params.response_type != "code" && params.response_type != "id_token" && params.response_type != "token id_token" {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // In a real implementation, this would:
+    // 1. Validate client_id and redirect_uri
+    // 2. Check user authentication
+    // 3. Generate authorization code
+    // 4. Store code with associated data
+    // 5. Redirect back to client
+
+    // For demonstration, generate a mock authorization code
+    let auth_code = "mock_auth_code_12345";
+
+    // Build redirect URI with authorization code
+    let mut redirect_uri = params.redirect_uri.clone();
+    redirect_uri.push_str(&format!("?code={}", auth_code));
+
+    if let Some(state) = params.state {
+        redirect_uri.push_str(&format!("&state={}", state));
+    }
+
+    Ok(Redirect::to(&redirect_uri))
 }
 
 #[cfg(test)]

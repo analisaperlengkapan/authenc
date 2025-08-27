@@ -10,21 +10,13 @@ use base64ct::{Base64, Encoding};
 
 /// Simplified mTLS configuration for basic client certificate validation
 #[derive(Clone, Debug)]
+#[derive(Default)]
 pub struct SimpleMtlsConfig {
     pub require_client_cert: bool,
     pub allowed_client_fingerprints: Vec<String>,
     pub trusted_ca_fingerprints: Vec<String>,
 }
 
-impl Default for SimpleMtlsConfig {
-    fn default() -> Self {
-        Self {
-            require_client_cert: false,
-            allowed_client_fingerprints: Vec::new(),
-            trusted_ca_fingerprints: Vec::new(),
-        }
-    }
-}
 
 impl SimpleMtlsConfig {
     /// Create development configuration that allows all certificates

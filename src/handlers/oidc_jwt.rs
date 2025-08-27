@@ -25,7 +25,7 @@ pub fn generate_id_token(
     role: Option<&str>,
 ) -> String {
     let now = Utc::now().timestamp() as usize;
-    let claims = OidcIdTokenClaims {
+    let _claims = OidcIdTokenClaims {
         iss: "http://localhost:8080/v1".to_string(),
         sub: sub.to_string(),
         aud: aud.to_string(),

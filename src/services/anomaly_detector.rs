@@ -1,14 +1,20 @@
-impl Default for AnomalyDetector {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 use std::collections::HashMap;
 use std::sync::Mutex;
+
+/// Trait for anomaly detection
+pub trait AnomalyDetectorTrait: Send + Sync {
+    fn is_new_ip(&self, user_id: &str, ip: &str) -> Result<bool, String>;
+}
 
 pub struct AnomalyDetector {
     // user_id -> set of known IPs
     known_ips: Mutex<HashMap<String, Vec<String>>>,
+}
+
+impl Default for AnomalyDetector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AnomalyDetector {
@@ -17,8 +23,10 @@ impl AnomalyDetector {
             known_ips: Mutex::new(HashMap::new()),
         }
     }
+}
 
-    pub fn is_new_ip(&self, user_id: &str, ip: &str) -> Result<bool, String> {
+impl AnomalyDetectorTrait for AnomalyDetector {
+    fn is_new_ip(&self, user_id: &str, ip: &str) -> Result<bool, String> {
         let mut map = self
             .known_ips
             .lock()

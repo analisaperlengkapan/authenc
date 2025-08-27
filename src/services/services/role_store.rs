@@ -5,6 +5,12 @@ pub struct RoleStore {
     pub roles: Mutex<Vec<Role>>,
 }
 
+impl Default for RoleStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RoleStore {
     pub fn new() -> Self {
         Self {

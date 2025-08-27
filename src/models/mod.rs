@@ -15,6 +15,9 @@ pub mod audit_log;
 // OIDC models
 pub mod oidc_client;
 
+// WebAuthn models
+pub mod webauthn;
+
 // Re-exports for convenience
 pub use audit_log::AuditLog;
 pub use oidc_client::OidcClient;

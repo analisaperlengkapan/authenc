@@ -1,6 +1,10 @@
 use axum::http::StatusCode;
 use axum::response::{Json, IntoResponse};
+use axum::extract::State;
 use chrono::Utc;
+use std::sync::Arc;
+
+use crate::database::Database;
 
 /// Health check response
 #[derive(Debug, serde::Serialize)]
@@ -26,7 +30,7 @@ struct LiveResponse {
     timestamp: String,
 }
 
-/// Basic health check endpoint (stateless)
+/// Basic health check endpoint
 pub async fn health() -> impl IntoResponse {
     let response = HealthResponse {
         status: "healthy",
@@ -37,11 +41,26 @@ pub async fn health() -> impl IntoResponse {
     Json(response)
 }
 
-/// Readiness check endpoint (stateless for now)
-pub async fn ready() -> impl IntoResponse {
+/// Readiness check endpoint with database connectivity check
+pub async fn ready(State(db): State<Arc<Database>>) -> impl IntoResponse {
+    let db_status = match db.health_check().await {
+        Ok(_) => "connected",
+        Err(e) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ReadyResponse {
+                    status: "not ready",
+                    database: "disconnected",
+                    error: Some(e.to_string()),
+                    timestamp: Utc::now().to_rfc3339(),
+                }),
+            );
+        }
+    };
+
     let response = ReadyResponse {
         status: "ready",
-        database: "connected", // TODO: Add proper database check when state is available
+        database: db_status,
         error: None,
         timestamp: Utc::now().to_rfc3339(),
     };
@@ -49,7 +68,7 @@ pub async fn ready() -> impl IntoResponse {
     (StatusCode::OK, Json(response))
 }
 
-/// Liveness probe (stateless)
+/// Liveness check endpoint
 pub async fn live() -> impl IntoResponse {
     let response = LiveResponse {
         status: "alive",
@@ -60,7 +79,7 @@ pub async fn live() -> impl IntoResponse {
 }
 
 /// Create health routes
-pub fn create_health_routes() -> axum::Router {
+pub fn create_health_routes() -> axum::Router<Arc<Database>> {
     use axum::routing::get;
 
     axum::Router::new()
@@ -100,7 +119,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_ready_endpoint() {
-        let app = Router::new().route("/ready", get(ready));
+        // For testing, we'll create a mock database state
+        // In a real scenario, you'd use a test database
+        let config = crate::AppConfig::default();
+        let app_state = crate::app::AppState::new(config)
+            .await
+            .expect("Failed to create app state");
+        let db = app_state.database;
+
+        let app = create_health_routes().with_state(db);
 
         let response = app
             .oneshot(

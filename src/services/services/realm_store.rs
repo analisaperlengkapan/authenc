@@ -5,6 +5,12 @@ pub struct RealmStore {
     pub realms: Mutex<Vec<Realm>>,
 }
 
+impl Default for RealmStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RealmStore {
     pub fn new() -> Self {
         Self {

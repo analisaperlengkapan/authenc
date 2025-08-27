@@ -27,6 +27,12 @@ pub struct PluginConfig {
     pub enabled: bool,
 }
 
+impl Default for PluginManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PluginManager {
     /// Create a new plugin manager
     pub fn new() -> Self {

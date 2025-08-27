@@ -8,6 +8,12 @@ pub struct KeystoreVault {
     // fields for keystore path, password, etc.
 }
 
+impl Default for KeystoreVault {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KeystoreVault {
     pub fn new(/* params */) -> Self {
         KeystoreVault {

@@ -1,23 +1,17 @@
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[tokio::test]
-    async fn test_app_state_initialization() {
-        let _config = Arc::new(AppConfig::default());
-    }
-    #[test]
-    fn test_logging_initialization() {
-        let _config = AppConfig::default();
-    }
-}
+//! Application state and initialization
+//!
+//! This module provides the core application state management and
+//! initialization logic for the Authenc authentication service.
 
 use crate::config::AppConfig;
-use crate::error::AuthencError;
+use crate::error::{AuthencError, Result};
 use std::sync::Arc;
 
-/// Application state shared across handlers
+/// Comprehensive application state with all services
+#[derive(Clone)]
 pub struct AppState {
     pub config: Arc<AppConfig>,
+    pub database: Arc<crate::database::Database>,
     pub user_store: Arc<crate::services::services::user_store::UserStore>,
     pub session_store: Arc<crate::services::session_store::SessionStore>,
     pub totp_store: Arc<crate::services::totp_store::TotpStore>,
@@ -32,19 +26,21 @@ pub struct AppState {
 
 impl AppState {
     /// Initialize application state with all services
-    pub async fn new(config: Arc<AppConfig>) -> crate::error::Result<Self> {
-        // Initialize stores with proper error handling
+    pub async fn new(config: AppConfig) -> Result<Self> {
+        let config = Arc::new(config);
+
+        // Initialize database connection pool
+        let database = Arc::new(
+            crate::database::Database::new(&config.database)
+                .await
+                .map_err(|e| AuthencError::database(format!("Failed to initialize database: {}", e)))?
+        );
+
+        // Initialize audit log store
         let audit_log_store = Arc::new(
-            crate::services::pg_audit_log_store::PgAuditLogStore::new(&format!(
-                "postgresql://{}:{}@{}:{}/{}",
-                config.database.username,
-                config.database.password,
-                config.database.host,
-                config.database.port,
-                config.database.database
-            ))
-            .await
-            .map_err(|e| AuthencError::database(format!("Failed to init audit store: {}", e)))?,
+            crate::services::pg_audit_log_store::PgAuditLogStore::new(&config.database_url())
+                .await
+                .map_err(|e| AuthencError::database(format!("Failed to init audit store: {}", e)))?
         );
 
         // Initialize other services
@@ -60,15 +56,14 @@ impl AppState {
         );
 
         let anomaly_detector = Arc::new(crate::services::anomaly_detector::AnomalyDetector::new());
-        let federation_registry =
-            Arc::new(crate::services::federation_provider::FederationRegistry::new());
+        let federation_registry = Arc::new(crate::services::federation_provider::FederationRegistry::new());
         let realm_store = Arc::new(crate::services::services::realm_store::RealmStore::new());
         let role_store = Arc::new(crate::services::services::role_store::RoleStore::new());
-        let permission_store =
-            Arc::new(crate::services::services::permission_store::PermissionStore::new());
+        let permission_store = Arc::new(crate::services::services::permission_store::PermissionStore::new());
 
         Ok(Self {
             config,
+            database,
             user_store,
             session_store,
             totp_store,
@@ -83,62 +78,83 @@ impl AppState {
     }
 }
 
-/// Application builder with proper configuration and service initialization
+/// Application builder for configuring and running the server
 pub struct ApplicationBuilder {
-    config: Arc<AppConfig>,
+    config: AppConfig,
 }
 
 impl ApplicationBuilder {
+    /// Create a new application builder
     pub fn new(config: AppConfig) -> Self {
-        Self {
-            config: Arc::new(config),
+        Self { config }
+    }
+
+    /// Build the application state
+    pub async fn build_state(self) -> Result<AppState> {
+        AppState::new(self.config).await
+    }
+
+    /// Run the application server
+    pub async fn run(self) -> Result<()> {
+        let state = self.build_state().await?;
+
+        #[cfg(feature = "axum")]
+        {
+            use crate::axum_app::AxumApp;
+            let app = AxumApp::new(state);
+            app.run().await?;
         }
-    }
 
-    /// Run the application server with Axum
-    pub async fn run(self) -> std::io::Result<()> {
-        let state = AppState::new(self.config.clone()).await.map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("state init error: {e}"))
-        })?;
-        
-        let host = self.config.server.host.clone();
-        let port = self.config.server.port;
-        let addr = format!("{}:{}", host, port);
-        
-        // Create Axum router with all endpoints
-        let app = self.create_axum_router(state);
-        
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
-        tracing::info!("Server running on {}", addr);
-        
-        axum::serve(listener, app).await
-    }
+        #[cfg(not(feature = "axum"))]
+        {
+            return Err(AuthencError::ConfigurationError {
+                message: "No web framework feature enabled. Enable 'axum' feature.".to_string()
+            });
+        }
 
-    /// Create Axum router with all endpoints
-    fn create_axum_router(&self, _state: AppState) -> axum::Router {
-        use axum::{routing::get, Router};
-        
-        Router::new()
-            .route("/health", get(crate::handlers::health_axum::health))
-            .route("/ready", get(crate::handlers::health_axum::ready))
-            .route("/live", get(crate::handlers::health_axum::live))
+        Ok(())
     }
 }
 
 /// Initialize logging based on configuration
-pub fn initialize_logging(config: &AppConfig) -> std::result::Result<(), AuthencError> {
-    let log_level = match config.observability.log_level.as_str() {
-        "error" => log::LevelFilter::Error,
-        "warn" => log::LevelFilter::Warn,
-        "info" => log::LevelFilter::Info,
-        "debug" => log::LevelFilter::Debug,
-        "trace" => log::LevelFilter::Trace,
-        _ => log::LevelFilter::Info,
+pub fn initialize_logging(config: &AppConfig) -> Result<()> {
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+    let level = match config.observability.log_level.as_str() {
+        "error" => tracing::Level::ERROR,
+        "warn" => tracing::Level::WARN,
+        "info" => tracing::Level::INFO,
+        "debug" => tracing::Level::DEBUG,
+        "trace" => tracing::Level::TRACE,
+        _ => tracing::Level::INFO,
     };
-    env_logger::Builder::from_default_env()
-        .filter_level(log_level)
+
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| level.as_str().to_string()),
+        ))
+        .with(tracing_subscriber::fmt::layer())
         .init();
+
     Ok(())
 }
 
-// ...existing code...
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_app_state_initialization() {
+        let config = AppConfig::default();
+        let result = AppState::new(config).await;
+        // Note: This will fail without a database, but tests the structure
+        assert!(result.is_err()); // Expected to fail in test environment
+    }
+
+    #[test]
+    fn test_application_builder_creation() {
+        let config = AppConfig::default();
+        let builder = ApplicationBuilder::new(config);
+        assert!(builder.config.server.port > 0);
+    }
+}

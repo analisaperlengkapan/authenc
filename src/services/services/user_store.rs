@@ -6,6 +6,12 @@ pub struct UserStore {
     pub users: Mutex<Vec<User>>,
 }
 
+impl Default for UserStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UserStore {
     pub fn new() -> Self {
         Self {

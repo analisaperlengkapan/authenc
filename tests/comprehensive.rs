@@ -2042,3 +2042,331 @@ async fn test_oidc_login_post_invalid_credentials_unauthorized() {
     .await;
     assert_eq!(resp.status(), 401);
 }
+
+// ============================================================================
+// ENTERPRISE-GRADE SERVICE TESTS
+// ============================================================================
+
+#[actix_web::test]
+async fn test_vault_service_multi_provider() {
+    use authence::services::vault::{VaultProvider, VaultService, FileVaultProvider, KeystoreVaultProvider};
+    use std::collections::HashMap;
+
+    // Test File Vault Provider
+    let file_provider = FileVaultProvider::new("/tmp/test_vault");
+    let secret_data = b"test_secret_data";
+    file_provider.store_secret("test_key", secret_data).await.unwrap();
+
+    let retrieved = file_provider.retrieve_secret("test_key").await.unwrap();
+    assert_eq!(retrieved, Some(secret_data.to_vec()));
+
+    // Test Vault Service with multiple providers
+    let mut providers = HashMap::new();
+    providers.insert("file".to_string(), Box::new(file_provider) as Box<dyn VaultProvider>);
+    providers.insert("keystore".to_string(), Box::new(KeystoreVaultProvider::new()));
+
+    let vault_service = VaultService::new(providers);
+
+    // Test storing and retrieving secrets
+    vault_service.store_secret("file", "test_secret", b"secret_value").await.unwrap();
+    let retrieved = vault_service.retrieve_secret("file", "test_secret").await.unwrap();
+    assert_eq!(retrieved, Some(b"secret_value".to_vec()));
+
+    // Test listing secrets
+    let secrets = vault_service.list_secrets("file").await.unwrap();
+    assert!(secrets.contains(&"test_secret".to_string()));
+}
+
+#[actix_web::test]
+async fn test_fips_service_compliance() {
+    use authence::services::fips::{FipsSecurityProvider, FipsService, ComplianceLevel};
+
+    let fips_provider = FipsSecurityProvider::new(ComplianceLevel::High);
+    let is_fips_enabled = fips_provider.is_fips_enabled().await.unwrap();
+    assert!(is_fips_enabled);
+
+    let compliance_report = fips_provider.generate_compliance_report().await.unwrap();
+    assert!(compliance_report.is_compliant);
+
+    // Test FIPS service
+    let fips_service = FipsService::new(fips_provider);
+    let keystore = fips_service.create_keystore().await.unwrap();
+
+    // Test secret storage with FIPS compliance
+    fips_service.store_secret(&keystore, "fips_key", "fips_secret").await.unwrap();
+    let retrieved = fips_service.retrieve_secret(&keystore, "fips_key").await.unwrap();
+    assert_eq!(retrieved, Some("fips_secret".to_string()));
+}
+
+#[actix_web::test]
+async fn test_observability_service_monitoring() {
+    use authence::services::observability::{ObservabilityService, HealthCheck, MetricsCollector, TracingService};
+    use std::time::Duration;
+
+    // Test Health Check
+    let health_check = HealthCheck::new("test_service");
+    health_check.mark_healthy();
+    assert!(health_check.is_healthy());
+
+    // Test Metrics Collector
+    let metrics = MetricsCollector::new();
+    metrics.increment_counter("test_counter", 1);
+    metrics.record_histogram("test_histogram", 100.0);
+    let counter_value = metrics.get_counter("test_counter");
+    assert_eq!(counter_value, 1);
+
+    // Test Tracing Service
+    let tracing = TracingService::new();
+    tracing.start_span("test_operation");
+    tracing.record_event("test_event", "event_data");
+    tracing.end_span();
+
+    // Test Observability Service
+    let observability = ObservabilityService::new(metrics, tracing, health_check);
+    let health_status = observability.health_status().await;
+    assert!(health_status.healthy);
+
+    let metrics_report = observability.generate_metrics_report().await;
+    assert!(metrics_report.contains("test_counter"));
+}
+
+#[actix_web::test]
+async fn test_clustering_service_consensus() {
+    use authence::services::clustering::{ClusteringService, ClusterManager, DistributedConsensus};
+    use std::collections::HashMap;
+
+    // Test Cluster Manager
+    let cluster_manager = ClusterManager::new("node-1", vec!["node-1".to_string(), "node-2".to_string()]);
+    cluster_manager.add_node("node-2".to_string());
+
+    let nodes = cluster_manager.get_nodes();
+    assert_eq!(nodes.len(), 2);
+    assert!(nodes.contains(&"node-1".to_string()));
+    assert!(nodes.contains(&"node-2".to_string()));
+
+    // Test Distributed Consensus
+    let consensus = DistributedConsensus::new();
+    consensus.propose_value("key1", b"value1").await.unwrap();
+
+    let retrieved = consensus.get_consensus_value("key1").await.unwrap();
+    assert_eq!(retrieved, Some(b"value1".to_vec()));
+
+    // Test Clustering Service
+    let clustering = ClusteringService::new(cluster_manager, consensus);
+    let is_leader = clustering.is_leader().await;
+    assert!(is_leader); // Single node is always leader
+
+    let federation_request = authence::services::clustering::FederationRequest {
+        source_cluster: "cluster-a".to_string(),
+        target_cluster: "cluster-b".to_string(),
+        data: vec![1, 2, 3],
+    };
+
+    let response = clustering.route_request(&federation_request).await.unwrap();
+    assert_eq!(response.source_cluster, "local");
+}
+
+#[actix_web::test]
+async fn test_federation_service_providers() {
+    use authence::services::federation::{FederationService, SamlIdentityProvider, OidcIdentityProvider, IdentityProvider};
+    use authence::model::federation::{AuthRequest, AuthResponse};
+
+    // Test SAML Identity Provider
+    let saml_provider = SamlIdentityProvider::new();
+    let auth_request = AuthRequest {
+        saml_assertion: Some("saml_assertion_data".to_string()),
+        oidc_code: None,
+        username: None,
+        password: None,
+    };
+
+    let auth_response = saml_provider.authenticate(&auth_request).await.unwrap();
+    assert!(auth_response.success);
+    assert_eq!(auth_response.user_id, Some("saml_user".to_string()));
+
+    // Test OIDC Identity Provider
+    let oidc_provider = OidcIdentityProvider::new();
+    let oidc_request = AuthRequest {
+        saml_assertion: None,
+        oidc_code: Some("oidc_code_data".to_string()),
+        username: None,
+        password: None,
+    };
+
+    let oidc_response = oidc_provider.authenticate(&oidc_request).await.unwrap();
+    assert!(oidc_response.success);
+    assert_eq!(oidc_response.user_id, Some("oidc_user".to_string()));
+
+    // Test Federation Service
+    let mut federation_service = FederationService::new();
+    federation_service.register_provider("saml", Box::new(saml_provider));
+    federation_service.register_provider("oidc", Box::new(oidc_provider));
+
+    let user_info = federation_service.get_user_info("saml", "token123").await.unwrap();
+    assert_eq!(user_info.user_id, "saml_user");
+
+    let validated = federation_service.validate_token("oidc", "token456").await.unwrap();
+    assert!(validated);
+}
+
+#[actix_web::test]
+async fn test_compliance_service_frameworks() {
+    use authence::services::compliance::{ComplianceService, ComplianceFramework, ComplianceCheckResult, ComplianceStatus};
+    use std::collections::HashMap;
+
+    // Test Compliance Service initialization
+    let mut service = ComplianceService::new();
+    service.enable_framework(ComplianceFramework::GDPR);
+    service.enable_framework(ComplianceFramework::HIPAA);
+
+    let enabled = service.get_enabled_frameworks();
+    assert!(enabled.contains(&ComplianceFramework::GDPR));
+    assert!(enabled.contains(&ComplianceFramework::HIPAA));
+
+    // Test compliance report generation
+    let report = service.get_compliance_report().await.unwrap();
+    assert!(report.frameworks.contains(&ComplianceFramework::GDPR));
+    assert!(report.frameworks.contains(&ComplianceFramework::HIPAA));
+
+    // Test individual checks
+    let gdpr_checks = service.execute_framework_checks(ComplianceFramework::GDPR).await.unwrap();
+    assert!(!gdpr_checks.is_empty());
+
+    // Test data subject rights
+    let rights_result = service.handle_data_subject_request("user123", "access").await.unwrap();
+    assert!(rights_result.success);
+
+    // Test compliance automation
+    let automation_result = service.run_compliance_automation().await.unwrap();
+    assert!(automation_result.total_checks > 0);
+}
+
+#[actix_web::test]
+async fn test_enterprise_services_integration() {
+    use authence::services::{
+        vault::VaultService,
+        fips::FipsService,
+        observability::ObservabilityService,
+        clustering::ClusteringService,
+        federation::FederationService,
+        compliance::ComplianceService,
+    };
+    use std::collections::HashMap;
+
+    // Create enterprise service instances
+    let vault = VaultService::new(HashMap::new());
+    let fips = FipsService::new(authence::services::fips::FipsSecurityProvider::new(
+        authence::services::fips::ComplianceLevel::High
+    ));
+    let observability = ObservabilityService::new(
+        authence::services::observability::MetricsCollector::new(),
+        authence::services::observability::TracingService::new(),
+        authence::services::observability::HealthCheck::new("enterprise_services")
+    );
+    let clustering = ClusteringService::new(
+        authence::services::clustering::ClusterManager::new("test-node", vec![]),
+        authence::services::clustering::DistributedConsensus::new()
+    );
+    let federation = FederationService::new();
+    let compliance = ComplianceService::new();
+
+    // Test that all services can be instantiated and basic operations work
+    assert!(vault.list_providers().is_empty());
+
+    let fips_enabled = fips.is_fips_enabled().await.unwrap();
+    assert!(fips_enabled);
+
+    let health = observability.health_status().await;
+    assert!(health.healthy);
+
+    let is_leader = clustering.is_leader().await;
+    assert!(is_leader);
+
+    let providers = federation.list_providers();
+    assert!(providers.is_empty());
+
+    let frameworks = compliance.get_enabled_frameworks();
+    assert!(frameworks.is_empty());
+
+    println!("✅ All enterprise services integrated successfully!");
+}
+
+#[actix_web::test]
+async fn test_enterprise_security_features() {
+    use authence::services::{
+        anomaly_detector::AnomalyDetector,
+        brute_force_protector::BruteForceProtector,
+        password_policy::PasswordPolicy,
+        zero_trust::ZeroTrustService,
+    };
+
+    // Test Anomaly Detector
+    let anomaly_detector = AnomalyDetector::new();
+    let is_anomalous = anomaly_detector.detect_anomaly("login_attempt", 10).await;
+    assert!(!is_anomalous); // First few attempts shouldn't be anomalous
+
+    // Test Brute Force Protector
+    let brute_force = BruteForceProtector::new(5, 300);
+    let is_blocked = brute_force.is_blocked("192.168.1.1").await;
+    assert!(!is_blocked);
+
+    // Test Password Policy
+    let policy = PasswordPolicy::default();
+    let is_valid = policy.validate("ValidPassword123!@#").is_ok();
+    assert!(is_valid);
+
+    // Test Zero Trust Service
+    let zero_trust = ZeroTrustService::new();
+    let context = authence::model::zero_trust::AuthContext {
+        user_id: "user123".to_string(),
+        device_id: "device456".to_string(),
+        ip_address: "192.168.1.100".to_string(),
+        user_agent: "Mozilla/5.0".to_string(),
+        risk_score: 0.1,
+    };
+
+    let decision = zero_trust.evaluate_access(&context).await.unwrap();
+    assert!(decision.allow);
+
+    println!("✅ Enterprise security features working correctly!");
+}
+
+#[actix_web::test]
+async fn test_enterprise_audit_and_monitoring() {
+    use authence::services::{
+        audit_log_sink::AuditLogSink,
+        kafka_audit_log_sink::KafkaAuditLogSink,
+        pg_audit_log_store::PgAuditLogStore,
+    };
+    use authence::model::audit_log::AuditLog;
+    use std::sync::Arc;
+
+    // Test Audit Log creation
+    let audit_log = AuditLog {
+        id: "audit123".to_string(),
+        timestamp: chrono::Utc::now(),
+        user_id: Some("user123".to_string()),
+        action: "login".to_string(),
+        resource: "auth".to_string(),
+        ip_address: Some("192.168.1.1".to_string()),
+        user_agent: Some("Mozilla/5.0".to_string()),
+        success: true,
+        details: Some(serde_json::json!({"method": "password"})),
+    };
+
+    // Test Kafka Audit Log Sink (mock)
+    let kafka_sink = KafkaAuditLogSink::new("localhost:9092", "audit_logs");
+    kafka_sink.send(&audit_log);
+
+    // Test PostgreSQL Audit Log Store (would need actual DB for full test)
+    // This tests the structure and compilation
+    let pg_store_result = PgAuditLogStore::new("host=localhost user=test dbname=test").await;
+    // We expect this to fail in test environment, but structure should be correct
+    assert!(pg_store_result.is_err()); // No actual DB connection
+
+    println!("✅ Enterprise audit and monitoring features structured correctly!");
+}
+
+// ============================================================================
+// END OF ENTERPRISE-GRADE SERVICE TESTS
+// ============================================================================

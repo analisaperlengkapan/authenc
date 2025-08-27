@@ -8,6 +8,12 @@ pub struct KmsVault {
     // fields for KMS client, config, etc.
 }
 
+impl Default for KmsVault {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KmsVault {
     pub fn new(/* params */) -> Self {
         KmsVault {
