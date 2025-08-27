@@ -12,11 +12,11 @@ pub mod totp_store;
 
 // Core entity stores from services/services/
 pub mod services {
-    pub mod user_store;
-    pub mod realm_store;  
-    pub mod role_store;
-    pub mod permission_store;
     pub mod audit_log_store;
+    pub mod permission_store;
+    pub mod realm_store;
+    pub mod role_store;
+    pub mod user_store;
 }
 
 // Re-export for convenience
@@ -31,8 +31,8 @@ pub mod pg_audit_log_store;
 pub mod federation_provider;
 
 // Re-exports for convenience
+pub use anomaly_detector::AnomalyDetector;
+pub use brute_force_protector::BruteForceProtector;
 pub use group_store::GroupStore;
 pub use session_store::SessionStore;
 pub use totp_store::TotpStore;
-pub use brute_force_protector::BruteForceProtector;
-pub use anomaly_detector::AnomalyDetector;

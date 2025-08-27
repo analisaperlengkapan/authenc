@@ -1,13 +1,22 @@
-use actix_web::{test, web, App, HttpResponse};
+use axum::{http::StatusCode, response::IntoResponse, routing::get, Router};
+use tower::ServiceExt;
 
-async fn metrics() -> HttpResponse { HttpResponse::Ok().body("metrics ok") }
+async fn metrics() -> impl IntoResponse {
+    "metrics ok"
+}
 
-#[actix_web::test]
+#[tokio::test]
 async fn metrics_route_enabled() {
-    let app = test::init_service(App::new().route("/metrics", web::get().to(metrics))).await;
-    let req = test::TestRequest::get().uri("/metrics").to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 200);
-    let body = test::read_body(resp).await;
+    let app = Router::new().route("/metrics", get(metrics));
+    
+    let request = axum::http::Request::builder()
+        .uri("/metrics")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     assert_eq!(body, "metrics ok");
 }

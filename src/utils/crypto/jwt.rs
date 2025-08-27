@@ -1,6 +1,6 @@
-use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
-use serde::{Serialize, Deserialize};
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use serde::{Deserialize, Serialize};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -21,10 +21,18 @@ pub fn generate_jwt(user_id: &str) -> jsonwebtoken::errors::Result<String> {
         sub: user_id.to_owned(),
         exp: expiration,
     };
-    encode(&Header::default(), &claims, &EncodingKey::from_secret(SECRET))
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(SECRET),
+    )
 }
 
 pub fn verify_jwt(token: &str) -> jsonwebtoken::errors::Result<Claims> {
-    let data = decode::<Claims>(token, &DecodingKey::from_secret(SECRET), &Validation::default())?;
+    let data = decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(SECRET),
+        &Validation::default(),
+    )?;
     Ok(data.claims)
 }

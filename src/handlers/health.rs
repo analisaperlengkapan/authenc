@@ -1,44 +1,34 @@
-use actix_web::{web, HttpResponse, Responder};
-use serde_json::json;
+use axum::{extract::State, http::StatusCode, response::Json};
+use serde_json::{json, Value};
+use std::sync::Arc;
 
 use crate::database::Database;
 
-/// Health check endpoint
-pub async fn health() -> impl Responder {
-    HttpResponse::Ok().json(json!({
+/// Health check endpoint for Axum
+pub async fn health() -> Json<Value> {
+    Json(json!({
         "status": "healthy",
         "version": env!("CARGO_PKG_VERSION"),
         "timestamp": chrono::Utc::now().to_rfc3339()
     }))
 }
 
-/// Readiness check endpoint with database connectivity
-pub async fn ready(db: web::Data<Database>) -> impl Responder {
+/// Readiness check endpoint with database connectivity for Axum
+pub async fn ready(State(db): State<Arc<Database>>) -> Result<Json<Value>, StatusCode> {
     match db.health_check().await {
-        Ok(_) => HttpResponse::Ok().json(json!({
+        Ok(_) => Ok(Json(json!({
             "status": "ready",
             "database": "connected",
             "timestamp": chrono::Utc::now().to_rfc3339()
-        })),
-        Err(_) => HttpResponse::ServiceUnavailable().json(json!({
-            "status": "not ready",
-            "database": "disconnected",
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        }))
+        }))),
+        Err(_) => Err(StatusCode::SERVICE_UNAVAILABLE),
     }
 }
 
-/// Liveness probe
-pub async fn live() -> impl Responder {
-    HttpResponse::Ok().json(json!({
+/// Liveness probe for Axum
+pub async fn live() -> Json<Value> {
+    Json(json!({
         "status": "alive",
         "timestamp": chrono::Utc::now().to_rfc3339()
     }))
-}
-
-/// Configure health routes
-pub fn configure_routes(cfg: &mut web::ServiceConfig) {
-    cfg.route("", web::get().to(health))
-       .route("/ready", web::get().to(ready))
-       .route("/live", web::get().to(live));
 }

@@ -1,8 +1,9 @@
-use crate::handlers::oidc_keys::RSA_KEYPAIR;
-use chrono::Utc;
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use rsa::pkcs1::EncodeRsaPrivateKey;
+// Legacy RSA implementation - DEPRECATED
+// Replaced with Ed25519 in handlers/oidc_ed25519.rs for security
+// use crate::handlers::oidc_keys::RSA_KEYPAIR;
 use serde::{Deserialize, Serialize};
+use chrono::Utc;
+// use rsa::pkcs1::EncodeRsaPrivateKey; // REMOVED: Vulnerable to timing attacks
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OidcIdTokenClaims {
@@ -34,10 +35,7 @@ pub fn generate_id_token(
         name: name.map(|n| n.to_string()),
         role: role.map(|r| r.to_string()),
     };
-    // Use PKCS1 DER as expected by jsonwebtoken::EncodingKey::from_rsa_der
-    let der = RSA_KEYPAIR.to_pkcs1_der().unwrap();
-    let key = EncodingKey::from_rsa_der(der.as_bytes());
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some("authence-demo-key".to_string());
-    encode(&header, &claims, &key).unwrap()
+    // DEPRECATED: Legacy RSA implementation removed for security
+    // Use handlers/oidc_ed25519.rs for secure Ed25519 JWT signing instead
+    panic!("Legacy RSA JWT signing disabled - use Ed25519 implementation")
 }

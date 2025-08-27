@@ -1,7 +1,7 @@
 use crate::models::audit_log::AuditLog;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::user_store::UserStore;
-use actix_web::HttpResponseBuilder;
+// TODO: Migrate to Axum - temporarily commented out
 use chrono::Utc;
 use rsa::pkcs8::EncodePublicKey;
 #[get("/oidc/login")]
@@ -41,7 +41,7 @@ pub async fn oidc_login_post(
     // Render login form with username/password fields
     let username = form.scope.clone().unwrap_or_default(); // overload for username (for demo, should use real struct)
     let password = form.state.clone().unwrap_or_default(); // overload for password (for demo)
-    // Actually, username/password should be in a separate struct, but for demo, use scope/state
+                                                           // Actually, username/password should be in a separate struct, but for demo, use scope/state
     let user = if let Some(user) = user_store.get_by_username(&username) {
         user
     } else {
@@ -63,7 +63,8 @@ pub async fn oidc_login_post(
     }
     let user_id = user.id.to_string();
     if resp.is_none() {
-        let mut r = HttpResponseBuilder::new(actix_web::http::StatusCode::FOUND);
+        // TODO: Migrate to Axum - temporarily commented out
+        // let mut r = Response::builder().status(StatusCode::FOUND);
         let uri = format!(
             "/v1/oidc/authorize?client_id={}&redirect_uri={}&response_type={}&scope={}&state={}",
             form.client_id,
@@ -94,8 +95,8 @@ pub async fn oidc_login_post(
 use crate::handlers::oidc_jwt::generate_id_token;
 use crate::services::oidc_client_store::OidcClientStore;
 use crate::services::oidc_code_store::OidcCodeStore;
-use actix_web::HttpRequest;
-use actix_web::{get, post, web, HttpResponse, Responder};
+// TODO: Migrate to Axum - temporarily commented out
+// TODO: Migrate to Axum - temporarily commented out
 use rsa::traits::PublicKeyParts;
 use serde::Deserialize;
 
@@ -153,7 +154,10 @@ pub async fn oidc_authorize(
     };
     if client.is_none()
         || !client.as_ref().map(|c| c.enabled).unwrap_or(false)
-        || !client.as_ref().map(|c| c.redirect_uris.contains(&query.redirect_uri)).unwrap_or(false)
+        || !client
+            .as_ref()
+            .map(|c| c.redirect_uris.contains(&query.redirect_uri))
+            .unwrap_or(false)
     {
         let _ = audit_log_store
             .add_log(&AuditLog {
@@ -185,7 +189,9 @@ pub async fn oidc_authorize(
     }
     let user_id = match user_id_cookie {
         Some(uid) => uid,
-        None => return HttpResponse::InternalServerError().body("Missing user_id cookie after check"),
+        None => {
+            return HttpResponse::InternalServerError().body("Missing user_id cookie after check")
+        }
     };
     // Consent screen logic (stub): show consent if prompt=consent
     let prompt = query.scope.as_deref().unwrap_or("");
@@ -273,7 +279,10 @@ pub async fn oidc_token(
     };
     if client.is_none()
         || !client.as_ref().map(|c| c.enabled).unwrap_or(false)
-        || !client.as_ref().map(|c| c.redirect_uris.contains(&form.redirect_uri)).unwrap_or(false)
+        || !client
+            .as_ref()
+            .map(|c| c.redirect_uris.contains(&form.redirect_uri))
+            .unwrap_or(false)
     {
         let _ = audit_log_store
             .add_log(&AuditLog {

@@ -1,5 +1,9 @@
 use thiserror::Error;
-use actix_web::{HttpResponse, ResponseError};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde_json::json;
 
 /// Type alias for Results in this crate  
@@ -29,6 +33,12 @@ pub enum AuthencError {
     
     #[error("Account locked due to too many failed attempts")]
     AccountLocked,
+    
+    #[error("Unauthorized: {message}")]
+    Unauthorized { message: String },
+    
+    #[error("Forbidden: {message}")]
+    Forbidden { message: String },
     
     // Validation errors
     #[error("Invalid input: {message}")]
@@ -109,6 +119,14 @@ impl AuthencError {
         Self::InternalError { message: message.into() }
     }
     
+    pub fn unauthorized<T: Into<String>>(message: T) -> Self {
+        Self::Unauthorized { message: message.into() }
+    }
+
+    pub fn forbidden<T: Into<String>>(message: T) -> Self {
+        Self::Forbidden { message: message.into() }
+    }
+    
     /// Check if the error should be logged as an error (vs warning)
     pub fn should_log_as_error(&self) -> bool {
         matches!(
@@ -119,6 +137,8 @@ impl AuthencError {
                 | AuthencError::InternalError { .. }
                 | AuthencError::CryptographicError
                 | AuthencError::ServiceUnavailable
+                | AuthencError::Unauthorized { .. }
+                | AuthencError::Forbidden { .. }
         )
     }
     
@@ -131,6 +151,8 @@ impl AuthencError {
             AuthencError::TokenExpired => "TOKEN_EXPIRED",
             AuthencError::InvalidToken => "INVALID_TOKEN",
             AuthencError::AccountLocked => "ACCOUNT_LOCKED",
+            AuthencError::Unauthorized { .. } => "UNAUTHORIZED",
+            AuthencError::Forbidden { .. } => "FORBIDDEN",
             AuthencError::ValidationError { .. } => "VALIDATION_ERROR",
             AuthencError::MissingField { .. } => "MISSING_FIELD",
             AuthencError::InvalidFormat { .. } => "INVALID_FORMAT",
@@ -151,61 +173,19 @@ impl AuthencError {
     }
 }
 
-impl ResponseError for AuthencError {
-    fn status_code(&self) -> actix_web::http::StatusCode {
-        match self {
-            // 400 Bad Request
-            AuthencError::ValidationError { .. }
-            | AuthencError::MissingField { .. }
-            | AuthencError::InvalidFormat { .. }
-            | AuthencError::InvalidCredentials => actix_web::http::StatusCode::BAD_REQUEST,
-            
-            // 401 Unauthorized
-            AuthencError::AuthenticationFailed
-            | AuthencError::TokenExpired
-            | AuthencError::InvalidToken => actix_web::http::StatusCode::UNAUTHORIZED,
-            
-            // 403 Forbidden
-            AuthencError::AccessDenied
-            | AuthencError::AccountLocked => actix_web::http::StatusCode::FORBIDDEN,
-            
-            // 404 Not Found
-            AuthencError::UserNotFound
-            | AuthencError::ResourceNotFound { .. } => actix_web::http::StatusCode::NOT_FOUND,
-            
-            // 409 Conflict
-            AuthencError::ResourceExists { .. }
-            | AuthencError::ResourceConflict { .. } => actix_web::http::StatusCode::CONFLICT,
-            
-            // 429 Too Many Requests
-            AuthencError::RateLimitExceeded => actix_web::http::StatusCode::TOO_MANY_REQUESTS,
-            
-            // 503 Service Unavailable
-            AuthencError::ServiceUnavailable => actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
-            
-            // 500 Internal Server Error
-            AuthencError::DatabaseError { .. }
-            | AuthencError::ConfigurationError { .. }
-            | AuthencError::ExternalServiceError { .. }
-            | AuthencError::InternalError { .. }
-            | AuthencError::CryptographicError
-            | AuthencError::SerializationError { .. }
-            | AuthencError::NetworkError { .. } => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-    
-    fn error_response(&self) -> HttpResponse {
+impl IntoResponse for AuthencError {
+    fn into_response(self) -> Response {
         let status = self.status_code();
         
         // For internal errors, don't expose sensitive information
-        let error_message = match self {
+        let error_message = match &self {
             AuthencError::DatabaseError { .. }
                 | AuthencError::ConfigurationError { .. }
                 | AuthencError::InternalError { .. }
                 | AuthencError::CryptographicError
                 | AuthencError::SerializationError { .. }
                 | AuthencError::NetworkError { .. } => {
-                log::error!("Internal error occurred: {}", self);
+                tracing::error!("Internal error occurred: {}", self);
                 "An internal error occurred. Please try again later.".to_string()
             }
             _ => self.to_string(),
@@ -219,7 +199,55 @@ impl ResponseError for AuthencError {
             }
         });
         
-        HttpResponse::build(status).json(response_body)
+        (status, Json(response_body)).into_response()
+    }
+}
+
+impl AuthencError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            // 400 Bad Request
+            AuthencError::ValidationError { .. }
+            | AuthencError::MissingField { .. }
+            | AuthencError::InvalidFormat { .. }
+            | AuthencError::InvalidCredentials => StatusCode::BAD_REQUEST,
+            
+            // 401 Unauthorized
+            AuthencError::AuthenticationFailed
+            | AuthencError::TokenExpired
+            | AuthencError::InvalidToken => StatusCode::UNAUTHORIZED,
+            
+            // 403 Forbidden
+            AuthencError::AccessDenied
+            | AuthencError::AccountLocked
+            | AuthencError::Forbidden { .. } => StatusCode::FORBIDDEN,
+            
+            // 401 Unauthorized (additional)
+            AuthencError::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
+            
+            // 404 Not Found
+            AuthencError::UserNotFound
+            | AuthencError::ResourceNotFound { .. } => StatusCode::NOT_FOUND,
+            
+            // 409 Conflict
+            AuthencError::ResourceExists { .. }
+            | AuthencError::ResourceConflict { .. } => StatusCode::CONFLICT,
+            
+            // 429 Too Many Requests
+            AuthencError::RateLimitExceeded => StatusCode::TOO_MANY_REQUESTS,
+            
+            // 503 Service Unavailable
+            AuthencError::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+            
+            // 500 Internal Server Error
+            AuthencError::DatabaseError { .. }
+            | AuthencError::ConfigurationError { .. }
+            | AuthencError::ExternalServiceError { .. }
+            | AuthencError::InternalError { .. }
+            | AuthencError::CryptographicError
+            | AuthencError::SerializationError { .. }
+            | AuthencError::NetworkError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        }
     }
 }
 
@@ -266,6 +294,14 @@ impl From<std::str::ParseBoolError> for AuthencError {
     fn from(err: std::str::ParseBoolError) -> Self {
     AuthencError::ConfigurationError { 
             message: format!("Failed to parse boolean: {}", err)
+        }
+    }
+}
+
+impl From<std::io::Error> for AuthencError {
+    fn from(err: std::io::Error) -> Self {
+        AuthencError::NetworkError { 
+            message: format!("IO error: {}", err)
         }
     }
 }

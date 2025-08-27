@@ -7,8 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Security & Deployment
-- **[IMPORTANT]** Native mTLS support is not available due to Rust/actix-web ecosystem limitations. For production-grade mTLS, deploy Authenc behind a reverse proxy (Nginx/Envoy) that enforces client certificate validation. See README for best-practice configuration.
+### Added
+- **Complete Axum Migration**: Fully migrated from Actix-web to Axum framework
+- **Ed25519 Cryptography**: Replaced vulnerable RSA with secure Ed25519 JWT signing
+- **ECDSA P-256 Support**: Alternative elliptic curve cryptography implementation
+- **mTLS Implementation**: Native mTLS middleware for client certificate validation
+- **Security Hardening**: Eliminated all unsafe code and timing attack vulnerabilities
+
+### Changed
+- **BREAKING**: Migrated from Actix-web to Axum for all HTTP routing and middleware
+- **BREAKING**: Replaced RSA JWT signing with Ed25519 (immune to timing attacks)
+- **BREAKING**: Updated all handlers, middleware, and tests to use Axum patterns
+- Upgraded cryptographic dependencies to latest secure versions
+- Modernized OIDC endpoints with Ed25519-based JWT tokens
+
+### Security
+- **RUSTSEC-2023-0071**: Eliminated vulnerable RSA 0.9.8 crate completely
+- **Marvin Attack**: Removed timing sidechannel vulnerability in RSA implementation
+- **Zero Vulnerabilities**: Clean cargo audit with no security issues
+- **No Unsafe Code**: Removed all unsafe blocks from codebase
+- **Modern Cryptography**: Ed25519 and ECDSA P-256 for all signing operations
+
+### Fixed
+- All compilation errors related to Actix-web migration
+- Test suite fully converted to Axum testing patterns
+- Removed legacy RSA dependencies and handlers
+- Clean build with zero warnings (except documentation)
+
+### Removed
+- All Actix-web dependencies and imports
+- Vulnerable RSA cryptographic implementations
+- Legacy JWT signing with timing attack vulnerabilities
+- Unsafe code blocks and dynamic library loading
 
 ## [0.3.0] - 2025-08-26
 

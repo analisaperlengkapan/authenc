@@ -19,7 +19,10 @@ impl BruteForceProtector {
     }
 
     pub fn register_attempt(&self, key: &str) -> Result<bool, String> {
-        let mut map = self.attempts.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+        let mut map = self
+            .attempts
+            .lock()
+            .map_err(|e| format!("Lock poisoned: {e}"))?;
         let now = Instant::now();
         let entry = map.entry(key.to_string()).or_default();
         entry.push(now);
@@ -29,7 +32,10 @@ impl BruteForceProtector {
     }
 
     pub fn clear(&self, key: &str) -> Result<(), String> {
-        let mut map = self.attempts.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+        let mut map = self
+            .attempts
+            .lock()
+            .map_err(|e| format!("Lock poisoned: {e}"))?;
         map.remove(key);
         Ok(())
     }

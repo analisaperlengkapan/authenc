@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Realm entity representing a tenant or namespace
@@ -72,18 +72,18 @@ impl Realm {
             deleted_at: None,
         }
     }
-    
+
     /// Check if realm is active
     pub fn is_active(&self) -> bool {
         self.enabled && self.deleted_at.is_none()
     }
-    
+
     /// Soft delete the realm
     pub fn delete(&mut self) {
         self.deleted_at = Some(Utc::now());
         self.updated_at = Utc::now();
     }
-    
+
     /// Update realm fields
     pub fn update(&mut self, request: UpdateRealmRequest) {
         if let Some(display_name) = request.display_name {

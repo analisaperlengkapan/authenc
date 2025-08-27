@@ -1,25 +1,27 @@
 use anyhow::Result;
-use std::env;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use authenc::AppConfig;
-use authenc::ApplicationBuilder;
+use authenc::{axum_app::AxumApp, AppConfig};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
-    env_logger::init();
-    
-    println!("🚀 Starting Authenc Identity and Access Management System (by Cipherce)");
-    println!("📖 Version: {}", env!("CARGO_PKG_VERSION"));
-    
+    // Initialize tracing
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+        ))
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    tracing::info!("🚀 Starting Authenc Identity and Access Management System (by Cipherce)");
+    tracing::info!("📖 Version: {}", env!("CARGO_PKG_VERSION"));
+
     // Load configuration
     let config = AppConfig::from_env()?;
-    
-    // Create and run application
-    let app_builder = ApplicationBuilder::new(config);
-    // TODO: enable when ApplicationBuilder::run implemented
-    let _ = app_builder; // silence unused
-    // app_builder.run().await?;
-    
+
+    // Create and run the Axum application
+    let app = AxumApp::new(config);
+    app.run().await?;
+
     Ok(())
 }

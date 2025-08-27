@@ -18,7 +18,9 @@ pub struct PgAuditLogStore {
 
 impl PgAuditLogStore {
     pub async fn new(conn_str: &str) -> Result<Self> {
-        let parsed = conn_str.parse().map_err(|e| anyhow::anyhow!("Failed to parse connection string: {e}"))?;
+        let parsed = conn_str
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Failed to parse connection string: {e}"))?;
         let mgr = Manager::new(parsed, NoTls);
         let pool = Pool::builder(mgr).max_size(16).build()?;
         Ok(Self { pool })

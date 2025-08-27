@@ -1,8 +1,9 @@
 // Utility modules
 pub mod crypto;
-pub mod jwt;
 pub mod i18n;
+pub mod jwt;
 pub mod plugin;
+pub mod crypto_monitor;
 
 // Authentication utilities
 pub mod auth_context;

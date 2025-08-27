@@ -25,12 +25,28 @@ impl OidcClientStore {
         Ok(())
     }
     pub fn get(&self, client_id: &str) -> Result<Option<OidcClient>, String> {
-        Ok(self.clients.read().map_err(|e| format!("Lock poisoned: {e}"))?.get(client_id).cloned())
+        Ok(self
+            .clients
+            .read()
+            .map_err(|e| format!("Lock poisoned: {e}"))?
+            .get(client_id)
+            .cloned())
     }
     pub fn all(&self) -> Result<Vec<OidcClient>, String> {
-        Ok(self.clients.read().map_err(|e| format!("Lock poisoned: {e}"))?.values().cloned().collect())
+        Ok(self
+            .clients
+            .read()
+            .map_err(|e| format!("Lock poisoned: {e}"))?
+            .values()
+            .cloned()
+            .collect())
     }
     pub fn delete(&self, client_id: &str) -> Result<bool, String> {
-        Ok(self.clients.write().map_err(|e| format!("Lock poisoned: {e}"))?.remove(client_id).is_some())
+        Ok(self
+            .clients
+            .write()
+            .map_err(|e| format!("Lock poisoned: {e}"))?
+            .remove(client_id)
+            .is_some())
     }
 }

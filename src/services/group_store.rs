@@ -5,9 +5,9 @@ impl Default for GroupStore {
 }
 use crate::models::group::Group;
 use chrono::Utc;
-use uuid::Uuid;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use uuid::Uuid;
 
 /// In-memory store for groups.
 ///

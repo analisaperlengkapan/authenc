@@ -2,6 +2,7 @@
 pub mod config;
 pub mod error;
 pub mod app;
+pub mod axum_app;
 
 // Feature modules
 pub mod database;

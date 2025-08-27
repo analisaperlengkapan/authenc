@@ -1,5 +1,5 @@
-use std::sync::Mutex;
 use crate::models::role::Role;
+use std::sync::Mutex;
 
 pub struct RoleStore {
     pub roles: Mutex<Vec<Role>>,
@@ -21,7 +21,9 @@ impl RoleStore {
     }
 
     pub fn get_by_realm(&self, realm_id: &str) -> Vec<Role> {
-        self.roles.lock().unwrap()
+        self.roles
+            .lock()
+            .unwrap()
             .iter()
             .filter(|r| r.realm_id.to_string() == realm_id)
             .cloned()
@@ -29,7 +31,9 @@ impl RoleStore {
     }
 
     pub fn get_by_name(&self, name: &str) -> Option<Role> {
-        self.roles.lock().unwrap()
+        self.roles
+            .lock()
+            .unwrap()
             .iter()
             .find(|r| r.name == name)
             .cloned()

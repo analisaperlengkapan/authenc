@@ -1,24 +1,24 @@
+// Legacy RSA key implementation - DEPRECATED for security
+// Replaced with Ed25519 in crypto/ed25519_keys.rs
 use once_cell::sync::Lazy;
-use rand::thread_rng;
-use rsa::{
-    pkcs8::{EncodePrivateKey, EncodePublicKey},
-    RsaPrivateKey, RsaPublicKey,
-};
+// use rand::thread_rng; // Removed - not needed for disabled legacy code
+// use rsa::{
+//     pkcs8::{EncodePrivateKey, EncodePublicKey},
+//     RsaPrivateKey, RsaPublicKey,
+// }; // REMOVED: Vulnerable to timing attacks (RUSTSEC-2023-0071)
 
-// Generate or load a static RSA keypair for OIDC
-pub static RSA_KEYPAIR: Lazy<RsaPrivateKey> = Lazy::new(|| {
-    // In production: load from file/env, rotate securely
-    RsaPrivateKey::new(&mut thread_rng(), 2048).expect("Failed to generate RSA key")
+// DEPRECATED: Legacy RSA implementation disabled for security
+// Use crypto/ed25519_keys.rs for secure Ed25519 keys instead
+
+// Placeholder to maintain compilation - DO NOT USE
+pub static RSA_KEYPAIR: Lazy<()> = Lazy::new(|| {
+    panic!("Legacy RSA keys disabled - use Ed25519 implementation")
 });
 
 pub fn get_public_pem() -> String {
-    let pubkey = RsaPublicKey::from(RSA_KEYPAIR.clone());
-    pubkey.to_public_key_pem(Default::default()).unwrap()
+    panic!("Legacy RSA PEM disabled - use Ed25519 implementation")
 }
 
 pub fn get_private_pem() -> String {
-    RSA_KEYPAIR
-        .to_pkcs8_pem(Default::default())
-        .unwrap()
-        .to_string()
+    panic!("Legacy RSA private PEM disabled - use Ed25519 implementation")
 }

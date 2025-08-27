@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Authentication token types
@@ -76,27 +76,27 @@ impl Token {
             used: false,
         }
     }
-    
+
     /// Check if token is valid (not expired, revoked, or used)
     pub fn is_valid(&self) -> bool {
         !self.revoked && !self.used && Utc::now() < self.expires_at
     }
-    
+
     /// Revoke the token
     pub fn revoke(&mut self) {
         self.revoked = true;
     }
-    
+
     /// Mark token as used (for one-time tokens)
     pub fn mark_used(&mut self) {
         self.used = true;
     }
-    
+
     /// Check if token is expired
     pub fn is_expired(&self) -> bool {
         Utc::now() >= self.expires_at
     }
-    
+
     /// Get remaining time to live in seconds
     pub fn ttl(&self) -> i64 {
         (self.expires_at - Utc::now()).num_seconds()

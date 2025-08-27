@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// User session for authentication
@@ -69,22 +69,22 @@ impl Session {
             revoked: false,
         }
     }
-    
+
     /// Check if session is valid (not expired and not revoked)
     pub fn is_valid(&self) -> bool {
         !self.revoked && Utc::now() < self.expires_at
     }
-    
+
     /// Update last accessed time
     pub fn touch(&mut self) {
         self.last_accessed = Utc::now();
     }
-    
+
     /// Revoke the session
     pub fn revoke(&mut self) {
         self.revoked = true;
     }
-    
+
     /// Check if session is expired
     pub fn is_expired(&self) -> bool {
         Utc::now() >= self.expires_at

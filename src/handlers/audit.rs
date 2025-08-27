@@ -1,6 +1,9 @@
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::services::user_store::UserStore;
-use actix_web::{web, HttpRequest, HttpResponse};
+// Legacy Actix-web handler - needs migration to Axum
+// TODO: Migrate to Axum handlers
+// TODO: Migrate to Axum - temporarily commented out
+// use axum::{extract::Query, response::Json};
 use chrono::{DateTime, Utc};
 use std::fmt::Write;
 
@@ -22,7 +25,10 @@ pub async fn get_audit_logs(
     audit_log_store: web::Data<PgAuditLogStore>,
     user_store: web::Data<UserStore>,
 ) -> HttpResponse {
-    let auth = req.headers().get("Authorization").and_then(|v| v.to_str().ok());
+    let auth = req
+        .headers()
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok());
     if let Some(auth) = auth {
         if let Some(_token) = auth.strip_prefix("Bearer ") {
             if let Some(user) = user_store.get_by_username("admin") {
@@ -32,7 +38,7 @@ pub async fn get_audit_logs(
                         Err(e) => {
                             log::error!("audit log query error: {e}");
                             return HttpResponse::InternalServerError()
-                                .body("Failed to query audit logs")
+                                .body("Failed to query audit logs");
                         }
                     };
                     if let Some(ref event) = query.event {
@@ -88,7 +94,10 @@ pub async fn export_audit_logs_csv(
     audit_log_store: web::Data<PgAuditLogStore>,
     user_store: web::Data<UserStore>,
 ) -> HttpResponse {
-    let auth = req.headers().get("Authorization").and_then(|v| v.to_str().ok());
+    let auth = req
+        .headers()
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok());
     if let Some(auth) = auth {
         if let Some(_token) = auth.strip_prefix("Bearer ") {
             if let Some(user) = user_store.get_by_username("admin") {
@@ -98,7 +107,7 @@ pub async fn export_audit_logs_csv(
                         Err(e) => {
                             log::error!("audit log query error: {e}");
                             return HttpResponse::InternalServerError()
-                                .body("Failed to query audit logs")
+                                .body("Failed to query audit logs");
                         }
                     };
                     if let Some(ref event) = query.event {
@@ -144,9 +153,7 @@ pub async fn export_audit_logs_csv(
                             "\"{ts}\",\"{event}\",\"{user_id}\",\"{client_id}\",\"{status}\",\"{detail}\""
                         );
                     }
-                    return HttpResponse::Ok()
-                        .content_type("text/csv")
-                        .body(wtr);
+                    return HttpResponse::Ok().content_type("text/csv").body(wtr);
                 } else {
                     return HttpResponse::Forbidden().body("Not admin");
                 }
@@ -160,5 +167,5 @@ pub async fn export_audit_logs_csv(
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.route("/logs", web::get().to(get_audit_logs))
-       .route("/logs/export", web::get().to(export_audit_logs_csv));
+        .route("/logs/export", web::get().to(export_audit_logs_csv));
 }

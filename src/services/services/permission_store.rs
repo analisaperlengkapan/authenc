@@ -1,5 +1,5 @@
-use std::sync::Mutex;
 use crate::models::permission::Permission;
+use std::sync::Mutex;
 
 pub struct PermissionStore {
     pub permissions: Mutex<Vec<Permission>>,
@@ -21,7 +21,9 @@ impl PermissionStore {
     }
 
     pub fn get_by_realm(&self, realm_id: &str) -> Vec<Permission> {
-        self.permissions.lock().unwrap()
+        self.permissions
+            .lock()
+            .unwrap()
             .iter()
             .filter(|p| p.realm_id.to_string() == realm_id)
             .cloned()
@@ -29,7 +31,9 @@ impl PermissionStore {
     }
 
     pub fn get_by_resource(&self, resource: &str) -> Option<Permission> {
-        self.permissions.lock().unwrap()
+        self.permissions
+            .lock()
+            .unwrap()
             .iter()
             .find(|p| p.resource == resource)
             .cloned()

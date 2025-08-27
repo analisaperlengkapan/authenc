@@ -1,5 +1,5 @@
-use std::sync::Mutex;
 use crate::models::realm::Realm;
+use std::sync::Mutex;
 
 pub struct RealmStore {
     pub realms: Mutex<Vec<Realm>>,
@@ -21,6 +21,11 @@ impl RealmStore {
     }
 
     pub fn get_by_name(&self, name: &str) -> Option<Realm> {
-        self.realms.lock().unwrap().iter().find(|r| r.name == name).cloned()
+        self.realms
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|r| r.name == name)
+            .cloned()
     }
 }

@@ -19,7 +19,10 @@ impl AnomalyDetector {
     }
 
     pub fn is_new_ip(&self, user_id: &str, ip: &str) -> Result<bool, String> {
-        let mut map = self.known_ips.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+        let mut map = self
+            .known_ips
+            .lock()
+            .map_err(|e| format!("Lock poisoned: {e}"))?;
         let ips = map.entry(user_id.to_string()).or_default();
         if !ips.contains(&ip.to_string()) {
             ips.push(ip.to_string());

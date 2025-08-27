@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Permission entity for fine-grained access control
@@ -85,18 +85,18 @@ impl Permission {
             deleted_at: None,
         }
     }
-    
+
     /// Check if permission is active
     pub fn is_active(&self) -> bool {
         self.deleted_at.is_none()
     }
-    
+
     /// Soft delete the permission
     pub fn delete(&mut self) {
         self.deleted_at = Some(Utc::now());
         self.updated_at = Utc::now();
     }
-    
+
     /// Update permission fields
     pub fn update(&mut self, request: UpdatePermissionRequest) {
         if let Some(name) = request.name {
@@ -113,7 +113,7 @@ impl Permission {
         }
         self.updated_at = Utc::now();
     }
-    
+
     /// Get permission key in format "resource:action"
     pub fn get_key(&self) -> String {
         format!("{}:{}", self.resource, self.action)

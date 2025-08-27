@@ -1,11 +1,13 @@
-use authenc::app::{AppState};
+use authenc::app::AppState;
 use authenc::AppConfig;
 use std::sync::Arc;
 
 #[tokio::test]
 async fn app_state_initializes_all_services() {
     let config = Arc::new(AppConfig::default());
-    let state = AppState::new(config.clone()).await.expect("AppState::new should succeed");
+    let state = AppState::new(config.clone())
+        .await
+        .expect("AppState::new should succeed");
     assert!(Arc::ptr_eq(&state.config, &config));
     assert!(state.user_store.get_all().is_empty());
     // Just check all fields are Some/Arc (not None)

@@ -1,6 +1,19 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+/// JWT Claims for user authentication
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserClaims {
+    pub sub: String, // Subject (user ID)
+    pub username: String,
+    pub email: String,
+    pub realm_id: String,
+    pub roles: Vec<String>,
+    pub exp: usize,  // Expiration time
+    pub iat: usize,  // Issued at
+    pub iss: String, // Issuer
+}
 
 /// User entity representing an authenticated user
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,18 +92,18 @@ impl User {
             deleted_at: None,
         }
     }
-    
+
     /// Check if user is active (enabled and not deleted)
     pub fn is_active(&self) -> bool {
         self.enabled && self.deleted_at.is_none()
     }
-    
+
     /// Soft delete the user
     pub fn delete(&mut self) {
         self.deleted_at = Some(Utc::now());
         self.updated_at = Utc::now();
     }
-    
+
     /// Update user fields
     pub fn update(&mut self, request: UpdateUserRequest) {
         if let Some(username) = request.username {

@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Role entity for role-based access control
@@ -67,18 +67,18 @@ impl Role {
             deleted_at: None,
         }
     }
-    
+
     /// Check if role is active
     pub fn is_active(&self) -> bool {
         self.deleted_at.is_none()
     }
-    
+
     /// Soft delete the role
     pub fn delete(&mut self) {
         self.deleted_at = Some(Utc::now());
         self.updated_at = Utc::now();
     }
-    
+
     /// Update role fields
     pub fn update(&mut self, request: UpdateRoleRequest) {
         if let Some(name) = request.name {

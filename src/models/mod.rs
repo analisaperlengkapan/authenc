@@ -1,9 +1,9 @@
 // Core data models
-pub mod user;
+pub mod group;
+pub mod permission;
 pub mod realm;
 pub mod role;
-pub mod permission;
-pub mod group;
+pub mod user;
 
 // Authentication models
 pub mod session;
@@ -16,9 +16,9 @@ pub mod audit_log;
 pub mod oidc_client;
 
 // Re-exports for convenience
-pub use user::User;
-pub use realm::Realm;
-pub use role::Role;
-pub use permission::Permission;
 pub use audit_log::AuditLog;
 pub use oidc_client::OidcClient;
+pub use permission::Permission;
+pub use realm::Realm;
+pub use role::Role;
+pub use user::User;

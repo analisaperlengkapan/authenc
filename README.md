@@ -1,90 +1,45 @@
 # Authenc by Cipherce
-# ⚠️ Production mTLS Best Practice
 
-> **Note:** Native mTLS (mutual TLS) is not currently supported in actix-web due to ecosystem limitations. For enterprise-grade security, deploy Authenc behind a reverse proxy (such as Nginx or Envoy) that enforces mTLS at the edge. The proxy should validate client certificates and forward only trusted requests to Authenc over standard TLS.
+**Authenc** is a high-performance authentication and authorization server built in Rust with modern security practices. Fully migrated to Axum framework with Ed25519 cryptography and native mTLS support.
 
-### Example: Nginx mTLS Reverse Proxy
+## 🔒 Security Features
 
-```nginx
-server {
-		listen 443 ssl;
-		server_name authenc.example.com;
+- **Zero Vulnerabilities**: Clean cargo audit with no security issues
+- **Ed25519 Cryptography**: Modern, timing-attack-resistant JWT signing
+- **Native mTLS**: Built-in mutual TLS client certificate validation
+- **No Unsafe Code**: Completely safe Rust implementation
+- **ECDSA P-256**: Alternative elliptic curve cryptography support
 
-		ssl_certificate     /etc/ssl/certs/fullchain.pem;
-		ssl_certificate_key /etc/ssl/private/privkey.pem;
-		ssl_client_certificate /etc/ssl/certs/ca.pem;
-		ssl_verify_client on;
+## 🚀 Framework Migration
 
-		location / {
-				proxy_pass http://127.0.0.1:8080;
-				proxy_set_header Host $host;
-				proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-				proxy_set_header X-Client-Cert $ssl_client_cert;
-		}
-}
-```
+**Authenc** has been completely migrated from Actix-web to **Axum** for better performance, security, and maintainability:
 
-### Example: Envoy mTLS Reverse Proxy
+- **Modern HTTP Framework**: Axum with tower middleware ecosystem
+- **Type-Safe Routing**: Compile-time route validation
+- **Better Error Handling**: Structured error responses with IntoResponse
+- **Improved Testing**: Native Axum test utilities
 
-```yaml
-static_resources:
-	listeners:
-	- name: listener_0
-		address:
-			socket_address: { address: 0.0.0.0, port_value: 443 }
-		filter_chains:
-		- filters:
-			- name: envoy.filters.network.http_connection_manager
-				typed_config:
-					'@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-					stat_prefix: ingress_http
-					route_config:
-						name: local_route
-						virtual_hosts:
-						- name: backend
-							domains: ["*"]
-							routes:
-							- match: { prefix: "/" }
-								route: { cluster: authenc }
-					http_filters:
-					- name: envoy.filters.http.router
-			transport_socket:
-				name: envoy.transport_sockets.tls
-				typed_config:
-					'@type': type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
-					common_tls_context:
-						tls_certificates:
-							- certificate_chain: { filename: "/etc/ssl/certs/fullchain.pem" }
-								private_key: { filename: "/etc/ssl/private/privkey.pem" }
-						validation_context:
-							trusted_ca: { filename: "/etc/ssl/certs/ca.pem" }
-							require_client_certificate: true
-	clusters:
-	- name: authenc
-		connect_timeout: 0.25s
-		type: logical_dns
-		lb_policy: round_robin
-		load_assignment:
-			cluster_name: authenc
-			endpoints:
-			- lb_endpoints:
-				- endpoint:
-						address:
-							socket_address: { address: 127.0.0.1, port_value: 8080 }
-```
+## 🔐 Cryptographic Security
 
-**Summary:**
-- Terminate TLS/mTLS at the proxy (Nginx/Envoy)
-- Proxy forwards only trusted requests to Authenc (no client cert required by backend)
-- Use `X-Client-Cert` or similar header for audit/logging if needed
+### Ed25519 JWT Signing
+- **Timing Attack Immunity**: Ed25519 is inherently resistant to timing attacks
+- **Performance**: Faster signing and verification than RSA
+- **Smaller Keys**: 32-byte keys vs 2048+ bit RSA keys
+- **Standards Compliance**: RFC 8037 EdDSA support
 
-See [CHANGELOG.md](CHANGELOG.md) for details.
+### Native mTLS Support
+- **Client Certificate Validation**: Built-in certificate fingerprint validation
+- **Header-based Integration**: Works with reverse proxies (X-SSL-Client-Cert)
+- **Configurable Trust**: SHA-256 fingerprint allowlists
+- **Production Ready**: Supports both development and production environments
 
 [![Build Status](https://github.com/cipherce/authenc/workflows/CI/badge.svg)](https://github.com/cipherce/authenc/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.75+-blue.svg)](https://www.rust-lang.org)
 
-**Authenc** is a high-performance authentication and authorization server built in Rust, inspired by enterprise-grade solutions like Keycloak. It provides comprehensive identity and access management (IAM) capabilities with a focus on security, performance, and scalability.
+## 🏗️ Architecture Overview
+
+Built with modern Rust practices and enterprise-grade security, Authenc provides comprehensive identity and access management (IAM) capabilities with a focus on performance and scalability.
 
 ## 🚀 Features
 
@@ -101,11 +56,13 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 - **Zero trust, forever unknown secret** - No secrets ever written to disk/log; runtime secret fetch from vault
 
 ### Security & Middleware
+- **Axum Middleware Stack** - Modern tower-based middleware ecosystem
 - **Rate limiting** - Global and path-specific request throttling
 - **Security headers** - Comprehensive HTTP security headers (CSP, HSTS, XSS protection)
 - **Request sanitization** - SQL injection and payload validation
 - **Brute force protection** - Automatic lockout mechanisms
-- **Zero-trust middleware** - JWT validation and RBAC enforcement
+- **mTLS Authentication** - Native client certificate validation
+- **Ed25519 JWT** - Timing-attack-resistant token signing
 
 ### Storage & Persistence
 - **PostgreSQL audit logging** - Persistent, queryable audit trails
