@@ -63,7 +63,7 @@ http-body = "1.0"
 temp-env = "0.2"
 
 # Web Frameworks and HTTP
-axum = { version = "0.7", features = ["http1", "http2", "json"], optional = true }
+axum = { version = "0.7", features = ["http1", "http2", "json", "macros"], optional = true }
 tower = { version = "0.4", features = ["util", "timeout", "load-shed", "limit"], optional = true }
 tower-http = { version = "0.5", features = ["cors", "trace", "compression-br", "fs", "add-extension"], optional = true }
 hyper = { version = "1.0", features = ["full"] }

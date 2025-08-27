@@ -9,6 +9,7 @@ use crate::app::AppState;
 pub mod health_axum;
 pub mod jwt_ed25519;
 pub mod oidc_ed25519;
+pub mod oauth2_comprehensive;
 pub use health_axum::create_health_routes;
 
 // Legacy Actix handlers (temporarily disabled during migration)
@@ -40,16 +41,38 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     // TODO: Gradually migrate handlers to use AppState directly
     let db_state = state.database.clone();
 
+    // Create OAuth2 stores
+    let oauth2_stores = Arc::new(oauth2_comprehensive::OAuth2Stores::new());
+
+    // Create combined OAuth2 state
+    let oauth2_state = Arc::new(oauth2_comprehensive::OAuth2AppState {
+        database: db_state.clone(),
+        oauth2_stores,
+    });
+
+    // Create OAuth2 router with combined state
+    let oauth2_router = Router::new()
+        .route("/.well-known/oauth-authorization-server", get(oauth2_comprehensive::oauth2_discovery))
+        .route("/oauth2/authorize", get(oauth2_comprehensive::oauth2_authorize))
+        .route("/oauth2/token", post(oauth2_comprehensive::oauth2_token))
+        .route("/oauth2/introspect", post(oauth2_comprehensive::oauth2_introspect))
+        .route("/oauth2/revoke", post(oauth2_comprehensive::oauth2_revoke))
+        .route("/oauth2/jwks", get(oauth2_comprehensive::oauth2_jwks))
+        .route("/oauth2/userinfo", get(oauth2_comprehensive::oauth2_userinfo))
+        .with_state(oauth2_state);
+
     Router::new()
         .route("/health", get(health_axum::health))
         .route("/ready", get(health_axum::ready))
         .route("/live", get(health_axum::live))
-        // OIDC Endpoints with Ed25519 security
+        // Legacy OIDC Endpoints with Ed25519 security
         .route("/.well-known/openid_configuration", get(oidc_ed25519::oidc_discovery_ed25519))
         .route("/oidc/authorize", get(oidc_ed25519::oidc_authorize_ed25519))
         .route("/oidc/token", post(oidc_ed25519::oidc_token_ed25519))
         .route("/oidc/jwks", get(oidc_ed25519::oidc_jwks_ed25519))
         .route("/oidc/userinfo", get(oidc_ed25519::oidc_userinfo_ed25519))
+        // Merge OAuth2 router
+        .merge(oauth2_router)
         // Advanced Services API routes
         .nest("/api/v1/auth/social", social::create_social_routes())
         .nest("/api/v1/auth/authorization", authorization::create_authorization_routes())

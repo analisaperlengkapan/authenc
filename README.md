@@ -59,6 +59,24 @@
 - `GET /oauth/userinfo` - OIDC user info endpoint
 - `POST /oauth/authorize` - OIDC authorization endpoint
 
+### OAuth2 Server 🆕
+- `GET /.well-known/oauth2-configuration` - OAuth2 discovery endpoint
+- `POST /oauth2/authorize` - OAuth2 authorization endpoint (with PKCE support)
+- `POST /oauth2/token` - OAuth2 token endpoint (all grant types supported)
+- `POST /oauth2/introspect` - OAuth2 token introspection (RFC 7662)
+- `POST /oauth2/revoke` - OAuth2 token revocation (RFC 7009)
+- `GET /oauth2/jwks` - OAuth2 JWK set endpoint
+- `GET /oauth2/userinfo` - OAuth2 user info endpoint
+
+#### Supported OAuth2 Features:
+- **Grant Types**: authorization_code, client_credentials, password, refresh_token
+- **PKCE Support**: RFC 7636 Proof Key for Code Exchange (S256, plain)
+- **Token Introspection**: RFC 7662 compliant endpoint
+- **Token Revocation**: RFC 7009 compliant endpoint
+- **Ed25519 JWT**: Timing-attack-resistant JWT signing
+- **Client Authentication**: client_secret_basic, client_secret_post
+- **Scope Management**: OAuth2 scope validation and enforcement
+
 ### Zero Trust Security 🆕
 - `POST /api/public/zero-trust/authenticate` - Continuous authentication
 - `GET /api/public/zero-trust/risk` - Get risk assessment
@@ -102,6 +120,37 @@ curl -X POST http://localhost:8080/api/public/organizations \
     "domain": "acme.com",
     "description": "Enterprise organization"
   }'
+```
+
+### OAuth2 Authorization Code Flow with PKCE
+```bash
+# 1. Get authorization code (with PKCE)
+curl -X POST http://localhost:8080/oauth2/authorize \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d 'response_type=code&client_id=my_client&redirect_uri=http://localhost:8080/callback&scope=openid profile email&code_challenge=abc123&code_challenge_method=S256&state=xyz123'
+
+# 2. Exchange code for token
+curl -X POST http://localhost:8080/oauth2/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d 'grant_type=authorization_code&client_id=my_client&code=auth_code_here&redirect_uri=http://localhost:8080/callback&code_verifier=def456'
+
+# 3. Introspect token
+curl -X POST http://localhost:8080/oauth2/introspect \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d 'token=access_token_here&token_type_hint=access_token'
+
+# 4. Revoke token
+curl -X POST http://localhost:8080/oauth2/revoke \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d 'token=refresh_token_here&token_type_hint=refresh_token'
+```
+
+### OAuth2 Client Credentials Grant
+```bash
+curl -X POST http://localhost:8080/oauth2/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -u "client_id:client_secret" \
+  -d 'grant_type=client_credentials&scope=read write'
 ```
 
 ## Contoh Endpoint
