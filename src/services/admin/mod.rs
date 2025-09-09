@@ -308,6 +308,12 @@ pub struct AdminManager {
     // zero_trust_service: Arc<dyn ContinuousAuthService>,
 }
 
+impl Default for AdminManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AdminManager {
     pub fn new() -> Self {
         Self {}

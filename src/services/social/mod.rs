@@ -105,6 +105,12 @@ pub struct SocialLoginManager {
     http_client: reqwest::Client,
 }
 
+impl Default for SocialLoginManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SocialLoginManager {
     pub fn new() -> Self {
         Self {

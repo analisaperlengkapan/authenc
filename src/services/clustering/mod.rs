@@ -68,6 +68,12 @@ pub struct InfinispanClusterCommunication {
     cache_manager: Option<String>, // Placeholder for Infinispan
 }
 
+impl Default for InfinispanClusterCommunication {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InfinispanClusterCommunication {
     pub fn new() -> Self {
         Self {
@@ -445,6 +451,12 @@ pub enum ClusterConsensusType {
 pub struct MultiClusterFederationService {
     clusters: HashMap<String, Arc<ClusterManager>>,
     federation_rules: HashMap<String, FederationRule>,
+}
+
+impl Default for MultiClusterFederationService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MultiClusterFederationService {

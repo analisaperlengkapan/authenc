@@ -284,6 +284,12 @@ pub struct FederationService {
     provider_configs: HashMap<Uuid, IdentityProviderConfig>,
 }
 
+impl Default for FederationService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FederationService {
     pub fn new() -> Self {
         Self {

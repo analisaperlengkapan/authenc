@@ -158,6 +158,12 @@ pub struct OAuth2Stores {
     pub access_tokens: Arc<tokio::sync::RwLock<HashMap<String, AccessTokenClaims>>>,
 }
 
+impl Default for OAuth2Stores {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OAuth2Stores {
     pub fn new() -> Self {
         Self {
@@ -311,7 +317,7 @@ pub fn validate_scope(
         // Validate requested scopes are allowed
         for scope in &requested_scopes {
             if !default_scopes.contains(scope) {
-                return Err(AuthencError::validation(&format!(
+                return Err(AuthencError::validation(format!(
                     "Invalid scope: {}",
                     scope
                 )));

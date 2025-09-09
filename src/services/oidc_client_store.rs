@@ -9,6 +9,12 @@ pub struct OidcClientStore {
     db: Arc<Database>,
 }
 
+impl Default for OidcClientStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OidcClientStore {
     pub fn new() -> Self {
         // This would need database parameter in production

@@ -188,7 +188,7 @@ impl DeviceService {
                     id: model_device.id,
                     user_id: model_device.user_id,
                     device_name: model_device.device_name.unwrap_or_else(|| "Unknown Device".to_string()),
-                    device_type: self.detect_device_type(&model_device.user_agent.as_ref().unwrap_or(&"".to_string())),
+                    device_type: self.detect_device_type(model_device.user_agent.as_ref().unwrap_or(&"".to_string())),
                     os: model_device.os.unwrap_or_default(),
                     os_version: model_device.os_version.unwrap_or_default(),
                     browser: model_device.browser,
@@ -229,7 +229,7 @@ impl DeviceService {
                 id: model_device.id,
                 user_id: model_device.user_id,
                 device_name: model_device.device_name.unwrap_or_else(|| "Unknown Device".to_string()),
-                device_type: self.detect_device_type(&model_device.user_agent.as_ref().unwrap_or(&"".to_string())),
+                device_type: self.detect_device_type(model_device.user_agent.as_ref().unwrap_or(&"".to_string())),
                 os: model_device.os.unwrap_or_default(),
                 os_version: model_device.os_version.unwrap_or_default(),
                 browser: model_device.browser,
@@ -460,7 +460,7 @@ impl DeviceService {
                         location
                             .country
                             .as_ref()
-                            .map_or(false, |c| countries.contains(c))
+                            .is_some_and(|c| countries.contains(c))
                     } else {
                         false
                     }
@@ -470,7 +470,7 @@ impl DeviceService {
                         location
                             .country
                             .as_ref()
-                            .map_or(true, |c| !countries.contains(c))
+                            .is_none_or(|c| !countries.contains(c))
                     } else {
                         true
                     }
@@ -502,7 +502,7 @@ impl DeviceService {
                     let time_since = Utc::now()
                         .signed_duration_since(device.last_seen)
                         .num_minutes();
-                    time_since > *minutes as i64
+                    time_since > *minutes
                 }
             };
 

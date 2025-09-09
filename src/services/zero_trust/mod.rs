@@ -173,6 +173,12 @@ pub struct ZeroTrustManager {
     anomaly_detector: Option<Box<dyn crate::services::anomaly_detector::AnomalyDetectorTrait>>,
 }
 
+impl Default for ZeroTrustManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ZeroTrustManager {
     pub fn new() -> Self {
         Self {

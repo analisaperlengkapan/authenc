@@ -68,12 +68,11 @@ pub async fn input_validation_middleware(
             }
 
             // Check for suspicious patterns in specific headers
-            if name.as_str() == header::USER_AGENT.as_str() || name.as_str() == header::REFERER.as_str() {
-                if config.block_suspicious_patterns && contains_suspicious_patterns(value_str) {
+            if (name.as_str() == header::USER_AGENT.as_str() || name.as_str() == header::REFERER.as_str())
+                && config.block_suspicious_patterns && contains_suspicious_patterns(value_str) {
                     warn!("Suspicious pattern detected in header {}: {}", name, value_str);
                     return Err(StatusCode::BAD_REQUEST);
                 }
-            }
         }
     }
 

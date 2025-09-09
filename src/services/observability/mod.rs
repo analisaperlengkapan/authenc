@@ -149,6 +149,12 @@ pub struct HealthCheckRegistry {
     checks: HashMap<String, Box<dyn HealthCheck>>,
 }
 
+impl Default for HealthCheckRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HealthCheckRegistry {
     pub fn new() -> Self {
         Self {
@@ -207,6 +213,12 @@ pub struct PrometheusMetricsCollector {
     metrics: Vec<MetricValue>,
 }
 
+impl Default for PrometheusMetricsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PrometheusMetricsCollector {
     pub fn new() -> Self {
         Self {
@@ -243,6 +255,12 @@ impl MetricsCollector for PrometheusMetricsCollector {
 /// Metrics registry
 pub struct MetricsRegistry {
     collectors: Vec<Box<dyn MetricsCollector>>,
+}
+
+impl Default for MetricsRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MetricsRegistry {
@@ -290,6 +308,12 @@ pub struct TraceEvent {
 /// Tracing service
 pub struct TracingService {
     spans: HashMap<String, TraceSpan>,
+}
+
+impl Default for TracingService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TracingService {
@@ -470,6 +494,12 @@ pub struct SliTracker {
     indicators: HashMap<String, ServiceLevelIndicator>,
 }
 
+impl Default for SliTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SliTracker {
     pub fn new() -> Self {
         Self {
@@ -525,6 +555,12 @@ pub struct PerformanceMetrics {
 /// Performance monitor
 pub struct PerformanceMonitor {
     metrics: PerformanceMetrics,
+}
+
+impl Default for PerformanceMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PerformanceMonitor {

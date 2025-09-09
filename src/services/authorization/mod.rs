@@ -158,6 +158,12 @@ pub struct AuthorizationManager {
     scopes: HashMap<Uuid, Scope>,
 }
 
+impl Default for AuthorizationManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuthorizationManager {
     pub fn new() -> Self {
         Self {
@@ -305,11 +311,10 @@ impl AuthorizationManager {
         let mut relevant_permissions = Vec::new();
 
         for permission in self.permissions.values() {
-            if permission.resource_id.to_string() == context.resource.id {
-                if permission.scopes.contains(&context.action) {
+            if permission.resource_id.to_string() == context.resource.id
+                && permission.scopes.contains(&context.action) {
                     relevant_permissions.push(permission.clone());
                 }
-            }
         }
 
         if relevant_permissions.is_empty() {

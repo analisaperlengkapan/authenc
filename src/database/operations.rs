@@ -55,7 +55,7 @@ pub mod devices {
             .await?;
 
         // Convert row to Device
-        Ok(row.try_into()?)
+        row.try_into()
     }
 
     /// Get device by ID
@@ -374,7 +374,7 @@ pub mod oauth2 {
             .await?;
 
         // Convert row to OAuth2Client
-        Ok(row.try_into()?)
+        row.try_into()
     }
 
     /// Get OAuth2 client by client ID
@@ -610,7 +610,7 @@ pub mod organizations {
             .await?;
 
         // Convert row to Organization
-        Ok(row.try_into()?)
+        row.try_into()
     }
 
     /// Get organization by ID
@@ -809,7 +809,7 @@ pub mod saml {
             .await?;
 
         // Convert row to SamlServiceProvider
-        Ok(row.try_into()?)
+        row.try_into()
     }
 
     /// Get SAML service provider by entity ID
@@ -1146,8 +1146,7 @@ pub mod users {
         "#;
 
         let row = client.query_opt(query, &[&user_id]).await?;
-        Ok(match row {
-            Some(r) => Some(User {
+        Ok(row.map(|r| User {
                 id: r.get(0),
                 username: r.get(1),
                 email: r.get(2),
@@ -1177,9 +1176,7 @@ pub mod users {
                 created_at: r.get(24),
                 updated_at: r.get(25),
                 deleted_at: r.get(26),
-            }),
-            None => None,
-        })
+            }))
     }
 
     /// Get user by username
@@ -1199,8 +1196,7 @@ pub mod users {
         "#;
 
         let row = client.query_opt(query, &[&username]).await?;
-        Ok(match row {
-            Some(r) => Some(User {
+        Ok(row.map(|r| User {
                 id: r.get(0),
                 username: r.get(1),
                 email: r.get(2),
@@ -1230,9 +1226,7 @@ pub mod users {
                 created_at: r.get(24),
                 updated_at: r.get(25),
                 deleted_at: r.get(26),
-            }),
-            None => None,
-        })
+            }))
     }
 
     /// Get user by email

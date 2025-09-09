@@ -64,11 +64,9 @@ impl VaultProvider for FileVaultProvider {
     async fn list_secrets(&self) -> Result<Vec<String>> {
         let mut secrets = Vec::new();
         if let Ok(entries) = fs::read_dir(&self.base_path) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    if let Some(file_name) = entry.file_name().to_str() {
-                        secrets.push(file_name.to_string());
-                    }
+            for entry in entries.flatten() {
+                if let Some(file_name) = entry.file_name().to_str() {
+                    secrets.push(file_name.to_string());
                 }
             }
         }
@@ -252,6 +250,12 @@ impl VaultProvider for AwsSecretsManagerProvider {
 pub struct VaultService {
     providers: HashMap<String, Box<dyn VaultProvider>>,
     default_provider: Option<String>,
+}
+
+impl Default for VaultService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VaultService {

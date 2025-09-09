@@ -88,6 +88,12 @@ pub trait ComplianceCheck: Send + Sync {
 /// GDPR compliance checks
 pub struct GDPRComplianceChecks;
 
+impl Default for GDPRComplianceChecks {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GDPRComplianceChecks {
     pub fn new() -> Self {
         Self
@@ -244,6 +250,12 @@ impl ComplianceCheck for GDPRConsentManagementCheck {
 
 /// HIPAA compliance checks
 pub struct HIPAAComplianceChecks;
+
+impl Default for HIPAAComplianceChecks {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl HIPAAComplianceChecks {
     pub fn new() -> Self {
@@ -608,6 +620,12 @@ pub struct DataAccessResponse {
 /// Privacy Impact Assessment service
 pub struct PrivacyImpactAssessmentService {
     assessments: HashMap<Uuid, PrivacyImpactAssessment>,
+}
+
+impl Default for PrivacyImpactAssessmentService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PrivacyImpactAssessmentService {

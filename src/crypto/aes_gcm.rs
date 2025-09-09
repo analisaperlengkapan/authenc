@@ -30,12 +30,18 @@ pub struct EncryptionKey {
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+impl Default for AesGcmService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AesGcmService {
     /// Create new AES-GCM service with a random key
     pub fn new() -> Self {
         let mut key_bytes = [0u8; 32];
         OsRng.fill_bytes(&mut key_bytes);
-        let key = Key::<Aes256Gcm>::from_slice(&key_bytes).clone();
+        let key = *Key::<Aes256Gcm>::from_slice(&key_bytes);
 
         Self { key }
     }
@@ -48,7 +54,7 @@ impl AesGcmService {
             });
         }
 
-        let key = Key::<Aes256Gcm>::from_slice(key_data).clone();
+        let key = *Key::<Aes256Gcm>::from_slice(key_data);
         Ok(Self { key })
     }
 
@@ -234,6 +240,12 @@ impl<'a> EncryptionContext<'a> {
 pub struct KeyRotationService {
     current_key: AesGcmService,
     previous_keys: HashMap<String, AesGcmService>,
+}
+
+impl Default for KeyRotationService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl KeyRotationService {

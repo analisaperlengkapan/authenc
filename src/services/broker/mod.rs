@@ -65,6 +65,12 @@ pub struct IdentityBrokerRegistry {
     provider_configs: std::collections::HashMap<Uuid, IdentityProviderConfig>,
 }
 
+impl Default for IdentityBrokerRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IdentityBrokerRegistry {
     pub fn new() -> Self {
         Self {
@@ -362,7 +368,7 @@ impl IdentityBroker for LdapIdentityBroker {
             email: external_user
                 .email
                 .clone()
-                .unwrap_or_else(|| "".to_string()),
+                .unwrap_or_default(),
             email_verified: true, // LDAP users are typically pre-verified
             first_name: external_user.first_name.clone(),
             last_name: external_user.last_name.clone(),
@@ -415,19 +421,16 @@ fn create_user_from_ldap_entry(entry: &SearchEntry, config: &LdapConfig) -> Resu
 
     let email = attrs
         .get(&config.email_attr)
-        .and_then(|v| v.first())
-        .map(|s| s.clone())
+        .and_then(|v| v.first()).cloned()
         .unwrap_or_default();
 
     let first_name = attrs
         .get(&config.first_name_attr)
-        .and_then(|v| v.first())
-        .map(|s| s.clone());
+        .and_then(|v| v.first()).cloned();
 
     let last_name = attrs
         .get(&config.last_name_attr)
-        .and_then(|v| v.first())
-        .map(|s| s.clone());
+        .and_then(|v| v.first()).cloned();
 
     // Convert attributes to JSON
     let attributes = Some(
