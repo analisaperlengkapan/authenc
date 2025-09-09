@@ -288,7 +288,7 @@ impl WebAuthnService {
     // Database operations
     async fn store_challenge(&self, username: &str, challenge: &[u8]) -> Result<()> {
         use crate::database::operations::users;
-        use crate::database::operations::webauthn as webauthn_db;
+        
 
         // Get user ID from username
         let user = users::get_user_by_username(&self.db, username).await?

@@ -1,8 +1,8 @@
 // Komprehensif unit test untuk Authence
 
 use actix_web::{test, App};
-use authence::api;
-use authence::services::{
+use authenc::api;
+use authenc::services::{
     permission_store::PermissionStore, realm_store::RealmStore, role_store::RoleStore,
     user_store::UserStore,
 };
@@ -22,7 +22,7 @@ async fn test_health() {
 
 #[actix_web::test]
 async fn test_create_and_get_realm() {
-    let realm_store = actix_web::web::Data::new(RealmStore::new());
+    let realm_store = Data::new(RealmStore::new());
     let app = test::init_service(
         App::new()
             .app_data(realm_store.clone())
@@ -54,7 +54,7 @@ async fn test_create_and_get_realm() {
 
 #[actix_web::test]
 async fn test_user_flow_integration() {
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    let user_store = Data::new(UserStore::new());
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -104,7 +104,7 @@ async fn test_user_flow_integration() {
 
 #[actix_web::test]
 async fn test_create_and_get_role() {
-    let role_store = actix_web::web::Data::new(RoleStore::new());
+    let role_store = Data::new(RoleStore::new());
     let app = test::init_service(
         App::new()
             .app_data(role_store.clone())
@@ -127,7 +127,7 @@ async fn test_create_and_get_role() {
 
 #[actix_web::test]
 async fn test_create_and_get_permission() {
-    let permission_store = actix_web::web::Data::new(PermissionStore::new());
+    let permission_store = Data::new(PermissionStore::new());
     let app = test::init_service(
         App::new()
             .app_data(permission_store.clone())
@@ -150,7 +150,7 @@ async fn test_create_and_get_permission() {
 
 #[actix_web::test]
 async fn test_user_negative_and_update_delete() {
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    let user_store = Data::new(UserStore::new());
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -223,19 +223,19 @@ async fn test_user_negative_and_update_delete() {
 
 #[actix_web::test]
 async fn test_group_crud_and_members_roles() {
-    use authence::services::group_store::GroupStore;
-    let group_store = actix_web::web::Data::new(GroupStore::new());
+    use authenc::services::group_store::GroupStore;
+    let group_store = Data::new(GroupStore::new());
     let app = test::init_service(
         App::new()
             .app_data(group_store.clone())
-            .service(authence::api::group::create_group)
-            .service(authence::api::group::get_groups)
-            .service(authence::api::group::get_group_by_id)
-            .service(authence::api::group::delete_group)
-            .service(authence::api::group::add_group_member)
-            .service(authence::api::group::remove_group_member)
-            .service(authence::api::group::add_group_role)
-            .service(authence::api::group::remove_group_role),
+            .service(authenc::api::group::create_group)
+            .service(authenc::api::group::get_groups)
+            .service(authenc::api::group::get_group_by_id)
+            .service(authenc::api::group::delete_group)
+            .service(authenc::api::group::add_group_member)
+            .service(authenc::api::group::remove_group_member)
+            .service(authenc::api::group::add_group_role)
+            .service(authenc::api::group::remove_group_role),
     )
     .await;
     // Create group
@@ -319,17 +319,17 @@ async fn test_group_crud_and_members_roles() {
 
 #[actix_web::test]
 async fn test_group_duplicate_member_role_idempotency() {
-    use authence::services::group_store::GroupStore;
-    let group_store = actix_web::web::Data::new(GroupStore::new());
+    use authenc::services::group_store::GroupStore;
+    let group_store = Data::new(GroupStore::new());
     let app = test::init_service(
         App::new()
             .app_data(group_store.clone())
-            .service(authence::api::group::create_group)
-            .service(authence::api::group::add_group_member)
-            .service(authence::api::group::remove_group_member)
-            .service(authence::api::group::add_group_role)
-            .service(authence::api::group::remove_group_role)
-            .service(authence::api::group::get_group_by_id),
+            .service(authenc::api::group::create_group)
+            .service(authenc::api::group::add_group_member)
+            .service(authenc::api::group::remove_group_member)
+            .service(authenc::api::group::add_group_role)
+            .service(authenc::api::group::remove_group_role)
+            .service(authenc::api::group::get_group_by_id),
     )
     .await;
     let resp = test::call_service(
@@ -394,12 +394,12 @@ async fn test_group_duplicate_member_role_idempotency() {
 
 #[actix_web::test]
 async fn test_sessions_list_empty_for_unknown_user() {
-    use authence::services::session_store::SessionStore;
-    let session_store = actix_web::web::Data::new(SessionStore::new());
+    use authenc::services::session_store::SessionStore;
+    let session_store = Data::new(SessionStore::new());
     let app = test::init_service(
         App::new()
             .app_data(session_store.clone())
-            .service(authence::api::session::list_sessions),
+            .service(authenc::api::session::list_sessions),
     )
     .await;
     // Supply a bogus token signed with default secret but with sub unknown: we cannot sign here easily; just expect 401 on invalid token
@@ -416,8 +416,8 @@ async fn test_sessions_list_empty_for_unknown_user() {
 
 #[actix_web::test]
 async fn test_oidc_id_token_generation_and_decode() {
-    use authence::api::oidc_jwt::{generate_id_token, OidcIdTokenClaims};
-    use authence::api::oidc_keys::RSA_KEYPAIR;
+    use authenc::api::oidc_jwt::{generate_id_token, OidcIdTokenClaims};
+    use authenc::api::oidc_keys::RSA_KEYPAIR;
     use jsonwebtoken::{Algorithm, DecodingKey, Validation};
     use rsa::pkcs8::EncodePublicKey;
     // Generate a token
@@ -447,7 +447,7 @@ async fn test_oidc_id_token_generation_and_decode() {
 #[actix_web::test]
 async fn test_oidc_discovery_smoke() {
     // Only checks route wiring returns something; internal handler expects app data in real server, so we just mount the service to ensure it compiles and route exists.
-    let app = test::init_service(App::new().service(authence::api::oidc_discovery)).await;
+    let app = test::init_service(App::new().service(authenc::api::oidc_discovery)).await;
     let resp = test::call_service(
         &app,
         test::TestRequest::get()
@@ -461,24 +461,24 @@ async fn test_oidc_discovery_smoke() {
 
 #[actix_web::test]
 async fn test_login_and_sessions_flow() {
-    use authence::services::{
+    use authenc::services::{
         anomaly_detector::AnomalyDetector, federation_provider::FederationRegistry,
         totp_store::TotpStore,
     };
-    use authence::services::{
+    use authenc::services::{
         brute_force_protector::BruteForceProtector, session_store::SessionStore,
         user_store::UserStore,
     };
     // Prepare stores
-    let user_store = actix_web::web::Data::new(UserStore::new());
-    let session_store = actix_web::web::Data::new(SessionStore::new());
-    let totp_store = actix_web::web::Data::new(TotpStore::new());
-    let brute_force = actix_web::web::Data::new(BruteForceProtector::new(5, 300));
-    let anomaly = actix_web::web::Data::new(AnomalyDetector::new());
-    let federation = actix_web::web::Data::new(FederationRegistry::new());
+    let user_store = Data::new(UserStore::new());
+    let session_store = Data::new(SessionStore::new());
+    let totp_store = Data::new(TotpStore::new());
+    let brute_force = Data::new(BruteForceProtector::new(5, 300));
+    let anomaly = Data::new(AnomalyDetector::new());
+    let federation = Data::new(FederationRegistry::new());
     // Seed a user compatible with internal login (plain password storage demo)
     user_store
-        .add_user(authence::model::user::User {
+        .add_user(authenc::model::user::User {
             id: "u-login".into(),
             username: "dave".into(),
             email: "dave@example.com".into(),
@@ -494,9 +494,9 @@ async fn test_login_and_sessions_flow() {
             .app_data(brute_force.clone())
             .app_data(anomaly.clone())
             .app_data(federation.clone())
-            .service(authence::api::auth::login)
-            .service(authence::api::session::list_sessions)
-            .service(authence::api::session::logout),
+            .service(authenc::api::auth::login)
+            .service(authenc::api::session::list_sessions)
+            .service(authenc::api::session::logout),
     )
     .await;
     // Login
@@ -535,23 +535,23 @@ async fn test_login_and_sessions_flow() {
 
 #[actix_web::test]
 async fn test_login_bruteforce_throttle() {
-    use authence::services::{
+    use authenc::services::{
         anomaly_detector::AnomalyDetector, federation_provider::FederationRegistry,
         totp_store::TotpStore,
     };
-    use authence::services::{
+    use authenc::services::{
         brute_force_protector::BruteForceProtector, session_store::SessionStore,
         user_store::UserStore,
     };
-    let user_store = actix_web::web::Data::new(UserStore::new());
-    let session_store = actix_web::web::Data::new(SessionStore::new());
-    let totp_store = actix_web::web::Data::new(TotpStore::new());
+    let user_store = Data::new(UserStore::new());
+    let session_store = Data::new(SessionStore::new());
+    let totp_store = Data::new(TotpStore::new());
     // Low threshold to trigger quickly
-    let brute_force = actix_web::web::Data::new(BruteForceProtector::new(0, 300));
-    let anomaly = actix_web::web::Data::new(AnomalyDetector::new());
-    let federation = actix_web::web::Data::new(FederationRegistry::new());
+    let brute_force = Data::new(BruteForceProtector::new(0, 300));
+    let anomaly = Data::new(AnomalyDetector::new());
+    let federation = Data::new(FederationRegistry::new());
     user_store
-        .add_user(authence::model::user::User {
+        .add_user(authenc::model::user::User {
             id: "u2".into(),
             username: "erin".into(),
             email: "erin@example.com".into(),
@@ -567,7 +567,7 @@ async fn test_login_bruteforce_throttle() {
             .app_data(brute_force.clone())
             .app_data(anomaly.clone())
             .app_data(federation.clone())
-            .service(authence::api::auth::login),
+            .service(authenc::api::auth::login),
     )
     .await;
     // First attempt should trigger throttling due to threshold 0
@@ -584,23 +584,23 @@ async fn test_login_bruteforce_throttle() {
 
 #[actix_web::test]
 async fn test_login_via_federation_provider() {
-    use authence::services::{
+    use authenc::services::{
         anomaly_detector::AnomalyDetector,
         federation_provider::{DummyFederationProvider, FederationRegistry},
         totp_store::TotpStore,
     };
-    use authence::services::{
+    use authenc::services::{
         brute_force_protector::BruteForceProtector, session_store::SessionStore,
         user_store::UserStore,
     };
-    let user_store = actix_web::web::Data::new(UserStore::new());
-    let session_store = actix_web::web::Data::new(SessionStore::new());
-    let totp_store = actix_web::web::Data::new(TotpStore::new());
-    let brute_force = actix_web::web::Data::new(BruteForceProtector::new(5, 300));
-    let anomaly = actix_web::web::Data::new(AnomalyDetector::new());
+    let user_store = Data::new(UserStore::new());
+    let session_store = Data::new(SessionStore::new());
+    let totp_store = Data::new(TotpStore::new());
+    let brute_force = Data::new(BruteForceProtector::new(5, 300));
+    let anomaly = Data::new(AnomalyDetector::new());
     let mut reg = FederationRegistry::new();
     reg.register(Box::new(DummyFederationProvider));
-    let federation = actix_web::web::Data::new(reg);
+    let federation = Data::new(reg);
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -609,7 +609,7 @@ async fn test_login_via_federation_provider() {
             .app_data(brute_force.clone())
             .app_data(anomaly.clone())
             .app_data(federation.clone())
-            .service(authence::api::auth::login),
+            .service(authenc::api::auth::login),
     )
     .await;
     // Login using federated user credentials
@@ -626,22 +626,22 @@ async fn test_login_via_federation_provider() {
 
 #[actix_web::test]
 async fn test_login_requires_totp_when_enabled() {
-    use authence::services::{
+    use authenc::services::{
         anomaly_detector::AnomalyDetector, federation_provider::FederationRegistry,
         totp_store::TotpStore,
     };
-    use authence::services::{
+    use authenc::services::{
         brute_force_protector::BruteForceProtector, session_store::SessionStore,
         user_store::UserStore,
     };
-    let user_store = actix_web::web::Data::new(UserStore::new());
-    let session_store = actix_web::web::Data::new(SessionStore::new());
-    let totp_store = actix_web::web::Data::new(TotpStore::new());
-    let brute_force = actix_web::web::Data::new(BruteForceProtector::new(5, 300));
-    let anomaly = actix_web::web::Data::new(AnomalyDetector::new());
-    let federation = actix_web::web::Data::new(FederationRegistry::new());
+    let user_store = Data::new(UserStore::new());
+    let session_store = Data::new(SessionStore::new());
+    let totp_store = Data::new(TotpStore::new());
+    let brute_force = Data::new(BruteForceProtector::new(5, 300));
+    let anomaly = Data::new(AnomalyDetector::new());
+    let federation = Data::new(FederationRegistry::new());
     user_store
-        .add_user(authence::model::user::User {
+        .add_user(authenc::model::user::User {
             id: "u-totp-login".into(),
             username: "tuser".into(),
             email: "t@ex.com".into(),
@@ -664,7 +664,7 @@ async fn test_login_requires_totp_when_enabled() {
             .app_data(brute_force.clone())
             .app_data(anomaly.clone())
             .app_data(federation.clone())
-            .service(authence::api::auth::login),
+            .service(authenc::api::auth::login),
     )
     .await;
     // Missing TOTP -> 401
@@ -681,14 +681,14 @@ async fn test_login_requires_totp_when_enabled() {
 
 #[actix_web::test]
 async fn test_totp_enable_verify_disable() {
-    use authence::services::totp_store::TotpStore;
-    let totp_store = actix_web::web::Data::new(TotpStore::new());
+    use authenc::services::totp_store::TotpStore;
+    let totp_store = Data::new(TotpStore::new());
     let app = test::init_service(
         App::new()
             .app_data(totp_store.clone())
-            .service(authence::api::totp::enable_totp)
-            .service(authence::api::totp::disable_totp)
-            .service(authence::api::totp_verify::verify_totp),
+            .service(authenc::api::totp::enable_totp)
+            .service(authenc::api::totp::disable_totp)
+            .service(authenc::api::totp_verify::verify_totp),
     )
     .await;
     let user_id = "u-totp";
@@ -735,12 +735,12 @@ async fn test_totp_enable_verify_disable() {
 
 #[actix_web::test]
 async fn test_totp_verify_without_enable_returns_400() {
-    use authence::services::totp_store::TotpStore;
-    let totp_store = actix_web::web::Data::new(TotpStore::new());
+    use authenc::services::totp_store::TotpStore;
+    let totp_store = Data::new(TotpStore::new());
     let app = test::init_service(
         App::new()
             .app_data(totp_store.clone())
-            .service(authence::api::totp_verify::verify_totp),
+            .service(authenc::api::totp_verify::verify_totp),
     )
     .await;
     let user_id = "u-no-totp";
@@ -757,14 +757,14 @@ async fn test_totp_verify_without_enable_returns_400() {
 
 #[actix_web::test]
 async fn test_totp_valid_code_after_enable() {
-    use authence::services::totp_store::TotpStore;
+    use authenc::services::totp_store::TotpStore;
     use totp_rs::{Algorithm, TOTP};
-    let totp_store = actix_web::web::Data::new(TotpStore::new());
+    let totp_store = Data::new(TotpStore::new());
     let app = test::init_service(
         App::new()
             .app_data(totp_store.clone())
-            .service(authence::api::totp::enable_totp)
-            .service(authence::api::totp_verify::verify_totp),
+            .service(authenc::api::totp::enable_totp)
+            .service(authenc::api::totp_verify::verify_totp),
     )
     .await;
     let user_id = "u-yes-totp";
@@ -796,8 +796,8 @@ async fn test_totp_valid_code_after_enable() {
 async fn test_realm_endpoints_smoke() {
     let app = test::init_service(
         App::new()
-            .service(authence::api::realm::get_realms)
-            .service(authence::api::realm::get_realm_by_name),
+            .service(authenc::api::realm::get_realms)
+            .service(authenc::api::realm::get_realm_by_name),
     )
     .await;
     assert!(
@@ -817,20 +817,20 @@ async fn test_realm_endpoints_smoke() {
 
 #[actix_web::test]
 async fn test_oidc_token_invalid_code_path() {
-    use authence::services::{
+    use authenc::services::{
         oidc_client_store::OidcClientStore, oidc_code_store::OidcCodeStore, user_store::UserStore,
     };
-    let code_store = actix_web::web::Data::new(OidcCodeStore::new(600));
-    let client_store = actix_web::web::Data::new(OidcClientStore::new());
-    let user_store = actix_web::web::Data::new(UserStore::new());
-    let audit = authence::services::pg_audit_log_store::PgAuditLogStore::new(
+    let code_store = Data::new(OidcCodeStore::new(600));
+    let client_store = Data::new(OidcClientStore::new());
+    let user_store = Data::new(UserStore::new());
+    let audit = authenc::services::pg_audit_log_store::PgAuditLogStore::new(
         "host=localhost user=postgres password=postgres dbname=authence",
     )
     .await
     .expect("pg");
-    let audit = actix_web::web::Data::new(audit);
+    let audit = Data::new(audit);
     client_store
-        .add(authence::model::oidc_client::OidcClient {
+        .add(authenc::model::oidc_client::OidcClient {
             id: "c3".into(),
             client_id: "cli3".into(),
             client_secret: "s".into(),
@@ -845,7 +845,7 @@ async fn test_oidc_token_invalid_code_path() {
             .app_data(client_store.clone())
             .app_data(user_store.clone())
             .app_data(audit.clone())
-            .service(authence::api::oidc_provider::oidc_token),
+            .service(authenc::api::oidc_provider::oidc_token),
     )
     .await;
     let resp = test::call_service(
@@ -866,13 +866,13 @@ async fn test_oidc_token_invalid_code_path() {
 
 #[actix_web::test]
 async fn test_sessions_missing_or_invalid_token() {
-    use authence::services::session_store::SessionStore;
-    let session_store = actix_web::web::Data::new(SessionStore::new());
+    use authenc::services::session_store::SessionStore;
+    let session_store = Data::new(SessionStore::new());
     let app = test::init_service(
         App::new()
             .app_data(session_store.clone())
-            .service(authence::api::session::list_sessions)
-            .service(authence::api::session::logout),
+            .service(authenc::api::session::list_sessions)
+            .service(authenc::api::session::logout),
     )
     .await;
     // Missing token
@@ -894,21 +894,21 @@ async fn test_sessions_missing_or_invalid_token() {
 
 #[actix_web::test]
 async fn test_oidc_authorize_flow_redirect_only() {
-    use authence::services::{
+    use authenc::services::{
         oidc_client_store::OidcClientStore, oidc_code_store::OidcCodeStore, user_store::UserStore,
     };
-    let code_store = actix_web::web::Data::new(OidcCodeStore::new(600));
-    let client_store = actix_web::web::Data::new(OidcClientStore::new());
-    let user_store = actix_web::web::Data::new(UserStore::new());
-    let audit = authence::services::pg_audit_log_store::PgAuditLogStore::new(
+    let code_store = Data::new(OidcCodeStore::new(600));
+    let client_store = Data::new(OidcClientStore::new());
+    let user_store = Data::new(UserStore::new());
+    let audit = authenc::services::pg_audit_log_store::PgAuditLogStore::new(
         "host=localhost user=postgres password=postgres dbname=authence",
     )
     .await
     .expect("pg");
-    let audit = actix_web::web::Data::new(audit);
+    let audit = Data::new(audit);
     // Seed OIDC client and user (user_id for cookie-based flow must match username in current implementation)
     client_store
-        .add(authence::model::oidc_client::OidcClient {
+        .add(authenc::model::oidc_client::OidcClient {
             id: "c1".into(),
             client_id: "client-123".into(),
             client_secret: "secret".into(),
@@ -918,7 +918,7 @@ async fn test_oidc_authorize_flow_redirect_only() {
         })
         .unwrap();
     user_store
-        .add_user(authence::model::user::User {
+        .add_user(authenc::model::user::User {
             id: "alice".into(),
             username: "alice".into(),
             email: "alice@example.com".into(),
@@ -932,12 +932,12 @@ async fn test_oidc_authorize_flow_redirect_only() {
             .app_data(client_store.clone())
             .app_data(user_store.clone())
             .app_data(audit.clone())
-            .service(authence::api::oidc_provider::oidc_login)
-            .service(authence::api::oidc_provider::oidc_login_post)
-            .service(authence::api::oidc_provider::oidc_authorize)
-            .service(authence::api::oidc_provider::oidc_token)
-            .service(authence::api::oidc_provider::oidc_userinfo)
-            .service(authence::api::oidc_provider::oidc_jwks),
+            .service(authenc::api::oidc_provider::oidc_login)
+            .service(authenc::api::oidc_provider::oidc_login_post)
+            .service(authenc::api::oidc_provider::oidc_authorize)
+            .service(authenc::api::oidc_provider::oidc_token)
+            .service(authenc::api::oidc_provider::oidc_userinfo)
+            .service(authenc::api::oidc_provider::oidc_jwks),
     )
     .await;
     // Simulate login POST (using scope/state as username/password per stub)
@@ -983,14 +983,14 @@ async fn test_oidc_authorize_flow_redirect_only() {
 
 #[actix_web::test]
 async fn test_oidc_client_admin_endpoints() {
-    use authence::services::oidc_client_store::OidcClientStore;
-    let store = actix_web::web::Data::new(OidcClientStore::new());
+    use authenc::services::oidc_client_store::OidcClientStore;
+    let store = Data::new(OidcClientStore::new());
     let app = test::init_service(
         App::new()
             .app_data(store.clone())
-            .service(authence::api::oidc_client::list_oidc_clients)
-            .service(authence::api::oidc_client::create_oidc_client)
-            .service(authence::api::oidc_client::delete_oidc_client),
+            .service(authenc::api::oidc_client::list_oidc_clients)
+            .service(authenc::api::oidc_client::create_oidc_client)
+            .service(authenc::api::oidc_client::delete_oidc_client),
     )
     .await;
     // Initially empty list
@@ -1027,14 +1027,14 @@ async fn test_oidc_client_admin_endpoints() {
 
 #[actix_web::test]
 async fn test_oidc_client_delete_not_found_and_duplicate_add() {
-    use authence::services::oidc_client_store::OidcClientStore;
-    let store = actix_web::web::Data::new(OidcClientStore::new());
+    use authenc::services::oidc_client_store::OidcClientStore;
+    let store = Data::new(OidcClientStore::new());
     let app = test::init_service(
         App::new()
             .app_data(store.clone())
-            .service(authence::api::oidc_client::list_oidc_clients)
-            .service(authence::api::oidc_client::create_oidc_client)
-            .service(authence::api::oidc_client::delete_oidc_client),
+            .service(authenc::api::oidc_client::list_oidc_clients)
+            .service(authenc::api::oidc_client::create_oidc_client)
+            .service(authenc::api::oidc_client::delete_oidc_client),
     )
     .await;
     // Delete non-existing -> 404
@@ -1068,12 +1068,12 @@ async fn test_oidc_client_delete_not_found_and_duplicate_add() {
 
 #[actix_web::test]
 async fn test_sessions_logout_idempotent() {
-    use authence::services::session_store::SessionStore;
-    let store = actix_web::web::Data::new(SessionStore::new());
+    use authenc::services::session_store::SessionStore;
+    let store = Data::new(SessionStore::new());
     let app = test::init_service(
         App::new()
             .app_data(store.clone())
-            .service(authence::api::session::logout),
+            .service(authenc::api::session::logout),
     )
     .await;
     // First logout without token -> 401
@@ -1094,7 +1094,7 @@ async fn test_sessions_logout_idempotent() {
 
 #[actix_web::test]
 async fn test_realm_delete_endpoint() {
-    let app = test::init_service(App::new().service(authence::api::realm::delete_realm)).await;
+    let app = test::init_service(App::new().service(authenc::api::realm::delete_realm)).await;
     let resp = test::call_service(
         &app,
         test::TestRequest::delete().uri("/realms/foo").to_request(),
@@ -1107,8 +1107,8 @@ async fn test_realm_delete_endpoint() {
 async fn test_role_permission_delete_smoke() {
     let app = test::init_service(
         App::new()
-            .service(authence::api::role::delete_role)
-            .service(authence::api::permission::delete_permission),
+            .service(authenc::api::role::delete_role)
+            .service(authenc::api::permission::delete_permission),
     )
     .await;
     let resp = test::call_service(
@@ -1129,16 +1129,16 @@ async fn test_role_permission_delete_smoke() {
 
 #[actix_web::test]
 async fn test_group_ops_on_missing_group() {
-    use authence::services::group_store::GroupStore;
-    let group_store = actix_web::web::Data::new(GroupStore::new());
+    use authenc::services::group_store::GroupStore;
+    let group_store = Data::new(GroupStore::new());
     let app = test::init_service(
         App::new()
             .app_data(group_store.clone())
-            .service(authence::api::group::get_group_by_id)
-            .service(authence::api::group::add_group_member)
-            .service(authence::api::group::remove_group_member)
-            .service(authence::api::group::add_group_role)
-            .service(authence::api::group::remove_group_role),
+            .service(authenc::api::group::get_group_by_id)
+            .service(authenc::api::group::add_group_member)
+            .service(authenc::api::group::remove_group_member)
+            .service(authenc::api::group::add_group_role)
+            .service(authenc::api::group::remove_group_role),
     )
     .await;
     // Get missing -> 404
@@ -1186,22 +1186,22 @@ async fn test_group_ops_on_missing_group() {
 
 #[actix_web::test]
 async fn test_sessions_list_contains_token() {
-    use authence::services::{
+    use authenc::services::{
         anomaly_detector::AnomalyDetector, federation_provider::FederationRegistry,
         totp_store::TotpStore,
     };
-    use authence::services::{
+    use authenc::services::{
         brute_force_protector::BruteForceProtector, session_store::SessionStore,
         user_store::UserStore,
     };
-    let user_store = actix_web::web::Data::new(UserStore::new());
-    let session_store = actix_web::web::Data::new(SessionStore::new());
-    let totp_store = actix_web::web::Data::new(TotpStore::new());
-    let brute_force = actix_web::web::Data::new(BruteForceProtector::new(5, 300));
-    let anomaly = actix_web::web::Data::new(AnomalyDetector::new());
-    let federation = actix_web::web::Data::new(FederationRegistry::new());
+    let user_store = Data::new(UserStore::new());
+    let session_store = Data::new(SessionStore::new());
+    let totp_store = Data::new(TotpStore::new());
+    let brute_force = Data::new(BruteForceProtector::new(5, 300));
+    let anomaly = Data::new(AnomalyDetector::new());
+    let federation = Data::new(FederationRegistry::new());
     user_store
-        .add_user(authence::model::user::User {
+        .add_user(authenc::model::user::User {
             id: "u3".into(),
             username: "zoe".into(),
             email: "zoe@example.com".into(),
@@ -1217,8 +1217,8 @@ async fn test_sessions_list_contains_token() {
             .app_data(brute_force.clone())
             .app_data(anomaly.clone())
             .app_data(federation.clone())
-            .service(authence::api::auth::login)
-            .service(authence::api::session::list_sessions),
+            .service(authenc::api::auth::login)
+            .service(authenc::api::session::list_sessions),
     )
     .await;
     let resp = test::call_service(
@@ -1253,13 +1253,13 @@ async fn test_sessions_list_contains_token() {
 async fn test_realm_scoped_users_with_authbearer() {
     // Skip realm-scoped external API here since this crate compiles the internal API module.
     // Instead, verify that internal /users endpoints are reachable and consistent.
-    use authence::services::user_store::UserStore;
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    use authenc::services::user_store::UserStore;
+    let user_store = Data::new(UserStore::new());
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
-            .service(authence::api::user::create_user)
-            .service(authence::api::user::get_users),
+            .service(authenc::api::user::create_user)
+            .service(authenc::api::user::get_users),
     )
     .await;
     let resp = test::call_service(
@@ -1277,7 +1277,7 @@ async fn test_realm_scoped_users_with_authbearer() {
 
 #[actix_web::test]
 async fn test_password_policy_edges() {
-    use authence::services::password_policy::PasswordPolicy;
+    use authenc::services::password_policy::PasswordPolicy;
     let p = PasswordPolicy::default();
     // 11 chars -> fail
     assert!(p.validate("Abcdef123!@").is_err());
@@ -1291,7 +1291,7 @@ async fn test_password_policy_edges() {
 
 #[actix_web::test]
 async fn test_update_user_fields_reflected() {
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    let user_store = Data::new(UserStore::new());
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -1340,7 +1340,7 @@ async fn test_update_user_fields_reflected() {
 
 #[actix_web::test]
 async fn test_delete_user_unknown_404() {
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    let user_store = Data::new(UserStore::new());
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -1359,22 +1359,22 @@ async fn test_delete_user_unknown_404() {
 
 #[actix_web::test]
 async fn test_oidc_authorize_invalid_client_and_login_redirect() {
-    use authence::services::{oidc_client_store::OidcClientStore, oidc_code_store::OidcCodeStore};
-    let code_store = actix_web::web::Data::new(OidcCodeStore::new(600));
-    let client_store = actix_web::web::Data::new(OidcClientStore::new());
-    let audit = authence::services::pg_audit_log_store::PgAuditLogStore::new(
+    use authenc::services::{oidc_client_store::OidcClientStore, oidc_code_store::OidcCodeStore};
+    let code_store = Data::new(OidcCodeStore::new(600));
+    let client_store = Data::new(OidcClientStore::new());
+    let audit = authenc::services::pg_audit_log_store::PgAuditLogStore::new(
         "host=localhost user=postgres password=postgres dbname=authence",
     )
     .await
     .expect("pg");
-    let audit = actix_web::web::Data::new(audit);
+    let audit = Data::new(audit);
     let app = test::init_service(
         App::new()
             .app_data(code_store.clone())
             .app_data(client_store.clone())
             .app_data(audit.clone())
-            .service(authence::api::oidc_provider::oidc_authorize)
-            .service(authence::api::oidc_provider::oidc_login),
+            .service(authenc::api::oidc_provider::oidc_authorize)
+            .service(authenc::api::oidc_provider::oidc_login),
     )
     .await;
     // Invalid client -> 400
@@ -1388,7 +1388,7 @@ async fn test_oidc_authorize_invalid_client_and_login_redirect() {
     assert_eq!(resp.status(), 400);
     // Valid client but missing cookie -> redirect to login
     client_store
-        .add(authence::model::oidc_client::OidcClient {
+        .add(authenc::model::oidc_client::OidcClient {
             id: "c1".into(),
             client_id: "cli".into(),
             client_secret: "s".into(),
@@ -1413,7 +1413,7 @@ async fn test_oidc_authorize_invalid_client_and_login_redirect() {
 
 #[actix_web::test]
 async fn test_update_password_happy_and_not_found() {
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    let user_store = Data::new(UserStore::new());
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -1465,7 +1465,7 @@ async fn test_update_password_happy_and_not_found() {
 
 #[actix_web::test]
 async fn test_update_user_not_found() {
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    let user_store = Data::new(UserStore::new());
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -1548,19 +1548,19 @@ async fn test_role_and_permission_assign_endpoints() {
 
 // Dummy sink for audit log tests
 struct DummySink;
-impl authence::services::audit_log_sink::AuditLogSink for DummySink {
-    fn send(&self, _log: &authence::model::audit_log::AuditLog) {}
+impl authenc::services::audit_log_sink::AuditLogSink for DummySink {
+    fn send(&self, _log: &authenc::model::audit_log::AuditLog) {}
 }
 
 #[actix_web::test]
 async fn test_audit_log_endpoints() {
-    use authence::services::audit_log_sink::AuditLogSink;
+    use authenc::services::audit_log_sink::AuditLogSink;
     let sink: Arc<dyn AuditLogSink> = Arc::new(DummySink);
     let app = test::init_service(
         App::new()
-            .app_data(actix_web::web::Data::new(sink))
+            .app_data(Data::new(sink))
             .service(api::add_audit_log)
-            .service(authence::api::audit::get_audit_logs),
+            .service(authenc::api::audit::get_audit_logs),
     )
     .await;
     let resp = test::call_service(&app, test::TestRequest::post().uri("/audit").to_request()).await;
@@ -1571,11 +1571,11 @@ async fn test_audit_log_endpoints() {
 
 #[actix_web::test]
 async fn test_audit_logs_csv_unauthorized_forbidden_paths() {
-    use authence::services::{pg_audit_log_store::PgAuditLogStore, user_store::UserStore};
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    use authenc::services::{pg_audit_log_store::PgAuditLogStore, user_store::UserStore};
+    let user_store = Data::new(UserStore::new());
     // Seed a non-admin user to simulate forbidden when token is parsed (we won't provide a real token here)
     user_store
-        .add_user(authence::model::user::User {
+        .add_user(authenc::model::user::User {
             id: "u-na".into(),
             username: "bob".into(),
             email: "b@ex.com".into(),
@@ -1588,12 +1588,12 @@ async fn test_audit_logs_csv_unauthorized_forbidden_paths() {
         PgAuditLogStore::new("host=localhost user=postgres password=postgres dbname=authence")
             .await
             .expect("pg");
-    let audit = actix_web::web::Data::new(audit);
+    let audit = Data::new(audit);
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
             .app_data(audit.clone())
-            .service(authence::api::audit_log::export_audit_logs_csv),
+            .service(authenc::api::audit_log::export_audit_logs_csv),
     )
     .await;
     // Missing token -> 401
@@ -1609,12 +1609,12 @@ async fn test_audit_logs_csv_unauthorized_forbidden_paths() {
 
 #[actix_web::test]
 async fn test_audit_logs_forbidden_with_valid_non_admin_token() {
-    use authence::api::oidc_jwt::generate_id_token;
-    use authence::services::{pg_audit_log_store::PgAuditLogStore, user_store::UserStore};
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    use authenc::api::oidc_jwt::generate_id_token;
+    use authenc::services::{pg_audit_log_store::PgAuditLogStore, user_store::UserStore};
+    let user_store = Data::new(UserStore::new());
     // Seed non-admin user matching token sub
     user_store
-        .add_user(authence::model::user::User {
+        .add_user(authenc::model::user::User {
             id: "u-bob".into(),
             username: "bob".into(),
             email: "b@ex.com".into(),
@@ -1626,13 +1626,13 @@ async fn test_audit_logs_forbidden_with_valid_non_admin_token() {
         PgAuditLogStore::new("host=localhost user=postgres password=postgres dbname=authence")
             .await
             .expect("pg");
-    let audit = actix_web::web::Data::new(audit);
+    let audit = Data::new(audit);
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
             .app_data(audit.clone())
-            .service(authence::api::audit_log::get_audit_logs)
-            .service(authence::api::audit_log::export_audit_logs_csv),
+            .service(authenc::api::audit_log::get_audit_logs)
+            .service(authenc::api::audit_log::export_audit_logs_csv),
     )
     .await;
     // Generate a valid RS256 id_token for sub=bob
@@ -1662,18 +1662,18 @@ async fn test_audit_logs_forbidden_with_valid_non_admin_token() {
 
 #[actix_web::test]
 async fn test_oidc_authorize_consent_page() {
-    use authence::services::{oidc_client_store::OidcClientStore, oidc_code_store::OidcCodeStore};
-    let code_store = actix_web::web::Data::new(OidcCodeStore::new(600));
-    let client_store = actix_web::web::Data::new(OidcClientStore::new());
+    use authenc::services::{oidc_client_store::OidcClientStore, oidc_code_store::OidcCodeStore};
+    let code_store = Data::new(OidcCodeStore::new(600));
+    let client_store = Data::new(OidcClientStore::new());
     // No DB interaction on consent screen path
-    let audit = authence::services::pg_audit_log_store::PgAuditLogStore::new(
+    let audit = authenc::services::pg_audit_log_store::PgAuditLogStore::new(
         "host=localhost user=postgres password=postgres dbname=authence",
     )
     .await
     .expect("pg");
-    let audit = actix_web::web::Data::new(audit);
+    let audit = Data::new(audit);
     client_store
-        .add(authence::model::oidc_client::OidcClient {
+        .add(authenc::model::oidc_client::OidcClient {
             id: "c2".into(),
             client_id: "cli-consent".into(),
             client_secret: "s".into(),
@@ -1687,7 +1687,7 @@ async fn test_oidc_authorize_consent_page() {
             .app_data(code_store.clone())
             .app_data(client_store.clone())
             .app_data(audit.clone())
-            .service(authence::api::oidc_provider::oidc_authorize),
+            .service(authenc::api::oidc_provider::oidc_authorize),
     )
     .await;
     // Provide cookie to simulate logged in, with consent scope
@@ -1699,7 +1699,7 @@ async fn test_oidc_authorize_consent_page() {
 
 #[actix_web::test]
 async fn test_update_user_noop_payload_ok() {
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    let user_store = Data::new(UserStore::new());
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -1735,7 +1735,7 @@ async fn test_update_user_noop_payload_ok() {
 
 #[actix_web::test]
 async fn test_update_password_blacklisted_fails() {
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    let user_store = Data::new(UserStore::new());
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -1770,22 +1770,22 @@ async fn test_update_password_blacklisted_fails() {
 
 #[actix_web::test]
 async fn test_login_invalid_credentials() {
-    use authence::services::{
+    use authenc::services::{
         anomaly_detector::AnomalyDetector, federation_provider::FederationRegistry,
         totp_store::TotpStore,
     };
-    use authence::services::{
+    use authenc::services::{
         brute_force_protector::BruteForceProtector, session_store::SessionStore,
         user_store::UserStore,
     };
-    let user_store = actix_web::web::Data::new(UserStore::new());
-    let session_store = actix_web::web::Data::new(SessionStore::new());
-    let totp_store = actix_web::web::Data::new(TotpStore::new());
-    let brute_force = actix_web::web::Data::new(BruteForceProtector::new(5, 300));
-    let anomaly = actix_web::web::Data::new(AnomalyDetector::new());
-    let federation = actix_web::web::Data::new(FederationRegistry::new());
+    let user_store = Data::new(UserStore::new());
+    let session_store = Data::new(SessionStore::new());
+    let totp_store = Data::new(TotpStore::new());
+    let brute_force = Data::new(BruteForceProtector::new(5, 300));
+    let anomaly = Data::new(AnomalyDetector::new());
+    let federation = Data::new(FederationRegistry::new());
     user_store
-        .add_user(authence::model::user::User {
+        .add_user(authenc::model::user::User {
             id: "uX".into(),
             username: "x".into(),
             email: "x@ex.com".into(),
@@ -1801,7 +1801,7 @@ async fn test_login_invalid_credentials() {
             .app_data(brute_force.clone())
             .app_data(anomaly.clone())
             .app_data(federation.clone())
-            .service(authence::api::auth::login),
+            .service(authenc::api::auth::login),
     )
     .await;
     // Wrong password -> 401
@@ -1818,18 +1818,18 @@ async fn test_login_invalid_credentials() {
 
 #[actix_web::test]
 async fn test_sessions_list_unauthorized_for_expired_token() {
-    use authence::services::session_store::SessionStore;
+    use authenc::services::session_store::SessionStore;
     use jsonwebtoken::{encode, EncodingKey, Header};
     #[derive(serde::Serialize)]
     struct Claims {
         sub: String,
         exp: usize,
     }
-    let store = actix_web::web::Data::new(SessionStore::new());
+    let store = Data::new(SessionStore::new());
     let app = test::init_service(
         App::new()
             .app_data(store.clone())
-            .service(authence::api::session::list_sessions),
+            .service(authenc::api::session::list_sessions),
     )
     .await;
     // Expired token (exp in the past)
@@ -1859,17 +1859,17 @@ async fn test_sessions_list_unauthorized_for_expired_token() {
 
 #[actix_web::test]
 async fn test_oidc_authorize_redirect_uri_mismatch_400() {
-    use authence::services::{oidc_client_store::OidcClientStore, oidc_code_store::OidcCodeStore};
-    let code_store = actix_web::web::Data::new(OidcCodeStore::new(600));
-    let client_store = actix_web::web::Data::new(OidcClientStore::new());
-    let audit = authence::services::pg_audit_log_store::PgAuditLogStore::new(
+    use authenc::services::{oidc_client_store::OidcClientStore, oidc_code_store::OidcCodeStore};
+    let code_store = Data::new(OidcCodeStore::new(600));
+    let client_store = Data::new(OidcClientStore::new());
+    let audit = authenc::services::pg_audit_log_store::PgAuditLogStore::new(
         "host=localhost user=postgres password=postgres dbname=authence",
     )
     .await
     .expect("pg");
-    let audit = actix_web::web::Data::new(audit);
+    let audit = Data::new(audit);
     client_store
-        .add(authence::model::oidc_client::OidcClient {
+        .add(authenc::model::oidc_client::OidcClient {
             id: "c5".into(),
             client_id: "cli5".into(),
             client_secret: "s".into(),
@@ -1883,7 +1883,7 @@ async fn test_oidc_authorize_redirect_uri_mismatch_400() {
             .app_data(code_store.clone())
             .app_data(client_store.clone())
             .app_data(audit.clone())
-            .service(authence::api::oidc_provider::oidc_authorize),
+            .service(authenc::api::oidc_provider::oidc_authorize),
     )
     .await;
     let resp = test::call_service(
@@ -1899,20 +1899,20 @@ async fn test_oidc_authorize_redirect_uri_mismatch_400() {
 
 #[actix_web::test]
 async fn test_oidc_token_redirect_uri_mismatch_400() {
-    use authence::services::{
+    use authenc::services::{
         oidc_client_store::OidcClientStore, oidc_code_store::OidcCodeStore, user_store::UserStore,
     };
-    let code_store = actix_web::web::Data::new(OidcCodeStore::new(600));
-    let client_store = actix_web::web::Data::new(OidcClientStore::new());
-    let user_store = actix_web::web::Data::new(UserStore::new());
-    let audit = authence::services::pg_audit_log_store::PgAuditLogStore::new(
+    let code_store = Data::new(OidcCodeStore::new(600));
+    let client_store = Data::new(OidcClientStore::new());
+    let user_store = Data::new(UserStore::new());
+    let audit = authenc::services::pg_audit_log_store::PgAuditLogStore::new(
         "host=localhost user=postgres password=postgres dbname=authence",
     )
     .await
     .expect("pg");
-    let audit = actix_web::web::Data::new(audit);
+    let audit = Data::new(audit);
     client_store
-        .add(authence::model::oidc_client::OidcClient {
+        .add(authenc::model::oidc_client::OidcClient {
             id: "c6".into(),
             client_id: "cli6".into(),
             client_secret: "s".into(),
@@ -1927,7 +1927,7 @@ async fn test_oidc_token_redirect_uri_mismatch_400() {
             .app_data(client_store.clone())
             .app_data(user_store.clone())
             .app_data(audit.clone())
-            .service(authence::api::oidc_provider::oidc_token),
+            .service(authenc::api::oidc_provider::oidc_token),
     )
     .await;
     let resp = test::call_service(
@@ -1948,20 +1948,20 @@ async fn test_oidc_token_redirect_uri_mismatch_400() {
 
 #[actix_web::test]
 async fn test_oidc_code_reuse_returns_400() {
-    use authence::services::{
+    use authenc::services::{
         oidc_client_store::OidcClientStore, oidc_code_store::OidcCodeStore, user_store::UserStore,
     };
-    let code_store = actix_web::web::Data::new(OidcCodeStore::new(600));
-    let client_store = actix_web::web::Data::new(OidcClientStore::new());
-    let user_store = actix_web::web::Data::new(UserStore::new());
-    let audit = authence::services::pg_audit_log_store::PgAuditLogStore::new(
+    let code_store = Data::new(OidcCodeStore::new(600));
+    let client_store = Data::new(OidcClientStore::new());
+    let user_store = Data::new(UserStore::new());
+    let audit = authenc::services::pg_audit_log_store::PgAuditLogStore::new(
         "host=localhost user=postgres password=postgres dbname=authence",
     )
     .await
     .expect("pg");
-    let audit = actix_web::web::Data::new(audit);
+    let audit = Data::new(audit);
     client_store
-        .add(authence::model::oidc_client::OidcClient {
+        .add(authenc::model::oidc_client::OidcClient {
             id: "c7".into(),
             client_id: "cli7".into(),
             client_secret: "s".into(),
@@ -1971,7 +1971,7 @@ async fn test_oidc_code_reuse_returns_400() {
         })
         .unwrap();
     user_store
-        .add_user(authence::model::user::User {
+        .add_user(authenc::model::user::User {
             id: "u7".into(),
             username: "u7".into(),
             email: "u7@ex.com".into(),
@@ -1985,8 +1985,8 @@ async fn test_oidc_code_reuse_returns_400() {
             .app_data(client_store.clone())
             .app_data(user_store.clone())
             .app_data(audit.clone())
-            .service(authence::api::oidc_provider::oidc_authorize)
-            .service(authence::api::oidc_provider::oidc_token),
+            .service(authenc::api::oidc_provider::oidc_authorize)
+            .service(authenc::api::oidc_provider::oidc_token),
     )
     .await;
     // Get code
@@ -2048,18 +2048,18 @@ async fn test_oidc_code_reuse_returns_400() {
 
 #[actix_web::test]
 async fn test_oidc_login_post_invalid_credentials_unauthorized() {
-    use authence::services::{pg_audit_log_store::PgAuditLogStore, user_store::UserStore};
-    let user_store = actix_web::web::Data::new(UserStore::new());
+    use authenc::services::{pg_audit_log_store::PgAuditLogStore, user_store::UserStore};
+    let user_store = Data::new(UserStore::new());
     let audit =
         PgAuditLogStore::new("host=localhost user=postgres password=postgres dbname=authence")
             .await
             .expect("pg");
-    let audit = actix_web::web::Data::new(audit);
+    let audit = Data::new(audit);
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
             .app_data(audit.clone())
-            .service(authence::api::oidc_provider::oidc_login_post),
+            .service(authenc::api::oidc_provider::oidc_login_post),
     )
     .await;
     let resp = test::call_service(
@@ -2085,7 +2085,7 @@ async fn test_oidc_login_post_invalid_credentials_unauthorized() {
 
 #[actix_web::test]
 async fn test_vault_service_multi_provider() {
-    use authence::services::vault::{
+    use authenc::services::vault::{
         FileVaultProvider, KeystoreVaultProvider, VaultProvider, VaultService,
     };
     use std::collections::HashMap;
@@ -2132,7 +2132,7 @@ async fn test_vault_service_multi_provider() {
 
 #[actix_web::test]
 async fn test_fips_service_compliance() {
-    use authence::services::fips::{ComplianceLevel, FipsSecurityProvider, FipsService};
+    use authenc::services::fips::{ComplianceLevel, FipsSecurityProvider, FipsService};
 
     let fips_provider = FipsSecurityProvider::new(ComplianceLevel::High);
     let is_fips_enabled = fips_provider.is_fips_enabled().await.unwrap();
@@ -2159,7 +2159,7 @@ async fn test_fips_service_compliance() {
 
 #[actix_web::test]
 async fn test_observability_service_monitoring() {
-    use authence::services::observability::{
+    use authenc::services::observability::{
         HealthCheck, MetricsCollector, ObservabilityService, TracingService,
     };
     use std::time::Duration;
@@ -2193,7 +2193,7 @@ async fn test_observability_service_monitoring() {
 
 #[actix_web::test]
 async fn test_clustering_service_consensus() {
-    use authence::services::clustering::{ClusterManager, ClusteringService, DistributedConsensus};
+    use authenc::services::clustering::{ClusterManager, ClusteringService, DistributedConsensus};
     use std::collections::HashMap;
 
     // Test Cluster Manager
@@ -2218,7 +2218,7 @@ async fn test_clustering_service_consensus() {
     let is_leader = clustering.is_leader().await;
     assert!(is_leader); // Single node is always leader
 
-    let federation_request = authence::services::clustering::FederationRequest {
+    let federation_request = authenc::services::clustering::FederationRequest {
         source_cluster: "cluster-a".to_string(),
         target_cluster: "cluster-b".to_string(),
         data: vec![1, 2, 3],
@@ -2230,8 +2230,8 @@ async fn test_clustering_service_consensus() {
 
 #[actix_web::test]
 async fn test_federation_service_providers() {
-    use authence::model::federation::{AuthRequest, AuthResponse};
-    use authence::services::federation::{
+    use authenc::model::federation::{AuthRequest, AuthResponse};
+    use authenc::services::federation::{
         FederationService, IdentityProvider, OidcIdentityProvider, SamlIdentityProvider,
     };
 
@@ -2281,7 +2281,7 @@ async fn test_federation_service_providers() {
 
 #[actix_web::test]
 async fn test_compliance_service_frameworks() {
-    use authence::services::compliance::{
+    use authenc::services::compliance::{
         ComplianceCheckResult, ComplianceFramework, ComplianceService, ComplianceStatus,
     };
     use std::collections::HashMap;
@@ -2321,7 +2321,7 @@ async fn test_compliance_service_frameworks() {
 
 #[actix_web::test]
 async fn test_enterprise_services_integration() {
-    use authence::services::{
+    use authenc::services::{
         clustering::ClusteringService, compliance::ComplianceService,
         federation::FederationService, fips::FipsService, observability::ObservabilityService,
         vault::VaultService,
@@ -2330,17 +2330,17 @@ async fn test_enterprise_services_integration() {
 
     // Create enterprise service instances
     let vault = VaultService::new(HashMap::new());
-    let fips = FipsService::new(authence::services::fips::FipsSecurityProvider::new(
-        authence::services::fips::ComplianceLevel::High,
+    let fips = FipsService::new(authenc::services::fips::FipsSecurityProvider::new(
+        authenc::services::fips::ComplianceLevel::High,
     ));
     let observability = ObservabilityService::new(
-        authence::services::observability::MetricsCollector::new(),
-        authence::services::observability::TracingService::new(),
-        authence::services::observability::HealthCheck::new("enterprise_services"),
+        authenc::services::observability::MetricsCollector::new(),
+        authenc::services::observability::TracingService::new(),
+        authenc::services::observability::HealthCheck::new("enterprise_services"),
     );
     let clustering = ClusteringService::new(
-        authence::services::clustering::ClusterManager::new("test-node", vec![]),
-        authence::services::clustering::DistributedConsensus::new(),
+        authenc::services::clustering::ClusterManager::new("test-node", vec![]),
+        authenc::services::clustering::DistributedConsensus::new(),
     );
     let federation = FederationService::new();
     let compliance = ComplianceService::new();
@@ -2368,7 +2368,7 @@ async fn test_enterprise_services_integration() {
 
 #[actix_web::test]
 async fn test_enterprise_security_features() {
-    use authence::services::{
+    use authenc::services::{
         anomaly_detector::AnomalyDetector, brute_force_protector::BruteForceProtector,
         password_policy::PasswordPolicy, zero_trust::ZeroTrustService,
     };
@@ -2390,7 +2390,7 @@ async fn test_enterprise_security_features() {
 
     // Test Zero Trust Service
     let zero_trust = ZeroTrustService::new();
-    let context = authence::model::zero_trust::AuthContext {
+    let context = authenc::model::zero_trust::AuthContext {
         user_id: "user123".to_string(),
         device_id: "device456".to_string(),
         ip_address: "192.168.1.100".to_string(),
@@ -2406,8 +2406,8 @@ async fn test_enterprise_security_features() {
 
 #[actix_web::test]
 async fn test_enterprise_audit_and_monitoring() {
-    use authence::model::audit_log::AuditLog;
-    use authence::services::{
+    use authenc::model::audit_log::AuditLog;
+    use authenc::services::{
         audit_log_sink::AuditLogSink, kafka_audit_log_sink::KafkaAuditLogSink,
         pg_audit_log_store::PgAuditLogStore,
     };

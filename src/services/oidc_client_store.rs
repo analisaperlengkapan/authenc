@@ -3,7 +3,7 @@ use crate::error::Result;
 use crate::models::oidc_client::OidcClient;
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 
 pub struct OidcClientStore {
     db: Arc<Database>,

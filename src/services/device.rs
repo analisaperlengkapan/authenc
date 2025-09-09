@@ -179,7 +179,7 @@ impl DeviceService {
     /// Get device by ID
     pub async fn get_device(&self, device_id: Uuid) -> Result<Option<DeviceInfo>> {
         use crate::database::operations::devices;
-        use crate::models::device::Device as ModelDevice;
+        
 
         match devices::get_device_by_id(&self.db, device_id).await? {
             Some(model_device) => {
@@ -219,7 +219,7 @@ impl DeviceService {
     /// Get user's devices
     pub async fn get_user_devices(&self, user_id: Uuid) -> Result<Vec<DeviceInfo>> {
         use crate::database::operations::devices;
-        use crate::models::device::Device as ModelDevice;
+        
 
         let model_devices = devices::list_user_devices(&self.db, user_id).await?;
 

@@ -2,10 +2,10 @@
 pub mod devices {
     use crate::{
         database::Database,
-        error::{AuthencError, Result},
-        models::{Device, DeviceInfo, TrustResult},
+        error::Result,
+        models::{Device, DeviceInfo},
     };
-    use chrono::{DateTime, Utc};
+    use chrono::Utc;
     use uuid::Uuid;
 
     /// Register a new device in the database
@@ -164,7 +164,7 @@ pub mod devices {
 pub mod webauthn {
     use crate::{
         database::Database,
-        error::{AuthencError, Result},
+        error::Result,
         models::WebauthnCredential,
     };
     use chrono::Utc;
@@ -228,7 +228,7 @@ pub mod webauthn {
         "#;
 
         let row = db.query(query, &[&credential_id]).await?;
-        let mut rows = row;
+        let rows = row;
         Ok(if rows.is_empty() {
             None
         } else {
@@ -324,7 +324,7 @@ pub mod webauthn {
 pub mod oauth2 {
     use crate::{
         database::Database,
-        error::{AuthencError, Result},
+        error::Result,
         models::{OAuth2AccessToken, OAuth2AuthorizationCode, OAuth2Client},
     };
     use chrono::Utc;
@@ -894,10 +894,10 @@ pub mod saml {
 pub mod audit {
     use crate::{
         database::Database,
-        error::{AuthencError, Result},
+        error::Result,
         models::AuditEvent,
     };
-    use chrono::Utc;
+    
     use uuid::Uuid;
 
     /// Create audit log entry
@@ -1454,7 +1454,7 @@ pub mod users {
 pub mod realms {
     use crate::{
         database::Database,
-        error::{AuthencError, Result},
+        error::Result,
         models::{realm::CreateRealmRequest, realm::UpdateRealmRequest, Realm},
     };
     use chrono::Utc;
