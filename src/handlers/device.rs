@@ -1,10 +1,12 @@
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
-use crate::services::device::{DeviceService, DeviceRegistrationRequest, DeviceUpdateRequest, TrustEvaluationContext};
+use crate::services::device::{
+    DeviceRegistrationRequest, DeviceService, DeviceUpdateRequest, TrustEvaluationContext,
+};
 use axum::{
     extract::{Path, Query, State},
     response::Json,
-    routing::{get, post, put, delete},
+    routing::{delete, get, post, put},
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -22,7 +24,10 @@ pub fn create_device_routes() -> Router<Arc<Database>> {
         .route("/{id}/trust", post(evaluate_trust))
         .route("/{id}/sessions", get(get_device_sessions))
         .route("/{id}/sessions", post(create_session))
-        .route("/sessions/{session_id}/activity", put(update_session_activity))
+        .route(
+            "/sessions/{session_id}/activity",
+            put(update_session_activity),
+        )
         .route("/sessions/{session_id}", delete(end_session))
 }
 
@@ -225,7 +230,10 @@ pub async fn create_session(
     // In production, get user ID from authentication context
     let user_id = Uuid::new_v4();
 
-    match service.create_session(id, user_id, request.session_id, request.ip_address).await {
+    match service
+        .create_session(id, user_id, request.session_id, request.ip_address)
+        .await
+    {
         Ok(session) => Ok(Json(serde_json::json!({
             "success": true,
             "session": session

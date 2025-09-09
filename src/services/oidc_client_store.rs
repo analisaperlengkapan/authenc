@@ -1,52 +1,96 @@
-impl Default for OidcClientStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+use crate::database::Database;
+use crate::error::Result;
 use crate::models::oidc_client::OidcClient;
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
 
 pub struct OidcClientStore {
-    clients: Arc<RwLock<HashMap<String, OidcClient>>>, // client_id -> OidcClient
+    db: Arc<Database>,
 }
 
 impl OidcClientStore {
     pub fn new() -> Self {
-        OidcClientStore {
-            clients: Arc::new(RwLock::new(HashMap::new())),
-        }
+        // This would need database parameter in production
+        unimplemented!("Database-backed OidcClientStore not implemented")
     }
-    pub fn add(&self, client: OidcClient) -> Result<(), String> {
-        self.clients
-            .write()
-            .map_err(|e| format!("Lock poisoned: {e}"))?
-            .insert(client.client_id.clone(), client);
+
+    pub fn with_database(db: Arc<Database>) -> Self {
+        Self { db }
+    }
+
+    pub async fn add(&self, client: OidcClient) -> Result<()> {
+        use crate::database::operations::oauth2;
+        use crate::models::OAuth2Client;
+
+        // Convert OidcClient to OAuth2Client
+        let oauth_client = OAuth2Client {
+            id: Uuid::new_v4(), // Generate new ID
+            client_id: client.client_id.clone(),
+            client_secret_hash: client.client_secret.clone(), // In production, this should be hashed
+            client_name: client.name.clone(),
+            client_type: "confidential".to_string(), // Default
+            redirect_uris: client.redirect_uris.clone(),
+            scopes: vec!["openid".to_string(), "profile".to_string()], // Default OIDC scopes
+            grant_types: vec!["authorization_code".to_string()],
+            response_types: vec!["code".to_string()],
+            token_endpoint_auth_method: "client_secret_basic".to_string(),
+            owner_id: None, // No owner specified
+            realm_id: None, // Default realm
+            enabled: client.enabled,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            deleted_at: None,
+        };
+
+        oauth2::create_client(&self.db, &oauth_client).await?;
         Ok(())
     }
-    pub fn get(&self, client_id: &str) -> Result<Option<OidcClient>, String> {
-        Ok(self
-            .clients
-            .read()
-            .map_err(|e| format!("Lock poisoned: {e}"))?
-            .get(client_id)
-            .cloned())
+
+    pub async fn get(&self, client_id: &str) -> Result<Option<OidcClient>> {
+        use crate::database::operations::oauth2;
+
+        match oauth2::get_client_by_id(&self.db, client_id).await? {
+            Some(oauth_client) => {
+                // Convert OAuth2Client to OidcClient
+                let oidc_client = OidcClient {
+                    id: oauth_client.id.to_string(),
+                    client_id: oauth_client.client_id.clone(),
+                    client_secret: oauth_client.client_secret_hash.clone(), // In production, this should be the actual secret
+                    redirect_uris: oauth_client.redirect_uris.clone(),
+                    name: oauth_client.client_name.clone(),
+                    enabled: oauth_client.enabled,
+                };
+                Ok(Some(oidc_client))
+            }
+            None => Ok(None),
+        }
     }
-    pub fn all(&self) -> Result<Vec<OidcClient>, String> {
-        Ok(self
-            .clients
-            .read()
-            .map_err(|e| format!("Lock poisoned: {e}"))?
-            .values()
-            .cloned()
-            .collect())
+
+    pub async fn all(&self) -> Result<Vec<OidcClient>> {
+        use crate::database::operations::oauth2;
+
+        let oauth_clients = oauth2::get_all_clients(&self.db).await?;
+        let mut oidc_clients = Vec::new();
+
+        for oauth_client in oauth_clients {
+            let oidc_client = OidcClient {
+                id: oauth_client.id.to_string(),
+                client_id: oauth_client.client_id.clone(),
+                client_secret: oauth_client.client_secret_hash.clone(), // In production, this should be the actual secret
+                redirect_uris: oauth_client.redirect_uris.clone(),
+                name: oauth_client.client_name.clone(),
+                enabled: oauth_client.enabled,
+            };
+            oidc_clients.push(oidc_client);
+        }
+
+        Ok(oidc_clients)
     }
-    pub fn delete(&self, client_id: &str) -> Result<bool, String> {
-        Ok(self
-            .clients
-            .write()
-            .map_err(|e| format!("Lock poisoned: {e}"))?
-            .remove(client_id)
-            .is_some())
+
+    pub async fn delete(&self, client_id: &str) -> Result<bool> {
+        use crate::database::operations::oauth2;
+
+        oauth2::delete_client(&self.db, client_id).await
     }
 }

@@ -1,8 +1,8 @@
+use base64ct::{Base64UrlUnpadded, Encoding};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use once_cell::sync::Lazy;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use base64ct::{Base64UrlUnpadded, Encoding};
 
 /// Ed25519 keypair for JWT signing - replaces vulnerable RSA
 pub static ED25519_KEYPAIR: Lazy<SigningKey> = Lazy::new(|| {
@@ -30,7 +30,7 @@ pub struct Ed25519Jwk {
 impl Ed25519Jwk {
     pub fn from_verifying_key(verifying_key: &VerifyingKey, kid: &str) -> Self {
         let x = Base64UrlUnpadded::encode_string(verifying_key.as_bytes());
-        
+
         Self {
             kty: "OKP".to_string(),
             crv: "Ed25519".to_string(),
@@ -53,7 +53,7 @@ pub fn get_ed25519_public_pem() -> String {
     let verifying_key = ED25519_KEYPAIR.verifying_key();
     // Ed25519 public key in raw format (32 bytes)
     let raw_bytes = verifying_key.as_bytes();
-    
+
     // Create PEM format manually since ed25519-dalek doesn't have built-in PEM support
     let b64_data = base64ct::Base64::encode_string(raw_bytes);
     format!(
@@ -68,7 +68,10 @@ pub fn sign_ed25519(data: &[u8]) -> Signature {
 }
 
 /// Verify Ed25519 signature
-pub fn verify_ed25519(data: &[u8], signature: &Signature) -> Result<(), ed25519_dalek::SignatureError> {
+pub fn verify_ed25519(
+    data: &[u8],
+    signature: &Signature,
+) -> Result<(), ed25519_dalek::SignatureError> {
     let verifying_key = ED25519_KEYPAIR.verifying_key();
     verifying_key.verify(data, signature)
 }

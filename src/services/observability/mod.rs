@@ -55,7 +55,10 @@ impl HealthCheck for DatabaseHealthCheck {
         HealthCheckResult {
             name: "database".to_string(),
             status,
-            details: Some(format!("Pool size: {}, Active: {}", self.pool_size, self.active_connections)),
+            details: Some(format!(
+                "Pool size: {}, Active: {}",
+                self.pool_size, self.active_connections
+            )),
             duration: start.elapsed(),
             timestamp: chrono::Utc::now(),
         }
@@ -90,7 +93,11 @@ impl HealthCheck for CacheHealthCheck {
 
         HealthCheckResult {
             name: "cache".to_string(),
-            status: if hit_rate > 0.1 { HealthStatus::Up } else { HealthStatus::Down },
+            status: if hit_rate > 0.1 {
+                HealthStatus::Up
+            } else {
+                HealthStatus::Down
+            },
             details: Some(format!("Hit rate: {:.2}%", hit_rate * 100.0)),
             duration: start.elapsed(),
             timestamp: chrono::Utc::now(),
@@ -117,7 +124,8 @@ impl AuthServiceHealthCheck {
 impl HealthCheck for AuthServiceHealthCheck {
     async fn check(&self) -> HealthCheckResult {
         let start = Instant::now();
-        let status = if self.failed_attempts < 100 { // Configurable threshold
+        let status = if self.failed_attempts < 100 {
+            // Configurable threshold
             HealthStatus::Up
         } else {
             HealthStatus::Down
@@ -126,7 +134,10 @@ impl HealthCheck for AuthServiceHealthCheck {
         HealthCheckResult {
             name: "auth_service".to_string(),
             status,
-            details: Some(format!("Active sessions: {}, Failed attempts: {}", self.active_sessions, self.failed_attempts)),
+            details: Some(format!(
+                "Active sessions: {}, Failed attempts: {}",
+                self.active_sessions, self.failed_attempts
+            )),
             duration: start.elapsed(),
             timestamp: chrono::Utc::now(),
         }
@@ -327,7 +338,10 @@ impl TracingService {
     }
 
     pub fn get_trace_spans(&self, trace_id: &str) -> Vec<&TraceSpan> {
-        self.spans.values().filter(|span| span.trace_id == trace_id).collect()
+        self.spans
+            .values()
+            .filter(|span| span.trace_id == trace_id)
+            .collect()
     }
 }
 
@@ -376,7 +390,10 @@ impl ObservabilityService {
         let results = self.run_health_checks().await;
         if results.iter().all(|r| matches!(r.status, HealthStatus::Up)) {
             HealthStatus::Up
-        } else if results.iter().any(|r| matches!(r.status, HealthStatus::Down)) {
+        } else if results
+            .iter()
+            .any(|r| matches!(r.status, HealthStatus::Down))
+        {
             HealthStatus::Down
         } else {
             HealthStatus::Unknown
@@ -434,7 +451,7 @@ pub struct ObservabilityConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceLevelIndicator {
     pub name: String,
-    pub objective: f64, // Target percentage (e.g., 99.9 for 99.9% uptime)
+    pub objective: f64,   // Target percentage (e.g., 99.9 for 99.9% uptime)
     pub window: Duration, // Time window for measurement
     pub current_value: f64,
     pub status: SliStatus,
@@ -499,9 +516,9 @@ pub struct PerformanceMetrics {
     pub response_time_p50: Duration,
     pub response_time_p95: Duration,
     pub response_time_p99: Duration,
-    pub throughput: f64, // requests per second
-    pub error_rate: f64, // percentage
-    pub cpu_usage: f64,  // percentage
+    pub throughput: f64,   // requests per second
+    pub error_rate: f64,   // percentage
+    pub cpu_usage: f64,    // percentage
     pub memory_usage: f64, // percentage
 }
 

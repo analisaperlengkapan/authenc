@@ -1,9 +1,9 @@
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use anyhow::Result;
 
 /// Cluster node status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -240,7 +240,8 @@ impl ClusterManager {
             node_id: self.node_id.clone(),
             data: HashMap::new(),
             timestamp: chrono::Utc::now(),
-        }).await;
+        })
+        .await;
 
         Ok(())
     }
@@ -323,7 +324,8 @@ impl SessionReplicationService {
 
     /// Replicate session data across cluster
     pub async fn replicate_session(&mut self, session_id: &str, data: &[u8]) -> Result<()> {
-        self.session_cache.insert(session_id.to_string(), data.to_vec());
+        self.session_cache
+            .insert(session_id.to_string(), data.to_vec());
 
         // Broadcast to other nodes
         let mut message = Vec::new();
@@ -359,7 +361,13 @@ impl DistributedCacheService {
     /// Put value in distributed cache
     pub async fn put(&mut self, key: &str, value: &[u8], ttl: Option<Duration>) -> Result<()> {
         let expiry = ttl.map(|d| chrono::Utc::now() + chrono::Duration::from_std(d).unwrap());
-        self.cache.insert(key.to_string(), (value.to_vec(), expiry.unwrap_or_else(|| chrono::Utc::now() + chrono::Duration::hours(1))));
+        self.cache.insert(
+            key.to_string(),
+            (
+                value.to_vec(),
+                expiry.unwrap_or_else(|| chrono::Utc::now() + chrono::Duration::hours(1)),
+            ),
+        );
 
         // Replicate to cluster
         let consensus_key = format!("cache:{}", key);

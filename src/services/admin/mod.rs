@@ -1,7 +1,7 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 /// Admin service trait
 #[async_trait]
@@ -10,13 +10,22 @@ pub trait AdminService: Send + Sync {
     async fn get_system_stats(&self) -> Result<SystemStats, String>;
 
     /// Get user management data
-    async fn get_users(&self, realm_id: &Uuid, page: u32, limit: u32) -> Result<UserListResponse, String>;
+    async fn get_users(
+        &self,
+        realm_id: &Uuid,
+        page: u32,
+        limit: u32,
+    ) -> Result<UserListResponse, String>;
 
     /// Create new user
     async fn create_user(&self, request: CreateUserRequest) -> Result<UserResponse, String>;
 
     /// Update user
-    async fn update_user(&self, user_id: &Uuid, request: UpdateUserRequest) -> Result<UserResponse, String>;
+    async fn update_user(
+        &self,
+        user_id: &Uuid,
+        request: UpdateUserRequest,
+    ) -> Result<UserResponse, String>;
 
     /// Delete user
     async fn delete_user(&self, user_id: &Uuid) -> Result<(), String>;
@@ -28,7 +37,12 @@ pub trait AdminService: Send + Sync {
     async fn create_role(&self, request: CreateRoleRequest) -> Result<RoleResponse, String>;
 
     /// Get sessions
-    async fn get_sessions(&self, user_id: Option<Uuid>, page: u32, limit: u32) -> Result<SessionListResponse, String>;
+    async fn get_sessions(
+        &self,
+        user_id: Option<Uuid>,
+        page: u32,
+        limit: u32,
+    ) -> Result<SessionListResponse, String>;
 
     /// Terminate session
     async fn terminate_session(&self, session_id: &str) -> Result<(), String>;
@@ -43,7 +57,8 @@ pub trait AdminService: Send + Sync {
     async fn create_policy(&self, request: CreatePolicyRequest) -> Result<PolicyResponse, String>;
 
     /// Get zero trust dashboard data
-    async fn get_zero_trust_dashboard(&self, realm_id: &Uuid) -> Result<ZeroTrustDashboard, String>;
+    async fn get_zero_trust_dashboard(&self, realm_id: &Uuid)
+        -> Result<ZeroTrustDashboard, String>;
 }
 
 /// System statistics
@@ -325,28 +340,27 @@ impl AdminManager {
                 ("medium".to_string(), 150),
                 ("high".to_string(), 45),
                 ("critical".to_string(), 5),
-            ].iter().cloned().collect(),
-            top_risk_users: vec![
-                RiskUser {
-                    user_id: Uuid::new_v4(),
-                    username: "user1".to_string(),
-                    risk_score: 0.85,
-                    risk_level: "high".to_string(),
-                    last_activity: Utc::now(),
-                }
-            ],
-            security_events: vec![
-                SecurityEvent {
-                    id: Uuid::new_v4(),
-                    event_type: "failed_login".to_string(),
-                    severity: "medium".to_string(),
-                    user_id: Some(Uuid::new_v4()),
-                    username: Some("user1".to_string()),
-                    ip_address: "192.168.1.100".to_string(),
-                    timestamp: Utc::now(),
-                    details: serde_json::json!({"attempts": 3}),
-                }
-            ],
+            ]
+            .iter()
+            .cloned()
+            .collect(),
+            top_risk_users: vec![RiskUser {
+                user_id: Uuid::new_v4(),
+                username: "user1".to_string(),
+                risk_score: 0.85,
+                risk_level: "high".to_string(),
+                last_activity: Utc::now(),
+            }],
+            security_events: vec![SecurityEvent {
+                id: Uuid::new_v4(),
+                event_type: "failed_login".to_string(),
+                severity: "medium".to_string(),
+                user_id: Some(Uuid::new_v4()),
+                username: Some("user1".to_string()),
+                ip_address: "192.168.1.100".to_string(),
+                timestamp: Utc::now(),
+                details: serde_json::json!({"attempts": 3}),
+            }],
             device_trust_stats: DeviceTrustStats {
                 total_devices: 500,
                 trusted_devices: 450,
@@ -369,7 +383,12 @@ impl AdminService for AdminManager {
         Ok(self.generate_system_stats())
     }
 
-    async fn get_users(&self, _realm_id: &Uuid, _page: u32, _limit: u32) -> Result<UserListResponse, String> {
+    async fn get_users(
+        &self,
+        _realm_id: &Uuid,
+        _page: u32,
+        _limit: u32,
+    ) -> Result<UserListResponse, String> {
         // TODO: Implement user listing with pagination
         Ok(UserListResponse {
             users: vec![],
@@ -384,7 +403,11 @@ impl AdminService for AdminManager {
         Err("Not implemented".to_string())
     }
 
-    async fn update_user(&self, _user_id: &Uuid, _request: UpdateUserRequest) -> Result<UserResponse, String> {
+    async fn update_user(
+        &self,
+        _user_id: &Uuid,
+        _request: UpdateUserRequest,
+    ) -> Result<UserResponse, String> {
         // TODO: Implement user update
         Err("Not implemented".to_string())
     }
@@ -404,7 +427,12 @@ impl AdminService for AdminManager {
         Err("Not implemented".to_string())
     }
 
-    async fn get_sessions(&self, _user_id: Option<Uuid>, _page: u32, _limit: u32) -> Result<SessionListResponse, String> {
+    async fn get_sessions(
+        &self,
+        _user_id: Option<Uuid>,
+        _page: u32,
+        _limit: u32,
+    ) -> Result<SessionListResponse, String> {
         // TODO: Implement session listing
         Ok(SessionListResponse {
             sessions: vec![],
@@ -439,7 +467,10 @@ impl AdminService for AdminManager {
         Err("Not implemented".to_string())
     }
 
-    async fn get_zero_trust_dashboard(&self, realm_id: &Uuid) -> Result<ZeroTrustDashboard, String> {
+    async fn get_zero_trust_dashboard(
+        &self,
+        realm_id: &Uuid,
+    ) -> Result<ZeroTrustDashboard, String> {
         Ok(self.generate_zero_trust_dashboard(realm_id))
     }
 }

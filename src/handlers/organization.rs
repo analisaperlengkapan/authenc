@@ -4,7 +4,7 @@ use crate::services::organization::{OrganizationService, OrganizationUpdate};
 use axum::{
     extract::{Path, Query, State},
     response::Json,
-    routing::{get, post, put, delete},
+    routing::{delete, get, post, put},
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -48,12 +48,15 @@ pub async fn create_organization(
     // In production, get user ID from authentication context
     let created_by = Uuid::new_v4();
 
-    match service.create_organization(
-        &request.name,
-        &request.display_name,
-        request.description.as_deref(),
-        created_by,
-    ).await {
+    match service
+        .create_organization(
+            &request.name,
+            &request.display_name,
+            request.description.as_deref(),
+            created_by,
+        )
+        .await
+    {
         Ok(organization) => Ok(Json(serde_json::json!({
             "success": true,
             "organization": organization
@@ -170,7 +173,10 @@ pub async fn add_member(
     // In production, get invited_by from authentication context
     let invited_by = Uuid::new_v4();
 
-    match service.add_member(&id, &request.user_id, role, Some(invited_by)).await {
+    match service
+        .add_member(&id, &request.user_id, role, Some(invited_by))
+        .await
+    {
         Ok(_) => Ok(Json(serde_json::json!({
             "success": true,
             "message": "Member added successfully"
@@ -253,7 +259,16 @@ pub async fn create_invitation(
     // In production, get invited_by from authentication context
     let invited_by = Uuid::new_v4();
 
-    match service.create_invitation(&id, &request.email, role, invited_by, request.expires_in_days).await {
+    match service
+        .create_invitation(
+            &id,
+            &request.email,
+            role,
+            invited_by,
+            request.expires_in_days,
+        )
+        .await
+    {
         Ok(invitation) => Ok(Json(serde_json::json!({
             "success": true,
             "invitation": invitation

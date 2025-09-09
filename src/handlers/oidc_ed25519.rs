@@ -1,15 +1,15 @@
-use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
+use crate::crypto::ed25519_keys::{get_ed25519_jwk, ED25519_KEYPAIR};
 use crate::error::AuthencError;
 use crate::utils::crypto_monitor::CryptoMonitor;
 use axum::{
     extract::Query,
-    http::{StatusCode, HeaderMap},
+    http::{HeaderMap, StatusCode},
     response::{Json, Redirect},
 };
+use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::Utc;
 use ed25519_dalek::{Signature, Signer};
 use serde::{Deserialize, Serialize};
-use base64ct::{Base64UrlUnpadded, Encoding};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OidcAuthorizeQuery {
@@ -48,13 +48,13 @@ pub fn generate_ed25519_jwt(
     role: Option<&str>,
 ) -> String {
     let now = Utc::now().timestamp();
-    
+
     let header = Ed25519JwtHeader {
         alg: "EdDSA".to_string(),
         typ: "JWT".to_string(),
         kid: "authence-ed25519-key".to_string(),
     };
-    
+
     let claims = OidcIdTokenClaims {
         iss: "http://localhost:8080/v1".to_string(),
         sub: sub.to_string(),
@@ -71,17 +71,17 @@ pub fn generate_ed25519_jwt(
         // Encode header and payload
         let header_json = serde_json::to_string(&header).unwrap();
         let claims_json = serde_json::to_string(&claims).unwrap();
-        
+
         let header_b64 = Base64UrlUnpadded::encode_string(header_json.as_bytes());
         let payload_b64 = Base64UrlUnpadded::encode_string(claims_json.as_bytes());
-        
+
         // Create signing input
         let signing_input = format!("{}.{}", header_b64, payload_b64);
-        
+
         // Sign with Ed25519
         let signature: Signature = ED25519_KEYPAIR.sign(signing_input.as_bytes());
         let signature_b64 = Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
-        
+
         format!("{}.{}", signing_input, signature_b64)
     })
 }
@@ -100,8 +100,10 @@ pub async fn oidc_token_ed25519(
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Simplified token endpoint for demonstration
-    let grant_type = params.get("grant_type").ok_or(AuthencError::validation("Bad request"))?;
-    
+    let grant_type = params
+        .get("grant_type")
+        .ok_or(AuthencError::validation("Bad request"))?;
+
     if grant_type != "authorization_code" {
         return Err(AuthencError::validation("Bad request"));
     }
@@ -158,7 +160,8 @@ pub async fn oidc_userinfo_ed25519(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Extract Authorization header
-    let auth_header = headers.get("authorization")
+    let auth_header = headers
+        .get("authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "))
         .ok_or(AuthencError::unauthorized("Unauthorized"))?;
@@ -186,7 +189,10 @@ pub async fn oidc_authorize_ed25519(
     Query(params): Query<OidcAuthorizeQuery>,
 ) -> Result<Redirect, StatusCode> {
     // Validate required parameters
-    if params.response_type != "code" && params.response_type != "id_token" && params.response_type != "token id_token" {
+    if params.response_type != "code"
+        && params.response_type != "id_token"
+        && params.response_type != "token id_token"
+    {
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -227,12 +233,11 @@ mod tests {
 
         // Token should have 3 parts
         assert_eq!(token.split('.').count(), 3);
-        
+
         // Should contain proper header
         let parts: Vec<&str> = token.split('.').collect();
-        let header_json = String::from_utf8(
-            Base64UrlUnpadded::decode_vec(parts[0]).unwrap()
-        ).unwrap();
+        let header_json =
+            String::from_utf8(Base64UrlUnpadded::decode_vec(parts[0]).unwrap()).unwrap();
         let header: Ed25519JwtHeader = serde_json::from_str(&header_json).unwrap();
         assert_eq!(header.alg, "EdDSA");
     }
@@ -241,7 +246,7 @@ mod tests {
     async fn test_oidc_jwks_endpoint() {
         let result = oidc_jwks_ed25519().await;
         assert!(result.is_ok());
-        
+
         let jwks = result.unwrap().0;
         assert!(jwks["keys"].is_array());
         assert_eq!(jwks["keys"].as_array().unwrap().len(), 1);
@@ -251,7 +256,7 @@ mod tests {
     async fn test_oidc_discovery_endpoint() {
         let result = oidc_discovery_ed25519().await;
         assert!(result.is_ok());
-        
+
         let discovery = result.unwrap().0;
         assert_eq!(discovery["issuer"], "http://localhost:8080/v1");
         assert!(discovery["id_token_signing_alg_values_supported"]

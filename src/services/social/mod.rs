@@ -58,16 +58,28 @@ pub struct SocialLoginSession {
 #[async_trait]
 pub trait SocialLoginService: Send + Sync {
     /// Initiate OAuth login flow
-    async fn initiate_login(&self, provider: SocialProvider, redirect_uri: &str) -> Result<String, String>;
+    async fn initiate_login(
+        &self,
+        provider: SocialProvider,
+        redirect_uri: &str,
+    ) -> Result<String, String>;
 
     /// Handle OAuth callback
     async fn handle_callback(&self, code: &str, state: &str) -> Result<SocialUserProfile, String>;
 
     /// Exchange authorization code for access token
-    async fn exchange_code_for_token(&self, code: &str, config: &OAuthConfig) -> Result<OAuthTokenResponse, String>;
+    async fn exchange_code_for_token(
+        &self,
+        code: &str,
+        config: &OAuthConfig,
+    ) -> Result<OAuthTokenResponse, String>;
 
     /// Get user profile from provider
-    async fn get_user_profile(&self, access_token: &str, config: &OAuthConfig) -> Result<SocialUserProfile, String>;
+    async fn get_user_profile(
+        &self,
+        access_token: &str,
+        config: &OAuthConfig,
+    ) -> Result<SocialUserProfile, String>;
 
     /// Validate session
     async fn validate_session(&self, session_id: &str) -> Result<bool, String>;
@@ -113,8 +125,13 @@ impl SocialLoginManager {
     }
 
     /// Generate OAuth authorization URL
-    pub fn generate_auth_url(&self, provider: &SocialProvider, redirect_uri: &str) -> Result<String, String> {
-        let config = self.get_provider_config(provider)
+    pub fn generate_auth_url(
+        &self,
+        provider: &SocialProvider,
+        redirect_uri: &str,
+    ) -> Result<String, String> {
+        let config = self
+            .get_provider_config(provider)
             .ok_or_else(|| format!("Provider {:?} not configured", provider))?;
 
         let state = uuid::Uuid::new_v4().to_string();
@@ -164,32 +181,46 @@ impl SocialLoginManager {
     /// Clean expired sessions
     pub fn clean_expired_sessions(&mut self) {
         let now = chrono::Utc::now();
-        self.sessions.write().unwrap().retain(|_, session| session.expires_at > now);
+        self.sessions
+            .write()
+            .unwrap()
+            .retain(|_, session| session.expires_at > now);
     }
 }
 
 #[async_trait]
 impl SocialLoginService for SocialLoginManager {
-    async fn initiate_login(&self, provider: SocialProvider, redirect_uri: &str) -> Result<String, String> {
+    async fn initiate_login(
+        &self,
+        provider: SocialProvider,
+        redirect_uri: &str,
+    ) -> Result<String, String> {
         self.generate_auth_url(&provider, redirect_uri)
     }
 
     async fn handle_callback(&self, code: &str, state: &str) -> Result<SocialUserProfile, String> {
         let session = self.validate_state(state)?;
 
-        let config = self.get_provider_config(&session.provider)
+        let config = self
+            .get_provider_config(&session.provider)
             .ok_or_else(|| "Provider configuration not found".to_string())?;
 
         // Exchange code for token
         let token_response = self.exchange_code_for_token(code, config).await?;
 
         // Get user profile
-        let profile = self.get_user_profile(&token_response.access_token, config).await?;
+        let profile = self
+            .get_user_profile(&token_response.access_token, config)
+            .await?;
 
         Ok(profile)
     }
 
-    async fn exchange_code_for_token(&self, code: &str, config: &OAuthConfig) -> Result<OAuthTokenResponse, String> {
+    async fn exchange_code_for_token(
+        &self,
+        code: &str,
+        config: &OAuthConfig,
+    ) -> Result<OAuthTokenResponse, String> {
         let mut params = HashMap::new();
         params.insert("client_id", config.client_id.clone());
         params.insert("client_secret", config.client_secret.clone());
@@ -197,7 +228,8 @@ impl SocialLoginService for SocialLoginManager {
         params.insert("grant_type", "authorization_code".to_string());
         params.insert("redirect_uri", config.redirect_uri.clone());
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(&config.token_url)
             .form(&params)
             .send()
@@ -205,7 +237,10 @@ impl SocialLoginService for SocialLoginManager {
             .map_err(|e| format!("Token exchange failed: {}", e))?;
 
         if !response.status().is_success() {
-            return Err(format!("Token exchange failed with status: {}", response.status()));
+            return Err(format!(
+                "Token exchange failed with status: {}",
+                response.status()
+            ));
         }
 
         let token_response: OAuthTokenResponse = response
@@ -216,8 +251,13 @@ impl SocialLoginService for SocialLoginManager {
         Ok(token_response)
     }
 
-    async fn get_user_profile(&self, access_token: &str, config: &OAuthConfig) -> Result<SocialUserProfile, String> {
-        let response = self.http_client
+    async fn get_user_profile(
+        &self,
+        access_token: &str,
+        config: &OAuthConfig,
+    ) -> Result<SocialUserProfile, String> {
+        let response = self
+            .http_client
             .get(&config.user_info_url)
             .bearer_auth(access_token)
             .send()
@@ -225,7 +265,10 @@ impl SocialLoginService for SocialLoginManager {
             .map_err(|e| format!("User info request failed: {}", e))?;
 
         if !response.status().is_success() {
-            return Err(format!("User info request failed with status: {}", response.status()));
+            return Err(format!(
+                "User info request failed with status: {}",
+                response.status()
+            ));
         }
 
         let user_data: serde_json::Value = response
@@ -238,7 +281,15 @@ impl SocialLoginService for SocialLoginManager {
             SocialProvider::Google => self.parse_google_profile(user_data),
             SocialProvider::Facebook => self.parse_facebook_profile(user_data),
             SocialProvider::GitHub => self.parse_github_profile(user_data),
-            _ => self.parse_generic_profile(user_data, &config.provider),
+            SocialProvider::Microsoft => self.parse_microsoft_profile(user_data),
+            SocialProvider::LinkedIn => self.parse_linkedin_profile(user_data),
+            SocialProvider::Twitter => self.parse_twitter_profile(user_data),
+            SocialProvider::Apple => self.parse_apple_profile(user_data),
+            SocialProvider::Custom(ref provider_name) => match provider_name.as_str() {
+                "discord" => self.parse_discord_profile(user_data),
+                "slack" => self.parse_slack_profile(user_data),
+                _ => self.parse_generic_profile(user_data, &config.provider),
+            },
         };
 
         Ok(profile)
@@ -279,7 +330,9 @@ impl SocialLoginManager {
             name: data["name"].as_str().map(|s| s.to_string()),
             first_name: data["first_name"].as_str().map(|s| s.to_string()),
             last_name: data["last_name"].as_str().map(|s| s.to_string()),
-            picture_url: data["picture"]["data"]["url"].as_str().map(|s| s.to_string()),
+            picture_url: data["picture"]["data"]["url"]
+                .as_str()
+                .map(|s| s.to_string()),
             locale: data["locale"].as_str().map(|s| s.to_string()),
             verified_email: false, // Facebook doesn't provide this
             raw_data: data,
@@ -293,8 +346,16 @@ impl SocialLoginManager {
             provider_user_id: data["id"].to_string(),
             email: data["email"].as_str().map(|s| s.to_string()),
             name: data["name"].as_str().map(|s| s.to_string()),
-            first_name: data["name"].as_str().map(|s| s.to_string().split(' ').next().unwrap_or("").to_string()),
-            last_name: data["name"].as_str().map(|s| s.to_string().split(' ').skip(1).collect::<Vec<&str>>().join(" ")),
+            first_name: data["name"]
+                .as_str()
+                .map(|s| s.to_string().split(' ').next().unwrap_or("").to_string()),
+            last_name: data["name"].as_str().map(|s| {
+                s.to_string()
+                    .split(' ')
+                    .skip(1)
+                    .collect::<Vec<&str>>()
+                    .join(" ")
+            }),
             picture_url: data["avatar_url"].as_str().map(|s| s.to_string()),
             locale: None,
             verified_email: false, // GitHub doesn't provide this directly
@@ -303,7 +364,11 @@ impl SocialLoginManager {
     }
 
     /// Parse generic OAuth provider profile
-    fn parse_generic_profile(&self, data: serde_json::Value, provider: &SocialProvider) -> SocialUserProfile {
+    fn parse_generic_profile(
+        &self,
+        data: serde_json::Value,
+        provider: &SocialProvider,
+    ) -> SocialUserProfile {
         SocialUserProfile {
             provider: provider.clone(),
             provider_user_id: data["id"].as_str().unwrap_or("").to_string(),
@@ -314,6 +379,107 @@ impl SocialLoginManager {
             picture_url: data["picture"].as_str().map(|s| s.to_string()),
             locale: data["locale"].as_str().map(|s| s.to_string()),
             verified_email: data["email_verified"].as_bool().unwrap_or(false),
+            raw_data: data,
+        }
+    }
+
+    /// Parse Microsoft user profile
+    fn parse_microsoft_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        SocialUserProfile {
+            provider: SocialProvider::Microsoft,
+            provider_user_id: data["id"].as_str().unwrap_or("").to_string(),
+            email: data["mail"]
+                .as_str()
+                .or_else(|| data["userPrincipalName"].as_str())
+                .map(|s| s.to_string()),
+            name: data["displayName"].as_str().map(|s| s.to_string()),
+            first_name: data["givenName"].as_str().map(|s| s.to_string()),
+            last_name: data["surname"].as_str().map(|s| s.to_string()),
+            picture_url: None, // Microsoft Graph API requires separate call
+            locale: None,
+            verified_email: false,
+            raw_data: data,
+        }
+    }
+
+    /// Parse LinkedIn user profile
+    fn parse_linkedin_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        SocialUserProfile {
+            provider: SocialProvider::LinkedIn,
+            provider_user_id: data["id"].as_str().unwrap_or("").to_string(),
+            email: data["emailAddress"].as_str().map(|s| s.to_string()),
+            name: data["formattedName"].as_str().map(|s| s.to_string()),
+            first_name: data["firstName"].as_str().map(|s| s.to_string()),
+            last_name: data["lastName"].as_str().map(|s| s.to_string()),
+            picture_url: data["pictureUrl"].as_str().map(|s| s.to_string()),
+            locale: None,
+            verified_email: false,
+            raw_data: data,
+        }
+    }
+
+    /// Parse Twitter user profile
+    fn parse_twitter_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        SocialUserProfile {
+            provider: SocialProvider::Twitter,
+            provider_user_id: data["id"].as_str().unwrap_or("").to_string(),
+            email: data["email"].as_str().map(|s| s.to_string()),
+            name: data["name"].as_str().map(|s| s.to_string()),
+            first_name: data["name"].as_str().map(|s| s.to_string()),
+            last_name: None,
+            picture_url: data["profile_image_url"].as_str().map(|s| s.to_string()),
+            locale: None,
+            verified_email: false,
+            raw_data: data,
+        }
+    }
+
+    /// Parse Apple user profile
+    fn parse_apple_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        SocialUserProfile {
+            provider: SocialProvider::Apple,
+            provider_user_id: data["sub"].as_str().unwrap_or("").to_string(),
+            email: data["email"].as_str().map(|s| s.to_string()),
+            name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
+            first_name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
+            last_name: data["name"]["lastName"].as_str().map(|s| s.to_string()),
+            picture_url: None,
+            locale: None,
+            verified_email: data["email_verified"].as_bool().unwrap_or(false),
+            raw_data: data,
+        }
+    }
+
+    /// Parse Discord user profile
+    fn parse_discord_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        SocialUserProfile {
+            provider: SocialProvider::Custom("discord".to_string()),
+            provider_user_id: data["id"].as_str().unwrap_or("").to_string(),
+            email: data["email"].as_str().map(|s| s.to_string()),
+            name: data["username"].as_str().map(|s| s.to_string()),
+            first_name: data["username"].as_str().map(|s| s.to_string()),
+            last_name: data["discriminator"].as_str().map(|s| s.to_string()),
+            picture_url: data["avatar"]
+                .as_str()
+                .map(|s| format!("https://cdn.discordapp.com/avatars/{}/{}", data["id"], s)),
+            locale: data["locale"].as_str().map(|s| s.to_string()),
+            verified_email: data["verified"].as_bool().unwrap_or(false),
+            raw_data: data,
+        }
+    }
+
+    /// Parse Slack user profile
+    fn parse_slack_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        SocialUserProfile {
+            provider: SocialProvider::Custom("slack".to_string()),
+            provider_user_id: data["user"]["id"].as_str().unwrap_or("").to_string(),
+            email: data["user"]["email"].as_str().map(|s| s.to_string()),
+            name: data["user"]["name"].as_str().map(|s| s.to_string()),
+            first_name: data["user"]["name"].as_str().map(|s| s.to_string()),
+            last_name: None,
+            picture_url: data["user"]["image_192"].as_str().map(|s| s.to_string()),
+            locale: data["user"]["locale"].as_str().map(|s| s.to_string()),
+            verified_email: false,
             raw_data: data,
         }
     }
@@ -331,7 +497,11 @@ impl OAuthConfigs {
             authorization_url: "https://accounts.google.com/o/oauth2/auth".to_string(),
             token_url: "https://oauth2.googleapis.com/token".to_string(),
             user_info_url: "https://www.googleapis.com/oauth2/v2/userinfo".to_string(),
-            scopes: vec!["openid".to_string(), "profile".to_string(), "email".to_string()],
+            scopes: vec![
+                "openid".to_string(),
+                "profile".to_string(),
+                "email".to_string(),
+            ],
             provider: SocialProvider::Google,
         }
     }
@@ -349,16 +519,86 @@ impl OAuthConfigs {
         }
     }
 
-    pub fn facebook() -> OAuthConfig {
+    pub fn microsoft() -> OAuthConfig {
         OAuthConfig {
-            client_id: std::env::var("FACEBOOK_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("FACEBOOK_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("FACEBOOK_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: "https://www.facebook.com/v12.0/dialog/oauth".to_string(),
-            token_url: "https://graph.facebook.com/v12.0/oauth/access_token".to_string(),
-            user_info_url: "https://graph.facebook.com/me".to_string(),
-            scopes: vec!["email".to_string(), "public_profile".to_string()],
-            provider: SocialProvider::Facebook,
+            client_id: std::env::var("MICROSOFT_CLIENT_ID").unwrap_or_default(),
+            client_secret: std::env::var("MICROSOFT_CLIENT_SECRET").unwrap_or_default(),
+            redirect_uri: std::env::var("MICROSOFT_REDIRECT_URI").unwrap_or_default(),
+            authorization_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+                .to_string(),
+            token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string(),
+            user_info_url: "https://graph.microsoft.com/v1.0/me".to_string(),
+            scopes: vec![
+                "openid".to_string(),
+                "profile".to_string(),
+                "email".to_string(),
+            ],
+            provider: SocialProvider::Microsoft,
+        }
+    }
+
+    pub fn linkedin() -> OAuthConfig {
+        OAuthConfig {
+            client_id: std::env::var("LINKEDIN_CLIENT_ID").unwrap_or_default(),
+            client_secret: std::env::var("LINKEDIN_CLIENT_SECRET").unwrap_or_default(),
+            redirect_uri: std::env::var("LINKEDIN_REDIRECT_URI").unwrap_or_default(),
+            authorization_url: "https://www.linkedin.com/oauth/v2/authorization".to_string(),
+            token_url: "https://www.linkedin.com/oauth/v2/accessToken".to_string(),
+            user_info_url: "https://api.linkedin.com/v2/people/~".to_string(),
+            scopes: vec!["r_liteprofile".to_string(), "r_emailaddress".to_string()],
+            provider: SocialProvider::LinkedIn,
+        }
+    }
+
+    pub fn twitter() -> OAuthConfig {
+        OAuthConfig {
+            client_id: std::env::var("TWITTER_CLIENT_ID").unwrap_or_default(),
+            client_secret: std::env::var("TWITTER_CLIENT_SECRET").unwrap_or_default(),
+            redirect_uri: std::env::var("TWITTER_REDIRECT_URI").unwrap_or_default(),
+            authorization_url: "https://twitter.com/i/oauth2/authorize".to_string(),
+            token_url: "https://api.twitter.com/2/oauth2/token".to_string(),
+            user_info_url: "https://api.twitter.com/2/users/me".to_string(),
+            scopes: vec!["tweet.read".to_string(), "users.read".to_string()],
+            provider: SocialProvider::Twitter,
+        }
+    }
+
+    pub fn apple() -> OAuthConfig {
+        OAuthConfig {
+            client_id: std::env::var("APPLE_CLIENT_ID").unwrap_or_default(),
+            client_secret: std::env::var("APPLE_CLIENT_SECRET").unwrap_or_default(),
+            redirect_uri: std::env::var("APPLE_REDIRECT_URI").unwrap_or_default(),
+            authorization_url: "https://appleid.apple.com/auth/authorize".to_string(),
+            token_url: "https://appleid.apple.com/auth/token".to_string(),
+            user_info_url: "https://appleid.apple.com/auth/userinfo".to_string(),
+            scopes: vec!["name".to_string(), "email".to_string()],
+            provider: SocialProvider::Apple,
+        }
+    }
+
+    pub fn discord() -> OAuthConfig {
+        OAuthConfig {
+            client_id: std::env::var("DISCORD_CLIENT_ID").unwrap_or_default(),
+            client_secret: std::env::var("DISCORD_CLIENT_SECRET").unwrap_or_default(),
+            redirect_uri: std::env::var("DISCORD_REDIRECT_URI").unwrap_or_default(),
+            authorization_url: "https://discord.com/api/oauth2/authorize".to_string(),
+            token_url: "https://discord.com/api/oauth2/token".to_string(),
+            user_info_url: "https://discord.com/api/users/@me".to_string(),
+            scopes: vec!["identify".to_string(), "email".to_string()],
+            provider: SocialProvider::Custom("discord".to_string()),
+        }
+    }
+
+    pub fn slack() -> OAuthConfig {
+        OAuthConfig {
+            client_id: std::env::var("SLACK_CLIENT_ID").unwrap_or_default(),
+            client_secret: std::env::var("SLACK_CLIENT_SECRET").unwrap_or_default(),
+            redirect_uri: std::env::var("SLACK_REDIRECT_URI").unwrap_or_default(),
+            authorization_url: "https://slack.com/oauth/v2/authorize".to_string(),
+            token_url: "https://slack.com/api/oauth.v2.access".to_string(),
+            user_info_url: "https://slack.com/api/users.identity".to_string(),
+            scopes: vec!["identity.basic".to_string(), "identity.email".to_string()],
+            provider: SocialProvider::Custom("slack".to_string()),
         }
     }
 }

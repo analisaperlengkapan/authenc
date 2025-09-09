@@ -1,6 +1,6 @@
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
-use crate::services::saml::{SamlService, SamlServiceProvider, SamlIdentityProvider};
+use crate::services::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
 use axum::{
     extract::{Query, State},
     response::{Html, Redirect},
@@ -38,8 +38,7 @@ pub async fn sp_metadata(
     service.register_service_provider(sp);
 
     let default_entity_id = "https://authenc.example.com/saml/sp".to_string();
-    let entity_id = params.get("entity_id")
-        .unwrap_or(&default_entity_id);
+    let entity_id = params.get("entity_id").unwrap_or(&default_entity_id);
 
     match service.generate_sp_metadata(entity_id) {
         Ok(metadata) => Ok(Html(metadata)),
@@ -66,8 +65,7 @@ pub async fn idp_metadata(
     service.register_identity_provider(idp);
 
     let default_entity_id = "https://authenc.example.com/saml/idp".to_string();
-    let entity_id = params.get("entity_id")
-        .unwrap_or(&default_entity_id);
+    let entity_id = params.get("entity_id").unwrap_or(&default_entity_id);
 
     match service.generate_idp_metadata(entity_id) {
         Ok(metadata) => Ok(Html(metadata)),
@@ -105,16 +103,17 @@ pub async fn saml_auth(
     service.register_identity_provider(idp);
 
     let default_sp_entity_id = "https://authenc.example.com/saml/sp".to_string();
-    let sp_entity_id = params.get("sp")
-        .unwrap_or(&default_sp_entity_id);
+    let sp_entity_id = params.get("sp").unwrap_or(&default_sp_entity_id);
 
     let default_idp_entity_id = "https://idp.example.com/saml/idp".to_string();
-    let idp_entity_id = params.get("idp")
-        .unwrap_or(&default_idp_entity_id);
+    let idp_entity_id = params.get("idp").unwrap_or(&default_idp_entity_id);
 
     let relay_state = params.get("RelayState").map(|s| s.as_str());
 
-    match service.generate_authn_request(sp_entity_id, idp_entity_id, relay_state).await {
+    match service
+        .generate_authn_request(sp_entity_id, idp_entity_id, relay_state)
+        .await
+    {
         Ok(redirect_url) => Ok(Redirect::to(&redirect_url)),
         Err(_) => Err(AuthencError::internal("Internal server error")),
     }
@@ -159,7 +158,7 @@ pub async fn saml_acs(
                 user_info.attributes
             );
             Ok(Html(html))
-        },
+        }
         Err(_) => {
             let html = r#"<!DOCTYPE html>
 <html>

@@ -313,6 +313,10 @@ pub struct FeatureConfig {
     /// Enable CORS
     #[serde(default = "default_true")]
     pub enable_cors: bool,
+
+    /// Enable input validation middleware
+    #[serde(default = "default_true")]
+    pub enable_input_validation: bool,
 }
 
 impl AppConfig {
@@ -563,6 +567,7 @@ impl Default for AppConfig {
                 enable_caching: true,
                 enable_compression: true,
                 enable_cors: true,
+                enable_input_validation: true,
             },
             rate_limit: RateLimitConfig::default(),
             oidc: None,

@@ -1,15 +1,15 @@
+use crate::database::Database;
+use crate::services::broker::{ExternalUser, IdentityBrokerRegistry, IdentityProviderType};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
-    routing::{get, post, put, delete},
+    routing::{delete, get, post, put},
     Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::database::Database;
-use crate::services::broker::{IdentityBrokerRegistry, IdentityProviderType, ExternalUser};
 
 #[derive(Deserialize)]
 pub struct CreateIdentityProviderRequest {
@@ -163,7 +163,10 @@ pub async fn authenticate(
 ) -> Result<Json<AuthenticationResponse>, StatusCode> {
     let registry = IdentityBrokerRegistry::new();
 
-    match registry.authenticate(&request.username, &request.password, &request.realm_id).await {
+    match registry
+        .authenticate(&request.username, &request.password, &request.realm_id)
+        .await
+    {
         Ok(user) => {
             let success = user.is_some();
             let message = if success {
@@ -199,7 +202,10 @@ pub async fn sync_user(
 ) -> Result<Json<SyncUserResponse>, StatusCode> {
     let registry = IdentityBrokerRegistry::new();
 
-    match registry.sync_user(&request.broker_id, &request.external_user).await {
+    match registry
+        .sync_user(&request.broker_id, &request.external_user)
+        .await
+    {
         Ok(user) => {
             let response = SyncUserResponse {
                 success: true,

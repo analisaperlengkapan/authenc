@@ -1,9 +1,9 @@
-use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
+use crate::crypto::ed25519_keys::{get_ed25519_jwk, ED25519_KEYPAIR};
 use crate::utils::crypto_monitor::CryptoMonitor;
+use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::Utc;
 use ed25519_dalek::{Signature, Signer};
 use serde::{Deserialize, Serialize};
-use base64ct::{Base64UrlUnpadded, Encoding};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ed25519JwtHeader {
@@ -33,13 +33,13 @@ pub fn generate_ed25519_jwt(
     role: Option<&str>,
 ) -> String {
     let now = Utc::now().timestamp();
-    
+
     let header = Ed25519JwtHeader {
         alg: "EdDSA".to_string(),
         typ: "JWT".to_string(),
         kid: "authence-ed25519-key".to_string(),
     };
-    
+
     let claims = OidcIdTokenClaims {
         iss: "http://localhost:8080/v1".to_string(),
         sub: sub.to_string(),
@@ -56,17 +56,17 @@ pub fn generate_ed25519_jwt(
         // Encode header and payload
         let header_json = serde_json::to_string(&header).unwrap();
         let claims_json = serde_json::to_string(&claims).unwrap();
-        
+
         let header_b64 = Base64UrlUnpadded::encode_string(header_json.as_bytes());
         let payload_b64 = Base64UrlUnpadded::encode_string(claims_json.as_bytes());
-        
+
         // Create signing input
         let signing_input = format!("{}.{}", header_b64, payload_b64);
-        
+
         // Sign with Ed25519
         let signature: Signature = ED25519_KEYPAIR.sign(signing_input.as_bytes());
         let signature_b64 = Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
-        
+
         format!("{}.{}", signing_input, signature_b64)
     })
 }
@@ -90,8 +90,12 @@ pub fn verify_ed25519_jwt(token: &str) -> Result<OidcIdTokenClaims, Box<dyn std:
 
     // Verify signature
     let signing_input = format!("{}.{}", parts[0], parts[1]);
-    let signature = Signature::from_bytes(&signature_bytes.try_into().map_err(|_| "Invalid signature length")?);
-    
+    let signature = Signature::from_bytes(
+        &signature_bytes
+            .try_into()
+            .map_err(|_| "Invalid signature length")?,
+    );
+
     let verifying_key = ED25519_KEYPAIR.verifying_key();
     use ed25519_dalek::Verifier;
     verifying_key.verify(signing_input.as_bytes(), &signature)?;
@@ -138,7 +142,7 @@ mod tests {
         let jwks = get_ed25519_jwks();
         assert!(jwks["keys"].is_array());
         assert_eq!(jwks["keys"].as_array().unwrap().len(), 1);
-        
+
         let key = &jwks["keys"][0];
         assert_eq!(key["kty"], "OKP");
         assert_eq!(key["crv"], "Ed25519");

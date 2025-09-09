@@ -63,7 +63,8 @@ impl AesGcmService {
             let nonce = Nonce::from_slice(&nonce_bytes);
 
             // Encrypt the data
-            let ciphertext = cipher.encrypt(nonce, plaintext)
+            let ciphertext = cipher
+                .encrypt(nonce, plaintext)
                 .map_err(|_| AuthencError::CryptographicError)?;
 
             // Split ciphertext and tag (last 16 bytes)
@@ -84,31 +85,36 @@ impl AesGcmService {
             let cipher = Aes256Gcm::new(&self.key);
 
             // Decode components
-            let ciphertext = Base64UrlUnpadded::decode_vec(&encrypted_data.ciphertext)
-                .map_err(|_| AuthencError::ValidationError {
-                    message: "Invalid ciphertext encoding".to_string(),
+            let ciphertext =
+                Base64UrlUnpadded::decode_vec(&encrypted_data.ciphertext).map_err(|_| {
+                    AuthencError::ValidationError {
+                        message: "Invalid ciphertext encoding".to_string(),
+                    }
                 })?;
 
-            let nonce_bytes = Base64UrlUnpadded::decode_vec(&encrypted_data.nonce)
-                .map_err(|_| AuthencError::ValidationError {
-                    message: "Invalid nonce encoding".to_string(),
+            let nonce_bytes =
+                Base64UrlUnpadded::decode_vec(&encrypted_data.nonce).map_err(|_| {
+                    AuthencError::ValidationError {
+                        message: "Invalid nonce encoding".to_string(),
+                    }
                 })?;
 
-            let tag = Base64UrlUnpadded::decode_vec(&encrypted_data.tag)
-                .map_err(|_| AuthencError::ValidationError {
+            let tag = Base64UrlUnpadded::decode_vec(&encrypted_data.tag).map_err(|_| {
+                AuthencError::ValidationError {
                     message: "Invalid tag encoding".to_string(),
-                })?;
+                }
+            })?;
 
             if nonce_bytes.len() != 12 {
                 return Err(AuthencError::ValidationError {
-            message: "Invalid nonce length".to_string(),
-        });
+                    message: "Invalid nonce length".to_string(),
+                });
             }
 
             if tag.len() != 16 {
                 return Err(AuthencError::ValidationError {
-            message: "Invalid tag length".to_string(),
-        });
+                    message: "Invalid tag length".to_string(),
+                });
             }
 
             // Reconstruct full ciphertext with tag
@@ -118,7 +124,8 @@ impl AesGcmService {
             let nonce = Nonce::from_slice(&nonce_bytes);
 
             // Decrypt
-            let plaintext = cipher.decrypt(nonce, full_ciphertext.as_ref())
+            let plaintext = cipher
+                .decrypt(nonce, full_ciphertext.as_ref())
                 .map_err(|_| AuthencError::CryptographicError)?;
 
             Ok(plaintext)
@@ -127,24 +134,26 @@ impl AesGcmService {
 
     /// Encrypt JSON data
     pub fn encrypt_json<T: Serialize>(&self, data: &T) -> Result<EncryptedData> {
-        let json_string = serde_json::to_string(data)
-            .map_err(|_| AuthencError::SerializationError {
+        let json_string =
+            serde_json::to_string(data).map_err(|_| AuthencError::SerializationError {
                 message: "Failed to serialize data".to_string(),
             })?;
         self.encrypt(json_string.as_bytes())
     }
 
     /// Decrypt JSON data
-    pub fn decrypt_json<T: for<'de> Deserialize<'de>>(&self, encrypted_data: &EncryptedData) -> Result<T> {
+    pub fn decrypt_json<T: for<'de> Deserialize<'de>>(
+        &self,
+        encrypted_data: &EncryptedData,
+    ) -> Result<T> {
         let plaintext = self.decrypt(encrypted_data)?;
-        let json_string = String::from_utf8(plaintext)
-            .map_err(|_| AuthencError::SerializationError {
+        let json_string =
+            String::from_utf8(plaintext).map_err(|_| AuthencError::SerializationError {
                 message: "Invalid UTF-8 in decrypted data".to_string(),
             })?;
-        serde_json::from_str(&json_string)
-            .map_err(|_| AuthencError::SerializationError {
-                message: "Failed to deserialize data".to_string(),
-            })
+        serde_json::from_str(&json_string).map_err(|_| AuthencError::SerializationError {
+            message: "Failed to deserialize data".to_string(),
+        })
     }
 
     /// Generate a new encryption key
@@ -165,7 +174,8 @@ impl AesGcmService {
             Params::new(65536, 3, 4, Some(32)).unwrap(),
         );
 
-        argon2.hash_password_into(password.as_bytes(), salt, &mut key)
+        argon2
+            .hash_password_into(password.as_bytes(), salt, &mut key)
             .map_err(|_| AuthencError::CryptographicError)?;
 
         Ok(key)

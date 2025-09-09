@@ -33,14 +33,18 @@ impl AppState {
         let database = Arc::new(
             crate::database::Database::new(&config.database)
                 .await
-                .map_err(|e| AuthencError::database(format!("Failed to initialize database: {}", e)))?
+                .map_err(|e| {
+                    AuthencError::database(format!("Failed to initialize database: {}", e))
+                })?,
         );
 
         // Initialize audit log store
         let audit_log_store = Arc::new(
             crate::services::pg_audit_log_store::PgAuditLogStore::new(&config.database_url())
                 .await
-                .map_err(|e| AuthencError::database(format!("Failed to init audit store: {}", e)))?
+                .map_err(|e| {
+                    AuthencError::database(format!("Failed to init audit store: {}", e))
+                })?,
         );
 
         // Initialize other services
@@ -56,10 +60,12 @@ impl AppState {
         );
 
         let anomaly_detector = Arc::new(crate::services::anomaly_detector::AnomalyDetector::new());
-        let federation_registry = Arc::new(crate::services::federation_provider::FederationRegistry::new());
+        let federation_registry =
+            Arc::new(crate::services::federation_provider::FederationRegistry::new());
         let realm_store = Arc::new(crate::services::services::realm_store::RealmStore::new());
         let role_store = Arc::new(crate::services::services::role_store::RoleStore::new());
-        let permission_store = Arc::new(crate::services::services::permission_store::PermissionStore::new());
+        let permission_store =
+            Arc::new(crate::services::services::permission_store::PermissionStore::new());
 
         Ok(Self {
             config,
@@ -108,7 +114,7 @@ impl ApplicationBuilder {
         #[cfg(not(feature = "axum"))]
         {
             return Err(AuthencError::ConfigurationError {
-                message: "No web framework feature enabled. Enable 'axum' feature.".to_string()
+                message: "No web framework feature enabled. Enable 'axum' feature.".to_string(),
             });
         }
 

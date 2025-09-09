@@ -1,9 +1,9 @@
 use crate::database::Database;
 use crate::error::Result;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 /// Device information and metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,29 +161,108 @@ impl DeviceService {
     }
 
     /// Update device information
-    pub async fn update_device(
-        &self,
-        device_id: Uuid,
-        updates: DeviceUpdateRequest,
-    ) -> Result<()> {
-        // In production, update device in database
+    pub async fn update_device(&self, device_id: Uuid, updates: DeviceUpdateRequest) -> Result<()> {
+        use crate::database::operations::devices;
+
+        if let Some(trust_score) = updates.trust_score {
+            let factors = serde_json::json!({
+                "manual_update": true,
+                "reason": "Administrative update"
+            });
+            devices::update_trust_score(&self.db, device_id, trust_score, factors).await?;
+        }
+
+        // TODO: Implement other update fields (device_name, etc.)
         Ok(())
     }
 
     /// Get device by ID
     pub async fn get_device(&self, device_id: Uuid) -> Result<Option<DeviceInfo>> {
-        // In production, retrieve from database
-        Ok(None)
+        use crate::database::operations::devices;
+        use crate::models::device::Device as ModelDevice;
+
+        match devices::get_device_by_id(&self.db, device_id).await? {
+            Some(model_device) => {
+                // Convert model Device to service DeviceInfo
+                let device_info = DeviceInfo {
+                    id: model_device.id,
+                    user_id: model_device.user_id,
+                    device_name: model_device.device_name.unwrap_or_else(|| "Unknown Device".to_string()),
+                    device_type: self.detect_device_type(&model_device.user_agent.as_ref().unwrap_or(&"".to_string())),
+                    os: model_device.os.unwrap_or_default(),
+                    os_version: model_device.os_version.unwrap_or_default(),
+                    browser: model_device.browser,
+                    browser_version: model_device.browser_version,
+                    ip_address: model_device.ip_address.unwrap_or_default(),
+                    user_agent: model_device.user_agent.as_ref().unwrap_or(&"".to_string()).clone(),
+                    fingerprint: model_device.device_fingerprint,
+                    trust_score: model_device.trust_score,
+                    is_trusted: model_device.trust_score > 0.7,
+                    last_seen: model_device.last_seen_at,
+                    created_at: model_device.created_at,
+                    location: None, // TODO: Parse from location_data JSON
+                    security_features: DeviceSecurityFeatures {
+                        has_biometrics: false, // TODO: Store in database
+                        has_hardware_security: false,
+                        has_screen_lock: false,
+                        encryption_enabled: false,
+                        remote_wipe_capable: false,
+                        jailbreak_detected: false,
+                    },
+                };
+                Ok(Some(device_info))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Get user's devices
     pub async fn get_user_devices(&self, user_id: Uuid) -> Result<Vec<DeviceInfo>> {
-        // In production, retrieve from database
-        Ok(vec![])
+        use crate::database::operations::devices;
+        use crate::models::device::Device as ModelDevice;
+
+        let model_devices = devices::list_user_devices(&self.db, user_id).await?;
+
+        let mut service_devices = Vec::new();
+        for model_device in model_devices {
+            let device_info = DeviceInfo {
+                id: model_device.id,
+                user_id: model_device.user_id,
+                device_name: model_device.device_name.unwrap_or_else(|| "Unknown Device".to_string()),
+                device_type: self.detect_device_type(&model_device.user_agent.as_ref().unwrap_or(&"".to_string())),
+                os: model_device.os.unwrap_or_default(),
+                os_version: model_device.os_version.unwrap_or_default(),
+                browser: model_device.browser,
+                browser_version: model_device.browser_version,
+                ip_address: model_device.ip_address.unwrap_or_default(),
+                user_agent: model_device.user_agent.as_ref().unwrap_or(&"".to_string()).clone(),
+                fingerprint: model_device.device_fingerprint,
+                trust_score: model_device.trust_score,
+                is_trusted: model_device.trust_score > 0.7,
+                last_seen: model_device.last_seen_at,
+                created_at: model_device.created_at,
+                location: None, // TODO: Parse from location_data JSON
+                security_features: DeviceSecurityFeatures {
+                    has_biometrics: false, // TODO: Store in database
+                    has_hardware_security: false,
+                    has_screen_lock: false,
+                    encryption_enabled: false,
+                    remote_wipe_capable: false,
+                    jailbreak_detected: false,
+                },
+            };
+            service_devices.push(device_info);
+        }
+
+        Ok(service_devices)
     }
 
     /// Evaluate device trust
-    pub async fn evaluate_trust(&self, device: &DeviceInfo, context: &TrustEvaluationContext) -> Result<TrustResult> {
+    pub async fn evaluate_trust(
+        &self,
+        device: &DeviceInfo,
+        context: &TrustEvaluationContext,
+    ) -> Result<TrustResult> {
         let mut risk_score = device.trust_score;
         let mut challenges = Vec::new();
         let mut should_deny = false;
@@ -194,24 +273,27 @@ impl DeviceService {
                 continue;
             }
 
-            if self.evaluate_conditions(&policy.conditions, device, context).await? {
+            if self
+                .evaluate_conditions(&policy.conditions, device, context)
+                .await?
+            {
                 match &policy.action {
                     TrustAction::Allow => {
                         // Policy allows, continue evaluation
-                    },
+                    }
                     TrustAction::Deny => {
                         should_deny = true;
                         break;
-                    },
+                    }
                     TrustAction::Challenge(method) => {
                         challenges.push(method.clone());
-                    },
+                    }
                     TrustAction::Quarantine => {
                         risk_score *= 0.5; // Reduce trust score
-                    },
+                    }
                     TrustAction::NotifyAdmin => {
                         // In production, send notification
-                    },
+                    }
                 }
             }
         }
@@ -281,7 +363,8 @@ impl DeviceService {
     pub fn add_trust_policy(&mut self, policy: DeviceTrustPolicy) {
         self.trust_policies.push(policy);
         // Sort by priority
-        self.trust_policies.sort_by(|a, b| b.priority.cmp(&a.priority));
+        self.trust_policies
+            .sort_by(|a, b| b.priority.cmp(&a.priority));
     }
 
     /// Remove trust policy
@@ -312,7 +395,7 @@ impl DeviceService {
 
     /// Generate device fingerprint
     fn generate_device_fingerprint(&self, device_info: &DeviceRegistrationRequest) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
 
         hasher.update(&device_info.user_agent);
@@ -368,52 +451,59 @@ impl DeviceService {
             let matches = match condition {
                 TrustCondition::TrustScoreAbove(threshold) => device.trust_score > *threshold,
                 TrustCondition::TrustScoreBelow(threshold) => device.trust_score < *threshold,
-                TrustCondition::DeviceTypeEquals(device_type) => std::mem::discriminant(&device.device_type) == std::mem::discriminant(device_type),
+                TrustCondition::DeviceTypeEquals(device_type) => {
+                    std::mem::discriminant(&device.device_type)
+                        == std::mem::discriminant(device_type)
+                }
                 TrustCondition::LocationIn(countries) => {
                     if let Some(location) = &device.location {
-                        location.country.as_ref().map_or(false, |c| countries.contains(c))
+                        location
+                            .country
+                            .as_ref()
+                            .map_or(false, |c| countries.contains(c))
                     } else {
                         false
                     }
-                },
+                }
                 TrustCondition::LocationNotIn(countries) => {
                     if let Some(location) = &device.location {
-                        location.country.as_ref().map_or(true, |c| !countries.contains(c))
+                        location
+                            .country
+                            .as_ref()
+                            .map_or(true, |c| !countries.contains(c))
                     } else {
                         true
                     }
-                },
+                }
                 TrustCondition::IpInRange(start, end) => {
                     // In production, implement IP range checking
                     false
+                }
+                TrustCondition::HasSecurityFeature(feature) => match feature.as_str() {
+                    "biometrics" => device.security_features.has_biometrics,
+                    "hardware_security" => device.security_features.has_hardware_security,
+                    "screen_lock" => device.security_features.has_screen_lock,
+                    "encryption" => device.security_features.encryption_enabled,
+                    "remote_wipe" => device.security_features.remote_wipe_capable,
+                    _ => false,
                 },
-                TrustCondition::HasSecurityFeature(feature) => {
-                    match feature.as_str() {
-                        "biometrics" => device.security_features.has_biometrics,
-                        "hardware_security" => device.security_features.has_hardware_security,
-                        "screen_lock" => device.security_features.has_screen_lock,
-                        "encryption" => device.security_features.encryption_enabled,
-                        "remote_wipe" => device.security_features.remote_wipe_capable,
-                        _ => false,
-                    }
-                },
-                TrustCondition::NoSecurityFeature(feature) => {
-                    match feature.as_str() {
-                        "biometrics" => !device.security_features.has_biometrics,
-                        "hardware_security" => !device.security_features.has_hardware_security,
-                        "screen_lock" => !device.security_features.has_screen_lock,
-                        "encryption" => !device.security_features.encryption_enabled,
-                        "remote_wipe" => !device.security_features.remote_wipe_capable,
-                        _ => true,
-                    }
+                TrustCondition::NoSecurityFeature(feature) => match feature.as_str() {
+                    "biometrics" => !device.security_features.has_biometrics,
+                    "hardware_security" => !device.security_features.has_hardware_security,
+                    "screen_lock" => !device.security_features.has_screen_lock,
+                    "encryption" => !device.security_features.encryption_enabled,
+                    "remote_wipe" => !device.security_features.remote_wipe_capable,
+                    _ => true,
                 },
                 TrustCondition::FirstTimeLogin => context.is_first_login,
                 TrustCondition::KnownDevice => context.known_device,
                 TrustCondition::UnknownDevice => !context.known_device,
                 TrustCondition::TimeSinceLastLogin(minutes) => {
-                    let time_since = Utc::now().signed_duration_since(device.last_seen).num_minutes();
+                    let time_since = Utc::now()
+                        .signed_duration_since(device.last_seen)
+                        .num_minutes();
                     time_since > *minutes as i64
-                },
+                }
             };
 
             if !matches {
@@ -449,14 +539,30 @@ impl DeviceService {
         score.max(0.0).min(1.0)
     }
 
-    // Database operations (simplified)
+    // Database operations
     async fn store_device(&self, device: &DeviceInfo) -> Result<()> {
-        // In production, store in database
+        use crate::database::operations::devices;
+        use crate::models::device::DeviceInfo as ModelDeviceInfo;
+
+        // Convert service DeviceInfo to model DeviceInfo
+        let model_device_info = ModelDeviceInfo {
+            device_name: Some(device.device_name.clone()),
+            fingerprint: device.fingerprint.clone(),
+            os: Some(device.os.clone()),
+            os_version: Some(device.os_version.clone()),
+            browser: device.browser.clone(),
+            browser_version: device.browser_version.clone(),
+            ip_address: device.ip_address.parse().ok(),
+            user_agent: Some(device.user_agent.clone()),
+        };
+
+        devices::register_device(&self.db, device.user_id, &model_device_info).await?;
         Ok(())
     }
 
     async fn store_session(&self, session: &DeviceSession) -> Result<()> {
-        // In production, store in database
+        // TODO: Implement session storage in database
+        // For now, this is a placeholder
         Ok(())
     }
 }

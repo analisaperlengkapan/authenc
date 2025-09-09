@@ -1,10 +1,10 @@
+use anyhow::Result;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use anyhow::Result;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 /// Compliance framework types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -100,7 +100,8 @@ impl GDPRComplianceChecks {
                 framework: ComplianceFramework::GDPR,
                 requirement_id: "Article 32".to_string(),
                 title: "Security of processing".to_string(),
-                description: "Appropriate technical and organisational measures for data security".to_string(),
+                description: "Appropriate technical and organisational measures for data security"
+                    .to_string(),
                 category: ComplianceCategory::Encryption,
                 severity: ComplianceSeverity::High,
                 enabled: true,
@@ -218,12 +219,8 @@ impl ComplianceCheck for GDPRConsentManagementCheck {
     async fn execute(&self) -> Result<ComplianceCheckResult> {
         // TODO: Check consent management implementation
         let status = ComplianceStatus::PartiallyCompliant; // Placeholder
-        let evidence = vec![
-            "Consent management UI implemented".to_string(),
-        ];
-        let violations = vec![
-            "Granular consent options not fully implemented".to_string(),
-        ];
+        let evidence = vec!["Consent management UI implemented".to_string()];
+        let violations = vec!["Granular consent options not fully implemented".to_string()];
         let remediation_steps = vec![
             "Implement granular consent options".to_string(),
             "Add consent withdrawal functionality".to_string(),
@@ -260,7 +257,9 @@ impl HIPAAComplianceChecks {
                 framework: ComplianceFramework::HIPAA,
                 requirement_id: "164.312(a)(1)".to_string(),
                 title: "Access Control".to_string(),
-                description: "Implement technical policies and procedures for electronic information systems".to_string(),
+                description:
+                    "Implement technical policies and procedures for electronic information systems"
+                        .to_string(),
                 category: ComplianceCategory::AccessControl,
                 severity: ComplianceSeverity::High,
                 enabled: true,
@@ -445,7 +444,10 @@ impl ComplianceService {
         let mut recommendations = Vec::new();
 
         for result in results {
-            if matches!(result.status, ComplianceStatus::NonCompliant | ComplianceStatus::PartiallyCompliant) {
+            if matches!(
+                result.status,
+                ComplianceStatus::NonCompliant | ComplianceStatus::PartiallyCompliant
+            ) {
                 recommendations.extend(result.remediation_steps.clone());
             }
         }
@@ -516,20 +518,26 @@ impl DataSubjectRightsService {
     }
 
     /// Handle data access request (GDPR Article 15)
-    pub async fn handle_data_access_request(&self, user_id: &str, request_id: &str) -> Result<DataAccessResponse> {
+    pub async fn handle_data_access_request(
+        &self,
+        user_id: &str,
+        request_id: &str,
+    ) -> Result<DataAccessResponse> {
         // TODO: Implement data access request handling
         // Collect all personal data for the user
         // Generate report
         // Log the access request
 
-        self.audit_service.log_compliance_event(&ComplianceEvent {
-            event_type: ComplianceEventType::ManualReviewRequired,
-            framework: ComplianceFramework::GDPR,
-            requirement_id: "Article 15".to_string(),
-            user_id: Some(user_id.to_string()),
-            details: format!("Data access request {} for user {}", request_id, user_id),
-            timestamp: Utc::now(),
-        }).await?;
+        self.audit_service
+            .log_compliance_event(&ComplianceEvent {
+                event_type: ComplianceEventType::ManualReviewRequired,
+                framework: ComplianceFramework::GDPR,
+                requirement_id: "Article 15".to_string(),
+                user_id: Some(user_id.to_string()),
+                details: format!("Data access request {} for user {}", request_id, user_id),
+                timestamp: Utc::now(),
+            })
+            .await?;
 
         Ok(DataAccessResponse {
             request_id: request_id.to_string(),
@@ -540,19 +548,29 @@ impl DataSubjectRightsService {
     }
 
     /// Handle data rectification request (GDPR Article 16)
-    pub async fn handle_data_rectification_request(&self, user_id: &str,         request_id: &str, _corrections: HashMap<String, String>) -> Result<()> {
+    pub async fn handle_data_rectification_request(
+        &self,
+        user_id: &str,
+        request_id: &str,
+        _corrections: HashMap<String, String>,
+    ) -> Result<()> {
         // TODO: Implement data rectification
         // Update user data based on corrections
         // Log the rectification
 
-        self.audit_service.log_compliance_event(&ComplianceEvent {
-            event_type: ComplianceEventType::ManualReviewRequired,
-            framework: ComplianceFramework::GDPR,
-            requirement_id: "Article 16".to_string(),
-            user_id: Some(user_id.to_string()),
-            details: format!("Data rectification request {} for user {}", request_id, user_id),
-            timestamp: Utc::now(),
-        }).await?;
+        self.audit_service
+            .log_compliance_event(&ComplianceEvent {
+                event_type: ComplianceEventType::ManualReviewRequired,
+                framework: ComplianceFramework::GDPR,
+                requirement_id: "Article 16".to_string(),
+                user_id: Some(user_id.to_string()),
+                details: format!(
+                    "Data rectification request {} for user {}",
+                    request_id, user_id
+                ),
+                timestamp: Utc::now(),
+            })
+            .await?;
 
         Ok(())
     }
@@ -563,14 +581,16 @@ impl DataSubjectRightsService {
         // Delete user data (with exceptions for legal requirements)
         // Log the erasure
 
-        self.audit_service.log_compliance_event(&ComplianceEvent {
-            event_type: ComplianceEventType::ManualReviewRequired,
-            framework: ComplianceFramework::GDPR,
-            requirement_id: "Article 17".to_string(),
-            user_id: Some(user_id.to_string()),
-            details: format!("Data erasure request {} for user {}", request_id, user_id),
-            timestamp: Utc::now(),
-        }).await?;
+        self.audit_service
+            .log_compliance_event(&ComplianceEvent {
+                event_type: ComplianceEventType::ManualReviewRequired,
+                framework: ComplianceFramework::GDPR,
+                requirement_id: "Article 17".to_string(),
+                user_id: Some(user_id.to_string()),
+                details: format!("Data erasure request {} for user {}", request_id, user_id),
+                timestamp: Utc::now(),
+            })
+            .await?;
 
         Ok(())
     }

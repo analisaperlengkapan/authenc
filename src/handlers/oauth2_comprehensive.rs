@@ -1,17 +1,17 @@
-use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
+use crate::crypto::ed25519_keys::{get_ed25519_jwk, ED25519_KEYPAIR};
 use crate::error::AuthencError;
 use crate::utils::crypto_monitor::CryptoMonitor;
 use axum::{
-    extract::{Query, State},
-    http::{StatusCode, HeaderMap},
-    response::{Json, Redirect},
     debug_handler,
+    extract::{Query, State},
+    http::{HeaderMap, StatusCode},
+    response::{Json, Redirect},
 };
+use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::Utc;
 use ed25519_dalek::{Signature, Signer};
 use serde::{Deserialize, Serialize};
-use base64ct::{Base64UrlUnpadded, Encoding};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -183,14 +183,20 @@ pub fn generate_code_challenge(code_verifier: &str, method: &str) -> Result<Stri
             hasher.update(code_verifier.as_bytes());
             let hash = hasher.finalize();
             Ok(Base64UrlUnpadded::encode_string(&hash))
-        },
+        }
         "plain" => Ok(code_verifier.to_string()),
-        _ => Err(AuthencError::validation("Unsupported code challenge method")),
+        _ => Err(AuthencError::validation(
+            "Unsupported code challenge method",
+        )),
     }
 }
 
 /// Verify PKCE code challenge
-pub fn verify_code_challenge(code_verifier: &str, code_challenge: &str, method: &str) -> Result<bool, AuthencError> {
+pub fn verify_code_challenge(
+    code_verifier: &str,
+    code_challenge: &str,
+    method: &str,
+) -> Result<bool, AuthencError> {
     let computed_challenge = generate_code_challenge(code_verifier, method)?;
     Ok(computed_challenge == code_challenge)
 }
@@ -250,7 +256,11 @@ pub fn generate_id_token(
     if let Some(nonce_val) = nonce {
         // Note: In a real implementation, you'd extend the claims struct
         // For now, we'll add it to the email field temporarily
-        claims.email = Some(format!("{}:{}", claims.email.unwrap_or_default(), nonce_val));
+        claims.email = Some(format!(
+            "{}:{}",
+            claims.email.unwrap_or_default(),
+            nonce_val
+        ));
     }
 
     CryptoMonitor::monitor_rsa_operation("ed25519_id_token_signing", || {
@@ -282,16 +292,29 @@ pub fn validate_client(client_id: &str, client_secret: Option<&str>) -> Result<b
 }
 
 /// Validate scope
-pub fn validate_scope(requested_scope: Option<&str>, _client_id: &str) -> Result<Vec<String>, AuthencError> {
-    let default_scopes = vec!["openid".to_string(), "profile".to_string(), "email".to_string()];
+pub fn validate_scope(
+    requested_scope: Option<&str>,
+    _client_id: &str,
+) -> Result<Vec<String>, AuthencError> {
+    let default_scopes = vec![
+        "openid".to_string(),
+        "profile".to_string(),
+        "email".to_string(),
+    ];
 
     if let Some(scope_str) = requested_scope {
-        let requested_scopes: Vec<String> = scope_str.split_whitespace().map(|s| s.to_string()).collect();
+        let requested_scopes: Vec<String> = scope_str
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect();
 
         // Validate requested scopes are allowed
         for scope in &requested_scopes {
             if !default_scopes.contains(scope) {
-                return Err(AuthencError::validation(&format!("Invalid scope: {}", scope)));
+                return Err(AuthencError::validation(&format!(
+                    "Invalid scope: {}",
+                    scope
+                )));
             }
         }
 
@@ -370,7 +393,9 @@ pub async fn oauth2_authorize(
             return Err(AuthencError::validation("Invalid code_challenge_method"));
         }
         if params.code_challenge.is_none() {
-            return Err(AuthencError::validation("code_challenge required when code_challenge_method is provided"));
+            return Err(AuthencError::validation(
+                "code_challenge required when code_challenge_method is provided",
+            ));
         }
     }
 
@@ -403,7 +428,9 @@ pub async fn oauth2_authorize(
     }
 
     // Build redirect URI
-    let mut redirect_uri = params.redirect_uri.unwrap_or_else(|| "http://localhost:8080/callback".to_string());
+    let mut redirect_uri = params
+        .redirect_uri
+        .unwrap_or_else(|| "http://localhost:8080/callback".to_string());
     redirect_uri.push_str(&format!("?code={}", auth_code));
 
     if let Some(state) = params.state {
@@ -423,18 +450,10 @@ pub async fn oauth2_token(
     let stores = &state.oauth2_stores;
 
     match params.grant_type.as_str() {
-        "authorization_code" => {
-            handle_authorization_code_grant(params, stores.clone(), now).await
-        },
-        "client_credentials" => {
-            handle_client_credentials_grant(params, stores.clone(), now).await
-        },
-        "password" => {
-            handle_password_grant(params, stores.clone(), now).await
-        },
-        "refresh_token" => {
-            handle_refresh_token_grant(params, stores.clone(), now).await
-        },
+        "authorization_code" => handle_authorization_code_grant(params, stores.clone(), now).await,
+        "client_credentials" => handle_client_credentials_grant(params, stores.clone(), now).await,
+        "password" => handle_password_grant(params, stores.clone(), now).await,
+        "refresh_token" => handle_refresh_token_grant(params, stores.clone(), now).await,
         _ => Err(AuthencError::validation("Unsupported grant_type")),
     }
 }
@@ -445,8 +464,12 @@ async fn handle_authorization_code_grant(
     stores: Arc<OAuth2Stores>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
-    let code = params.code.ok_or(AuthencError::validation("code required"))?;
-    let client_id = params.client_id.ok_or(AuthencError::validation("client_id required"))?;
+    let code = params
+        .code
+        .ok_or(AuthencError::validation("code required"))?;
+    let client_id = params
+        .client_id
+        .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
     if !validate_client(&client_id, params.client_secret.as_deref())? {
@@ -457,10 +480,13 @@ async fn handle_authorization_code_grant(
     let code_entry = {
         let codes = stores.auth_codes.read().await;
         codes.get(&code).cloned()
-    }.ok_or(AuthencError::validation("Invalid authorization code"))?;
+    }
+    .ok_or(AuthencError::validation("Invalid authorization code"))?;
 
     if code_entry.used || code_entry.expires_at < now {
-        return Err(AuthencError::validation("Authorization code expired or already used"));
+        return Err(AuthencError::validation(
+            "Authorization code expired or already used",
+        ));
     }
 
     if code_entry.client_id != client_id {
@@ -478,8 +504,13 @@ async fn handle_authorization_code_grant(
 
     // Validate PKCE
     if let Some(challenge) = &code_entry.code_challenge {
-        let verifier = params.code_verifier.ok_or(AuthencError::validation("code_verifier required"))?;
-        let method = code_entry.code_challenge_method.as_deref().unwrap_or("plain");
+        let verifier = params
+            .code_verifier
+            .ok_or(AuthencError::validation("code_verifier required"))?;
+        let method = code_entry
+            .code_challenge_method
+            .as_deref()
+            .unwrap_or("plain");
 
         if !verify_code_challenge(&verifier, challenge, method)? {
             return Err(AuthencError::validation("Invalid code verifier"));
@@ -495,7 +526,10 @@ async fn handle_authorization_code_grant(
     }
 
     // Generate tokens
-    let scopes = code_entry.scope.as_deref().unwrap_or("openid profile email");
+    let scopes = code_entry
+        .scope
+        .as_deref()
+        .unwrap_or("openid profile email");
 
     let access_token_claims = AccessTokenClaims {
         iss: "http://localhost:8080/v1".to_string(),
@@ -563,7 +597,9 @@ async fn handle_client_credentials_grant(
     stores: Arc<OAuth2Stores>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
-    let client_id = params.client_id.ok_or(AuthencError::validation("client_id required"))?;
+    let client_id = params
+        .client_id
+        .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client credentials
     if !validate_client(&client_id, params.client_secret.as_deref())? {
@@ -615,9 +651,15 @@ async fn handle_password_grant(
     stores: Arc<OAuth2Stores>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
-    let username = params.username.ok_or(AuthencError::validation("username required"))?;
-    let password = params.password.ok_or(AuthencError::validation("password required"))?;
-    let client_id = params.client_id.ok_or(AuthencError::validation("client_id required"))?;
+    let username = params
+        .username
+        .ok_or(AuthencError::validation("username required"))?;
+    let password = params
+        .password
+        .ok_or(AuthencError::validation("password required"))?;
+    let client_id = params
+        .client_id
+        .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
     if !validate_client(&client_id, params.client_secret.as_deref())? {
@@ -701,8 +743,12 @@ async fn handle_refresh_token_grant(
     stores: Arc<OAuth2Stores>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
-    let refresh_token = params.refresh_token.ok_or(AuthencError::validation("refresh_token required"))?;
-    let client_id = params.client_id.ok_or(AuthencError::validation("client_id required"))?;
+    let refresh_token = params
+        .refresh_token
+        .ok_or(AuthencError::validation("refresh_token required"))?;
+    let client_id = params
+        .client_id
+        .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
     if !validate_client(&client_id, params.client_secret.as_deref())? {
@@ -713,7 +759,8 @@ async fn handle_refresh_token_grant(
     let refresh_entry = {
         let tokens = stores.refresh_tokens.read().await;
         tokens.get(&refresh_token).cloned()
-    }.ok_or(AuthencError::validation("Invalid refresh token"))?;
+    }
+    .ok_or(AuthencError::validation("Invalid refresh token"))?;
 
     if refresh_entry.revoked || refresh_entry.expires_at < now {
         return Err(AuthencError::validation("Refresh token expired or revoked"));
@@ -727,8 +774,15 @@ async fn handle_refresh_token_grant(
     let requested_scope = params.scope.as_deref();
     let scope_str = if let Some(scope) = requested_scope {
         // Ensure requested scope is subset of original scope
-        let original_scopes: Vec<String> = refresh_entry.scope.as_deref().unwrap_or("").split_whitespace().map(|s| s.to_string()).collect();
-        let requested_scopes: Vec<String> = scope.split_whitespace().map(|s| s.to_string()).collect();
+        let original_scopes: Vec<String> = refresh_entry
+            .scope
+            .as_deref()
+            .unwrap_or("")
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect();
+        let requested_scopes: Vec<String> =
+            scope.split_whitespace().map(|s| s.to_string()).collect();
 
         for req_scope in &requested_scopes {
             if !original_scopes.contains(req_scope) {
@@ -737,7 +791,9 @@ async fn handle_refresh_token_grant(
         }
         scope.to_string()
     } else {
-        refresh_entry.scope.unwrap_or_else(|| "openid profile email".to_string())
+        refresh_entry
+            .scope
+            .unwrap_or_else(|| "openid profile email".to_string())
     };
 
     // Generate new access token
@@ -815,11 +871,14 @@ pub async fn oauth2_introspect(
     // Try to find access token
     let claims = {
         let tokens = stores.access_tokens.read().await;
-        tokens.values().find(|claims| {
-            // In a real implementation, you'd decode and validate the JWT
-            // For demonstration, we'll do a simple lookup
-            claims.jti == params.token || claims.sub == params.token
-        }).cloned()
+        tokens
+            .values()
+            .find(|claims| {
+                // In a real implementation, you'd decode and validate the JWT
+                // For demonstration, we'll do a simple lookup
+                claims.jti == params.token || claims.sub == params.token
+            })
+            .cloned()
     };
 
     if let Some(claims) = claims {
@@ -914,9 +973,10 @@ pub async fn oauth2_userinfo(
     State(state): State<Arc<OAuth2AppState>>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     let stores = &state.oauth2_stores;
-    
+
     // Extract Authorization header
-    let auth_header = headers.get("authorization")
+    let auth_header = headers
+        .get("authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "))
         .ok_or(AuthencError::unauthorized("Unauthorized"))?;
@@ -924,11 +984,15 @@ pub async fn oauth2_userinfo(
     // Validate access token
     let claims = {
         let tokens = stores.access_tokens.read().await;
-        tokens.values().find(|claims| {
-            // In a real implementation, you'd decode and validate the JWT
-            claims.jti == auth_header || claims.sub == auth_header
-        }).cloned()
-    }.ok_or(AuthencError::unauthorized("Invalid access token"))?;
+        tokens
+            .values()
+            .find(|claims| {
+                // In a real implementation, you'd decode and validate the JWT
+                claims.jti == auth_header || claims.sub == auth_header
+            })
+            .cloned()
+    }
+    .ok_or(AuthencError::unauthorized("Invalid access token"))?;
 
     // Return user info based on scope
     let mut userinfo = serde_json::json!({

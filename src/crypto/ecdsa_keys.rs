@@ -1,13 +1,13 @@
-use p256::{
-    ecdsa::{SigningKey, VerifyingKey, Signature, signature::Signer, signature::Verifier},
-    pkcs8::{EncodePrivateKey, EncodePublicKey},
-    elliptic_curve::sec1::ToEncodedPoint,
-    SecretKey, PublicKey,
-};
+use base64ct::{Base64UrlUnpadded, Encoding};
 use once_cell::sync::Lazy;
+use p256::{
+    ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey},
+    elliptic_curve::sec1::ToEncodedPoint,
+    pkcs8::{EncodePrivateKey, EncodePublicKey},
+    PublicKey, SecretKey,
+};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use base64ct::{Base64UrlUnpadded, Encoding};
 
 /// ECDSA P-256 keypair for JWT signing - secure alternative to RSA
 pub static ECDSA_KEYPAIR: Lazy<SigningKey> = Lazy::new(|| {
@@ -37,10 +37,10 @@ impl EcdsaJwk {
     pub fn from_verifying_key(verifying_key: &VerifyingKey, kid: &str) -> Self {
         let public_key = PublicKey::from(verifying_key);
         let encoded_point = public_key.to_encoded_point(false);
-        
+
         let x = Base64UrlUnpadded::encode_string(encoded_point.x().unwrap());
         let y = Base64UrlUnpadded::encode_string(encoded_point.y().unwrap());
-        
+
         Self {
             kty: "EC".to_string(),
             crv: "P-256".to_string(),

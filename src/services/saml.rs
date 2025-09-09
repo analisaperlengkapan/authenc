@@ -197,10 +197,14 @@ impl SamlService {
         idp_entity_id: &str,
         relay_state: Option<&str>,
     ) -> Result<String> {
-        let sp = self.service_providers.get(sp_entity_id)
+        let sp = self
+            .service_providers
+            .get(sp_entity_id)
             .ok_or_else(|| AuthencError::resource_not_found("Service Provider not found"))?;
 
-        let idp = self.identity_providers.get(idp_entity_id)
+        let idp = self
+            .identity_providers
+            .get(idp_entity_id)
             .ok_or_else(|| AuthencError::resource_not_found("Identity Provider not found"))?;
 
         let request_id = format!("_{}", Uuid::new_v4().simple());
@@ -218,7 +222,9 @@ impl SamlService {
             }),
             requested_authn_context: Some(RequestedAuthnContext {
                 comparison: "exact".to_string(),
-                authn_context_class_ref: vec!["urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport".to_string()],
+                authn_context_class_ref: vec![
+                    "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport".to_string(),
+                ],
             }),
         };
 
@@ -241,7 +247,8 @@ impl SamlService {
         }
 
         // Store request for later verification
-        self.store_authn_request(&request_id, &authn_request).await?;
+        self.store_authn_request(&request_id, &authn_request)
+            .await?;
 
         Ok(url)
     }
@@ -265,17 +272,23 @@ impl SamlService {
         self.verify_response(&response).await?;
 
         // Extract user information
-        let assertion = response.assertion
+        let assertion = response
+            .assertion
             .ok_or_else(|| AuthencError::unauthorized("No assertion in SAML response"))?;
 
         let user_info = SamlUserInfo {
             name_id: assertion.subject.name_id.value,
             name_id_format: assertion.subject.name_id.format,
             session_index: assertion.authn_statement.session_index,
-            authn_context_class_ref: assertion.authn_statement.authn_context.authn_context_class_ref,
-            attributes: assertion.attribute_statement
+            authn_context_class_ref: assertion
+                .authn_statement
+                .authn_context
+                .authn_context_class_ref,
+            attributes: assertion
+                .attribute_statement
                 .map(|stmt| {
-                    stmt.attributes.into_iter()
+                    stmt.attributes
+                        .into_iter()
                         .map(|attr| (attr.name, attr.values))
                         .collect()
                 })
@@ -287,7 +300,9 @@ impl SamlService {
 
     /// Generate SAML metadata for Service Provider
     pub fn generate_sp_metadata(&self, sp_entity_id: &str) -> Result<String> {
-        let sp = self.service_providers.get(sp_entity_id)
+        let sp = self
+            .service_providers
+            .get(sp_entity_id)
             .ok_or_else(|| AuthencError::resource_not_found("Service Provider not found"))?;
 
         let metadata = format!(
@@ -316,7 +331,9 @@ impl SamlService {
 
     /// Generate SAML metadata for Identity Provider
     pub fn generate_idp_metadata(&self, idp_entity_id: &str) -> Result<String> {
-        let idp = self.identity_providers.get(idp_entity_id)
+        let idp = self
+            .identity_providers
+            .get(idp_entity_id)
             .ok_or_else(|| AuthencError::resource_not_found("Identity Provider not found"))?;
 
         let metadata = format!(
@@ -336,10 +353,7 @@ impl SamlService {
     </KeyDescriptor>
   </IDPSSODescriptor>
 </EntityDescriptor>"#,
-            idp.entity_id,
-            idp.name_id_format,
-            idp.sso_url,
-            idp.certificate
+            idp.entity_id, idp.name_id_format, idp.sso_url, idp.certificate
         );
 
         Ok(metadata)
@@ -377,7 +391,8 @@ impl SamlService {
 
         let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(data.as_bytes())?;
-        encoder.finish()
+        encoder
+            .finish()
             .map_err(|_| AuthencError::CryptographicError)
     }
 
@@ -412,7 +427,8 @@ impl SamlService {
                 issuer: "idp_entity_id".to_string(),
                 subject: SamlSubject {
                     name_id: NameId {
-                        format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
+                        format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress"
+                            .to_string(),
                         value: "user@example.com".to_string(),
                     },
                     subject_confirmations: vec![],
@@ -426,7 +442,9 @@ impl SamlService {
                     authn_instant: Utc::now().to_rfc3339(),
                     session_index: "session_123".to_string(),
                     authn_context: SamlAuthnContext {
-                        authn_context_class_ref: "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport".to_string(),
+                        authn_context_class_ref:
+                            "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"
+                                .to_string(),
                     },
                 },
                 attribute_statement: None,
@@ -443,7 +461,11 @@ impl SamlService {
         Ok(())
     }
 
-    async fn store_authn_request(&self, request_id: &str, request: &SamlAuthnRequest) -> Result<()> {
+    async fn store_authn_request(
+        &self,
+        request_id: &str,
+        request: &SamlAuthnRequest,
+    ) -> Result<()> {
         // In production, store in database with expiration
         Ok(())
     }

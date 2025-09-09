@@ -1,8 +1,8 @@
 // Legacy RSA implementation - DEPRECATED
 // Replaced with Ed25519 in handlers/oidc_ed25519.rs for security
 // use crate::handlers::oidc_keys::RSA_KEYPAIR;
-use serde::{Deserialize, Serialize};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 // use rsa::pkcs1::EncodeRsaPrivateKey; // REMOVED: Vulnerable to timing attacks
 
 #[derive(Debug, Serialize, Deserialize)]

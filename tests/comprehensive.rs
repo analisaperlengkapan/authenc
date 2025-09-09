@@ -477,13 +477,15 @@ async fn test_login_and_sessions_flow() {
     let anomaly = actix_web::web::Data::new(AnomalyDetector::new());
     let federation = actix_web::web::Data::new(FederationRegistry::new());
     // Seed a user compatible with internal login (plain password storage demo)
-    user_store.add_user(authence::model::user::User {
-        id: "u-login".into(),
-        username: "dave".into(),
-        email: "dave@example.com".into(),
-        password_hash: "PlainPass1!@#".into(),
-        is_active: true,
-    }).unwrap();
+    user_store
+        .add_user(authence::model::user::User {
+            id: "u-login".into(),
+            username: "dave".into(),
+            email: "dave@example.com".into(),
+            password_hash: "PlainPass1!@#".into(),
+            is_active: true,
+        })
+        .unwrap();
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -548,13 +550,15 @@ async fn test_login_bruteforce_throttle() {
     let brute_force = actix_web::web::Data::new(BruteForceProtector::new(0, 300));
     let anomaly = actix_web::web::Data::new(AnomalyDetector::new());
     let federation = actix_web::web::Data::new(FederationRegistry::new());
-    user_store.add_user(authence::model::user::User {
-        id: "u2".into(),
-        username: "erin".into(),
-        email: "erin@example.com".into(),
-        password_hash: "RightPass1!@#".into(),
-        is_active: true,
-    }).unwrap();
+    user_store
+        .add_user(authence::model::user::User {
+            id: "u2".into(),
+            username: "erin".into(),
+            email: "erin@example.com".into(),
+            password_hash: "RightPass1!@#".into(),
+            is_active: true,
+        })
+        .unwrap();
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -636,16 +640,22 @@ async fn test_login_requires_totp_when_enabled() {
     let brute_force = actix_web::web::Data::new(BruteForceProtector::new(5, 300));
     let anomaly = actix_web::web::Data::new(AnomalyDetector::new());
     let federation = actix_web::web::Data::new(FederationRegistry::new());
-    user_store.add_user(authence::model::user::User {
-        id: "u-totp-login".into(),
-        username: "tuser".into(),
-        email: "t@ex.com".into(),
-        password_hash: "TopSecret1!@#".into(),
-        is_active: true,
-    }).unwrap();
+    user_store
+        .add_user(authence::model::user::User {
+            id: "u-totp-login".into(),
+            username: "tuser".into(),
+            email: "t@ex.com".into(),
+            password_hash: "TopSecret1!@#".into(),
+            is_active: true,
+        })
+        .unwrap();
     // Enable TOTP secret for the user
-    totp_store.set_secret("u-totp-login", "JBSWY3DPEHPK3PXP").unwrap();
-    totp_store.set_secret("u-totp-login", "JBSWY3DPEHPK3PXP").unwrap();
+    totp_store
+        .set_secret("u-totp-login", "JBSWY3DPEHPK3PXP")
+        .unwrap();
+    totp_store
+        .set_secret("u-totp-login", "JBSWY3DPEHPK3PXP")
+        .unwrap();
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -819,14 +829,16 @@ async fn test_oidc_token_invalid_code_path() {
     .await
     .expect("pg");
     let audit = actix_web::web::Data::new(audit);
-    client_store.add(authence::model::oidc_client::OidcClient {
-        id: "c3".into(),
-        client_id: "cli3".into(),
-        client_secret: "s".into(),
-        redirect_uris: vec!["https://cb".into()],
-        name: "n".into(),
-        enabled: true,
-    }).unwrap();
+    client_store
+        .add(authence::model::oidc_client::OidcClient {
+            id: "c3".into(),
+            client_id: "cli3".into(),
+            client_secret: "s".into(),
+            redirect_uris: vec!["https://cb".into()],
+            name: "n".into(),
+            enabled: true,
+        })
+        .unwrap();
     let app = test::init_service(
         App::new()
             .app_data(code_store.clone())
@@ -895,21 +907,25 @@ async fn test_oidc_authorize_flow_redirect_only() {
     .expect("pg");
     let audit = actix_web::web::Data::new(audit);
     // Seed OIDC client and user (user_id for cookie-based flow must match username in current implementation)
-    client_store.add(authence::model::oidc_client::OidcClient {
-        id: "c1".into(),
-        client_id: "client-123".into(),
-        client_secret: "secret".into(),
-        redirect_uris: vec!["https://app.example.com/cb".into()],
-        name: "Test App".into(),
-        enabled: true,
-    }).unwrap();
-    user_store.add_user(authence::model::user::User {
-        id: "alice".into(),
-        username: "alice".into(),
-        email: "alice@example.com".into(),
-        password_hash: "pw".into(),
-        is_active: true,
-    }).unwrap();
+    client_store
+        .add(authence::model::oidc_client::OidcClient {
+            id: "c1".into(),
+            client_id: "client-123".into(),
+            client_secret: "secret".into(),
+            redirect_uris: vec!["https://app.example.com/cb".into()],
+            name: "Test App".into(),
+            enabled: true,
+        })
+        .unwrap();
+    user_store
+        .add_user(authence::model::user::User {
+            id: "alice".into(),
+            username: "alice".into(),
+            email: "alice@example.com".into(),
+            password_hash: "pw".into(),
+            is_active: true,
+        })
+        .unwrap();
     let app = test::init_service(
         App::new()
             .app_data(code_store.clone())
@@ -1184,13 +1200,15 @@ async fn test_sessions_list_contains_token() {
     let brute_force = actix_web::web::Data::new(BruteForceProtector::new(5, 300));
     let anomaly = actix_web::web::Data::new(AnomalyDetector::new());
     let federation = actix_web::web::Data::new(FederationRegistry::new());
-    user_store.add_user(authence::model::user::User {
-        id: "u3".into(),
-        username: "zoe".into(),
-        email: "zoe@example.com".into(),
-        password_hash: "Pass!2345678".into(),
-        is_active: true,
-    }).unwrap();
+    user_store
+        .add_user(authence::model::user::User {
+            id: "u3".into(),
+            username: "zoe".into(),
+            email: "zoe@example.com".into(),
+            password_hash: "Pass!2345678".into(),
+            is_active: true,
+        })
+        .unwrap();
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -1369,14 +1387,16 @@ async fn test_oidc_authorize_invalid_client_and_login_redirect() {
     .await;
     assert_eq!(resp.status(), 400);
     // Valid client but missing cookie -> redirect to login
-    client_store.add(authence::model::oidc_client::OidcClient {
-        id: "c1".into(),
-        client_id: "cli".into(),
-        client_secret: "s".into(),
-        redirect_uris: vec!["https://cb".into()],
-        name: "n".into(),
-        enabled: true,
-    }).unwrap();
+    client_store
+        .add(authence::model::oidc_client::OidcClient {
+            id: "c1".into(),
+            client_id: "cli".into(),
+            client_secret: "s".into(),
+            redirect_uris: vec!["https://cb".into()],
+            name: "n".into(),
+            enabled: true,
+        })
+        .unwrap();
     let resp = test::call_service(
         &app,
         test::TestRequest::get()
@@ -1554,13 +1574,15 @@ async fn test_audit_logs_csv_unauthorized_forbidden_paths() {
     use authence::services::{pg_audit_log_store::PgAuditLogStore, user_store::UserStore};
     let user_store = actix_web::web::Data::new(UserStore::new());
     // Seed a non-admin user to simulate forbidden when token is parsed (we won't provide a real token here)
-    user_store.add_user(authence::model::user::User {
-        id: "u-na".into(),
-        username: "bob".into(),
-        email: "b@ex.com".into(),
-        password_hash: "x".into(),
-        is_active: true,
-    }).unwrap();
+    user_store
+        .add_user(authence::model::user::User {
+            id: "u-na".into(),
+            username: "bob".into(),
+            email: "b@ex.com".into(),
+            password_hash: "x".into(),
+            is_active: true,
+        })
+        .unwrap();
     // Pg store needed by handler; it may fail at runtime but handler returns 500 only if token parsing passes. We'll hit Unauthorized instead by omitting Authorization header.
     let audit =
         PgAuditLogStore::new("host=localhost user=postgres password=postgres dbname=authence")
@@ -1591,13 +1613,15 @@ async fn test_audit_logs_forbidden_with_valid_non_admin_token() {
     use authence::services::{pg_audit_log_store::PgAuditLogStore, user_store::UserStore};
     let user_store = actix_web::web::Data::new(UserStore::new());
     // Seed non-admin user matching token sub
-    user_store.add_user(authence::model::user::User {
-        id: "u-bob".into(),
-        username: "bob".into(),
-        email: "b@ex.com".into(),
-        password_hash: "x".into(),
-        is_active: true,
-    }).unwrap();
+    user_store
+        .add_user(authence::model::user::User {
+            id: "u-bob".into(),
+            username: "bob".into(),
+            email: "b@ex.com".into(),
+            password_hash: "x".into(),
+            is_active: true,
+        })
+        .unwrap();
     let audit =
         PgAuditLogStore::new("host=localhost user=postgres password=postgres dbname=authence")
             .await
@@ -1648,14 +1672,16 @@ async fn test_oidc_authorize_consent_page() {
     .await
     .expect("pg");
     let audit = actix_web::web::Data::new(audit);
-    client_store.add(authence::model::oidc_client::OidcClient {
-        id: "c2".into(),
-        client_id: "cli-consent".into(),
-        client_secret: "s".into(),
-        redirect_uris: vec!["https://cb".into()],
-        name: "App".into(),
-        enabled: true,
-    }).unwrap();
+    client_store
+        .add(authence::model::oidc_client::OidcClient {
+            id: "c2".into(),
+            client_id: "cli-consent".into(),
+            client_secret: "s".into(),
+            redirect_uris: vec!["https://cb".into()],
+            name: "App".into(),
+            enabled: true,
+        })
+        .unwrap();
     let app = test::init_service(
         App::new()
             .app_data(code_store.clone())
@@ -1758,13 +1784,15 @@ async fn test_login_invalid_credentials() {
     let brute_force = actix_web::web::Data::new(BruteForceProtector::new(5, 300));
     let anomaly = actix_web::web::Data::new(AnomalyDetector::new());
     let federation = actix_web::web::Data::new(FederationRegistry::new());
-    user_store.add_user(authence::model::user::User {
-        id: "uX".into(),
-        username: "x".into(),
-        email: "x@ex.com".into(),
-        password_hash: "RightPass1!@#".into(),
-        is_active: true,
-    }).unwrap();
+    user_store
+        .add_user(authence::model::user::User {
+            id: "uX".into(),
+            username: "x".into(),
+            email: "x@ex.com".into(),
+            password_hash: "RightPass1!@#".into(),
+            is_active: true,
+        })
+        .unwrap();
     let app = test::init_service(
         App::new()
             .app_data(user_store.clone())
@@ -1840,14 +1868,16 @@ async fn test_oidc_authorize_redirect_uri_mismatch_400() {
     .await
     .expect("pg");
     let audit = actix_web::web::Data::new(audit);
-    client_store.add(authence::model::oidc_client::OidcClient {
-        id: "c5".into(),
-        client_id: "cli5".into(),
-        client_secret: "s".into(),
-        redirect_uris: vec!["https://cb".into()],
-        name: "n".into(),
-        enabled: true,
-    }).unwrap();
+    client_store
+        .add(authence::model::oidc_client::OidcClient {
+            id: "c5".into(),
+            client_id: "cli5".into(),
+            client_secret: "s".into(),
+            redirect_uris: vec!["https://cb".into()],
+            name: "n".into(),
+            enabled: true,
+        })
+        .unwrap();
     let app = test::init_service(
         App::new()
             .app_data(code_store.clone())
@@ -1881,14 +1911,16 @@ async fn test_oidc_token_redirect_uri_mismatch_400() {
     .await
     .expect("pg");
     let audit = actix_web::web::Data::new(audit);
-    client_store.add(authence::model::oidc_client::OidcClient {
-        id: "c6".into(),
-        client_id: "cli6".into(),
-        client_secret: "s".into(),
-        redirect_uris: vec!["https://cb".into()],
-        name: "n".into(),
-        enabled: true,
-    }).unwrap();
+    client_store
+        .add(authence::model::oidc_client::OidcClient {
+            id: "c6".into(),
+            client_id: "cli6".into(),
+            client_secret: "s".into(),
+            redirect_uris: vec!["https://cb".into()],
+            name: "n".into(),
+            enabled: true,
+        })
+        .unwrap();
     let app = test::init_service(
         App::new()
             .app_data(code_store.clone())
@@ -1928,21 +1960,25 @@ async fn test_oidc_code_reuse_returns_400() {
     .await
     .expect("pg");
     let audit = actix_web::web::Data::new(audit);
-    client_store.add(authence::model::oidc_client::OidcClient {
-        id: "c7".into(),
-        client_id: "cli7".into(),
-        client_secret: "s".into(),
-        redirect_uris: vec!["https://cb".into()],
-        name: "n".into(),
-        enabled: true,
-    }).unwrap();
-    user_store.add_user(authence::model::user::User {
-        id: "u7".into(),
-        username: "u7".into(),
-        email: "u7@ex.com".into(),
-        password_hash: "x".into(),
-        is_active: true,
-    }).unwrap();
+    client_store
+        .add(authence::model::oidc_client::OidcClient {
+            id: "c7".into(),
+            client_id: "cli7".into(),
+            client_secret: "s".into(),
+            redirect_uris: vec!["https://cb".into()],
+            name: "n".into(),
+            enabled: true,
+        })
+        .unwrap();
+    user_store
+        .add_user(authence::model::user::User {
+            id: "u7".into(),
+            username: "u7".into(),
+            email: "u7@ex.com".into(),
+            password_hash: "x".into(),
+            is_active: true,
+        })
+        .unwrap();
     let app = test::init_service(
         App::new()
             .app_data(code_store.clone())
@@ -2049,27 +2085,44 @@ async fn test_oidc_login_post_invalid_credentials_unauthorized() {
 
 #[actix_web::test]
 async fn test_vault_service_multi_provider() {
-    use authence::services::vault::{VaultProvider, VaultService, FileVaultProvider, KeystoreVaultProvider};
+    use authence::services::vault::{
+        FileVaultProvider, KeystoreVaultProvider, VaultProvider, VaultService,
+    };
     use std::collections::HashMap;
 
     // Test File Vault Provider
     let file_provider = FileVaultProvider::new("/tmp/test_vault");
     let secret_data = b"test_secret_data";
-    file_provider.store_secret("test_key", secret_data).await.unwrap();
+    file_provider
+        .store_secret("test_key", secret_data)
+        .await
+        .unwrap();
 
     let retrieved = file_provider.retrieve_secret("test_key").await.unwrap();
     assert_eq!(retrieved, Some(secret_data.to_vec()));
 
     // Test Vault Service with multiple providers
     let mut providers = HashMap::new();
-    providers.insert("file".to_string(), Box::new(file_provider) as Box<dyn VaultProvider>);
-    providers.insert("keystore".to_string(), Box::new(KeystoreVaultProvider::new()));
+    providers.insert(
+        "file".to_string(),
+        Box::new(file_provider) as Box<dyn VaultProvider>,
+    );
+    providers.insert(
+        "keystore".to_string(),
+        Box::new(KeystoreVaultProvider::new()),
+    );
 
     let vault_service = VaultService::new(providers);
 
     // Test storing and retrieving secrets
-    vault_service.store_secret("file", "test_secret", b"secret_value").await.unwrap();
-    let retrieved = vault_service.retrieve_secret("file", "test_secret").await.unwrap();
+    vault_service
+        .store_secret("file", "test_secret", b"secret_value")
+        .await
+        .unwrap();
+    let retrieved = vault_service
+        .retrieve_secret("file", "test_secret")
+        .await
+        .unwrap();
     assert_eq!(retrieved, Some(b"secret_value".to_vec()));
 
     // Test listing secrets
@@ -2079,7 +2132,7 @@ async fn test_vault_service_multi_provider() {
 
 #[actix_web::test]
 async fn test_fips_service_compliance() {
-    use authence::services::fips::{FipsSecurityProvider, FipsService, ComplianceLevel};
+    use authence::services::fips::{ComplianceLevel, FipsSecurityProvider, FipsService};
 
     let fips_provider = FipsSecurityProvider::new(ComplianceLevel::High);
     let is_fips_enabled = fips_provider.is_fips_enabled().await.unwrap();
@@ -2093,14 +2146,22 @@ async fn test_fips_service_compliance() {
     let keystore = fips_service.create_keystore().await.unwrap();
 
     // Test secret storage with FIPS compliance
-    fips_service.store_secret(&keystore, "fips_key", "fips_secret").await.unwrap();
-    let retrieved = fips_service.retrieve_secret(&keystore, "fips_key").await.unwrap();
+    fips_service
+        .store_secret(&keystore, "fips_key", "fips_secret")
+        .await
+        .unwrap();
+    let retrieved = fips_service
+        .retrieve_secret(&keystore, "fips_key")
+        .await
+        .unwrap();
     assert_eq!(retrieved, Some("fips_secret".to_string()));
 }
 
 #[actix_web::test]
 async fn test_observability_service_monitoring() {
-    use authence::services::observability::{ObservabilityService, HealthCheck, MetricsCollector, TracingService};
+    use authence::services::observability::{
+        HealthCheck, MetricsCollector, ObservabilityService, TracingService,
+    };
     use std::time::Duration;
 
     // Test Health Check
@@ -2132,11 +2193,12 @@ async fn test_observability_service_monitoring() {
 
 #[actix_web::test]
 async fn test_clustering_service_consensus() {
-    use authence::services::clustering::{ClusteringService, ClusterManager, DistributedConsensus};
+    use authence::services::clustering::{ClusterManager, ClusteringService, DistributedConsensus};
     use std::collections::HashMap;
 
     // Test Cluster Manager
-    let cluster_manager = ClusterManager::new("node-1", vec!["node-1".to_string(), "node-2".to_string()]);
+    let cluster_manager =
+        ClusterManager::new("node-1", vec!["node-1".to_string(), "node-2".to_string()]);
     cluster_manager.add_node("node-2".to_string());
 
     let nodes = cluster_manager.get_nodes();
@@ -2168,8 +2230,10 @@ async fn test_clustering_service_consensus() {
 
 #[actix_web::test]
 async fn test_federation_service_providers() {
-    use authence::services::federation::{FederationService, SamlIdentityProvider, OidcIdentityProvider, IdentityProvider};
     use authence::model::federation::{AuthRequest, AuthResponse};
+    use authence::services::federation::{
+        FederationService, IdentityProvider, OidcIdentityProvider, SamlIdentityProvider,
+    };
 
     // Test SAML Identity Provider
     let saml_provider = SamlIdentityProvider::new();
@@ -2202,16 +2266,24 @@ async fn test_federation_service_providers() {
     federation_service.register_provider("saml", Box::new(saml_provider));
     federation_service.register_provider("oidc", Box::new(oidc_provider));
 
-    let user_info = federation_service.get_user_info("saml", "token123").await.unwrap();
+    let user_info = federation_service
+        .get_user_info("saml", "token123")
+        .await
+        .unwrap();
     assert_eq!(user_info.user_id, "saml_user");
 
-    let validated = federation_service.validate_token("oidc", "token456").await.unwrap();
+    let validated = federation_service
+        .validate_token("oidc", "token456")
+        .await
+        .unwrap();
     assert!(validated);
 }
 
 #[actix_web::test]
 async fn test_compliance_service_frameworks() {
-    use authence::services::compliance::{ComplianceService, ComplianceFramework, ComplianceCheckResult, ComplianceStatus};
+    use authence::services::compliance::{
+        ComplianceCheckResult, ComplianceFramework, ComplianceService, ComplianceStatus,
+    };
     use std::collections::HashMap;
 
     // Test Compliance Service initialization
@@ -2229,11 +2301,17 @@ async fn test_compliance_service_frameworks() {
     assert!(report.frameworks.contains(&ComplianceFramework::HIPAA));
 
     // Test individual checks
-    let gdpr_checks = service.execute_framework_checks(ComplianceFramework::GDPR).await.unwrap();
+    let gdpr_checks = service
+        .execute_framework_checks(ComplianceFramework::GDPR)
+        .await
+        .unwrap();
     assert!(!gdpr_checks.is_empty());
 
     // Test data subject rights
-    let rights_result = service.handle_data_subject_request("user123", "access").await.unwrap();
+    let rights_result = service
+        .handle_data_subject_request("user123", "access")
+        .await
+        .unwrap();
     assert!(rights_result.success);
 
     // Test compliance automation
@@ -2244,28 +2322,25 @@ async fn test_compliance_service_frameworks() {
 #[actix_web::test]
 async fn test_enterprise_services_integration() {
     use authence::services::{
+        clustering::ClusteringService, compliance::ComplianceService,
+        federation::FederationService, fips::FipsService, observability::ObservabilityService,
         vault::VaultService,
-        fips::FipsService,
-        observability::ObservabilityService,
-        clustering::ClusteringService,
-        federation::FederationService,
-        compliance::ComplianceService,
     };
     use std::collections::HashMap;
 
     // Create enterprise service instances
     let vault = VaultService::new(HashMap::new());
     let fips = FipsService::new(authence::services::fips::FipsSecurityProvider::new(
-        authence::services::fips::ComplianceLevel::High
+        authence::services::fips::ComplianceLevel::High,
     ));
     let observability = ObservabilityService::new(
         authence::services::observability::MetricsCollector::new(),
         authence::services::observability::TracingService::new(),
-        authence::services::observability::HealthCheck::new("enterprise_services")
+        authence::services::observability::HealthCheck::new("enterprise_services"),
     );
     let clustering = ClusteringService::new(
         authence::services::clustering::ClusterManager::new("test-node", vec![]),
-        authence::services::clustering::DistributedConsensus::new()
+        authence::services::clustering::DistributedConsensus::new(),
     );
     let federation = FederationService::new();
     let compliance = ComplianceService::new();
@@ -2294,10 +2369,8 @@ async fn test_enterprise_services_integration() {
 #[actix_web::test]
 async fn test_enterprise_security_features() {
     use authence::services::{
-        anomaly_detector::AnomalyDetector,
-        brute_force_protector::BruteForceProtector,
-        password_policy::PasswordPolicy,
-        zero_trust::ZeroTrustService,
+        anomaly_detector::AnomalyDetector, brute_force_protector::BruteForceProtector,
+        password_policy::PasswordPolicy, zero_trust::ZeroTrustService,
     };
 
     // Test Anomaly Detector
@@ -2333,12 +2406,11 @@ async fn test_enterprise_security_features() {
 
 #[actix_web::test]
 async fn test_enterprise_audit_and_monitoring() {
+    use authence::model::audit_log::AuditLog;
     use authence::services::{
-        audit_log_sink::AuditLogSink,
-        kafka_audit_log_sink::KafkaAuditLogSink,
+        audit_log_sink::AuditLogSink, kafka_audit_log_sink::KafkaAuditLogSink,
         pg_audit_log_store::PgAuditLogStore,
     };
-    use authence::model::audit_log::AuditLog;
     use std::sync::Arc;
 
     // Test Audit Log creation

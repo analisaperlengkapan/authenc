@@ -62,21 +62,24 @@ impl Database {
     }
 
     /// Execute a read-only query and return results
-    pub async fn query<T, Params>(&self, statement: &str, params: Params) -> Result<Vec<T>>
+    pub async fn query<T>(
+        &self,
+        statement: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Vec<T>>
     where
-        T: serde::de::DeserializeOwned + Send + 'static + for<'a> TryFrom<&'a tokio_postgres::Row>,
-        for<'a> <T as std::convert::TryFrom<&'a tokio_postgres::Row>>::Error: std::fmt::Debug,
-        Params: tokio_postgres::types::ToSql + Sync,
+        T: Send + 'static + TryFrom<tokio_postgres::Row>,
+        <T as TryFrom<tokio_postgres::Row>>::Error: std::fmt::Debug,
     {
         let client = self.get_connection().await?;
-        let rows = client.query(statement, &[&params]).await.map_err(|e| {
+        let rows = client.query(statement, params).await.map_err(|e| {
             error!("Query failed: {}\nStatement: {}", e, statement);
             AuthencError::database("Database query failed")
         })?;
 
         let mut results = Vec::with_capacity(rows.len());
         for row in rows {
-            results.push((&row).try_into().map_err(|e| {
+            results.push(row.try_into().map_err(|e| {
                 error!("Failed to convert row: {:?}", e);
                 AuthencError::database("Failed to convert database row")
             })?);
@@ -86,31 +89,35 @@ impl Database {
     }
 
     /// Execute a query that returns a single row
-    pub async fn query_one<T, Params>(&self, statement: &str, params: Params) -> Result<T>
+    pub async fn query_one<T>(
+        &self,
+        statement: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<T>
     where
-        T: serde::de::DeserializeOwned + Send + 'static + for<'a> TryFrom<&'a tokio_postgres::Row>,
-        for<'a> <T as std::convert::TryFrom<&'a tokio_postgres::Row>>::Error: std::fmt::Debug,
-        Params: tokio_postgres::types::ToSql + Sync,
+        T: Send + 'static + TryFrom<tokio_postgres::Row>,
+        <T as TryFrom<tokio_postgres::Row>>::Error: std::fmt::Debug,
     {
         let client = self.get_connection().await?;
-        let row = client.query_one(statement, &[&params]).await.map_err(|e| {
+        let row = client.query_one(statement, params).await.map_err(|e| {
             error!("Query one failed: {}\nStatement: {}", e, statement);
             AuthencError::database("Database query failed")
         })?;
 
-        (&row).try_into().map_err(|e| {
+        row.try_into().map_err(|e| {
             error!("Failed to convert row: {:?}", e);
             AuthencError::database("Failed to convert database row")
         })
     }
 
     /// Execute a statement that doesn't return any rows
-    pub async fn execute<Params>(&self, statement: &str, params: Params) -> Result<u64>
-    where
-        Params: tokio_postgres::types::ToSql + Sync,
-    {
+    pub async fn execute(
+        &self,
+        statement: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<u64> {
         let client = self.get_connection().await?;
-        client.execute(statement, &[&params]).await.map_err(|e| {
+        client.execute(statement, params).await.map_err(|e| {
             error!("Execute failed: {}\nStatement: {}", e, statement);
             AuthencError::database("Database execute failed")
         })
@@ -190,5 +197,7 @@ impl Database {
     }
 }
 
+pub mod migrations;
+pub mod operations;
 /// Database module exports
 pub mod queries;

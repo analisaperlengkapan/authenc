@@ -285,11 +285,12 @@ mod tests {
     use super::*;
     use axum::{
         body::Body,
+        extract::ConnectInfo,
         http::{Request, StatusCode},
         routing::get,
         Router,
     };
-    use tower::ServiceExt;
+    use tower::{Service, ServiceExt};
 
     #[tokio::test]
     async fn test_rate_limiting() {
@@ -300,49 +301,21 @@ mod tests {
             enabled: true,
         };
 
-        // Create a test app with rate limiting
-        let state = Arc::new(RateLimiterState::new(config));
-
-        let app = Router::new()
-            .route("/", get(|| async { "Hello, world!" }))
-            .route("/health", get(|| async { "OK" }))
-            .with_state(state.clone());
+        let state = RateLimiterState::new(config);
 
         // First request should succeed
-        let response = app
-            .clone()
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert!(state.check_rate_limit("/", "127.0.0.1").is_ok());
 
         // Second request should succeed
-        let response = app
-            .clone()
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert!(state.check_rate_limit("/", "127.0.0.1").is_ok());
 
         // Third request should be rate limited
-        let response = app
-            .clone()
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(state.check_rate_limit("/", "127.0.0.1").is_err());
 
         // Health check should not be rate limited
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert!(state.check_rate_limit("/health", "127.0.0.1").is_ok());
+
+        // Different IP should not be rate limited
+        assert!(state.check_rate_limit("/", "192.168.1.1").is_ok());
     }
 }

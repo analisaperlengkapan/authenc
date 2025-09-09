@@ -104,7 +104,13 @@ impl OrganizationService {
         self.store_organization(&organization).await?;
 
         // Add creator as owner
-        self.add_member(&organization.id, &created_by, OrganizationRole::Owner, Some(created_by)).await?;
+        self.add_member(
+            &organization.id,
+            &created_by,
+            OrganizationRole::Owner,
+            Some(created_by),
+        )
+        .await?;
 
         Ok(organization)
     }
@@ -227,7 +233,9 @@ impl OrganizationService {
     /// Accept invitation
     pub async fn accept_invitation(&self, token: &str, user_id: Uuid) -> Result<Organization> {
         // Find invitation by token
-        let invitation = self.get_invitation_by_token(token).await?
+        let invitation = self
+            .get_invitation_by_token(token)
+            .await?
             .ok_or_else(|| AuthencError::resource_not_found("Invitation not found or expired"))?;
 
         // Check if expired
@@ -237,17 +245,26 @@ impl OrganizationService {
 
         // Check if already accepted
         if invitation.accepted_at.is_some() {
-            return Err(AuthencError::validation("Invitation has already been accepted"));
+            return Err(AuthencError::validation(
+                "Invitation has already been accepted",
+            ));
         }
 
         // Add user to organization
-        self.add_member(&invitation.organization_id, &user_id, invitation.role.clone(), Some(invitation.invited_by)).await?;
+        self.add_member(
+            &invitation.organization_id,
+            &user_id,
+            invitation.role.clone(),
+            Some(invitation.invited_by),
+        )
+        .await?;
 
         // Mark invitation as accepted
         self.mark_invitation_accepted(&invitation.id).await?;
 
         // Get organization details
-        self.get_organization(&invitation.organization_id).await?
+        self.get_organization(&invitation.organization_id)
+            .await?
             .ok_or_else(|| AuthencError::resource_not_found("Organization not found"))
     }
 
@@ -286,13 +303,18 @@ impl OrganizationService {
         new_owner: &Uuid,
     ) -> Result<()> {
         // Verify current user is owner
-        if !self.has_role(organization_id, current_owner, &OrganizationRole::Owner).await? {
+        if !self
+            .has_role(organization_id, current_owner, &OrganizationRole::Owner)
+            .await?
+        {
             return Err(AuthencError::forbidden("Only owner can transfer ownership"));
         }
 
         // Update member roles
-        self.update_member_role(organization_id, current_owner, OrganizationRole::Admin).await?;
-        self.update_member_role(organization_id, new_owner, OrganizationRole::Owner).await?;
+        self.update_member_role(organization_id, current_owner, OrganizationRole::Admin)
+            .await?;
+        self.update_member_role(organization_id, new_owner, OrganizationRole::Owner)
+            .await?;
 
         Ok(())
     }

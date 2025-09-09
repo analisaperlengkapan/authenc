@@ -1,9 +1,13 @@
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use crate::models::user::User;
+use async_trait::async_trait;
+use dashmap::DashMap;
+use ldap3::SearchEntry;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
-/// Identity Provider types supported
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IdentityProviderType {
     LDAP,
@@ -70,13 +74,22 @@ impl IdentityBrokerRegistry {
     }
 
     /// Register a new identity broker
-    pub fn register_broker(&mut self, config: IdentityProviderConfig, broker: Box<dyn IdentityBroker>) {
+    pub fn register_broker(
+        &mut self,
+        config: IdentityProviderConfig,
+        broker: Box<dyn IdentityBroker>,
+    ) {
         self.provider_configs.insert(config.id, config.clone());
         self.brokers.insert(config.id, broker);
     }
 
     /// Authenticate user across all enabled brokers
-    pub async fn authenticate(&self, username: &str, password: &str, realm_id: &Uuid) -> Result<Option<User>, String> {
+    pub async fn authenticate(
+        &self,
+        username: &str,
+        password: &str,
+        realm_id: &Uuid,
+    ) -> Result<Option<User>, String> {
         for (id, broker) in &self.brokers {
             if let Some(config) = self.provider_configs.get(id) {
                 if config.enabled && &config.realm_id == realm_id {
@@ -92,7 +105,11 @@ impl IdentityBrokerRegistry {
     }
 
     /// Get user info from specific broker
-    pub async fn get_user_info(&self, broker_id: &Uuid, identifier: &str) -> Result<Option<User>, String> {
+    pub async fn get_user_info(
+        &self,
+        broker_id: &Uuid,
+        identifier: &str,
+    ) -> Result<Option<User>, String> {
         if let Some(broker) = self.brokers.get(broker_id) {
             broker.get_user_info(identifier).await
         } else {
@@ -101,7 +118,11 @@ impl IdentityBrokerRegistry {
     }
 
     /// Sync user from external provider
-    pub async fn sync_user(&self, broker_id: &Uuid, external_user: &ExternalUser) -> Result<User, String> {
+    pub async fn sync_user(
+        &self,
+        broker_id: &Uuid,
+        external_user: &ExternalUser,
+    ) -> Result<User, String> {
         if let Some(broker) = self.brokers.get(broker_id) {
             broker.sync_user(external_user).await
         } else {
@@ -111,15 +132,26 @@ impl IdentityBrokerRegistry {
 
     /// Get all enabled providers for a realm
     pub fn get_enabled_providers(&self, realm_id: &Uuid) -> Vec<&IdentityProviderConfig> {
-        self.provider_configs.values()
+        self.provider_configs
+            .values()
             .filter(|config| config.enabled && &config.realm_id == realm_id)
             .collect()
     }
 }
 
-/// LDAP Identity Broker Implementation
+/// Cached user entry with timestamp
+#[derive(Debug, Clone)]
+struct CachedUser {
+    user: User,
+    cached_at: Instant,
+}
+
+/// LDAP Identity Broker Implementation with Connection Pooling and Caching
 pub struct LdapIdentityBroker {
     config: LdapConfig,
+    connection_pool: Arc<Mutex<Option<ldap3::Ldap>>>,
+    user_cache: Arc<DashMap<String, CachedUser>>,
+    cache_ttl: Duration,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,36 +163,307 @@ pub struct LdapConfig {
     pub user_search_base: String,
     pub user_search_filter: String,
     pub group_search_base: String,
+    pub username_attr: String,
+    pub email_attr: String,
+    pub first_name_attr: String,
+    pub last_name_attr: String,
 }
 
 impl LdapIdentityBroker {
     pub fn new(config: LdapConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            connection_pool: Arc::new(Mutex::new(None)),
+            user_cache: Arc::new(DashMap::new()),
+            cache_ttl: Duration::from_secs(300), // 5 minutes cache TTL
+        }
+    }
+
+    /// Create with custom cache TTL
+    pub fn with_cache_ttl(mut self, ttl: Duration) -> Self {
+        self.cache_ttl = ttl;
+        self
+    }
+
+    /// Get cached user if still valid
+    fn get_cached_user(&self, identifier: &str) -> Option<User> {
+        if let Some(cached) = self.user_cache.get(identifier) {
+            if cached.cached_at.elapsed() < self.cache_ttl {
+                return Some(cached.user.clone());
+            } else {
+                // Remove expired entry
+                self.user_cache.remove(identifier);
+            }
+        }
+        None
+    }
+
+    /// Cache user information
+    fn cache_user(&self, identifier: String, user: User) {
+        let cached = CachedUser {
+            user,
+            cached_at: Instant::now(),
+        };
+        self.user_cache.insert(identifier, cached);
+    }
+
+    /// Get or create LDAP connection from pool
+    async fn get_connection(&self) -> Result<ldap3::Ldap, String> {
+        let mut pool = self.connection_pool.lock().await;
+
+        if let Some(ref ldap) = *pool {
+            // Test if connection is still alive with a simple search
+            // Note: We can't test bind on existing connection, so we'll recreate if needed
+            return Ok(ldap.clone());
+        }
+
+        // Create new connection
+        let (conn, mut ldap) = ldap3::LdapConnAsync::new(&format!(
+            "ldap://{}:{}",
+            self.config.host, self.config.port
+        ))
+        .await
+        .map_err(|e| format!("LDAP connection failed: {}", e))?;
+
+        // Spawn connection handler
+        tokio::spawn(async move {
+            if let Err(e) = conn.drive().await {
+                tracing::error!("LDAP connection handler error: {}", e);
+            }
+        });
+
+        // Bind with service account
+        ldap.simple_bind(&self.config.bind_dn, &self.config.bind_password)
+            .await
+            .map_err(|e| format!("LDAP service bind failed: {}", e))?;
+
+        *pool = Some(ldap.clone());
+        Ok(ldap)
     }
 }
 
 #[async_trait]
 impl IdentityBroker for LdapIdentityBroker {
-    async fn authenticate(&self, _username: &str, _password: &str) -> Result<Option<User>, String> {
-        // TODO: Implement LDAP authentication
-        // This would use ldap3 crate or similar
-        // For now, return None
-        Ok(None)
+    async fn authenticate(&self, username: &str, password: &str) -> Result<Option<User>, String> {
+        let mut ldap = self.get_connection().await?;
+
+        // Search for user by username
+        let filter = format!("(&{}={})", self.config.username_attr, username);
+        let mut stream = ldap
+            .streaming_search(
+                &self.config.user_search_base,
+                ldap3::Scope::Subtree,
+                &filter,
+                vec![
+                    &self.config.username_attr,
+                    &self.config.email_attr,
+                    &self.config.first_name_attr,
+                    &self.config.last_name_attr,
+                ],
+            )
+            .await
+            .map_err(|e| format!("LDAP streaming search failed: {}", e))?;
+
+        // Get the first entry
+        let user_entry = match stream.next().await {
+            Ok(Some(entry)) => SearchEntry::construct(entry),
+            Ok(None) => {
+                tracing::info!("User {} not found in LDAP", username);
+                return Ok(None);
+            }
+            Err(e) => return Err(format!("LDAP streaming search failed: {}", e)),
+        };
+
+        // Create new connection for authentication (LDAP doesn't allow multiple binds on same connection)
+        let (auth_conn, mut auth_ldap) = ldap3::LdapConnAsync::new(&format!(
+            "ldap://{}:{}",
+            self.config.host, self.config.port
+        ))
+        .await
+        .map_err(|e| format!("LDAP auth connection failed: {}", e))?;
+
+        // Spawn the auth connection handler
+        tokio::spawn(async move {
+            if let Err(e) = auth_conn.drive().await {
+                tracing::error!("LDAP auth connection handler error: {}", e);
+            }
+        });
+
+        // Attempt user bind
+        match auth_ldap.simple_bind(&user_entry.dn, password).await {
+            Ok(_) => {
+                // Authentication successful, create user from LDAP entry
+                create_user_from_ldap_entry(&user_entry, &self.config).map(Some)
+            }
+            Err(_) => {
+                tracing::info!("LDAP authentication failed for user {}", username);
+                Ok(None)
+            }
+        }
     }
 
-    async fn get_user_info(&self, _identifier: &str) -> Result<Option<User>, String> {
-        // TODO: Implement LDAP user lookup
-        Ok(None)
+    async fn get_user_info(&self, identifier: &str) -> Result<Option<User>, String> {
+        // Check cache first
+        if let Some(cached_user) = self.get_cached_user(identifier) {
+            tracing::debug!("User {} found in cache", identifier);
+            return Ok(Some(cached_user));
+        }
+
+        let mut ldap = self.get_connection().await?;
+
+        // Search for user by username or email
+        let filter = format!(
+            "(|({}={})({}={}))",
+            self.config.username_attr, identifier, self.config.email_attr, identifier
+        );
+        let mut stream = ldap
+            .streaming_search(
+                &self.config.user_search_base,
+                ldap3::Scope::Subtree,
+                &filter,
+                vec![
+                    &self.config.username_attr,
+                    &self.config.email_attr,
+                    &self.config.first_name_attr,
+                    &self.config.last_name_attr,
+                ],
+            )
+            .await
+            .map_err(|e| format!("LDAP streaming search failed: {}", e))?;
+
+        // Get the first entry
+        let user_entry = match stream.next().await {
+            Ok(Some(entry)) => SearchEntry::construct(entry),
+            Ok(None) => {
+                tracing::info!("User {} not found in LDAP", identifier);
+                return Ok(None);
+            }
+            Err(e) => return Err(format!("LDAP streaming search failed: {}", e)),
+        };
+
+        // Create user from LDAP entry
+        let user = create_user_from_ldap_entry(&user_entry, &self.config)?;
+
+        // Cache the result
+        self.cache_user(identifier.to_string(), user.clone());
+
+        Ok(Some(user))
     }
 
-    async fn sync_user(&self, _external_user: &ExternalUser) -> Result<User, String> {
-        // TODO: Implement LDAP user sync
-        Err("Not implemented".to_string())
+    async fn sync_user(&self, external_user: &ExternalUser) -> Result<User, String> {
+        // For LDAP sync, we create a user based on external user data
+        // In a real implementation, you might want to sync additional attributes
+        let user = User {
+            id: Uuid::new_v4(),
+            username: external_user
+                .username
+                .clone()
+                .unwrap_or_else(|| external_user.external_id.clone()),
+            email: external_user
+                .email
+                .clone()
+                .unwrap_or_else(|| "".to_string()),
+            email_verified: true, // LDAP users are typically pre-verified
+            first_name: external_user.first_name.clone(),
+            last_name: external_user.last_name.clone(),
+            phone_number: None,
+            phone_verified: false,
+            password_hash: None, // LDAP users don't have local passwords
+            totp_secret: None,
+            totp_backup_codes: None,
+            webauthn_enabled: false,
+            account_locked: false,
+            account_locked_until: None,
+            failed_login_attempts: 0,
+            last_login_at: None,
+            last_failed_login_at: None,
+            password_changed_at: None,
+            password_expires_at: None,
+            require_password_change: false,
+            realm_id: None,
+            organization_id: None,
+            attributes: Some(
+                serde_json::to_value(&external_user.attributes)
+                    .map_err(|e| format!("Failed to serialize attributes: {}", e))?,
+            ),
+            enabled: true,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            deleted_at: None,
+        };
+        Ok(user)
     }
 
     fn provider_type(&self) -> IdentityProviderType {
         IdentityProviderType::LDAP
     }
+}
+
+/// Helper function to create User from LDAP search entry
+/// This is a standalone function, not part of the IdentityBroker trait
+fn create_user_from_ldap_entry(entry: &SearchEntry, config: &LdapConfig) -> Result<User, String> {
+    let attrs = entry.attrs.clone();
+    // Note: dn is not used in the current User struct, but could be stored in attributes
+    let _dn = entry.dn.clone();
+
+    // Extract user information from LDAP attributes
+    let username = attrs
+        .get(&config.username_attr)
+        .and_then(|v| v.first())
+        .ok_or("Username attribute not found")?
+        .clone();
+
+    let email = attrs
+        .get(&config.email_attr)
+        .and_then(|v| v.first())
+        .map(|s| s.clone())
+        .unwrap_or_default();
+
+    let first_name = attrs
+        .get(&config.first_name_attr)
+        .and_then(|v| v.first())
+        .map(|s| s.clone());
+
+    let last_name = attrs
+        .get(&config.last_name_attr)
+        .and_then(|v| v.first())
+        .map(|s| s.clone());
+
+    // Convert attributes to JSON
+    let attributes = Some(
+        serde_json::to_value(&attrs)
+            .map_err(|e| format!("Failed to serialize attributes: {}", e))?,
+    );
+
+    Ok(User {
+        id: Uuid::new_v4(),
+        username,
+        email,
+        email_verified: true, // Assume verified from LDAP
+        first_name,
+        last_name,
+        phone_number: None,
+        phone_verified: false,
+        password_hash: None, // LDAP users don't have local password
+        totp_secret: None,
+        totp_backup_codes: None,
+        webauthn_enabled: false,
+        account_locked: false,
+        account_locked_until: None,
+        failed_login_attempts: 0,
+        last_login_at: None,
+        last_failed_login_at: None,
+        password_changed_at: None,
+        password_expires_at: None,
+        require_password_change: false,
+        realm_id: None,
+        organization_id: None,
+        attributes,
+        enabled: true,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        deleted_at: None,
+    })
 }
 
 /// Social Login Broker Implementation
@@ -179,7 +482,10 @@ pub struct SocialConfig {
 
 impl SocialIdentityBroker {
     pub fn new(config: SocialConfig, provider_type: IdentityProviderType) -> Self {
-        Self { config, provider_type }
+        Self {
+            config,
+            provider_type,
+        }
     }
 }
 

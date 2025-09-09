@@ -54,7 +54,10 @@ impl SecretonVault {
 #[async_trait]
 impl Vault for SecretonVault {
     async fn get_secret(&self, key: &str, realm: Option<&str>) -> Option<Secret> {
-        self.client.get_secret(key, realm).await.map(|value| Secret {
+        self.client
+            .get_secret(key, realm)
+            .await
+            .map(|value| Secret {
                 value,
                 metadata: None,
             })

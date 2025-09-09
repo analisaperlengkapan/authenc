@@ -29,7 +29,10 @@ pub async fn register_challenge(
         "Authenc Identity".to_string(),
     );
 
-    match webauthn_service.generate_registration_challenge(request).await {
+    match webauthn_service
+        .generate_registration_challenge(request)
+        .await
+    {
         Ok(response) => Ok(response),
         Err(_) => Err(AuthencError::internal("Internal server error")),
     }
@@ -39,18 +42,19 @@ pub async fn register_challenge(
 pub async fn register_verify(
     State(db): State<Arc<Database>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-    Json(response): Json<crate::models::webauthn::WebAuthnRegistrationResponse>,
+    Json(response): Json<crate::models::webauthn::WebauthnRegistrationResponse>,
 ) -> Result<Json<serde_json::Value>> {
-    let username = params.get("username")
+    let username = params
+        .get("username")
         .ok_or(AuthencError::validation("Bad request"))?;
 
-    let webauthn_service = WebAuthnService::new(
-        db,
-        "localhost".to_string(),
-        "Authenc Identity".to_string(),
-    );
+    let webauthn_service =
+        WebAuthnService::new(db, "localhost".to_string(), "Authenc Identity".to_string());
 
-    match webauthn_service.verify_registration(username, response).await {
+    match webauthn_service
+        .verify_registration(username, response)
+        .await
+    {
         Ok(result) => Ok(result),
         Err(_) => Err(AuthencError::unauthorized("Unauthorized")),
     }
@@ -61,13 +65,13 @@ pub async fn authenticate_challenge(
     State(db): State<Arc<Database>>,
     Json(request): Json<crate::services::webauthn::WebAuthnAuthenticationRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let webauthn_service = WebAuthnService::new(
-        db,
-        "localhost".to_string(),
-        "Authenc Identity".to_string(),
-    );
+    let webauthn_service =
+        WebAuthnService::new(db, "localhost".to_string(), "Authenc Identity".to_string());
 
-    match webauthn_service.generate_authentication_challenge(request).await {
+    match webauthn_service
+        .generate_authentication_challenge(request)
+        .await
+    {
         Ok(response) => Ok(response),
         Err(_) => Err(AuthencError::internal("Internal server error")),
     }
@@ -77,18 +81,19 @@ pub async fn authenticate_challenge(
 pub async fn authenticate_verify(
     State(db): State<Arc<Database>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-    Json(response): Json<crate::models::webauthn::WebAuthnAuthenticationResponse>,
+    Json(response): Json<crate::models::webauthn::WebauthnAuthenticationResponse>,
 ) -> Result<Json<serde_json::Value>> {
-    let username = params.get("username")
+    let username = params
+        .get("username")
         .ok_or(AuthencError::validation("Bad request"))?;
 
-    let webauthn_service = WebAuthnService::new(
-        db,
-        "localhost".to_string(),
-        "Authenc Identity".to_string(),
-    );
+    let webauthn_service =
+        WebAuthnService::new(db, "localhost".to_string(), "Authenc Identity".to_string());
 
-    match webauthn_service.verify_authentication(username, response).await {
+    match webauthn_service
+        .verify_authentication(username, response)
+        .await
+    {
         Ok(result) => Ok(result),
         Err(_) => Err(AuthencError::unauthorized("Unauthorized")),
     }

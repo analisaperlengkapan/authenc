@@ -1,9 +1,9 @@
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
 use std::fs;
-use anyhow::Result;
+use std::path::Path;
 
 /// Vault provider trait for secret management
 #[async_trait]
@@ -166,7 +166,12 @@ pub struct AzureKeyVaultProvider {
 }
 
 impl AzureKeyVaultProvider {
-    pub fn new(vault_url: String, client_id: String, client_secret: String, tenant_id: String) -> Self {
+    pub fn new(
+        vault_url: String,
+        client_id: String,
+        client_secret: String,
+        tenant_id: String,
+    ) -> Self {
         Self {
             vault_url,
             client_id,
@@ -207,7 +212,11 @@ pub struct AwsSecretsManagerProvider {
 }
 
 impl AwsSecretsManagerProvider {
-    pub fn new(region: String, access_key_id: Option<String>, secret_access_key: Option<String>) -> Self {
+    pub fn new(
+        region: String,
+        access_key_id: Option<String>,
+        secret_access_key: Option<String>,
+    ) -> Self {
         Self {
             region,
             access_key_id,
@@ -380,7 +389,11 @@ pub struct DefaultKeyResolver;
 
 impl KeyResolver for DefaultKeyResolver {
     fn resolve(&self, realm_name: &str, secret_name: &str) -> String {
-        format!("{}_{}", realm_name.replace("_", "__"), secret_name.replace("_", "__"))
+        format!(
+            "{}_{}",
+            realm_name.replace("_", "__"),
+            secret_name.replace("_", "__")
+        )
     }
 }
 

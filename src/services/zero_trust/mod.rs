@@ -1,7 +1,7 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 /// Zero Trust security levels
@@ -149,7 +149,8 @@ pub trait ContinuousAuthService: Send + Sync {
     async fn verify_session(&self, session_id: &str) -> Result<bool, String>;
 
     /// Handle suspicious activity
-    async fn handle_suspicious_activity(&self, activity: &SuspiciousActivity) -> Result<(), String>;
+    async fn handle_suspicious_activity(&self, activity: &SuspiciousActivity)
+        -> Result<(), String>;
 }
 
 /// Suspicious activity report
@@ -183,7 +184,10 @@ impl ZeroTrustManager {
     }
 
     /// Set anomaly detector for enhanced risk assessment
-    pub fn set_anomaly_detector(&mut self, detector: Box<dyn crate::services::anomaly_detector::AnomalyDetectorTrait>) {
+    pub fn set_anomaly_detector(
+        &mut self,
+        detector: Box<dyn crate::services::anomaly_detector::AnomalyDetectorTrait>,
+    ) {
         self.anomaly_detector = Some(detector);
     }
 
@@ -215,7 +219,11 @@ impl ZeroTrustManager {
             factor_type: "device_trust".to_string(),
             description: format!("Device trust level: {:?}", context.device_trust.trust_level),
             weight: 0.4,
-            severity: if device_score > 0.5 { RiskLevel::High } else { RiskLevel::Low },
+            severity: if device_score > 0.5 {
+                RiskLevel::High
+            } else {
+                RiskLevel::Low
+            },
         });
 
         // Location anomaly factor
@@ -225,7 +233,11 @@ impl ZeroTrustManager {
             factor_type: "location".to_string(),
             description: "Location-based risk assessment".to_string(),
             weight: 0.2,
-            severity: if location_score > 0.5 { RiskLevel::Medium } else { RiskLevel::Low },
+            severity: if location_score > 0.5 {
+                RiskLevel::Medium
+            } else {
+                RiskLevel::Low
+            },
         });
 
         // Time-based factor
@@ -235,7 +247,11 @@ impl ZeroTrustManager {
             factor_type: "time".to_string(),
             description: "Time-based access patterns".to_string(),
             weight: 0.15,
-            severity: if time_score > 0.5 { RiskLevel::Medium } else { RiskLevel::Low },
+            severity: if time_score > 0.5 {
+                RiskLevel::Medium
+            } else {
+                RiskLevel::Low
+            },
         });
 
         // Behavioral factor (using anomaly detector if available)
@@ -246,7 +262,11 @@ impl ZeroTrustManager {
                 factor_type: "behavioral".to_string(),
                 description: "Behavioral anomaly detection".to_string(),
                 weight: 0.25,
-                severity: if behavioral_score > 0.5 { RiskLevel::High } else { RiskLevel::Low },
+                severity: if behavioral_score > 0.5 {
+                    RiskLevel::High
+                } else {
+                    RiskLevel::Low
+                },
             });
         }
 
@@ -278,7 +298,11 @@ impl ZeroTrustManager {
     }
 
     /// Calculate behavioral risk using anomaly detector
-    async fn calculate_behavioral_risk(&self, _context: &AuthContext, _detector: &Box<dyn crate::services::anomaly_detector::AnomalyDetectorTrait>) -> f64 {
+    async fn calculate_behavioral_risk(
+        &self,
+        _context: &AuthContext,
+        _detector: &Box<dyn crate::services::anomaly_detector::AnomalyDetectorTrait>,
+    ) -> f64 {
         // TODO: Integrate with anomaly detector
         // Check for unusual login times, failed attempts, etc.
         // For now, return medium risk
@@ -333,7 +357,10 @@ impl ZeroTrustManager {
     /// Check if device is trusted
     pub fn is_device_trusted(&self, device_id: &str) -> bool {
         if let Some(device_trust) = self.device_trust_store.get(device_id) {
-            matches!(device_trust.trust_level, TrustLevel::High | TrustLevel::Maximum)
+            matches!(
+                device_trust.trust_level,
+                TrustLevel::High | TrustLevel::Maximum
+            )
         } else {
             false
         }
@@ -341,7 +368,8 @@ impl ZeroTrustManager {
 
     /// Register device trust
     pub fn register_device_trust(&mut self, device_trust: DeviceTrust) {
-        self.device_trust_store.insert(device_trust.device_id.clone(), device_trust);
+        self.device_trust_store
+            .insert(device_trust.device_id.clone(), device_trust);
     }
 
     /// Update device trust level
@@ -359,7 +387,8 @@ impl ContinuousAuthService for ZeroTrustManager {
         // TODO: Implement comprehensive device trust evaluation
         // Check device fingerprint, compliance, etc.
 
-        let trust_level = if device_info.os.contains("Windows") || device_info.os.contains("macOS") {
+        let trust_level = if device_info.os.contains("Windows") || device_info.os.contains("macOS")
+        {
             TrustLevel::High
         } else {
             TrustLevel::Medium
@@ -382,14 +411,12 @@ impl ContinuousAuthService for ZeroTrustManager {
         let score = self.calculate_risk_score(context).await;
         let level = Self::determine_risk_level(score);
 
-        let factors = vec![
-            RiskFactor {
-                factor_type: "device".to_string(),
-                description: format!("Device trust: {:?}", context.device_trust.trust_level),
-                weight: 0.4,
-                severity: level.clone(),
-            }
-        ];
+        let factors = vec![RiskFactor {
+            factor_type: "device".to_string(),
+            description: format!("Device trust: {:?}", context.device_trust.trust_level),
+            weight: 0.4,
+            severity: level.clone(),
+        }];
 
         let recommendations = match level {
             RiskLevel::Critical => vec![
@@ -429,7 +456,10 @@ impl ContinuousAuthService for ZeroTrustManager {
         Ok(true)
     }
 
-    async fn handle_suspicious_activity(&self, activity: &SuspiciousActivity) -> Result<(), String> {
+    async fn handle_suspicious_activity(
+        &self,
+        activity: &SuspiciousActivity,
+    ) -> Result<(), String> {
         // TODO: Implement suspicious activity handling
         // Log, alert, block, etc.
         println!("Suspicious activity detected: {:?}", activity);

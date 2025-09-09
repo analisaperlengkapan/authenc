@@ -1,6 +1,6 @@
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
 
 /// FIPS 140-2 compliance levels
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd)]
@@ -136,8 +136,16 @@ impl FipsSecurityProvider for BouncyCastleFipsProvider {
         let fips_mode = self.is_fips_mode().await?;
         checks.push(FipsComplianceCheck {
             check_name: "FIPS Mode".to_string(),
-            status: if fips_mode { FipsComplianceStatus::Compliant } else { FipsComplianceStatus::NonCompliant },
-            details: if fips_mode { "System is in FIPS mode".to_string() } else { "System is not in FIPS mode".to_string() },
+            status: if fips_mode {
+                FipsComplianceStatus::Compliant
+            } else {
+                FipsComplianceStatus::NonCompliant
+            },
+            details: if fips_mode {
+                "System is in FIPS mode".to_string()
+            } else {
+                "System is not in FIPS mode".to_string()
+            },
             recommendations: if !fips_mode {
                 vec!["Enable FIPS mode in system configuration".to_string()]
             } else {
@@ -148,7 +156,11 @@ impl FipsSecurityProvider for BouncyCastleFipsProvider {
         // Check cryptographic providers
         checks.push(FipsComplianceCheck {
             check_name: "Cryptographic Provider".to_string(),
-            status: if fips_mode { FipsComplianceStatus::Compliant } else { FipsComplianceStatus::NonCompliant },
+            status: if fips_mode {
+                FipsComplianceStatus::Compliant
+            } else {
+                FipsComplianceStatus::NonCompliant
+            },
             details: "BouncyCastle FIPS provider validation".to_string(),
             recommendations: vec![],
         });
@@ -203,8 +215,15 @@ impl FipsSecurityProvider for OpenSslFipsProvider {
     async fn validate_algorithm(&self, algorithm: &str) -> Result<AlgorithmValidation> {
         // OpenSSL FIPS approved algorithms
         let approved_algorithms = vec![
-            "AES", "RSA", "ECDSA", "SHA-256", "SHA-384", "SHA-512",
-            "HMAC-SHA-256", "HMAC-SHA-384", "HMAC-SHA-512"
+            "AES",
+            "RSA",
+            "ECDSA",
+            "SHA-256",
+            "SHA-384",
+            "SHA-512",
+            "HMAC-SHA-256",
+            "HMAC-SHA-384",
+            "HMAC-SHA-512",
         ];
 
         let is_approved = approved_algorithms.contains(&algorithm);
@@ -222,7 +241,11 @@ impl FipsSecurityProvider for OpenSslFipsProvider {
             algorithm: algorithm.to_string(),
             is_fips_approved: is_approved,
             security_strength,
-            usage_restrictions: if is_approved { vec![] } else { vec!["Algorithm not FIPS approved".to_string()] },
+            usage_restrictions: if is_approved {
+                vec![]
+            } else {
+                vec!["Algorithm not FIPS approved".to_string()]
+            },
         })
     }
 
@@ -232,7 +255,11 @@ impl FipsSecurityProvider for OpenSslFipsProvider {
         let fips_mode = self.is_fips_mode().await?;
         checks.push(FipsComplianceCheck {
             check_name: "OpenSSL FIPS Mode".to_string(),
-            status: if fips_mode { FipsComplianceStatus::Compliant } else { FipsComplianceStatus::NonCompliant },
+            status: if fips_mode {
+                FipsComplianceStatus::Compliant
+            } else {
+                FipsComplianceStatus::NonCompliant
+            },
             details: "OpenSSL FIPS provider validation".to_string(),
             recommendations: if !fips_mode {
                 vec!["Enable OpenSSL FIPS mode".to_string()]
@@ -298,9 +325,15 @@ impl FipsComplianceManager {
         let level = self.provider.get_fips_level().await?;
         let approved_algorithms = self.provider.get_approved_algorithms().await?;
 
-        let overall_status = if checks.iter().all(|check| matches!(check.status, FipsComplianceStatus::Compliant)) {
+        let overall_status = if checks
+            .iter()
+            .all(|check| matches!(check.status, FipsComplianceStatus::Compliant))
+        {
             FipsComplianceStatus::Compliant
-        } else if checks.iter().any(|check| matches!(check.status, FipsComplianceStatus::NonCompliant)) {
+        } else if checks
+            .iter()
+            .any(|check| matches!(check.status, FipsComplianceStatus::NonCompliant))
+        {
             FipsComplianceStatus::NonCompliant
         } else {
             FipsComplianceStatus::Unknown
@@ -319,7 +352,10 @@ impl FipsComplianceManager {
     pub async fn validate_crypto_operation(&self, algorithm: &str) -> Result<()> {
         if !self.is_algorithm_compliant(algorithm).await? {
             if self.strict_mode {
-                return Err(anyhow::anyhow!("Algorithm {} is not FIPS compliant", algorithm));
+                return Err(anyhow::anyhow!(
+                    "Algorithm {} is not FIPS compliant",
+                    algorithm
+                ));
             }
         }
         Ok(())

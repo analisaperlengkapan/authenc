@@ -9,10 +9,13 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::error::AuthencError;
 use crate::database::Database;
-use crate::services::zero_trust::{AuthContext, RiskAssessment, AdaptiveControls, DeviceTrust, TrustLevel, RiskLevel, ComplianceStatus};
+use crate::error::AuthencError;
 use crate::services::anomaly_detector::AnomalyDetectorTrait;
+use crate::services::zero_trust::{
+    AdaptiveControls, AuthContext, ComplianceStatus, DeviceTrust, RiskAssessment, RiskLevel,
+    TrustLevel,
+};
 
 #[derive(Deserialize)]
 pub struct AssessRiskRequest {
@@ -78,7 +81,7 @@ pub async fn assess_risk(
         user_agent: request.user_agent.clone(),
         ip_address: request.ip_address.clone(),
         location: request.location.clone(),
-        os: "Unknown".to_string(), // Would be parsed from user agent
+        os: "Unknown".to_string(),      // Would be parsed from user agent
         browser: "Unknown".to_string(), // Would be parsed from user agent
         screen_resolution: None,
         timezone: None,

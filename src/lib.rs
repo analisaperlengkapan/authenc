@@ -19,10 +19,10 @@
 // Core modules
 pub mod app;
 pub mod config;
+pub mod crypto;
 pub mod error;
 pub mod models;
 pub mod utils;
-pub mod crypto;
 
 // Framework integrations
 #[cfg(feature = "axum")]

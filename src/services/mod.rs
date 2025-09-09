@@ -28,9 +28,9 @@ pub mod kafka_audit_log_sink;
 pub mod pg_audit_log_store;
 
 // Federation services
-pub mod federation_provider;
-pub mod federation;
 pub mod broker;
+pub mod federation;
+pub mod federation_provider;
 
 // Authorization services
 pub mod authorization;
@@ -57,11 +57,11 @@ pub mod saml;
 pub mod device;
 
 // Enterprise-grade services
-pub mod vault;
-pub mod fips;
-pub mod observability;
 pub mod clustering;
 pub mod compliance;
+pub mod fips;
+pub mod observability;
+pub mod vault;
 
 // Re-exports for convenience
 pub use anomaly_detector::AnomalyDetector;

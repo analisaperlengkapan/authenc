@@ -10,10 +10,9 @@ use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLay
 use tracing::{error, info};
 
 use crate::{
-    app::AppState,
-    error::Result,
-    handlers::create_router,
-    middleware::rate_limit_axum::RateLimitConfig,
+    app::AppState, error::Result, handlers::create_router,
+    middleware::rate_limit_axum::{RateLimitConfig, RateLimitLayer, RateLimiterState},
+    middleware::{input_validation_axum::{input_validation_middleware, InputValidationConfig}, security_headers_axum::security_headers_middleware},
 };
 
 /// Axum web application wrapper
@@ -28,20 +27,36 @@ impl AxumApp {
         let state = Arc::new(state);
 
         // Configure rate limiting
-        let _rate_limit_config = RateLimitConfig {
+        let rate_limit_config = RateLimitConfig {
             requests_per_minute: state.config.security.rate_limit_requests_per_minute as u64,
             excluded_paths: vec![
                 "/health".to_string(),
                 "/health/ready".to_string(),
                 "/health/live".to_string(),
                 "/metrics".to_string(),
+                "/.well-known/".to_string(), // OIDC discovery endpoints
             ],
             enabled: state.config.features.enable_rate_limiting,
         };
 
+        // Configure input validation
+        let input_validation_config = Arc::new(InputValidationConfig {
+            enabled: state.config.features.enable_input_validation,
+            max_query_param_length: 2048,
+            max_header_length: 4096,
+            block_suspicious_patterns: true,
+        });
+
         // Build the router with middleware and routes
         let router = create_router(state.clone())
-            // Add middleware layers
+            // Add rate limiting first (early rejection)
+            .layer(RateLimitLayer::new(RateLimiterState::new(rate_limit_config)))
+            // Add security middleware layers (order matters!)
+            .layer(axum::middleware::from_fn(security_headers_middleware))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                input_validation_middleware(input_validation_config.clone(), req, next)
+            }))
+            // Add utility middleware layers
             .layer(TraceLayer::new_for_http())
             .layer(CorsLayer::permissive())
             .layer(CompressionLayer::new());

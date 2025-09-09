@@ -1,3 +1,7 @@
+use crate::database::Database;
+use crate::services::social::{
+    OAuthConfig, SocialLoginManager, SocialLoginService, SocialProvider,
+};
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -7,8 +11,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::database::Database;
-use crate::services::social::{SocialLoginManager, SocialLoginService, SocialProvider, OAuthConfig};
 
 #[derive(Deserialize)]
 pub struct InitiateLoginRequest {
@@ -50,7 +52,11 @@ pub async fn initiate_login(
         authorization_url: "https://accounts.google.com/o/oauth2/auth".to_string(),
         token_url: "https://oauth2.googleapis.com/token".to_string(),
         user_info_url: "https://www.googleapis.com/oauth2/v2/userinfo".to_string(),
-        scopes: vec!["openid".to_string(), "email".to_string(), "profile".to_string()],
+        scopes: vec![
+            "openid".to_string(),
+            "email".to_string(),
+            "profile".to_string(),
+        ],
         provider: SocialProvider::Google,
     };
 
@@ -82,7 +88,10 @@ pub async fn initiate_login(
     manager.register_provider(facebook_config);
 
     // Generate authorization URL
-    match manager.initiate_login(request.provider, &request.redirect_uri).await {
+    match manager
+        .initiate_login(request.provider, &request.redirect_uri)
+        .await
+    {
         Ok(url) => Ok(Json(InitiateLoginResponse {
             authorization_url: url,
         })),
@@ -103,7 +112,11 @@ pub async fn social_callback(
         authorization_url: "https://accounts.google.com/o/oauth2/auth".to_string(),
         token_url: "https://oauth2.googleapis.com/token".to_string(),
         user_info_url: "https://www.googleapis.com/oauth2/v2/userinfo".to_string(),
-        scopes: vec!["openid".to_string(), "email".to_string(), "profile".to_string()],
+        scopes: vec![
+            "openid".to_string(),
+            "email".to_string(),
+            "profile".to_string(),
+        ],
         provider: SocialProvider::Google,
     };
 

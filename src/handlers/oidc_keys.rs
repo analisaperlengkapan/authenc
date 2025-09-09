@@ -11,9 +11,8 @@ use once_cell::sync::Lazy;
 // Use crypto/ed25519_keys.rs for secure Ed25519 keys instead
 
 // Placeholder to maintain compilation - DO NOT USE
-pub static RSA_KEYPAIR: Lazy<()> = Lazy::new(|| {
-    panic!("Legacy RSA keys disabled - use Ed25519 implementation")
-});
+pub static RSA_KEYPAIR: Lazy<()> =
+    Lazy::new(|| panic!("Legacy RSA keys disabled - use Ed25519 implementation"));
 
 pub fn get_public_pem() -> String {
     panic!("Legacy RSA PEM disabled - use Ed25519 implementation")

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 /// Safe plugin manager using configuration-based approach instead of dynamic loading
 ///
@@ -45,7 +45,7 @@ impl PluginManager {
     /// Register a plugin configuration (safe alternative to dynamic loading)
     pub fn register_plugin(&mut self, config: PluginConfig) -> Result<(), String> {
         info!("Registering plugin: {}", config.name);
-        
+
         if self.plugin_configs.contains_key(&config.name) {
             return Err(format!("Plugin '{}' is already registered", config.name));
         }
@@ -54,16 +54,19 @@ impl PluginManager {
         if config.enabled {
             self.enabled_plugins.push(plugin_name.clone());
         }
-        
+
         self.plugin_configs.insert(plugin_name, config);
         Ok(())
     }
 
     /// Load plugin configurations from a configuration file (safe alternative)
-    pub fn load_plugins_from_config<P: AsRef<std::path::Path>>(&mut self, config_path: P) -> Result<(), String> {
+    pub fn load_plugins_from_config<P: AsRef<std::path::Path>>(
+        &mut self,
+        config_path: P,
+    ) -> Result<(), String> {
         let path = config_path.as_ref();
         info!("Loading plugin configurations from: {:?}", path);
-        
+
         if !path.exists() {
             warn!("Plugin configuration file does not exist: {:?}", path);
             return Ok(()); // Not an error, just no plugins to load
@@ -72,14 +75,17 @@ impl PluginManager {
         // In a real implementation, you would parse the config file here
         // For now, we'll register some default safe plugins
         self.register_default_plugins()?;
-        
+
         Ok(())
     }
 
     /// Initialize all enabled plugins (safe alternative to calling foreign functions)
     pub fn initialize_plugins(&self) -> Result<(), String> {
-        info!("Initializing {} enabled plugins", self.enabled_plugins.len());
-        
+        info!(
+            "Initializing {} enabled plugins",
+            self.enabled_plugins.len()
+        );
+
         for plugin_name in &self.enabled_plugins {
             if let Some(config) = self.plugin_configs.get(plugin_name) {
                 self.initialize_plugin(config)?;
@@ -87,14 +93,14 @@ impl PluginManager {
                 error!("Enabled plugin '{}' not found in registry", plugin_name);
             }
         }
-        
+
         Ok(())
     }
 
     /// Initialize a specific plugin (safe implementation)
     fn initialize_plugin(&self, config: &PluginConfig) -> Result<(), String> {
         info!("Initializing plugin: {} v{}", config.name, config.version);
-        
+
         // Safe plugin initialization based on configuration
         match config.name.as_str() {
             "auth_plugin" => self.init_auth_plugin(config),
@@ -140,13 +146,19 @@ impl PluginManager {
 
     /// Initialize metrics plugin (safe implementation)
     fn init_metrics_plugin(&self, config: &PluginConfig) -> Result<(), String> {
-        info!("Metrics plugin initialized with config: {:?}", config.config);
+        info!(
+            "Metrics plugin initialized with config: {:?}",
+            config.config
+        );
         Ok(())
     }
 
     /// Initialize logging plugin (safe implementation)
     fn init_logging_plugin(&self, config: &PluginConfig) -> Result<(), String> {
-        info!("Logging plugin initialized with config: {:?}", config.config);
+        info!(
+            "Logging plugin initialized with config: {:?}",
+            config.config
+        );
         Ok(())
     }
 

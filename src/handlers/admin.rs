@@ -1,21 +1,20 @@
+use crate::database::Database;
+use crate::error::AuthencError;
+use crate::services::admin::{
+    AuditLogResponse, CreatePolicyRequest, CreateRoleRequest, CreateUserRequest, PolicyResponse,
+    RoleResponse, SecurityEvent, SessionListResponse, SystemStats, UpdateUserRequest,
+    UserListResponse, UserResponse,
+};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
-    routing::{get, post, put, delete},
+    routing::{delete, get, post, put},
     Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::database::Database;
-use crate::error::AuthencError;
-use crate::services::admin::{
-    SystemStats, UserResponse, CreateUserRequest, UpdateUserRequest, RoleResponse,
-    CreateRoleRequest, PolicyResponse, CreatePolicyRequest,
-    SecurityEvent, UserListResponse,
-    SessionListResponse, AuditLogResponse
-};
 
 #[derive(Deserialize)]
 pub struct ListUsersQuery {

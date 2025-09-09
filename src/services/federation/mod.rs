@@ -1,7 +1,7 @@
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use anyhow::Result;
 use uuid::Uuid;
 
 /// Identity provider types
@@ -95,10 +95,26 @@ pub struct SamlIdentityProvider {
 impl SamlIdentityProvider {
     pub fn new(config: IdentityProviderConfig) -> Self {
         Self {
-            sp_entity_id: config.config.get("sp_entity_id").unwrap_or(&"authenc".to_string()).clone(),
-            idp_entity_id: config.config.get("idp_entity_id").unwrap_or(&"".to_string()).clone(),
-            sso_url: config.config.get("sso_url").unwrap_or(&"".to_string()).clone(),
-            x509_certificate: config.config.get("x509_certificate").unwrap_or(&"".to_string()).clone(),
+            sp_entity_id: config
+                .config
+                .get("sp_entity_id")
+                .unwrap_or(&"authenc".to_string())
+                .clone(),
+            idp_entity_id: config
+                .config
+                .get("idp_entity_id")
+                .unwrap_or(&"".to_string())
+                .clone(),
+            sso_url: config
+                .config
+                .get("sso_url")
+                .unwrap_or(&"".to_string())
+                .clone(),
+            x509_certificate: config
+                .config
+                .get("x509_certificate")
+                .unwrap_or(&"".to_string())
+                .clone(),
             config,
         }
     }
@@ -177,10 +193,26 @@ pub struct OidcIdentityProvider {
 impl OidcIdentityProvider {
     pub fn new(config: IdentityProviderConfig) -> Self {
         Self {
-            issuer_url: config.config.get("issuer_url").unwrap_or(&"".to_string()).clone(),
-            client_id: config.config.get("client_id").unwrap_or(&"".to_string()).clone(),
-            client_secret: config.config.get("client_secret").unwrap_or(&"".to_string()).clone(),
-            redirect_uri: config.config.get("redirect_uri").unwrap_or(&"".to_string()).clone(),
+            issuer_url: config
+                .config
+                .get("issuer_url")
+                .unwrap_or(&"".to_string())
+                .clone(),
+            client_id: config
+                .config
+                .get("client_id")
+                .unwrap_or(&"".to_string())
+                .clone(),
+            client_secret: config
+                .config
+                .get("client_secret")
+                .unwrap_or(&"".to_string())
+                .clone(),
+            redirect_uri: config
+                .config
+                .get("redirect_uri")
+                .unwrap_or(&"".to_string())
+                .clone(),
             config,
         }
     }
@@ -274,7 +306,11 @@ impl FederationService {
     }
 
     /// Authenticate user with specific provider
-    pub async fn authenticate(&self, provider_id: &Uuid, request: &AuthRequest) -> Result<AuthResponse> {
+    pub async fn authenticate(
+        &self,
+        provider_id: &Uuid,
+        request: &AuthRequest,
+    ) -> Result<AuthResponse> {
         if let Some(provider) = self.providers.get(provider_id) {
             provider.authenticate(request).await
         } else {
