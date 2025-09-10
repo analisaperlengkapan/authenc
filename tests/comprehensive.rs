@@ -8,7 +8,7 @@ use axum::{
     Router,
 };
 use axum_test::TestServer;
-use serde_json::{json, Value};
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -17,13 +17,22 @@ async fn test_create_and_get_realm() {
     // Create a simple test router for realm operations
     let app = Router::new()
         .route("/realms", axum::routing::post(|| async { "create_realm" }))
-        .route("/realms", axum::routing::get(|| async { r#"[{"name": "testrealm"}]"# }))
-        .route("/realms/:name", axum::routing::get(|| async { r#"{"name": "testrealm"}"# }));
+        .route(
+            "/realms",
+            axum::routing::get(|| async { r#"[{"name": "testrealm"}]"# }),
+        )
+        .route(
+            "/realms/{name}",
+            axum::routing::get(|| async { r#"{"name": "testrealm"}"# }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // Create realm
-    let response = server.post("/realms").json(&json!({"name": "testrealm"})).await;
+    let response = server
+        .post("/realms")
+        .json(&json!({"name": "testrealm"}))
+        .await;
     assert_eq!(response.status_code(), StatusCode::OK);
     let body = response.text();
     assert_eq!(body, "create_realm");
@@ -42,10 +51,19 @@ async fn test_user_flow_integration() {
     // Create a simple test router for user operations
     let app = Router::new()
         .route("/users", axum::routing::post(|| async { "user created" }))
-        .route("/users", axum::routing::get(|| async { r#"[{"id": "123", "username": "alice"}]"# }))
-        .route("/users/:id", axum::routing::get(|Path(id): Path<String>| async move {
-            format!(r#"{{"id": "{}", "username": "alice", "email": "alice@example.com"}}"#, id)
-        }));
+        .route(
+            "/users",
+            axum::routing::get(|| async { r#"[{"id": "123", "username": "alice"}]"# }),
+        )
+        .route(
+            "/users/{id}",
+            axum::routing::get(|Path(id): Path<String>| async move {
+                format!(
+                    r#"{{"id": "{}", "username": "alice", "email": "alice@example.com"}}"#,
+                    id
+                )
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -77,8 +95,14 @@ async fn test_user_flow_integration() {
 async fn test_create_and_get_role() {
     // Create a simple test router for role operations
     let app = Router::new()
-        .route("/roles", axum::routing::post(|| async { StatusCode::CREATED }))
-        .route("/roles", axum::routing::get(|| async { r#"[{"name": "admin"}]"# }));
+        .route(
+            "/roles",
+            axum::routing::post(|| async { StatusCode::CREATED }),
+        )
+        .route(
+            "/roles",
+            axum::routing::get(|| async { r#"[{"name": "admin"}]"# }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -118,8 +142,8 @@ async fn test_create_and_get_permission() {
 
 #[tokio::test]
 async fn test_user_negative_and_update_delete() {
-    use std::sync::Mutex;
     use std::collections::HashMap;
+    use std::sync::Mutex;
 
     // Simple in-memory user store for testing
     type UserStore = Mutex<HashMap<String, serde_json::Value>>;
@@ -127,111 +151,157 @@ async fn test_user_negative_and_update_delete() {
     let user_store = Arc::new(UserStore::new(HashMap::<String, serde_json::Value>::new()));
 
     let app = Router::new()
-        .route("/users", axum::routing::post({
-            let user_store = Arc::clone(&user_store);
-            move |Json(payload): Json<serde_json::Value>| async move {
-                // Password validation logic
-                let password = payload["password"].as_str().unwrap_or("");
-                if password.len() < 8 {
-                    return (StatusCode::BAD_REQUEST, "Password too short".to_string());
-                }
-                if !password.chars().any(|c| c.is_uppercase()) {
-                    return (StatusCode::BAD_REQUEST, "Password must contain uppercase".to_string());
-                }
-                if !password.chars().any(|c| c.is_digit(10)) {
-                    return (StatusCode::BAD_REQUEST, "Password must contain digit".to_string());
-                }
-                if password == "Password1234!" {
-                    return (StatusCode::BAD_REQUEST, "Password is blacklisted".to_string());
-                }
-
-                let id = "123".to_string();
-                let mut user = payload.clone();
-                user["id"] = serde_json::Value::String(id.clone());
-
-                user_store.lock().unwrap().insert(id, user);
-                (StatusCode::CREATED, "user created".to_string())
-            }
-        }))
-        .route("/users", axum::routing::get({
-            let user_store = Arc::clone(&user_store);
-            move || async move {
-                let users: Vec<serde_json::Value> = user_store.lock().unwrap().values().cloned().collect();
-                Json(users)
-            }
-        }))
-        .route("/users/:id", axum::routing::get({
-            let user_store = Arc::clone(&user_store);
-            move |Path(id): Path<String>| async move {
-                let users = user_store.lock().unwrap();
-                if let Some(user) = users.get(&id) {
-                    (StatusCode::OK, Json(user.clone()))
-                } else {
-                    (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "User not found"})))
-                }
-            }
-        }))
-        .route("/users/:id", axum::routing::put({
-            let user_store = Arc::clone(&user_store);
-            move |Path(id): Path<String>, Json(payload): Json<serde_json::Value>| async move {
-                let mut users = user_store.lock().unwrap();
-                if let Some(user) = users.get_mut(&id) {
-                    if let Some(email) = payload.get("email") {
-                        user["email"] = email.clone();
+        .route(
+            "/users",
+            axum::routing::post({
+                let user_store = Arc::clone(&user_store);
+                move |Json(payload): Json<serde_json::Value>| async move {
+                    // Password validation logic
+                    let password = payload["password"].as_str().unwrap_or("");
+                    if password.len() < 8 {
+                        return (StatusCode::BAD_REQUEST, "Password too short".to_string());
                     }
-                    (StatusCode::OK, Json(user.clone()))
-                } else {
-                    (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "User not found"})))
+                    if !password.chars().any(|c| c.is_uppercase()) {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            "Password must contain uppercase".to_string(),
+                        );
+                    }
+                    if !password.chars().any(|c| c.is_digit(10)) {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            "Password must contain digit".to_string(),
+                        );
+                    }
+                    if password == "Password1234!" {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            "Password is blacklisted".to_string(),
+                        );
+                    }
+
+                    let id = "123".to_string();
+                    let mut user = payload.clone();
+                    user["id"] = serde_json::Value::String(id.clone());
+
+                    user_store.lock().unwrap().insert(id, user);
+                    (StatusCode::CREATED, "user created".to_string())
                 }
-            }
-        }))
-        .route("/users/:id", axum::routing::delete({
-            let user_store = Arc::clone(&user_store);
-            move |Path(id): Path<String>| async move {
-                let mut users = user_store.lock().unwrap();
-                if users.remove(&id).is_some() {
-                    StatusCode::NO_CONTENT
-                } else {
-                    StatusCode::NOT_FOUND
+            }),
+        )
+        .route(
+            "/users",
+            axum::routing::get({
+                let user_store = Arc::clone(&user_store);
+                move || async move {
+                    let users: Vec<serde_json::Value> =
+                        user_store.lock().unwrap().values().cloned().collect();
+                    Json(users)
                 }
-            }
-        }));
+            }),
+        )
+        .route(
+            "/users/{id}",
+            axum::routing::get({
+                let user_store = Arc::clone(&user_store);
+                move |Path(id): Path<String>| async move {
+                    let users = user_store.lock().unwrap();
+                    if let Some(user) = users.get(&id) {
+                        (StatusCode::OK, Json(user.clone()))
+                    } else {
+                        (
+                            StatusCode::NOT_FOUND,
+                            Json(serde_json::json!({"error": "User not found"})),
+                        )
+                    }
+                }
+            }),
+        )
+        .route(
+            "/users/{id}",
+            axum::routing::put({
+                let user_store = Arc::clone(&user_store);
+                move |Path(id): Path<String>, Json(payload): Json<serde_json::Value>| async move {
+                    let mut users = user_store.lock().unwrap();
+                    if let Some(user) = users.get_mut(&id) {
+                        if let Some(email) = payload.get("email") {
+                            user["email"] = email.clone();
+                        }
+                        (StatusCode::OK, Json(user.clone()))
+                    } else {
+                        (
+                            StatusCode::NOT_FOUND,
+                            Json(serde_json::json!({"error": "User not found"})),
+                        )
+                    }
+                }
+            }),
+        )
+        .route(
+            "/users/{id}",
+            axum::routing::delete({
+                let user_store = Arc::clone(&user_store);
+                move |Path(id): Path<String>| async move {
+                    let mut users = user_store.lock().unwrap();
+                    if users.remove(&id).is_some() {
+                        StatusCode::NO_CONTENT
+                    } else {
+                        StatusCode::NOT_FOUND
+                    }
+                }
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // Password too short
-    let response = server.post("/users").json(&json!({"username": "bob", "email": "bob@example.com", "password": "Short1!"})).await;
+    let response = server
+        .post("/users")
+        .json(&json!({"username": "bob", "email": "bob@example.com", "password": "Short1!"}))
+        .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
 
     // Password no uppercase
-    let response = server.post("/users").json(&json!({"username": "bob", "email": "bob@example.com", "password": "lowercase123!"})).await;
+    let response = server
+        .post("/users")
+        .json(&json!({"username": "bob", "email": "bob@example.com", "password": "lowercase123!"}))
+        .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
 
     // Password no digit
-    let response = server.post("/users").json(&json!({"username": "bob", "email": "bob@example.com", "password": "NoDigitHere!"})).await;
+    let response = server
+        .post("/users")
+        .json(&json!({"username": "bob", "email": "bob@example.com", "password": "NoDigitHere!"}))
+        .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
 
     // Password blacklisted
-    let response = server.post("/users").json(&json!({"username": "bob", "email": "bob@example.com", "password": "Password1234!"})).await;
+    let response = server
+        .post("/users")
+        .json(&json!({"username": "bob", "email": "bob@example.com", "password": "Password1234!"}))
+        .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
 
     // Create valid user
-    let response = server.post("/users").json(&json!({"username": "bob", "email": "bob@example.com", "password": "ValidPass1!@#"})).await;
+    let response = server
+        .post("/users")
+        .json(&json!({"username": "bob", "email": "bob@example.com", "password": "ValidPass1!@#"}))
+        .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
 
     // Get all users, extract id
     let response = server.get("/users").await;
     assert!(response.status_code().is_success());
     let users: Vec<serde_json::Value> = response.json::<Vec<serde_json::Value>>();
-    let id = users
-        .iter()
-        .find(|u| u["username"] == "bob")
-        .unwrap()["id"]
+    let id = users.iter().find(|u| u["username"] == "bob").unwrap()["id"]
         .as_str()
         .unwrap();
 
     // Update user email
-    let response = server.put(&format!("/users/{}", id)).json(&json!({"email": "bob2@example.com"})).await;
+    let response = server
+        .put(&format!("/users/{}", id))
+        .json(&json!({"email": "bob2@example.com"}))
+        .await;
     assert!(response.status_code().is_success());
 
     // Delete user
@@ -249,8 +319,8 @@ async fn test_user_negative_and_update_delete() {
 
 #[tokio::test]
 async fn test_group_crud_and_members_roles() {
-    use std::sync::Mutex;
     use std::collections::HashMap;
+    use std::sync::Mutex;
 
     // Simple in-memory group store for testing
     #[derive(Clone)]
@@ -267,124 +337,159 @@ async fn test_group_crud_and_members_roles() {
     let group_store = Arc::new(GroupStore::new(HashMap::<String, Group>::new()));
 
     let app = Router::new()
-        .route("/groups", axum::routing::post({
-            let group_store = Arc::clone(&group_store);
-            move |Json(payload): Json<serde_json::Value>| async move {
-                let id = "g1".to_string();
-                let group = Group {
-                    id: id.clone(),
-                    name: payload["name"].as_str().unwrap_or("").to_string(),
-                    description: payload["description"].as_str().unwrap_or("").to_string(),
-                    members: vec![],
-                    roles: vec![],
-                };
+        .route(
+            "/groups",
+            axum::routing::post({
+                let group_store = Arc::clone(&group_store);
+                move |Json(payload): Json<serde_json::Value>| async move {
+                    let id = "g1".to_string();
+                    let group = Group {
+                        id: id.clone(),
+                        name: payload["name"].as_str().unwrap_or("").to_string(),
+                        description: payload["description"].as_str().unwrap_or("").to_string(),
+                        members: vec![],
+                        roles: vec![],
+                    };
 
-                group_store.lock().unwrap().insert(id.clone(), group);
-                let response = json!({
-                    "id": id,
-                    "name": payload["name"],
-                    "description": payload["description"]
-                });
-                (StatusCode::CREATED, Json(response))
-            }
-        }))
-        .route("/groups", axum::routing::get({
-            let group_store = Arc::clone(&group_store);
-            move || async move {
-                let groups: Vec<serde_json::Value> = group_store.lock().unwrap().values()
-                    .map(|g| json!({
-                        "id": g.id,
-                        "name": g.name,
-                        "description": g.description
-                    }))
-                    .collect();
-                Json(groups)
-            }
-        }))
-        .route("/groups/:id", axum::routing::get({
-            let group_store = Arc::clone(&group_store);
-            move |Path(id): Path<String>| async move {
-                let groups = group_store.lock().unwrap();
-                if let Some(group) = groups.get(&id) {
+                    group_store.lock().unwrap().insert(id.clone(), group);
                     let response = json!({
-                        "id": group.id,
-                        "name": group.name,
-                        "description": group.description
+                        "id": id,
+                        "name": payload["name"],
+                        "description": payload["description"]
                     });
-                    (StatusCode::OK, Json(response))
-                } else {
-                    (StatusCode::NOT_FOUND, Json(json!({"error": "Group not found"})))
+                    (StatusCode::CREATED, Json(response))
                 }
-            }
-        }))
-        .route("/groups/:id", axum::routing::delete({
-            let group_store = Arc::clone(&group_store);
-            move |Path(id): Path<String>| async move {
-                let mut groups = group_store.lock().unwrap();
-                if groups.remove(&id).is_some() {
-                    StatusCode::NO_CONTENT
-                } else {
-                    StatusCode::NOT_FOUND
+            }),
+        )
+        .route(
+            "/groups",
+            axum::routing::get({
+                let group_store = Arc::clone(&group_store);
+                move || async move {
+                    let groups: Vec<serde_json::Value> = group_store
+                        .lock()
+                        .unwrap()
+                        .values()
+                        .map(|g| {
+                            json!({
+                                "id": g.id,
+                                "name": g.name,
+                                "description": g.description
+                            })
+                        })
+                        .collect();
+                    Json(groups)
                 }
-            }
-        }))
-        .route("/groups/:gid/members/:uid", axum::routing::post({
-            let group_store = Arc::clone(&group_store);
-            move |Path((gid, uid)): Path<(String, String)>| async move {
-                let mut groups = group_store.lock().unwrap();
-                if let Some(group) = groups.get_mut(&gid) {
-                    if !group.members.contains(&uid) {
-                        group.members.push(uid);
+            }),
+        )
+        .route(
+            "/groups/{id}",
+            axum::routing::get({
+                let group_store = Arc::clone(&group_store);
+                move |Path(id): Path<String>| async move {
+                    let groups = group_store.lock().unwrap();
+                    if let Some(group) = groups.get(&id) {
+                        let response = json!({
+                            "id": group.id,
+                            "name": group.name,
+                            "description": group.description
+                        });
+                        (StatusCode::OK, Json(response))
+                    } else {
+                        (
+                            StatusCode::NOT_FOUND,
+                            Json(json!({"error": "Group not found"})),
+                        )
                     }
-                    StatusCode::OK
-                } else {
-                    StatusCode::NOT_FOUND
                 }
-            }
-        }))
-        .route("/groups/:gid/members/:uid", axum::routing::delete({
-            let group_store = Arc::clone(&group_store);
-            move |Path((gid, uid)): Path<(String, String)>| async move {
-                let mut groups = group_store.lock().unwrap();
-                if let Some(group) = groups.get_mut(&gid) {
-                    group.members.retain(|m| m != &uid);
-                    StatusCode::OK
-                } else {
-                    StatusCode::NOT_FOUND
-                }
-            }
-        }))
-        .route("/groups/:gid/roles/:rid", axum::routing::post({
-            let group_store = Arc::clone(&group_store);
-            move |Path((gid, rid)): Path<(String, String)>| async move {
-                let mut groups = group_store.lock().unwrap();
-                if let Some(group) = groups.get_mut(&gid) {
-                    if !group.roles.contains(&rid) {
-                        group.roles.push(rid);
+            }),
+        )
+        .route(
+            "/groups/{id}",
+            axum::routing::delete({
+                let group_store = Arc::clone(&group_store);
+                move |Path(id): Path<String>| async move {
+                    let mut groups = group_store.lock().unwrap();
+                    if groups.remove(&id).is_some() {
+                        StatusCode::NO_CONTENT
+                    } else {
+                        StatusCode::NOT_FOUND
                     }
-                    StatusCode::OK
-                } else {
-                    StatusCode::NOT_FOUND
                 }
-            }
-        }))
-        .route("/groups/:gid/roles/:rid", axum::routing::delete({
-            let group_store = Arc::clone(&group_store);
-            move |Path((gid, rid)): Path<(String, String)>| async move {
-                let mut groups = group_store.lock().unwrap();
-                if let Some(group) = groups.get_mut(&gid) {
-                    group.roles.retain(|r| r != &rid);
-                    StatusCode::OK
-                } else {
-                    StatusCode::NOT_FOUND
+            }),
+        )
+        .route(
+            "/groups/{gid}/members/{uid}",
+            axum::routing::post({
+                let group_store = Arc::clone(&group_store);
+                move |Path((gid, uid)): Path<(String, String)>| async move {
+                    let mut groups = group_store.lock().unwrap();
+                    if let Some(group) = groups.get_mut(&gid) {
+                        if !group.members.contains(&uid) {
+                            group.members.push(uid);
+                        }
+                        StatusCode::OK
+                    } else {
+                        StatusCode::NOT_FOUND
+                    }
                 }
-            }
-        }));
+            }),
+        )
+        .route(
+            "/groups/{gid}/members/{uid}",
+            axum::routing::delete({
+                let group_store = Arc::clone(&group_store);
+                move |Path((gid, uid)): Path<(String, String)>| async move {
+                    let mut groups = group_store.lock().unwrap();
+                    if let Some(group) = groups.get_mut(&gid) {
+                        group.members.retain(|m| m != &uid);
+                        StatusCode::OK
+                    } else {
+                        StatusCode::NOT_FOUND
+                    }
+                }
+            }),
+        )
+        .route(
+            "/groups/{gid}/roles/{rid}",
+            axum::routing::post({
+                let group_store = Arc::clone(&group_store);
+                move |Path((gid, rid)): Path<(String, String)>| async move {
+                    let mut groups = group_store.lock().unwrap();
+                    if let Some(group) = groups.get_mut(&gid) {
+                        if !group.roles.contains(&rid) {
+                            group.roles.push(rid);
+                        }
+                        StatusCode::OK
+                    } else {
+                        StatusCode::NOT_FOUND
+                    }
+                }
+            }),
+        )
+        .route(
+            "/groups/{gid}/roles/{rid}",
+            axum::routing::delete({
+                let group_store = Arc::clone(&group_store);
+                move |Path((gid, rid)): Path<(String, String)>| async move {
+                    let mut groups = group_store.lock().unwrap();
+                    if let Some(group) = groups.get_mut(&gid) {
+                        group.roles.retain(|r| r != &rid);
+                        StatusCode::OK
+                    } else {
+                        StatusCode::NOT_FOUND
+                    }
+                }
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // Create group
-    let response = server.post("/groups").json(&json!({"name": "team-a", "description": "Team A"})).await;
+    let response = server
+        .post("/groups")
+        .json(&json!({"name": "team-a", "description": "Team A"}))
+        .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
     let created: serde_json::Value = response.json::<serde_json::Value>();
     let gid = created["id"].as_str().unwrap().to_string();
@@ -500,16 +605,19 @@ async fn test_group_duplicate_member_role_idempotency() {
 #[tokio::test]
 async fn test_sessions_list_empty_for_unknown_user() {
     // Create a simple test router for session operations
-    let app = Router::new()
-        .route("/sessions", axum::routing::get(|| async {
+    let app = Router::new().route(
+        "/sessions",
+        axum::routing::get(|| async {
             // Simple auth check - return 401 for invalid token
             StatusCode::UNAUTHORIZED
-        }));
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
     // Supply a bogus token signed with default secret but with sub unknown
-    let response = server.get("/sessions")
+    let response = server
+        .get("/sessions")
         .add_header("Authorization", "Bearer not.a.jwt")
         .await;
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
@@ -517,10 +625,10 @@ async fn test_sessions_list_empty_for_unknown_user() {
 
 #[tokio::test]
 async fn test_oidc_id_token_generation_and_decode() {
-    use authenc::handlers::oidc_ed25519::{generate_ed25519_jwt, OidcIdTokenClaims};
     use authenc::crypto::ed25519_keys::ED25519_KEYPAIR;
+    use authenc::handlers::oidc_ed25519::{generate_ed25519_jwt, OidcIdTokenClaims};
     use jsonwebtoken::{Algorithm, DecodingKey, Validation};
-    
+
     // Generate a token
     let token = generate_ed25519_jwt(
         "sub123",
@@ -529,7 +637,7 @@ async fn test_oidc_id_token_generation_and_decode() {
         Some("Eve"),
         Some("user"),
     );
-    
+
     // Build a decoding key from the Ed25519 public key
     let verifying_key = ED25519_KEYPAIR.verifying_key();
     let key = DecodingKey::from_ed_der(verifying_key.as_ref());
@@ -662,16 +770,17 @@ async fn test_login_and_sessions_flow() {
 
 #[tokio::test]
 async fn test_login_bruteforce_throttle() {
-    use std::sync::Mutex;
     use std::collections::HashMap;
+    use std::sync::Mutex;
 
     // Simple brute force counter for testing
     type BruteForceStore = Mutex<HashMap<String, u32>>;
 
     let brute_force_store = Arc::new(BruteForceStore::new(HashMap::<String, u32>::new()));
 
-    let app = Router::new()
-        .route("/login", axum::routing::post({
+    let app = Router::new().route(
+        "/login",
+        axum::routing::post({
             let brute_force_store = Arc::clone(&brute_force_store);
             move |Json(payload): Json<serde_json::Value>| async move {
                 let username = payload["username"].as_str().unwrap_or("");
@@ -681,17 +790,24 @@ async fn test_login_bruteforce_throttle() {
 
                 // Threshold is 0, so any attempt should be throttled
                 if *count > 0 {
-                    (StatusCode::TOO_MANY_REQUESTS, Json(json!({"error": "Too many attempts"})))
+                    (
+                        StatusCode::TOO_MANY_REQUESTS,
+                        Json(json!({"error": "Too many attempts"})),
+                    )
                 } else {
                     (StatusCode::OK, Json(json!({"token": "fake-token"})))
                 }
             }
-        }));
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
     // First attempt should trigger throttling due to threshold 0
-    let response = server.post("/login").json(&json!({"username": "erin", "password": "RightPass1!@#"})).await;
+    let response = server
+        .post("/login")
+        .json(&json!({"username": "erin", "password": "RightPass1!@#"}))
+        .await;
     assert_eq!(response.status_code(), StatusCode::TOO_MANY_REQUESTS);
 }
 
@@ -741,8 +857,8 @@ async fn test_login_via_federation_provider() {
 
 #[tokio::test]
 async fn test_login_requires_totp_when_enabled() {
-    use std::sync::Mutex;
     use std::collections::HashMap;
+    use std::sync::Mutex;
 
     // Simple TOTP store for testing
     type TotpStore = Mutex<HashMap<String, String>>;
@@ -755,8 +871,9 @@ async fn test_login_requires_totp_when_enabled() {
         store.insert("u-totp-login".to_string(), "JBSWY3DPEHPK3PXP".to_string());
     }
 
-    let app = Router::new()
-        .route("/login", axum::routing::post({
+    let app = Router::new().route(
+        "/login",
+        axum::routing::post({
             let totp_store = Arc::clone(&totp_store);
             move |Json(payload): Json<serde_json::Value>| async move {
                 let username = payload["username"].as_str().unwrap_or("");
@@ -767,7 +884,10 @@ async fn test_login_requires_totp_when_enabled() {
                 if store.contains_key("u-totp-login") && username == "tuser" {
                     // TOTP is enabled but not provided in request
                     if !payload.get("totp_code").is_some() {
-                        return (StatusCode::UNAUTHORIZED, Json(json!({"error": "TOTP required"})));
+                        return (
+                            StatusCode::UNAUTHORIZED,
+                            Json(json!({"error": "TOTP required"})),
+                        );
                     }
                 }
 
@@ -775,15 +895,22 @@ async fn test_login_requires_totp_when_enabled() {
                 if username == "tuser" && password == "TopSecret1!@#" {
                     (StatusCode::OK, Json(json!({"token": "fake-token"})))
                 } else {
-                    (StatusCode::UNAUTHORIZED, Json(json!({"error": "Invalid credentials"})))
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({"error": "Invalid credentials"})),
+                    )
                 }
             }
-        }));
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
     // Missing TOTP -> 401
-    let response = server.post("/login").json(&json!({"username": "tuser", "password": "TopSecret1!@#"})).await;
+    let response = server
+        .post("/login")
+        .json(&json!({"username": "tuser", "password": "TopSecret1!@#"}))
+        .await;
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
 }
 
@@ -863,7 +990,6 @@ async fn test_login_requires_totp_when_enabled() {
 //    assert_eq!(resp.status(), 400);
 //}
 
-
 //#[actix_web::test]
 //async fn test_totp_valid_code_after_enable() {
 //    use authenc::services::totp_store::TotpStore;
@@ -905,14 +1031,20 @@ async fn test_login_requires_totp_when_enabled() {
 async fn test_realm_endpoints_smoke() {
     // Create a simple test router for realm operations
     let app = Router::new()
-        .route("/realms", axum::routing::get(|| async { r#"[{"name": "master"}]"# }))
-        .route("/realms/:name", axum::routing::get(|Path(name): Path<String>| async move {
-            if name == "master" {
-                r#"{"name": "master", "enabled": true}"#.to_string()
-            } else {
-                r#"{"error": "not found"}"#.to_string()
-            }
-        }));
+        .route(
+            "/realms",
+            axum::routing::get(|| async { r#"[{"name": "master"}]"# }),
+        )
+        .route(
+            "/realms/{name}",
+            axum::routing::get(|Path(name): Path<String>| async move {
+                if name == "master" {
+                    r#"{"name": "master", "enabled": true}"#.to_string()
+                } else {
+                    r#"{"error": "not found"}"#.to_string()
+                }
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -926,19 +1058,28 @@ async fn test_realm_endpoints_smoke() {
 #[tokio::test]
 async fn test_oidc_token_invalid_code_path() {
     // Create a simple test router for OIDC token operations
-    let app = Router::new()
-        .route("/oidc/token", axum::routing::post(|Form(form): Form<HashMap<String, String>>| async move {
+    let app = Router::new().route(
+        "/oidc/token",
+        axum::routing::post(|Form(form): Form<HashMap<String, String>>| async move {
             let code = form.get("code").cloned().unwrap_or_else(|| "".to_string());
             if code == "bad" {
-                (StatusCode::BAD_REQUEST, Json(json!({"error": "invalid_code"})))
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "invalid_code"})),
+                )
             } else {
-                (StatusCode::OK, Json(json!({"access_token": "token", "token_type": "Bearer"})))
+                (
+                    StatusCode::OK,
+                    Json(json!({"access_token": "token", "token_type": "Bearer"})),
+                )
             }
-        }));
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
-    let response = server.post("/oidc/token")
+    let response = server
+        .post("/oidc/token")
         .form(&[
             ("grant_type", "authorization_code"),
             ("code", "bad"),
@@ -953,14 +1094,20 @@ async fn test_oidc_token_invalid_code_path() {
 async fn test_sessions_missing_or_invalid_token() {
     // Create a simple test router for session operations
     let app = Router::new()
-        .route("/sessions", axum::routing::get(|| async {
-            // Simple auth check - return 401 for missing/invalid token
-            StatusCode::UNAUTHORIZED
-        }))
-        .route("/logout", axum::routing::post(|| async {
-            // Simple auth check - return 401 for missing token
-            StatusCode::UNAUTHORIZED
-        }));
+        .route(
+            "/sessions",
+            axum::routing::get(|| async {
+                // Simple auth check - return 401 for missing/invalid token
+                StatusCode::UNAUTHORIZED
+            }),
+        )
+        .route(
+            "/logout",
+            axum::routing::post(|| async {
+                // Simple auth check - return 401 for missing token
+                StatusCode::UNAUTHORIZED
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -969,7 +1116,8 @@ async fn test_sessions_missing_or_invalid_token() {
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
 
     // Invalid token
-    let response = server.get("/sessions")
+    let response = server
+        .get("/sessions")
         .add_header("Authorization", "Bearer not.a.jwt")
         .await;
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
@@ -983,19 +1131,32 @@ async fn test_sessions_missing_or_invalid_token() {
 async fn test_oidc_authorize_flow_redirect_only() {
     // Handler functions for complex closures
     async fn handle_oidc_login(Form(form): Form<HashMap<String, String>>) -> Response<String> {
-        let client_id = form.get("client_id").cloned().unwrap_or_else(|| "".to_string());
-        let redirect_uri = form.get("redirect_uri").cloned().unwrap_or_else(|| "".to_string());
-        let response_type = form.get("response_type").cloned().unwrap_or_else(|| "".to_string());
+        let client_id = form
+            .get("client_id")
+            .cloned()
+            .unwrap_or_else(|| "".to_string());
+        let redirect_uri = form
+            .get("redirect_uri")
+            .cloned()
+            .unwrap_or_else(|| "".to_string());
+        let response_type = form
+            .get("response_type")
+            .cloned()
+            .unwrap_or_else(|| "".to_string());
         let scope = form.get("scope").cloned().unwrap_or_else(|| "".to_string());
         let state = form.get("state").cloned().unwrap_or_else(|| "".to_string());
 
         // Simple validation
-        if client_id == "client-123" && response_type == "code" && scope == "alice" && state == "pw" {
+        if client_id == "client-123" && response_type == "code" && scope == "alice" && state == "pw"
+        {
             // Set a simple cookie and redirect
             let cookie_value = "auth_user_id=alice; Path=/; HttpOnly";
             Response::builder()
                 .status(StatusCode::FOUND)
-                .header("Location", format!("{}?code=test-code&state={}", redirect_uri, state))
+                .header(
+                    "Location",
+                    format!("{}?code=test-code&state={}", redirect_uri, state),
+                )
                 .header("Set-Cookie", cookie_value)
                 .body("Redirecting...".to_string())
                 .unwrap()
@@ -1007,14 +1168,30 @@ async fn test_oidc_authorize_flow_redirect_only() {
         }
     }
 
-    async fn handle_oidc_authorize(Query(params): Query<HashMap<String, String>>, headers: HeaderMap) -> Response<String> {
-        let client_id = params.get("client_id").cloned().unwrap_or_else(|| "".to_string());
-        let redirect_uri = params.get("redirect_uri").cloned().unwrap_or_else(|| "".to_string());
-        let response_type = params.get("response_type").cloned().unwrap_or_else(|| "".to_string());
+    async fn handle_oidc_authorize(
+        Query(params): Query<HashMap<String, String>>,
+        headers: HeaderMap,
+    ) -> Response<String> {
+        let _client_id = params
+            .get("client_id")
+            .cloned()
+            .unwrap_or_else(|| "".to_string());
+        let redirect_uri = params
+            .get("redirect_uri")
+            .cloned()
+            .unwrap_or_else(|| "".to_string());
+        let _response_type = params
+            .get("response_type")
+            .cloned()
+            .unwrap_or_else(|| "".to_string());
 
         // Check for auth cookie
         if let Some(cookie_header) = headers.get("cookie") {
-            if cookie_header.to_str().unwrap_or("").contains("auth_user_id=alice") {
+            if cookie_header
+                .to_str()
+                .unwrap_or("")
+                .contains("auth_user_id=alice")
+            {
                 // Authorized - redirect with code
                 let location = format!("{}?code=test-auth-code&state=test", redirect_uri);
                 Response::builder()
@@ -1039,10 +1216,12 @@ async fn test_oidc_authorize_flow_redirect_only() {
     // Create a simple test router for OIDC operations
     let app = Router::new()
         .route("/oidc/login", axum::routing::post(handle_oidc_login))
-        .route("/oidc/authorize", axum::routing::get(handle_oidc_authorize));    let server = TestServer::new(app).unwrap();
+        .route("/oidc/authorize", axum::routing::get(handle_oidc_authorize));
+    let server = TestServer::new(app).unwrap();
 
     // Simulate login POST
-    let response = server.post("/oidc/login")
+    let response = server
+        .post("/oidc/login")
         .form(&[
             ("client_id", "client-123"),
             ("redirect_uri", "https://app.example.com/cb"),
@@ -1058,13 +1237,18 @@ async fn test_oidc_authorize_flow_redirect_only() {
     let auth_cookie = cookies.iter().find(|c| c.name() == "auth_user_id").unwrap();
 
     // Authorize with cookie
-    let response = server.get("/oidc/authorize?client_id=client-123&redirect_uri=https://app.example.com/cb&response_type=code")
+    let response = server.get("/oidc/authorize?client_id=client-123&redirect_uri=https{//app.example.com/cb&response_type=code}")
         .add_header("Cookie", format!("{}={}", auth_cookie.name(), auth_cookie.value()))
         .await;
     assert_eq!(response.status_code(), StatusCode::FOUND);
 
     // Check that location contains code
-    let location = response.headers().get("location").unwrap().to_str().unwrap();
+    let location = response
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(location.contains("code="));
 }
 
@@ -1072,8 +1256,8 @@ async fn test_oidc_authorize_flow_redirect_only() {
 
 #[tokio::test]
 async fn test_oidc_client_admin_endpoints() {
-    use std::sync::Mutex;
     use std::collections::HashMap;
+    use std::sync::Mutex;
 
     // Simple OIDC client store for testing
     #[derive(Clone)]
@@ -1089,47 +1273,68 @@ async fn test_oidc_client_admin_endpoints() {
     let store = Arc::new(OidcClientStore::new(HashMap::<String, OidcClient>::new()));
 
     let app = Router::new()
-        .route("/oidc/clients", axum::routing::get({
-            let store = Arc::clone(&store);
-            move || async move {
-                let clients: Vec<serde_json::Value> = store.lock().unwrap().values()
-                    .map(|c| json!({
-                        "client_id": c.client_id,
-                        "client_secret": c.client_secret,
-                        "redirect_uris": c.redirect_uris,
-                        "name": c.name
-                    }))
-                    .collect();
-                Json(clients)
-            }
-        }))
-        .route("/oidc/clients", axum::routing::post({
-            let store = Arc::clone(&store);
-            move |Json(payload): Json<serde_json::Value>| async move {
-                let client_id = payload["client_id"].as_str().unwrap_or("").to_string();
-                let client = OidcClient {
-                    client_id: client_id.clone(),
-                    client_secret: payload["client_secret"].as_str().unwrap_or("").to_string(),
-                    redirect_uris: payload["redirect_uris"].as_array().unwrap_or(&vec![])
-                        .iter().map(|u| u.as_str().unwrap_or("").to_string()).collect(),
-                    name: payload["name"].as_str().unwrap_or("").to_string(),
-                };
-
-                store.lock().unwrap().insert(client_id, client);
-                (StatusCode::CREATED, Json(json!({"message": "Client created"})))
-            }
-        }))
-        .route("/oidc/clients/:client_id", axum::routing::delete({
-            let store = Arc::clone(&store);
-            move |Path(client_id): Path<String>| async move {
-                let mut clients = store.lock().unwrap();
-                if clients.remove(&client_id).is_some() {
-                    StatusCode::NO_CONTENT
-                } else {
-                    StatusCode::NOT_FOUND
+        .route(
+            "/oidc/clients",
+            axum::routing::get({
+                let store = Arc::clone(&store);
+                move || async move {
+                    let clients: Vec<serde_json::Value> = store
+                        .lock()
+                        .unwrap()
+                        .values()
+                        .map(|c| {
+                            json!({
+                                "client_id": c.client_id,
+                                "client_secret": c.client_secret,
+                                "redirect_uris": c.redirect_uris,
+                                "name": c.name
+                            })
+                        })
+                        .collect();
+                    Json(clients)
                 }
-            }
-        }));
+            }),
+        )
+        .route(
+            "/oidc/clients",
+            axum::routing::post({
+                let store = Arc::clone(&store);
+                move |Json(payload): Json<serde_json::Value>| async move {
+                    let client_id = payload["client_id"].as_str().unwrap_or("").to_string();
+                    let client = OidcClient {
+                        client_id: client_id.clone(),
+                        client_secret: payload["client_secret"].as_str().unwrap_or("").to_string(),
+                        redirect_uris: payload["redirect_uris"]
+                            .as_array()
+                            .unwrap_or(&vec![])
+                            .iter()
+                            .map(|u| u.as_str().unwrap_or("").to_string())
+                            .collect(),
+                        name: payload["name"].as_str().unwrap_or("").to_string(),
+                    };
+
+                    store.lock().unwrap().insert(client_id, client);
+                    (
+                        StatusCode::CREATED,
+                        Json(json!({"message": "Client created"})),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/oidc/clients/{client_id}",
+            axum::routing::delete({
+                let store = Arc::clone(&store);
+                move |Path(client_id): Path<String>| async move {
+                    let mut clients = store.lock().unwrap();
+                    if clients.remove(&client_id).is_some() {
+                        StatusCode::NO_CONTENT
+                    } else {
+                        StatusCode::NOT_FOUND
+                    }
+                }
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -1138,12 +1343,15 @@ async fn test_oidc_client_admin_endpoints() {
     assert!(response.status_code().is_success());
 
     // Create
-    let response = server.post("/oidc/clients").json(&json!({
-        "client_id": "cli1",
-        "client_secret": "sec",
-        "redirect_uris": ["https://app/cb"],
-        "name": "App"
-    })).await;
+    let response = server
+        .post("/oidc/clients")
+        .json(&json!({
+            "client_id": "cli1",
+            "client_secret": "sec",
+            "redirect_uris": ["https://app/cb"],
+            "name": "App"
+        }))
+        .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
 
     // List non-empty
@@ -1159,8 +1367,8 @@ async fn test_oidc_client_admin_endpoints() {
 
 #[tokio::test]
 async fn test_oidc_client_delete_not_found_and_duplicate_add() {
-    use std::sync::Mutex;
     use std::collections::HashMap;
+    use std::sync::Mutex;
 
     // Simple OIDC client store for testing
     #[derive(Clone)]
@@ -1176,47 +1384,68 @@ async fn test_oidc_client_delete_not_found_and_duplicate_add() {
     let store = Arc::new(OidcClientStore::new(HashMap::<String, OidcClient>::new()));
 
     let app = Router::new()
-        .route("/oidc/clients", axum::routing::get({
-            let store = Arc::clone(&store);
-            move || async move {
-                let clients: Vec<serde_json::Value> = store.lock().unwrap().values()
-                    .map(|c| json!({
-                        "client_id": c.client_id,
-                        "client_secret": c.client_secret,
-                        "redirect_uris": c.redirect_uris,
-                        "name": c.name
-                    }))
-                    .collect();
-                Json(clients)
-            }
-        }))
-        .route("/oidc/clients", axum::routing::post({
-            let store = Arc::clone(&store);
-            move |Json(payload): Json<serde_json::Value>| async move {
-                let client_id = payload["client_id"].as_str().unwrap_or("").to_string();
-                let client = OidcClient {
-                    client_id: client_id.clone(),
-                    client_secret: payload["client_secret"].as_str().unwrap_or("").to_string(),
-                    redirect_uris: payload["redirect_uris"].as_array().unwrap_or(&vec![])
-                        .iter().map(|u| u.as_str().unwrap_or("").to_string()).collect(),
-                    name: payload["name"].as_str().unwrap_or("").to_string(),
-                };
-
-                store.lock().unwrap().insert(client_id, client);
-                (StatusCode::CREATED, Json(json!({"message": "Client created"})))
-            }
-        }))
-        .route("/oidc/clients/:client_id", axum::routing::delete({
-            let store = Arc::clone(&store);
-            move |Path(client_id): Path<String>| async move {
-                let mut clients = store.lock().unwrap();
-                if clients.remove(&client_id).is_some() {
-                    StatusCode::NO_CONTENT
-                } else {
-                    StatusCode::NOT_FOUND
+        .route(
+            "/oidc/clients",
+            axum::routing::get({
+                let store = Arc::clone(&store);
+                move || async move {
+                    let clients: Vec<serde_json::Value> = store
+                        .lock()
+                        .unwrap()
+                        .values()
+                        .map(|c| {
+                            json!({
+                                "client_id": c.client_id,
+                                "client_secret": c.client_secret,
+                                "redirect_uris": c.redirect_uris,
+                                "name": c.name
+                            })
+                        })
+                        .collect();
+                    Json(clients)
                 }
-            }
-        }));
+            }),
+        )
+        .route(
+            "/oidc/clients",
+            axum::routing::post({
+                let store = Arc::clone(&store);
+                move |Json(payload): Json<serde_json::Value>| async move {
+                    let client_id = payload["client_id"].as_str().unwrap_or("").to_string();
+                    let client = OidcClient {
+                        client_id: client_id.clone(),
+                        client_secret: payload["client_secret"].as_str().unwrap_or("").to_string(),
+                        redirect_uris: payload["redirect_uris"]
+                            .as_array()
+                            .unwrap_or(&vec![])
+                            .iter()
+                            .map(|u| u.as_str().unwrap_or("").to_string())
+                            .collect(),
+                        name: payload["name"].as_str().unwrap_or("").to_string(),
+                    };
+
+                    store.lock().unwrap().insert(client_id, client);
+                    (
+                        StatusCode::CREATED,
+                        Json(json!({"message": "Client created"})),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/oidc/clients/{client_id}",
+            axum::routing::delete({
+                let store = Arc::clone(&store);
+                move |Path(client_id): Path<String>| async move {
+                    let mut clients = store.lock().unwrap();
+                    if clients.remove(&client_id).is_some() {
+                        StatusCode::NO_CONTENT
+                    } else {
+                        StatusCode::NOT_FOUND
+                    }
+                }
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -1225,21 +1454,27 @@ async fn test_oidc_client_delete_not_found_and_duplicate_add() {
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
 
     // Create client
-    let response = server.post("/oidc/clients").json(&json!({
-        "client_id": "dup",
-        "client_secret": "sec",
-        "redirect_uris": ["https://app/cb"],
-        "name": "App"
-    })).await;
+    let response = server
+        .post("/oidc/clients")
+        .json(&json!({
+            "client_id": "dup",
+            "client_secret": "sec",
+            "redirect_uris": ["https://app/cb"],
+            "name": "App"
+        }))
+        .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
 
     // Create again with same id (allowed by current impl)
-    let response = server.post("/oidc/clients").json(&json!({
-        "client_id": "dup",
-        "client_secret": "sec2",
-        "redirect_uris": ["https://app/cb2"],
-        "name": "App2"
-    })).await;
+    let response = server
+        .post("/oidc/clients")
+        .json(&json!({
+            "client_id": "dup",
+            "client_secret": "sec2",
+            "redirect_uris": ["https://app/cb2"],
+            "name": "App2"
+        }))
+        .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
 
     // List has at least one element
@@ -1251,8 +1486,9 @@ async fn test_oidc_client_delete_not_found_and_duplicate_add() {
 #[tokio::test]
 async fn test_sessions_logout_idempotent() {
     // Create a simple test router for logout operations
-    let app = Router::new()
-        .route("/logout", axum::routing::post(|headers: HeaderMap| async move {
+    let app = Router::new().route(
+        "/logout",
+        axum::routing::post(|headers: HeaderMap| async move {
             // Check if Authorization header is present
             if let Some(auth_header) = headers.get("authorization") {
                 if auth_header.to_str().unwrap_or("").starts_with("Bearer ") {
@@ -1265,7 +1501,8 @@ async fn test_sessions_logout_idempotent() {
                 // No token - return unauthorized
                 StatusCode::UNAUTHORIZED
             }
-        }));
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
@@ -1274,7 +1511,8 @@ async fn test_sessions_logout_idempotent() {
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
 
     // With bogus token -> 200 (handler removes if present; still returns 200)
-    let response = server.post("/logout")
+    let response = server
+        .post("/logout")
         .add_header("Authorization", "Bearer abc.def")
         .await;
     assert!(response.status_code().is_success());
@@ -1283,14 +1521,16 @@ async fn test_sessions_logout_idempotent() {
 #[tokio::test]
 async fn test_realm_delete_endpoint() {
     // Create a simple test router for realm operations
-    let app = Router::new()
-        .route("/realms/:name", axum::routing::delete(|Path(name): Path<String>| async move {
+    let app = Router::new().route(
+        "/realms/{name}",
+        axum::routing::delete(|Path(name): Path<String>| async move {
             if name == "foo" {
                 StatusCode::NO_CONTENT
             } else {
                 StatusCode::NOT_FOUND
             }
-        }));
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
@@ -1302,20 +1542,26 @@ async fn test_realm_delete_endpoint() {
 async fn test_role_permission_delete_smoke() {
     // Create a simple test router for role and permission operations
     let app = Router::new()
-        .route("/roles/:id", axum::routing::delete(|Path(id): Path<String>| async move {
-            if id == "r1" {
-                StatusCode::NO_CONTENT
-            } else {
-                StatusCode::NOT_FOUND
-            }
-        }))
-        .route("/permissions/:id", axum::routing::delete(|Path(id): Path<String>| async move {
-            if id == "p1" {
-                StatusCode::NO_CONTENT
-            } else {
-                StatusCode::NOT_FOUND
-            }
-        }));
+        .route(
+            "/roles/{id}",
+            axum::routing::delete(|Path(id): Path<String>| async move {
+                if id == "r1" {
+                    StatusCode::NO_CONTENT
+                } else {
+                    StatusCode::NOT_FOUND
+                }
+            }),
+        )
+        .route(
+            "/permissions/{id}",
+            axum::routing::delete(|Path(id): Path<String>| async move {
+                if id == "p1" {
+                    StatusCode::NO_CONTENT
+                } else {
+                    StatusCode::NOT_FOUND
+                }
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -1330,41 +1576,56 @@ async fn test_role_permission_delete_smoke() {
 async fn test_group_ops_on_missing_group() {
     // Create a simple test router for group operations
     let app = Router::new()
-        .route("/groups/:group_id", axum::routing::get(|Path(group_id): Path<String>| async move {
-            if group_id == "miss" {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::OK
-            }
-        }))
-        .route("/groups/:group_id/members/:user_id", axum::routing::post(|Path((group_id, _)): Path<(String, String)>| async move {
-            if group_id == "miss" {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::OK
-            }
-        }))
-        .route("/groups/:group_id/members/:user_id", axum::routing::delete(|Path((group_id, _)): Path<(String, String)>| async move {
-            if group_id == "miss" {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::OK
-            }
-        }))
-        .route("/groups/:group_id/roles/:role_id", axum::routing::post(|Path((group_id, _)): Path<(String, String)>| async move {
-            if group_id == "miss" {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::OK
-            }
-        }))
-        .route("/groups/:group_id/roles/:role_id", axum::routing::delete(|Path((group_id, _)): Path<(String, String)>| async move {
-            if group_id == "miss" {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::OK
-            }
-        }));
+        .route(
+            "/groups/{group_id}",
+            axum::routing::get(|Path(group_id): Path<String>| async move {
+                if group_id == "miss" {
+                    StatusCode::NOT_FOUND
+                } else {
+                    StatusCode::OK
+                }
+            }),
+        )
+        .route(
+            "/groups/{group_id}/members/{user_id}",
+            axum::routing::post(|Path((group_id, _)): Path<(String, String)>| async move {
+                if group_id == "miss" {
+                    StatusCode::NOT_FOUND
+                } else {
+                    StatusCode::OK
+                }
+            }),
+        )
+        .route(
+            "/groups/{group_id}/members/{user_id}",
+            axum::routing::delete(|Path((group_id, _)): Path<(String, String)>| async move {
+                if group_id == "miss" {
+                    StatusCode::NOT_FOUND
+                } else {
+                    StatusCode::OK
+                }
+            }),
+        )
+        .route(
+            "/groups/{group_id}/roles/{role_id}",
+            axum::routing::post(|Path((group_id, _)): Path<(String, String)>| async move {
+                if group_id == "miss" {
+                    StatusCode::NOT_FOUND
+                } else {
+                    StatusCode::OK
+                }
+            }),
+        )
+        .route(
+            "/groups/{group_id}/roles/{role_id}",
+            axum::routing::delete(|Path((group_id, _)): Path<(String, String)>| async move {
+                if group_id == "miss" {
+                    StatusCode::NOT_FOUND
+                } else {
+                    StatusCode::OK
+                }
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -1389,41 +1650,48 @@ async fn test_group_ops_on_missing_group() {
 
 #[tokio::test]
 async fn test_sessions_list_contains_token() {
+    use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::Mutex;
-    use std::collections::HashMap;
 
     // Simple in-memory session store for testing
     let sessions = Arc::new(Mutex::new(HashMap::<String, serde_json::Value>::new()));
 
     // Create a simple test router for session operations
     let app = Router::new()
-        .route("/login", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            if payload["username"] == "zoe" && payload["password"] == "Pass!2345678" {
-                let token = "test-session-token-123";
-                Json(json!({"token": token}))
-            } else {
-                Json(json!({"error": "Invalid credentials"}))
-            }
-        }))
-        .route("/sessions", axum::routing::get(|headers: HeaderMap| async move {
-            if let Some(auth_header) = headers.get("authorization") {
-                if let Ok(auth_str) = auth_header.to_str() {
-                    if auth_str.starts_with("Bearer ") {
-                        let token = &auth_str[7..]; // Remove "Bearer " prefix
-                        if token == "test-session-token-123" {
-                            return Json(json!([token]));
+        .route(
+            "/login",
+            axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+                if payload["username"] == "zoe" && payload["password"] == "Pass!2345678" {
+                    let token = "test-session-token-123";
+                    Json(json!({"token": token}))
+                } else {
+                    Json(json!({"error": "Invalid credentials"}))
+                }
+            }),
+        )
+        .route(
+            "/sessions",
+            axum::routing::get(|headers: HeaderMap| async move {
+                if let Some(auth_header) = headers.get("authorization") {
+                    if let Ok(auth_str) = auth_header.to_str() {
+                        if auth_str.starts_with("Bearer ") {
+                            let token = &auth_str[7..]; // Remove "Bearer " prefix
+                            if token == "test-session-token-123" {
+                                return Json(json!([token]));
+                            }
                         }
                     }
                 }
-            }
-            Json(json!({"error": "Invalid token"}))
-        }));
+                Json(json!({"error": "Invalid token"}))
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // Login to get token
-    let response = server.post("/login")
+    let response = server
+        .post("/login")
         .json(&json!({"username": "zoe", "password": "Pass!2345678"}))
         .await;
     assert!(response.status_code().is_success());
@@ -1432,7 +1700,8 @@ async fn test_sessions_list_contains_token() {
     let token = login_data["token"].as_str().unwrap();
 
     // Get sessions list
-    let response = server.get("/sessions")
+    let response = server
+        .get("/sessions")
         .add_header("Authorization", format!("Bearer {}", token))
         .await;
     assert!(response.status_code().is_success());
@@ -1446,16 +1715,24 @@ async fn test_sessions_list_contains_token() {
 async fn test_realm_scoped_users_with_authbearer() {
     // Create a simple test router for user operations
     let app = Router::new()
-        .route("/users", axum::routing::post(|| async {
-            (StatusCode::CREATED, Json(json!({"message": "User created"})))
-        }))
-        .route("/users", axum::routing::get(|| async {
-            Json(json!({"users": []}))
-        }));
+        .route(
+            "/users",
+            axum::routing::post(|| async {
+                (
+                    StatusCode::CREATED,
+                    Json(json!({"message": "User created"})),
+                )
+            }),
+        )
+        .route(
+            "/users",
+            axum::routing::get(|| async { Json(json!({"users": []})) }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
-    let response = server.post("/users")
+    let response = server
+        .post("/users")
         .json(&json!({"username":"z","email":"z@ex.com","password":"Abcd1234!@#$"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
@@ -1480,9 +1757,9 @@ async fn test_password_policy_edges() {
 
 #[tokio::test]
 async fn test_update_user_fields_reflected() {
+    use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::Mutex;
-    use std::collections::HashMap;
 
     // Simple in-memory user store for testing
     let users = Arc::new(Mutex::new(HashMap::<String, serde_json::Value>::new()));
@@ -1490,82 +1767,102 @@ async fn test_update_user_fields_reflected() {
 
     // Create a simple test router for user operations
     let app = Router::new()
-        .route("/users", axum::routing::post({
-            let users_clone = users_clone.clone();
-            move |Json(payload): Json<serde_json::Value>| {
+        .route(
+            "/users",
+            axum::routing::post({
                 let users_clone = users_clone.clone();
-                async move {
-                    let username = payload["username"].as_str().unwrap_or("default");
-                    let email = payload["email"].as_str().unwrap_or("default@example.com");
-                    let id = "user123";
+                move |Json(payload): Json<serde_json::Value>| {
+                    let users_clone = users_clone.clone();
+                    async move {
+                        let username = payload["username"].as_str().unwrap_or("default");
+                        let email = payload["email"].as_str().unwrap_or("default@example.com");
+                        let id = "user123";
 
-                    let mut user_data = json!({
-                        "id": id,
-                        "username": username,
-                        "email": email
-                    });
+                        let mut user_data = json!({
+                            "id": id,
+                            "username": username,
+                            "email": email
+                        });
 
-                    // Store in shared users map
-                    {
-                        let mut users_lock = users_clone.lock().unwrap();
-                        users_lock.insert(id.to_string(), user_data.clone());
-                    }
-
-                    (StatusCode::CREATED, Json(user_data))
-                }
-            }
-        }))
-        .route("/users", axum::routing::get({
-            let users = users.clone();
-            move || {
-                let users = users.clone();
-                async move {
-                    let users_lock = users.lock().unwrap();
-                    let users_list: Vec<serde_json::Value> = users_lock.values().cloned().collect();
-                    Json(serde_json::Value::Array(users_list))
-                }
-            }
-        }))
-        .route("/users/:id", axum::routing::get({
-            let users = users.clone();
-            move |Path(id): Path<String>| {
-                let users = users.clone();
-                async move {
-                    let users_lock = users.lock().unwrap();
-                    if let Some(user) = users_lock.get(&id) {
-                        (StatusCode::OK, Json(user.clone()))
-                    } else {
-                        (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
-                    }
-                }
-            }
-        }))
-        .route("/users/:id", axum::routing::put({
-            let users = users.clone();
-            move |Path(id): Path<String>, Json(payload): Json<serde_json::Value>| {
-                let users = users.clone();
-                async move {
-                    let mut users_lock = users.lock().unwrap();
-                    if let Some(user) = users_lock.get_mut(&id) {
-                        // Update user fields
-                        if let Some(username) = payload["username"].as_str() {
-                            user["username"] = json!(username);
+                        // Store in shared users map
+                        {
+                            let mut users_lock = users_clone.lock().unwrap();
+                            users_lock.insert(id.to_string(), user_data.clone());
                         }
-                        if let Some(email) = payload["email"].as_str() {
-                            user["email"] = json!(email);
-                        }
-                        (StatusCode::OK, Json(json!({"message": "User updated"})))
-                    } else {
-                        (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
+
+                        (StatusCode::CREATED, Json(user_data))
                     }
                 }
-            }
-        }));
+            }),
+        )
+        .route(
+            "/users",
+            axum::routing::get({
+                let users = users.clone();
+                move || {
+                    let users = users.clone();
+                    async move {
+                        let users_lock = users.lock().unwrap();
+                        let users_list: Vec<serde_json::Value> =
+                            users_lock.values().cloned().collect();
+                        Json(serde_json::Value::Array(users_list))
+                    }
+                }
+            }),
+        )
+        .route(
+            "/users/{id}",
+            axum::routing::get({
+                let users = users.clone();
+                move |Path(id): Path<String>| {
+                    let users = users.clone();
+                    async move {
+                        let users_lock = users.lock().unwrap();
+                        if let Some(user) = users_lock.get(&id) {
+                            (StatusCode::OK, Json(user.clone()))
+                        } else {
+                            (
+                                StatusCode::NOT_FOUND,
+                                Json(json!({"error": "User not found"})),
+                            )
+                        }
+                    }
+                }
+            }),
+        )
+        .route(
+            "/users/{id}",
+            axum::routing::put({
+                let users = users.clone();
+                move |Path(id): Path<String>, Json(payload): Json<serde_json::Value>| {
+                    let users = users.clone();
+                    async move {
+                        let mut users_lock = users.lock().unwrap();
+                        if let Some(user) = users_lock.get_mut(&id) {
+                            // Update user fields
+                            if let Some(username) = payload["username"].as_str() {
+                                user["username"] = json!(username);
+                            }
+                            if let Some(email) = payload["email"].as_str() {
+                                user["email"] = json!(email);
+                            }
+                            (StatusCode::OK, Json(json!({"message": "User updated"})))
+                        } else {
+                            (
+                                StatusCode::NOT_FOUND,
+                                Json(json!({"error": "User not found"})),
+                            )
+                        }
+                    }
+                }
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // Create user
-    let response = server.post("/users")
+    let response = server
+        .post("/users")
         .json(&json!({"username":"x","email":"x@ex.com","password":"Abcd1234!@#$"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
@@ -1577,7 +1874,8 @@ async fn test_update_user_fields_reflected() {
     let id = users_array[0]["id"].as_str().unwrap();
 
     // Update username and email
-    let response = server.put(&format!("/users/{}", id))
+    let response = server
+        .put(&format!("/users/{}", id))
         .json(&json!({"username":"y","email":"y@ex.com"}))
         .await;
     assert!(response.status_code().is_success());
@@ -1592,14 +1890,16 @@ async fn test_update_user_fields_reflected() {
 #[tokio::test]
 async fn test_delete_user_unknown_404() {
     // Create a simple test router for user operations
-    let app = Router::new()
-        .route("/users/:id", axum::routing::delete(|Path(id): Path<String>| async move {
+    let app = Router::new().route(
+        "/users/{id}",
+        axum::routing::delete(|Path(id): Path<String>| async move {
             if id == "unknown" {
                 StatusCode::NOT_FOUND
             } else {
                 StatusCode::NO_CONTENT
             }
-        }));
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
@@ -1610,10 +1910,21 @@ async fn test_delete_user_unknown_404() {
 #[tokio::test]
 async fn test_oidc_authorize_invalid_client_and_login_redirect() {
     // Handler function for complex closure
-    async fn handle_oidc_authorize_simple(Query(params): Query<HashMap<String, String>>) -> Response<String> {
-        let client_id = params.get("client_id").cloned().unwrap_or_else(|| "".to_string());
-        let redirect_uri = params.get("redirect_uri").cloned().unwrap_or_else(|| "".to_string());
-        let response_type = params.get("response_type").cloned().unwrap_or_else(|| "".to_string());
+    async fn handle_oidc_authorize_simple(
+        Query(params): Query<HashMap<String, String>>,
+    ) -> Response<String> {
+        let client_id = params
+            .get("client_id")
+            .cloned()
+            .unwrap_or_else(|| "".to_string());
+        let redirect_uri = params
+            .get("redirect_uri")
+            .cloned()
+            .unwrap_or_else(|| "".to_string());
+        let response_type = params
+            .get("response_type")
+            .cloned()
+            .unwrap_or_else(|| "".to_string());
 
         if client_id == "unknown" {
             Response::builder()
@@ -1636,19 +1947,30 @@ async fn test_oidc_authorize_invalid_client_and_login_redirect() {
     }
 
     // Create a simple test router for OIDC operations
-    let app = Router::new()
-        .route("/oidc/authorize", axum::routing::get(handle_oidc_authorize_simple));
+    let app = Router::new().route(
+        "/oidc/authorize",
+        axum::routing::get(handle_oidc_authorize_simple),
+    );
 
     let server = TestServer::new(app).unwrap();
 
     // Invalid client -> 400
-    let response = server.get("/oidc/authorize?client_id=unknown&redirect_uri=https://cb&response_type=code").await;
+    let response = server
+        .get("/oidc/authorize?client_id=unknown&redirect_uri=https://cb&response_type=code")
+        .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
 
     // Valid client but missing cookie -> redirect to login
-    let response = server.get("/oidc/authorize?client_id=cli&redirect_uri=https://cb&response_type=code").await;
+    let response = server
+        .get("/oidc/authorize?client_id=cli&redirect_uri=https://cb&response_type=code")
+        .await;
     assert_eq!(response.status_code(), StatusCode::FOUND);
-    let location = response.headers().get("location").unwrap().to_str().unwrap();
+    let location = response
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(location.contains("/v1/oidc/login"));
 }
 
@@ -1656,46 +1978,57 @@ async fn test_oidc_authorize_invalid_client_and_login_redirect() {
 
 #[tokio::test]
 async fn test_update_password_happy_and_not_found() {
+    use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::Mutex;
-    use std::collections::HashMap;
 
     // Simple in-memory user store for testing
     let users = Arc::new(Mutex::new(HashMap::<String, serde_json::Value>::new()));
     let _users_clone = users.clone();
 
     // Create a simple test router for user password operations
-    let app = Router::new()
-        .route("/users/:id/password", axum::routing::post(
+    let app = Router::new().route(
+        "/users/{id}/password",
+        axum::routing::post(
             |Path(id): Path<String>, Json(payload): Json<serde_json::Value>| async move {
                 let password = payload["password"].as_str().unwrap_or("");
 
                 if id == "doesnotexist" {
-                    (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
+                    (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({"error": "User not found"})),
+                    )
                 } else if password.len() < 8 {
-                    (StatusCode::BAD_REQUEST, Json(json!({"error": "Password too short"})))
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": "Password too short"})),
+                    )
                 } else {
                     (StatusCode::OK, Json(json!({"message": "Password updated"})))
                 }
-            }
-        ));
+            },
+        ),
+    );
 
     let server = TestServer::new(app).unwrap();
 
     // Update password success
-    let response = server.post("/users/user123/password")
+    let response = server
+        .post("/users/user123/password")
         .json(&json!({"password": "NewStrongPass1!@#"}))
         .await;
     assert!(response.status_code().is_success());
 
     // Update password with too short -> 400
-    let response = server.post("/users/user123/password")
+    let response = server
+        .post("/users/user123/password")
         .json(&json!({"password": "Short1!"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
 
     // Update password for unknown user -> 404
-    let response = server.post("/users/doesnotexist/password")
+    let response = server
+        .post("/users/doesnotexist/password")
         .json(&json!({"password": "AnotherStrong1!@#"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
@@ -1704,19 +2037,27 @@ async fn test_update_password_happy_and_not_found() {
 #[tokio::test]
 async fn test_update_user_not_found() {
     // Create a simple test router for user operations
-    let app = Router::new()
-        .route("/users/:id", axum::routing::put(|Path(id): Path<String>, Json(_payload): Json<serde_json::Value>| async move {
-            if id == "unknown" {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
-            } else {
-                (StatusCode::OK, Json(json!({"message": "User updated"})))
-            }
-        }));
+    let app = Router::new().route(
+        "/users/{id}",
+        axum::routing::put(
+            |Path(id): Path<String>, Json(_payload): Json<serde_json::Value>| async move {
+                if id == "unknown" {
+                    (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({"error": "User not found"})),
+                    )
+                } else {
+                    (StatusCode::OK, Json(json!({"message": "User updated"})))
+                }
+            },
+        ),
+    );
 
     let server = TestServer::new(app).unwrap();
 
     // Update user that doesn't exist
-    let response = server.put("/users/unknown")
+    let response = server
+        .put("/users/unknown")
         .json(&json!({"email": "nobody@example.com"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
@@ -1726,48 +2067,97 @@ async fn test_update_user_not_found() {
 async fn test_role_and_permission_assign_endpoints() {
     // Create a simple test router for role and permission operations
     let app = Router::new()
-        .route("/roles/:role_id/assign", axum::routing::post(|Path(role_id): Path<String>| async move {
-            if role_id == "r1" {
-                (StatusCode::OK, Json(json!({"message": "Role assigned"})))
-            } else {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "Role not found"})))
-            }
-        }))
-        .route("/roles/:role_id/unassign", axum::routing::post(|Path(role_id): Path<String>| async move {
-            if role_id == "r1" {
-                (StatusCode::OK, Json(json!({"message": "Role unassigned"})))
-            } else {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "Role not found"})))
-            }
-        }))
-        .route("/roles/:role_id/permissions/:permission_id/assign", axum::routing::post(|Path((role_id, permission_id)): Path<(String, String)>| async move {
-            if role_id == "r1" && permission_id == "p1" {
-                (StatusCode::OK, Json(json!({"message": "Permission assigned"})))
-            } else {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "Role or permission not found"})))
-            }
-        }))
-        .route("/roles/:role_id/permissions/:permission_id/unassign", axum::routing::post(|Path((role_id, permission_id)): Path<(String, String)>| async move {
-            if role_id == "r1" && permission_id == "p1" {
-                (StatusCode::OK, Json(json!({"message": "Permission unassigned"})))
-            } else {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "Role or permission not found"})))
-            }
-        }))
-        .route("/users/:user_id/permissions", axum::routing::get(|Path(user_id): Path<String>| async move {
-            if user_id == "u1" {
-                (StatusCode::OK, Json(json!({"permissions": ["read", "write"]})))
-            } else {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
-            }
-        }))
-        .route("/users/:user_id/permissions/check", axum::routing::get(|Path(user_id): Path<String>| async move {
-            if user_id == "u1" {
-                (StatusCode::OK, Json(json!({"has_permission": true})))
-            } else {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
-            }
-        }));
+        .route(
+            "/roles/{role_id}/assign",
+            axum::routing::post(|Path(role_id): Path<String>| async move {
+                if role_id == "r1" {
+                    (StatusCode::OK, Json(json!({"message": "Role assigned"})))
+                } else {
+                    (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({"error": "Role not found"})),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/roles/{role_id}/unassign",
+            axum::routing::post(|Path(role_id): Path<String>| async move {
+                if role_id == "r1" {
+                    (StatusCode::OK, Json(json!({"message": "Role unassigned"})))
+                } else {
+                    (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({"error": "Role not found"})),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/roles/{role_id}/permissions/{permission_id}/assign",
+            axum::routing::post(
+                |Path((role_id, permission_id)): Path<(String, String)>| async move {
+                    if role_id == "r1" && permission_id == "p1" {
+                        (
+                            StatusCode::OK,
+                            Json(json!({"message": "Permission assigned"})),
+                        )
+                    } else {
+                        (
+                            StatusCode::NOT_FOUND,
+                            Json(json!({"error": "Role or permission not found"})),
+                        )
+                    }
+                },
+            ),
+        )
+        .route(
+            "/roles/{role_id}/permissions/{permission_id}/unassign",
+            axum::routing::post(
+                |Path((role_id, permission_id)): Path<(String, String)>| async move {
+                    if role_id == "r1" && permission_id == "p1" {
+                        (
+                            StatusCode::OK,
+                            Json(json!({"message": "Permission unassigned"})),
+                        )
+                    } else {
+                        (
+                            StatusCode::NOT_FOUND,
+                            Json(json!({"error": "Role or permission not found"})),
+                        )
+                    }
+                },
+            ),
+        )
+        .route(
+            "/users/{user_id}/permissions",
+            axum::routing::get(|Path(user_id): Path<String>| async move {
+                if user_id == "u1" {
+                    (
+                        StatusCode::OK,
+                        Json(json!({"permissions": ["read", "write"]})),
+                    )
+                } else {
+                    (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({"error": "User not found"})),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/users/{user_id}/permissions/check",
+            axum::routing::get(|Path(user_id): Path<String>| async move {
+                if user_id == "u1" {
+                    (StatusCode::OK, Json(json!({"has_permission": true})))
+                } else {
+                    (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({"error": "User not found"})),
+                    )
+                }
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -1803,12 +2193,16 @@ impl authenc::services::audit_log_sink::AuditLogSink for DummySink {
 async fn test_audit_log_endpoints() {
     // Create a simple test router for audit log operations
     let app = Router::new()
-        .route("/audit", axum::routing::post(|| async {
-            (StatusCode::OK, Json(json!({"message": "Audit log added"})))
-        }))
-        .route("/audit", axum::routing::get(|| async {
-            Json(json!({"logs": []}))
-        }));
+        .route(
+            "/audit",
+            axum::routing::post(|| async {
+                (StatusCode::OK, Json(json!({"message": "Audit log added"})))
+            }),
+        )
+        .route(
+            "/audit",
+            axum::routing::get(|| async { Json(json!({"logs": []})) }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -1822,11 +2216,16 @@ async fn test_audit_log_endpoints() {
 #[tokio::test]
 async fn test_audit_logs_csv_unauthorized_forbidden_paths() {
     // Create a simple test router for audit log export
-    let app = Router::new()
-        .route("/audit/logs/export", axum::routing::get(|| async {
+    let app = Router::new().route(
+        "/audit/logs/export",
+        axum::routing::get(|| async {
             // Simulate authorization check - return 401 for missing token
-            (StatusCode::UNAUTHORIZED, Json(json!({"error": "Unauthorized"})))
-        }));
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Unauthorized"})),
+            )
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
@@ -1839,73 +2238,111 @@ async fn test_audit_logs_csv_unauthorized_forbidden_paths() {
 async fn test_audit_logs_forbidden_with_valid_non_admin_token() {
     // Create a simple test router for audit log endpoints
     let app = Router::new()
-        .route("/audit/logs", axum::routing::get(|headers: HeaderMap| async move {
-            // Check for authorization header
-            if let Some(auth_header) = headers.get("authorization") {
-                if auth_header.to_str().unwrap_or("").contains("Bearer") {
-                    // Simulate non-admin user - return 403
-                    (StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"})))
+        .route(
+            "/audit/logs",
+            axum::routing::get(|headers: HeaderMap| async move {
+                // Check for authorization header
+                if let Some(auth_header) = headers.get("authorization") {
+                    if auth_header.to_str().unwrap_or("").contains("Bearer") {
+                        // Simulate non-admin user - return 403
+                        (StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"})))
+                    } else {
+                        (
+                            StatusCode::UNAUTHORIZED,
+                            Json(json!({"error": "Unauthorized"})),
+                        )
+                    }
                 } else {
-                    (StatusCode::UNAUTHORIZED, Json(json!({"error": "Unauthorized"})))
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({"error": "Unauthorized"})),
+                    )
                 }
-            } else {
-                (StatusCode::UNAUTHORIZED, Json(json!({"error": "Unauthorized"})))
-            }
-        }))
-        .route("/audit/logs/export", axum::routing::get(|headers: HeaderMap| async move {
-            // Check for authorization header
-            if let Some(auth_header) = headers.get("authorization") {
-                if auth_header.to_str().unwrap_or("").contains("Bearer") {
-                    // Simulate non-admin user - return 403
-                    (StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"})))
+            }),
+        )
+        .route(
+            "/audit/logs/export",
+            axum::routing::get(|headers: HeaderMap| async move {
+                // Check for authorization header
+                if let Some(auth_header) = headers.get("authorization") {
+                    if auth_header.to_str().unwrap_or("").contains("Bearer") {
+                        // Simulate non-admin user - return 403
+                        (StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"})))
+                    } else {
+                        (
+                            StatusCode::UNAUTHORIZED,
+                            Json(json!({"error": "Unauthorized"})),
+                        )
+                    }
                 } else {
-                    (StatusCode::UNAUTHORIZED, Json(json!({"error": "Unauthorized"})))
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({"error": "Unauthorized"})),
+                    )
                 }
-            } else {
-                (StatusCode::UNAUTHORIZED, Json(json!({"error": "Unauthorized"})))
-            }
-        }));
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // JSON endpoint -> expect Forbidden if token validates as non-admin
-    let response = server.get("/audit/logs").add_header("Authorization", "Bearer valid_token").await;
+    let response = server
+        .get("/audit/logs")
+        .add_header("Authorization", "Bearer valid_token")
+        .await;
     assert!([401, 403].contains(&response.status_code().as_u16()));
 
     // CSV export -> 403
-    let response = server.get("/audit/logs/export").add_header("Authorization", "Bearer valid_token").await;
+    let response = server
+        .get("/audit/logs/export")
+        .add_header("Authorization", "Bearer valid_token")
+        .await;
     assert!([401, 403].contains(&response.status_code().as_u16()));
 }
 
 #[tokio::test]
 async fn test_oidc_authorize_consent_page() {
     // Create a simple test router for OIDC operations
-    let app = Router::new()
-        .route("/oidc/authorize", axum::routing::get(|Query(params): Query<HashMap<String, String>>, headers: HeaderMap| async move {
-            let _client_id = params.get("client_id").cloned().unwrap_or_else(|| "".to_string());
-            let scope = params.get("scope").cloned().unwrap_or_else(|| "".to_string());
+    let app = Router::new().route(
+        "/oidc/authorize",
+        axum::routing::get(
+            |Query(params): Query<HashMap<String, String>>, headers: HeaderMap| async move {
+                let _client_id = params
+                    .get("client_id")
+                    .cloned()
+                    .unwrap_or_else(|| "".to_string());
+                let scope = params
+                    .get("scope")
+                    .cloned()
+                    .unwrap_or_else(|| "".to_string());
 
-            // Check for auth cookie
-            if let Some(cookie_header) = headers.get("cookie") {
-                if cookie_header.to_str().unwrap_or("").contains("auth_user_id=") {
-                    if scope.contains("consent") {
-                        // Return consent page
-                        (StatusCode::OK, "Consent Required")
+                // Check for auth cookie
+                if let Some(cookie_header) = headers.get("cookie") {
+                    if cookie_header
+                        .to_str()
+                        .unwrap_or("")
+                        .contains("auth_user_id=")
+                    {
+                        if scope.contains("consent") {
+                            // Return consent page
+                            (StatusCode::OK, "Consent Required")
+                        } else {
+                            (StatusCode::OK, "Authorized")
+                        }
                     } else {
-                        (StatusCode::OK, "Authorized")
+                        (StatusCode::UNAUTHORIZED, "Not authenticated")
                     }
                 } else {
-                    (StatusCode::UNAUTHORIZED, "Not authenticated")
+                    (StatusCode::UNAUTHORIZED, "No auth cookie")
                 }
-            } else {
-                (StatusCode::UNAUTHORIZED, "No auth cookie")
-            }
-        }));
+            },
+        ),
+    );
 
     let server = TestServer::new(app).unwrap();
 
     // Provide cookie to simulate logged in, with consent scope
-    let response = server.get("/oidc/authorize?client_id=cli-consent&redirect_uri=https://cb&response_type=code&scope=openid%20consent")
+    let response = server.get("/oidc/authorize?client_id=cli-consent&redirect_uri=https{//cb&response_type=code&scope=openid%20consent}")
         .add_header("Cookie", "auth_user_id=u123")
         .await;
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -1920,34 +2357,61 @@ async fn test_update_user_noop_payload_ok() {
     let users = Arc::new(Mutex::new(HashMap::<String, serde_json::Value>::new()));
 
     let app = Router::new()
-        .route("/users", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("");
-            let email = payload.get("email").and_then(|v| v.as_str()).unwrap_or("");
-            let password = payload.get("password").and_then(|v| v.as_str()).unwrap_or("");
+        .route(
+            "/users",
+            axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+                let username = payload
+                    .get("username")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let email = payload.get("email").and_then(|v| v.as_str()).unwrap_or("");
+                let password = payload
+                    .get("password")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
 
-            if !username.is_empty() && !email.is_empty() && !password.is_empty() {
-                let id = "user_123";
-                (StatusCode::CREATED, Json(json!({"id": id, "username": username, "email": email})))
-            } else {
-                (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid data"})))
-            }
-        }))
-        .route("/users", axum::routing::get(|| async move {
-            Json(json!([{"id": "user_123", "username": "noop", "email": "n@ex.com"}]))
-        }))
-        .route("/users/:id", axum::routing::put(|Path(id): Path<String>, Json(payload): Json<serde_json::Value>| async move {
-            if id == "user_123" {
-                // No-op update - empty payload
-                (StatusCode::OK, Json(json!({"message": "User updated"})))
-            } else {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
-            }
-        }));
+                if !username.is_empty() && !email.is_empty() && !password.is_empty() {
+                    let id = "user_123";
+                    (
+                        StatusCode::CREATED,
+                        Json(json!({"id": id, "username": username, "email": email})),
+                    )
+                } else {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": "Invalid data"})),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/users",
+            axum::routing::get(|| async move {
+                Json(json!([{"id": "user_123", "username": "noop", "email": "n@ex.com"}]))
+            }),
+        )
+        .route(
+            "/users/{id}",
+            axum::routing::put(
+                |Path(id): Path<String>, Json(payload): Json<serde_json::Value>| async move {
+                    if id == "user_123" {
+                        // No-op update - empty payload
+                        (StatusCode::OK, Json(json!({"message": "User updated"})))
+                    } else {
+                        (
+                            StatusCode::NOT_FOUND,
+                            Json(json!({"error": "User not found"})),
+                        )
+                    }
+                },
+            ),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // Create
-    let response = server.post("/users")
+    let response = server
+        .post("/users")
         .json(&json!({"username":"noop","email":"n@ex.com","password":"Abcd1234!@#$"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
@@ -1958,9 +2422,7 @@ async fn test_update_user_noop_payload_ok() {
     let id = users_data.as_array().unwrap()[0]["id"].as_str().unwrap();
 
     // No-op update
-    let response = server.put(&format!("/users/{}", id))
-        .json(&json!({}))
-        .await;
+    let response = server.put(&format!("/users/{}", id)).json(&json!({})).await;
     assert!(response.status_code().is_success());
 }
 
@@ -1968,40 +2430,73 @@ async fn test_update_user_noop_payload_ok() {
 async fn test_update_password_blacklisted_fails() {
     // Create a simple test router for user operations
     let app = Router::new()
-        .route("/users", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("");
-            let email = payload.get("email").and_then(|v| v.as_str()).unwrap_or("");
-            let password = payload.get("password").and_then(|v| v.as_str()).unwrap_or("");
+        .route(
+            "/users",
+            axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+                let username = payload
+                    .get("username")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let email = payload.get("email").and_then(|v| v.as_str()).unwrap_or("");
+                let password = payload
+                    .get("password")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
 
-            if !username.is_empty() && !email.is_empty() && !password.is_empty() {
-                let id = "user_bp_123";
-                (StatusCode::CREATED, Json(json!({"id": id, "username": username, "email": email})))
-            } else {
-                (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid data"})))
-            }
-        }))
-        .route("/users", axum::routing::get(|| async move {
-            Json(json!([{"id": "user_bp_123", "username": "bp", "email": "bp@ex.com"}]))
-        }))
-        .route("/users/:id/password", axum::routing::post(|Path(id): Path<String>, Json(payload): Json<serde_json::Value>| async move {
-            let password = payload.get("password").and_then(|v| v.as_str()).unwrap_or("");
-
-            if id == "user_bp_123" {
-                // Check if password contains blacklisted word "password"
-                if password.to_lowercase().contains("password") {
-                    (StatusCode::BAD_REQUEST, Json(json!({"error": "Password contains blacklisted word"})))
+                if !username.is_empty() && !email.is_empty() && !password.is_empty() {
+                    let id = "user_bp_123";
+                    (
+                        StatusCode::CREATED,
+                        Json(json!({"id": id, "username": username, "email": email})),
+                    )
                 } else {
-                    (StatusCode::OK, Json(json!({"message": "Password updated"})))
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": "Invalid data"})),
+                    )
                 }
-            } else {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
-            }
-        }));
+            }),
+        )
+        .route(
+            "/users",
+            axum::routing::get(|| async move {
+                Json(json!([{"id": "user_bp_123", "username": "bp", "email": "bp@ex.com"}]))
+            }),
+        )
+        .route(
+            "/users/{id}/password",
+            axum::routing::post(
+                |Path(id): Path<String>, Json(payload): Json<serde_json::Value>| async move {
+                    let password = payload
+                        .get("password")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+
+                    if id == "user_bp_123" {
+                        // Check if password contains blacklisted word "password"
+                        if password.to_lowercase().contains("password") {
+                            (
+                                StatusCode::BAD_REQUEST,
+                                Json(json!({"error": "Password contains blacklisted word"})),
+                            )
+                        } else {
+                            (StatusCode::OK, Json(json!({"message": "Password updated"})))
+                        }
+                    } else {
+                        (
+                            StatusCode::NOT_FOUND,
+                            Json(json!({"error": "User not found"})),
+                        )
+                    }
+                },
+            ),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // Create user
-    let response = server.post("/users")
+    let response = server
+        .post("/users")
         .json(&json!({"username":"bp","email":"bp@ex.com","password":"Abcd1234!@#$"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
@@ -2011,7 +2506,8 @@ async fn test_update_password_blacklisted_fails() {
     let id = users_data.as_array().unwrap()[0]["id"].as_str().unwrap();
 
     // Blacklisted password contains "password"
-    let response = server.post(&format!("/users/{}/password", id))
+    let response = server
+        .post(&format!("/users/{}/password", id))
         .json(&json!({"password":"Password5678!"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -2020,70 +2516,112 @@ async fn test_update_password_blacklisted_fails() {
 #[tokio::test]
 async fn test_login_invalid_credentials() {
     // Create a simple test router for login
-    let app = Router::new()
-        .route("/login", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("");
-            let password = payload.get("password").and_then(|v| v.as_str()).unwrap_or("");
+    let app = Router::new().route(
+        "/login",
+        axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+            let username = payload
+                .get("username")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let password = payload
+                .get("password")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
 
             if username == "x" && password == "RightPass1!@#" {
                 (StatusCode::OK, Json(json!({"message": "Login successful"})))
             } else {
-                (StatusCode::UNAUTHORIZED, Json(json!({"error": "Invalid credentials"})))
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": "Invalid credentials"})),
+                )
             }
-        }));
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
     // Wrong password -> 401
-    let response = server.post("/login").json(&json!({"username":"x","password":"Wrong"})).await;
+    let response = server
+        .post("/login")
+        .json(&json!({"username":"x","password":"Wrong"}))
+        .await;
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
 async fn test_sessions_list_unauthorized_for_expired_token() {
     // Create a simple test router for sessions
-    let app = Router::new()
-        .route("/sessions", axum::routing::get(|headers: HeaderMap| async move {
+    let app = Router::new().route(
+        "/sessions",
+        axum::routing::get(|headers: HeaderMap| async move {
             // Check for authorization header
             if let Some(auth_header) = headers.get("authorization") {
                 if auth_header.to_str().unwrap_or("").contains("Bearer") {
                     // Simulate expired token - return 401
-                    (StatusCode::UNAUTHORIZED, Json(json!({"error": "Token expired"})))
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({"error": "Token expired"})),
+                    )
                 } else {
-                    (StatusCode::UNAUTHORIZED, Json(json!({"error": "Unauthorized"})))
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({"error": "Unauthorized"})),
+                    )
                 }
             } else {
-                (StatusCode::UNAUTHORIZED, Json(json!({"error": "Unauthorized"})))
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": "Unauthorized"})),
+                )
             }
-        }));
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
     // Expired token (exp in the past)
-    let response = server.get("/sessions").add_header("Authorization", "Bearer expired_token").await;
+    let response = server
+        .get("/sessions")
+        .add_header("Authorization", "Bearer expired_token")
+        .await;
     assert!([200, 401].contains(&response.status_code().as_u16()));
 }
 
 #[tokio::test]
 async fn test_oidc_authorize_redirect_uri_mismatch_400() {
     // Create a simple test router for OIDC authorize
-    let app = Router::new()
-        .route("/oidc/authorize", axum::routing::get(|Query(params): Query<HashMap<String, String>>, _headers: HeaderMap| async move {
-            let client_id = params.get("client_id").cloned().unwrap_or_else(|| "".to_string());
-            let redirect_uri = params.get("redirect_uri").cloned().unwrap_or_else(|| "".to_string());
+    let app = Router::new().route(
+        "/oidc/authorize",
+        axum::routing::get(
+            |Query(params): Query<HashMap<String, String>>, _headers: HeaderMap| async move {
+                let client_id = params
+                    .get("client_id")
+                    .cloned()
+                    .unwrap_or_else(|| "".to_string());
+                let redirect_uri = params
+                    .get("redirect_uri")
+                    .cloned()
+                    .unwrap_or_else(|| "".to_string());
 
-            // Check if redirect URI matches registered one
-            if client_id == "cli5" && redirect_uri == "https://wrong" {
-                // Mismatch - return 400
-                (StatusCode::BAD_REQUEST, Json(json!({"error": "redirect_uri_mismatch"})))
-            } else {
-                (StatusCode::OK, Json(json!({"code": "auth_code"})))
-            }
-        }));
+                // Check if redirect URI matches registered one
+                if client_id == "cli5" && redirect_uri == "https://wrong" {
+                    // Mismatch - return 400
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": "redirect_uri_mismatch"})),
+                    )
+                } else {
+                    (StatusCode::OK, Json(json!({"code": "auth_code"})))
+                }
+            },
+        ),
+    );
 
     let server = TestServer::new(app).unwrap();
 
-    let response = server.get("/oidc/authorize?client_id=cli5&redirect_uri=https://wrong&response_type=code")
+    let response = server
+        .get("/oidc/authorize?client_id=cli5&redirect_uri=https://wrong&response_type=code")
         .add_header("Cookie", "auth_user_id=u")
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -2092,25 +2630,47 @@ async fn test_oidc_authorize_redirect_uri_mismatch_400() {
 #[tokio::test]
 async fn test_oidc_token_redirect_uri_mismatch_400() {
     // Create a simple test router for OIDC token
-    let app = Router::new()
-        .route("/oidc/token", axum::routing::post(|Form(form): Form<HashMap<String, String>>| async move {
-            let grant_type = form.get("grant_type").cloned().unwrap_or_else(|| "".to_string());
+    let app = Router::new().route(
+        "/oidc/token",
+        axum::routing::post(|Form(form): Form<HashMap<String, String>>| async move {
+            let grant_type = form
+                .get("grant_type")
+                .cloned()
+                .unwrap_or_else(|| "".to_string());
             let code = form.get("code").cloned().unwrap_or_else(|| "".to_string());
-            let redirect_uri = form.get("redirect_uri").cloned().unwrap_or_else(|| "".to_string());
-            let client_id = form.get("client_id").cloned().unwrap_or_else(|| "".to_string());
+            let redirect_uri = form
+                .get("redirect_uri")
+                .cloned()
+                .unwrap_or_else(|| "".to_string());
+            let client_id = form
+                .get("client_id")
+                .cloned()
+                .unwrap_or_else(|| "".to_string());
 
             // Check if redirect URI matches
-            if grant_type == "authorization_code" && code == "abc" && redirect_uri == "https://wrong" && client_id == "cli6" {
+            if grant_type == "authorization_code"
+                && code == "abc"
+                && redirect_uri == "https://wrong"
+                && client_id == "cli6"
+            {
                 // Mismatch - return 400
-                (StatusCode::BAD_REQUEST, Json(json!({"error": "redirect_uri_mismatch"})))
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "redirect_uri_mismatch"})),
+                )
             } else {
-                (StatusCode::OK, Json(json!({"access_token": "token", "token_type": "Bearer"})))
+                (
+                    StatusCode::OK,
+                    Json(json!({"access_token": "token", "token_type": "Bearer"})),
+                )
             }
-        }));
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
-    let response = server.post("/oidc/token")
+    let response = server
+        .post("/oidc/token")
         .form(&[
             ("grant_type", "authorization_code"),
             ("code", "abc"),
@@ -2127,49 +2687,90 @@ async fn test_oidc_code_reuse_returns_400() {
     let code_used = Arc::new(Mutex::new(false));
 
     let app = Router::new()
-        .route("/oidc/authorize", axum::routing::get(|Query(params): Query<HashMap<String, String>>, headers: HeaderMap| async move {
-            let client_id = params.get("client_id").cloned().unwrap_or_else(|| "".to_string());
-            let redirect_uri = params.get("redirect_uri").cloned().unwrap_or_else(|| "".to_string());
+        .route(
+            "/oidc/authorize",
+            axum::routing::get(
+                |Query(params): Query<HashMap<String, String>>, headers: HeaderMap| async move {
+                    let client_id = params
+                        .get("client_id")
+                        .cloned()
+                        .unwrap_or_else(|| "".to_string());
+                    let redirect_uri = params
+                        .get("redirect_uri")
+                        .cloned()
+                        .unwrap_or_else(|| "".to_string());
 
-            if client_id == "cli7" && redirect_uri == "https://cb" {
-                // Return redirect with code
-                let location = format!("{}?code=test_code_123", redirect_uri);
-                Response::builder()
-                    .status(StatusCode::FOUND)
-                    .header("location", location)
-                    .body(Body::empty())
-                    .unwrap()
-            } else {
-                (StatusCode::BAD_REQUEST, Json(json!({"error": "invalid_request"}))).into_response()
-            }
-        }))
-        .route("/oidc/token", axum::routing::post(|Form(form): Form<HashMap<String, String>>| async move {
-            let grant_type = form.get("grant_type").cloned().unwrap_or_else(|| "".to_string());
-            let code = form.get("code").cloned().unwrap_or_else(|| "".to_string());
-            let redirect_uri = form.get("redirect_uri").cloned().unwrap_or_else(|| "".to_string());
-            let client_id = form.get("client_id").cloned().unwrap_or_else(|| "".to_string());
-
-            static mut CODE_USED: bool = false;
-
-            if grant_type == "authorization_code" && code == "test_code_123" && redirect_uri == "https://cb" && client_id == "cli7" {
-                unsafe {
-                    if CODE_USED {
-                        // Code already used - return 400
-                        (StatusCode::BAD_REQUEST, Json(json!({"error": "invalid_grant"})))
+                    if client_id == "cli7" && redirect_uri == "https://cb" {
+                        // Return redirect with code
+                        let location = format!("{}?code=test_code_123", redirect_uri);
+                        Response::builder()
+                            .status(StatusCode::FOUND)
+                            .header("location", location)
+                            .body(Body::empty())
+                            .unwrap()
                     } else {
-                        CODE_USED = true;
-                        (StatusCode::OK, Json(json!({"access_token": "token", "token_type": "Bearer"})))
+                        (
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({"error": "invalid_request"})),
+                        )
+                            .into_response()
                     }
+                },
+            ),
+        )
+        .route(
+            "/oidc/token",
+            axum::routing::post(|Form(form): Form<HashMap<String, String>>| async move {
+                let grant_type = form
+                    .get("grant_type")
+                    .cloned()
+                    .unwrap_or_else(|| "".to_string());
+                let code = form.get("code").cloned().unwrap_or_else(|| "".to_string());
+                let redirect_uri = form
+                    .get("redirect_uri")
+                    .cloned()
+                    .unwrap_or_else(|| "".to_string());
+                let client_id = form
+                    .get("client_id")
+                    .cloned()
+                    .unwrap_or_else(|| "".to_string());
+
+                static mut CODE_USED: bool = false;
+
+                if grant_type == "authorization_code"
+                    && code == "test_code_123"
+                    && redirect_uri == "https://cb"
+                    && client_id == "cli7"
+                {
+                    unsafe {
+                        if CODE_USED {
+                            // Code already used - return 400
+                            (
+                                StatusCode::BAD_REQUEST,
+                                Json(json!({"error": "invalid_grant"})),
+                            )
+                        } else {
+                            CODE_USED = true;
+                            (
+                                StatusCode::OK,
+                                Json(json!({"access_token": "token", "token_type": "Bearer"})),
+                            )
+                        }
+                    }
+                } else {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": "invalid_request"})),
+                    )
                 }
-            } else {
-                (StatusCode::BAD_REQUEST, Json(json!({"error": "invalid_request"})))
-            }
-        }));
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // Get code
-    let response = server.get("/oidc/authorize?client_id=cli7&redirect_uri=https://cb&response_type=code")
+    let response = server
+        .get("/oidc/authorize?client_id=cli7&redirect_uri=https://cb&response_type=code")
         .add_header("Cookie", "auth_user_id=u7")
         .await;
     assert_eq!(response.status_code(), StatusCode::FOUND);
@@ -2177,10 +2778,17 @@ async fn test_oidc_code_reuse_returns_400() {
     // Extract code from redirect location
     let location_header = response.header("location");
     let location = location_header.to_str().unwrap_or("");
-    let code = location.split("code=").nth(1).unwrap_or("").split('&').next().unwrap_or("");
+    let code = location
+        .split("code=")
+        .nth(1)
+        .unwrap_or("")
+        .split('&')
+        .next()
+        .unwrap_or("");
 
     // Exchange once -> ok
-    let response = server.post("/oidc/token")
+    let response = server
+        .post("/oidc/token")
         .form(&[
             ("grant_type", "authorization_code"),
             ("code", code),
@@ -2191,7 +2799,8 @@ async fn test_oidc_code_reuse_returns_400() {
     assert!(response.status_code().is_success());
 
     // Exchange again with same code -> 400
-    let response = server.post("/oidc/token")
+    let response = server
+        .post("/oidc/token")
         .form(&[
             ("grant_type", "authorization_code"),
             ("code", code),
@@ -2205,25 +2814,40 @@ async fn test_oidc_code_reuse_returns_400() {
 #[tokio::test]
 async fn test_oidc_login_post_invalid_credentials_unauthorized() {
     // Create a simple test router for OIDC login
-    let app = Router::new()
-        .route("/oidc/login", axum::routing::post(|Form(form): Form<HashMap<String, String>>| async move {
-            let _client_id = form.get("client_id").cloned().unwrap_or_else(|| "".to_string());
-            let _redirect_uri = form.get("redirect_uri").cloned().unwrap_or_else(|| "".to_string());
-            let _response_type = form.get("response_type").cloned().unwrap_or_else(|| "".to_string());
+    let app = Router::new().route(
+        "/oidc/login",
+        axum::routing::post(|Form(form): Form<HashMap<String, String>>| async move {
+            let _client_id = form
+                .get("client_id")
+                .cloned()
+                .unwrap_or_else(|| "".to_string());
+            let _redirect_uri = form
+                .get("redirect_uri")
+                .cloned()
+                .unwrap_or_else(|| "".to_string());
+            let _response_type = form
+                .get("response_type")
+                .cloned()
+                .unwrap_or_else(|| "".to_string());
             let scope = form.get("scope").cloned().unwrap_or_else(|| "".to_string());
             let _state = form.get("state").cloned().unwrap_or_else(|| "".to_string());
 
             // Simulate invalid credentials - scope is "unknown" which is invalid
             if scope == "unknown" {
-                (StatusCode::UNAUTHORIZED, Json(json!({"error": "invalid_scope"})))
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": "invalid_scope"})),
+                )
             } else {
                 (StatusCode::OK, Json(json!({"message": "Login successful"})))
             }
-        }));
+        }),
+    );
 
     let server = TestServer::new(app).unwrap();
 
-    let response = server.post("/oidc/login")
+    let response = server
+        .post("/oidc/login")
         .form(&[
             ("client_id", "cli"),
             ("redirect_uri", "https://cb"),
@@ -2245,28 +2869,46 @@ async fn test_vault_service_multi_provider() {
     let vault = Arc::new(Mutex::new(HashMap::<String, serde_json::Value>::new()));
 
     let app = Router::new()
-        .route("/vault/secret/:key", axum::routing::put(|Path(key): Path<String>, Json(payload): Json<serde_json::Value>| async move {
-            let value = payload.get("value").and_then(|v| v.as_str()).unwrap_or("");
-            // Simulate storing secret
-            (StatusCode::OK, Json(json!({"message": "Secret stored", "key": key, "value": value})))
-        }))
-        .route("/vault/secret/:key", axum::routing::get(|Path(key): Path<String>| async move {
-            if key == "test_key" {
-                (StatusCode::OK, Json(json!({"value": "test_secret_data"})))
-            } else if key == "test_secret" {
-                (StatusCode::OK, Json(json!({"value": "secret_value"})))
-            } else {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "Secret not found"})))
-            }
-        }))
-        .route("/vault/secrets", axum::routing::get(|| async move {
-            Json(json!({"secrets": ["test_key", "test_secret"]}))
-        }));
+        .route(
+            "/vault/secret/{key}",
+            axum::routing::put(
+                |Path(key): Path<String>, Json(payload): Json<serde_json::Value>| async move {
+                    let value = payload.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                    // Simulate storing secret
+                    (
+                        StatusCode::OK,
+                        Json(json!({"message": "Secret stored", "key": key, "value": value})),
+                    )
+                },
+            ),
+        )
+        .route(
+            "/vault/secret/{key}",
+            axum::routing::get(|Path(key): Path<String>| async move {
+                if key == "test_key" {
+                    (StatusCode::OK, Json(json!({"value": "test_secret_data"})))
+                } else if key == "test_secret" {
+                    (StatusCode::OK, Json(json!({"value": "secret_value"})))
+                } else {
+                    (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({"error": "Secret not found"})),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/vault/secrets",
+            axum::routing::get(
+                || async move { Json(json!({"secrets": ["test_key", "test_secret"]})) },
+            ),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // Test storing and retrieving secrets
-    let response = server.put("/vault/secret/test_key")
+    let response = server
+        .put("/vault/secret/test_key")
         .json(&json!({"value": "test_secret_data"}))
         .await;
     assert!(response.status_code().is_success());
@@ -2274,7 +2916,8 @@ async fn test_vault_service_multi_provider() {
     let response = server.get("/vault/secret/test_key").await;
     assert!(response.status_code().is_success());
 
-    let response = server.put("/vault/secret/test_secret")
+    let response = server
+        .put("/vault/secret/test_secret")
         .json(&json!({"value": "secret_value"}))
         .await;
     assert!(response.status_code().is_success());
@@ -2305,11 +2948,11 @@ async fn test_fips_service_compliance() {
                 (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid keystore type"})))
             }
         }))
-        .route("/fips/keystore/secret/:key", axum::routing::put(|Path(key): Path<String>, Json(payload): Json<serde_json::Value>| async move {
+        .route("/fips/keystore/secret/{key}", axum::routing::put(|Path(key): Path<String>, Json(payload): Json<serde_json::Value>| async move {
             let value = payload.get("value").and_then(|v| v.as_str()).unwrap_or("");
             (StatusCode::OK, Json(json!({"message": "Secret stored", "key": key})))
         }))
-        .route("/fips/keystore/secret/:key", axum::routing::get(|Path(key): Path<String>| async move {
+        .route("/fips/keystore/secret/{key}", axum::routing::get(|Path(key): Path<String>| async move {
             if key == "fips_key" {
                 (StatusCode::OK, Json(json!({"value": "fips_secret"})))
             } else {
@@ -2328,13 +2971,15 @@ async fn test_fips_service_compliance() {
     assert!(response.status_code().is_success());
 
     // Test keystore creation
-    let response = server.post("/fips/keystore")
+    let response = server
+        .post("/fips/keystore")
         .json(&json!({"type": "PKCS12"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
 
     // Test secret storage
-    let response = server.put("/fips/keystore/secret/fips_key")
+    let response = server
+        .put("/fips/keystore/secret/fips_key")
         .json(&json!({"value": "fips_secret"}))
         .await;
     assert!(response.status_code().is_success());
@@ -2348,23 +2993,41 @@ async fn test_fips_service_compliance() {
 async fn test_observability_service_monitoring() {
     // Create a simple test router for observability operations
     let app = Router::new()
-        .route("/health", axum::routing::get(|| async move {
-            Json(json!({"status": "up", "database": "healthy"}))
-        }))
-        .route("/metrics", axum::routing::get(|| async move {
-            Json(json!({
-                "counters": {"test_counter": 1.0},
-                "gauges": {"test_gauge": 100.0}
-            }))
-        }))
-        .route("/trace", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            let span_name = payload.get("span").and_then(|v| v.as_str()).unwrap_or("");
-            let operation = payload.get("operation").and_then(|v| v.as_str()).unwrap_or("");
-            (StatusCode::OK, Json(json!({"span_id": "span_123", "span": span_name, "operation": operation})))
-        }))
-        .route("/observability/health", axum::routing::get(|| async move {
-            Json(json!({"checks": [{"name": "database", "status": "up"}]}))
-        }));
+        .route(
+            "/health",
+            axum::routing::get(
+                || async move { Json(json!({"status": "up", "database": "healthy"})) },
+            ),
+        )
+        .route(
+            "/metrics",
+            axum::routing::get(|| async move {
+                Json(json!({
+                    "counters": {"test_counter": 1.0},
+                    "gauges": {"test_gauge": 100.0}
+                }))
+            }),
+        )
+        .route(
+            "/trace",
+            axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+                let span_name = payload.get("span").and_then(|v| v.as_str()).unwrap_or("");
+                let operation = payload
+                    .get("operation")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                (
+                    StatusCode::OK,
+                    Json(json!({"span_id": "span_123", "span": span_name, "operation": operation})),
+                )
+            }),
+        )
+        .route(
+            "/observability/health",
+            axum::routing::get(|| async move {
+                Json(json!({"checks": [{"name": "database", "status": "up"}]}))
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -2377,7 +3040,8 @@ async fn test_observability_service_monitoring() {
     assert!(response.status_code().is_success());
 
     // Test Tracing
-    let response = server.post("/trace")
+    let response = server
+        .post("/trace")
         .json(&json!({"span": "test_span", "operation": "test_operation"}))
         .await;
     assert!(response.status_code().is_success());
@@ -2391,28 +3055,53 @@ async fn test_observability_service_monitoring() {
 async fn test_clustering_service_consensus() {
     // Create a simple test router for clustering operations
     let app = Router::new()
-        .route("/cluster/nodes", axum::routing::get(|| async move {
-            Json(json!({"nodes": ["node-1", "node-2"]}))
-        }))
-        .route("/cluster/nodes", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            let node_id = payload.get("node_id").and_then(|v| v.as_str()).unwrap_or("");
-            (StatusCode::OK, Json(json!({"message": "Node added", "node_id": node_id})))
-        }))
-        .route("/consensus/propose", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            let key = payload.get("key").and_then(|v| v.as_str()).unwrap_or("");
-            let value = payload.get("value").and_then(|v| v.as_str()).unwrap_or("");
-            (StatusCode::OK, Json(json!({"message": "Proposal accepted", "key": key})))
-        }))
-        .route("/consensus/value/:key", axum::routing::get(|Path(key): Path<String>| async move {
-            if key == "key1" {
-                (StatusCode::OK, Json(json!({"value": "value1"})))
-            } else {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "Key not found"})))
-            }
-        }))
-        .route("/cluster/leader", axum::routing::get(|| async move {
-            Json(json!({"leader": "node-1", "is_leader": true}))
-        }));
+        .route(
+            "/cluster/nodes",
+            axum::routing::get(|| async move { Json(json!({"nodes": ["node-1", "node-2"]})) }),
+        )
+        .route(
+            "/cluster/nodes",
+            axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+                let node_id = payload
+                    .get("node_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                (
+                    StatusCode::OK,
+                    Json(json!({"message": "Node added", "node_id": node_id})),
+                )
+            }),
+        )
+        .route(
+            "/consensus/propose",
+            axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+                let key = payload.get("key").and_then(|v| v.as_str()).unwrap_or("");
+                let value = payload.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                (
+                    StatusCode::OK,
+                    Json(json!({"message": "Proposal accepted", "key": key})),
+                )
+            }),
+        )
+        .route(
+            "/consensus/value/{key}",
+            axum::routing::get(|Path(key): Path<String>| async move {
+                if key == "key1" {
+                    (StatusCode::OK, Json(json!({"value": "value1"})))
+                } else {
+                    (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({"error": "Key not found"})),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/cluster/leader",
+            axum::routing::get(
+                || async move { Json(json!({"leader": "node-1", "is_leader": true})) },
+            ),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -2421,13 +3110,15 @@ async fn test_clustering_service_consensus() {
     assert!(response.status_code().is_success());
 
     // Test adding node
-    let response = server.post("/cluster/nodes")
+    let response = server
+        .post("/cluster/nodes")
         .json(&json!({"node_id": "node-2"}))
         .await;
     assert!(response.status_code().is_success());
 
     // Test consensus proposal
-    let response = server.post("/consensus/propose")
+    let response = server
+        .post("/consensus/propose")
         .json(&json!({"key": "key1", "value": "value1"}))
         .await;
     assert!(response.status_code().is_success());
@@ -2475,25 +3166,29 @@ async fn test_federation_service_providers() {
     let server = TestServer::new(app).unwrap();
 
     // Register SAML provider
-    let response = server.post("/federation/providers")
+    let response = server
+        .post("/federation/providers")
         .json(&json!({"type": "SAML", "name": "test-saml"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
 
     // Register OIDC provider
-    let response = server.post("/federation/providers")
+    let response = server
+        .post("/federation/providers")
         .json(&json!({"type": "OIDC", "name": "test-oidc"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::CREATED);
 
     // Test SAML authentication
-    let response = server.post("/federation/authenticate")
+    let response = server
+        .post("/federation/authenticate")
         .json(&json!({"provider": "saml", "assertion": "saml_assertion_data"}))
         .await;
     assert!(response.status_code().is_success());
 
     // Test OIDC authentication
-    let response = server.post("/federation/authenticate")
+    let response = server
+        .post("/federation/authenticate")
         .json(&json!({"provider": "oidc", "code": "oidc_code_data"}))
         .await;
     assert!(response.status_code().is_success());
@@ -2517,7 +3212,7 @@ async fn test_compliance_service_frameworks() {
         .route("/compliance/report", axum::routing::get(|| async move {
             Json(json!({"frameworks": ["GDPR", "HIPAA"], "status": "compliant"}))
         }))
-        .route("/compliance/checks/:framework", axum::routing::get(|Path(framework): Path<String>| async move {
+        .route("/compliance/checks/{framework}", axum::routing::get(|Path(framework): Path<String>| async move {
             if framework == "GDPR" {
                 (StatusCode::OK, Json(json!({"checks": ["data_protection", "consent", "breach_notification"]})))
             } else if framework == "HIPAA" {
@@ -2526,19 +3221,21 @@ async fn test_compliance_service_frameworks() {
                 (StatusCode::NOT_FOUND, Json(json!({"error": "Framework not found"})))
             }
         }))
-        .route("/compliance/data-subject/:user_id/:request", axum::routing::post(|Path((user_id, request)): Path<(String, String)>| async move {
+        .route("/compliance/data-subject/{user_id}/{request}", axum::routing::post(|Path((user_id, request)): Path<(String, String)>| async move {
             (StatusCode::OK, Json(json!({"success": true, "user_id": user_id, "request": request})))
         }));
 
     let server = TestServer::new(app).unwrap();
 
     // Test enabling frameworks
-    let response = server.post("/compliance/frameworks/enable")
+    let response = server
+        .post("/compliance/frameworks/enable")
         .json(&json!({"framework": "GDPR"}))
         .await;
     assert!(response.status_code().is_success());
 
-    let response = server.post("/compliance/frameworks/enable")
+    let response = server
+        .post("/compliance/frameworks/enable")
         .json(&json!({"framework": "HIPAA"}))
         .await;
     assert!(response.status_code().is_success());
@@ -2564,24 +3261,34 @@ async fn test_compliance_service_frameworks() {
 async fn test_enterprise_services_integration() {
     // Create a simple test router for enterprise services integration
     let app = Router::new()
-        .route("/enterprise/vault/providers", axum::routing::get(|| async move {
-            Json(json!({"providers": []}))
-        }))
-        .route("/enterprise/fips/status", axum::routing::get(|| async move {
-            Json(json!({"fips_enabled": true}))
-        }))
-        .route("/enterprise/observability/health", axum::routing::get(|| async move {
-            Json(json!({"healthy": true, "services": ["vault", "fips", "observability"]}))
-        }))
-        .route("/enterprise/clustering/leader", axum::routing::get(|| async move {
-            Json(json!({"is_leader": true, "node_id": "test-node"}))
-        }))
-        .route("/enterprise/federation/providers", axum::routing::get(|| async move {
-            Json(json!({"providers": []}))
-        }))
-        .route("/enterprise/compliance/frameworks", axum::routing::get(|| async move {
-            Json(json!({"frameworks": []}))
-        }));
+        .route(
+            "/enterprise/vault/providers",
+            axum::routing::get(|| async move { Json(json!({"providers": []})) }),
+        )
+        .route(
+            "/enterprise/fips/status",
+            axum::routing::get(|| async move { Json(json!({"fips_enabled": true})) }),
+        )
+        .route(
+            "/enterprise/observability/health",
+            axum::routing::get(|| async move {
+                Json(json!({"healthy": true, "services": ["vault", "fips", "observability"]}))
+            }),
+        )
+        .route(
+            "/enterprise/clustering/leader",
+            axum::routing::get(|| async move {
+                Json(json!({"is_leader": true, "node_id": "test-node"}))
+            }),
+        )
+        .route(
+            "/enterprise/federation/providers",
+            axum::routing::get(|| async move { Json(json!({"providers": []})) }),
+        )
+        .route(
+            "/enterprise/compliance/frameworks",
+            axum::routing::get(|| async move { Json(json!({"frameworks": []})) }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
@@ -2616,51 +3323,78 @@ async fn test_enterprise_services_integration() {
 async fn test_enterprise_security_features() {
     // Create a simple test router for enterprise security features
     let app = Router::new()
-        .route("/security/anomaly/check", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            let user_id = payload.get("user_id").and_then(|v| v.as_str()).unwrap_or("");
-            let ip = payload.get("ip").and_then(|v| v.as_str()).unwrap_or("");
-            // Simulate anomaly detection - first IP is always new
-            Json(json!({"is_new_ip": true, "user_id": user_id, "ip": ip}))
-        }))
-        .route("/security/brute-force/attempt", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            let ip = payload.get("ip").and_then(|v| v.as_str()).unwrap_or("");
-            // Simulate brute force protection - first attempt not blocked
-            Json(json!({"is_blocked": false, "ip": ip}))
-        }))
-        .route("/security/password/validate", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            let password = payload.get("password").and_then(|v| v.as_str()).unwrap_or("");
-            // Simulate password validation
-            let is_valid = password.len() >= 8 && password.chars().any(|c| c.is_uppercase()) && password.chars().any(|c| c.is_digit(10));
-            Json(json!({"is_valid": is_valid, "password": password}))
-        }))
-        .route("/security/zero-trust/evaluate", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            let session_id = payload.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
-            // Simulate zero trust evaluation
-            Json(json!({"allow": true, "session_id": session_id}))
-        }));
+        .route(
+            "/security/anomaly/check",
+            axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+                let user_id = payload
+                    .get("user_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let ip = payload.get("ip").and_then(|v| v.as_str()).unwrap_or("");
+                // Simulate anomaly detection - first IP is always new
+                Json(json!({"is_new_ip": true, "user_id": user_id, "ip": ip}))
+            }),
+        )
+        .route(
+            "/security/brute-force/attempt",
+            axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+                let ip = payload.get("ip").and_then(|v| v.as_str()).unwrap_or("");
+                // Simulate brute force protection - first attempt not blocked
+                Json(json!({"is_blocked": false, "ip": ip}))
+            }),
+        )
+        .route(
+            "/security/password/validate",
+            axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+                let password = payload
+                    .get("password")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                // Simulate password validation
+                let is_valid = password.len() >= 8
+                    && password.chars().any(|c| c.is_uppercase())
+                    && password.chars().any(|c| c.is_digit(10));
+                Json(json!({"is_valid": is_valid, "password": password}))
+            }),
+        )
+        .route(
+            "/security/zero-trust/evaluate",
+            axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+                let session_id = payload
+                    .get("session_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                // Simulate zero trust evaluation
+                Json(json!({"allow": true, "session_id": session_id}))
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // Test anomaly detection
-    let response = server.post("/security/anomaly/check")
+    let response = server
+        .post("/security/anomaly/check")
         .json(&json!({"user_id": "user123", "ip": "192.168.1.1"}))
         .await;
     assert!(response.status_code().is_success());
 
     // Test brute force protection
-    let response = server.post("/security/brute-force/attempt")
+    let response = server
+        .post("/security/brute-force/attempt")
         .json(&json!({"ip": "192.168.1.1"}))
         .await;
     assert!(response.status_code().is_success());
 
     // Test password validation
-    let response = server.post("/security/password/validate")
+    let response = server
+        .post("/security/password/validate")
         .json(&json!({"password": "ValidPassword123!@#"}))
         .await;
     assert!(response.status_code().is_success());
 
     // Test zero trust evaluation
-    let response = server.post("/security/zero-trust/evaluate")
+    let response = server
+        .post("/security/zero-trust/evaluate")
         .json(&json!({"session_id": "session123"}))
         .await;
     assert!(response.status_code().is_success());
@@ -2670,26 +3404,45 @@ async fn test_enterprise_security_features() {
 async fn test_enterprise_audit_and_monitoring() {
     // Create a simple test router for enterprise audit and monitoring
     let app = Router::new()
-        .route("/audit/log", axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
-            let event = payload.get("event").and_then(|v| v.as_str()).unwrap_or("");
-            let _user_id = payload.get("user_id").and_then(|v| v.as_str());
-            let status = payload.get("status").and_then(|v| v.as_str()).unwrap_or("");
-            // Simulate audit log creation
-            (StatusCode::CREATED, Json(json!({"message": "Audit log created", "event": event, "status": status})))
-        }))
-        .route("/audit/kafka/send", axum::routing::post(|Json(_payload): Json<serde_json::Value>| async move {
-            // Simulate Kafka audit log sink
-            (StatusCode::OK, Json(json!({"message": "Sent to Kafka", "topic": "audit_logs"})))
-        }))
-        .route("/audit/postgres/store", axum::routing::post(|Json(_payload): Json<serde_json::Value>| async move {
-            // Simulate PostgreSQL audit log store connection test
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "No database connection"})))
-        }));
+        .route(
+            "/audit/log",
+            axum::routing::post(|Json(payload): Json<serde_json::Value>| async move {
+                let event = payload.get("event").and_then(|v| v.as_str()).unwrap_or("");
+                let _user_id = payload.get("user_id").and_then(|v| v.as_str());
+                let status = payload.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                // Simulate audit log creation
+                (
+                    StatusCode::CREATED,
+                    Json(json!({"message": "Audit log created", "event": event, "status": status})),
+                )
+            }),
+        )
+        .route(
+            "/audit/kafka/send",
+            axum::routing::post(|Json(_payload): Json<serde_json::Value>| async move {
+                // Simulate Kafka audit log sink
+                (
+                    StatusCode::OK,
+                    Json(json!({"message": "Sent to Kafka", "topic": "audit_logs"})),
+                )
+            }),
+        )
+        .route(
+            "/audit/postgres/store",
+            axum::routing::post(|Json(_payload): Json<serde_json::Value>| async move {
+                // Simulate PostgreSQL audit log store connection test
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "No database connection"})),
+                )
+            }),
+        );
 
     let server = TestServer::new(app).unwrap();
 
     // Test audit log creation
-    let response = server.post("/audit/log")
+    let response = server
+        .post("/audit/log")
         .json(&json!({
             "timestamp": "2023-01-01T00:00:00Z",
             "event": "login",
@@ -2702,13 +3455,15 @@ async fn test_enterprise_audit_and_monitoring() {
     assert_eq!(response.status_code(), StatusCode::CREATED);
 
     // Test Kafka audit log sink
-    let response = server.post("/audit/kafka/send")
+    let response = server
+        .post("/audit/kafka/send")
         .json(&json!({"topic": "audit_logs", "message": "test audit"}))
         .await;
     assert!(response.status_code().is_success());
 
     // Test PostgreSQL audit log store
-    let response = server.post("/audit/postgres/store")
+    let response = server
+        .post("/audit/postgres/store")
         .json(&json!({"connection_string": "host=localhost user=test dbname=test"}))
         .await;
     assert_eq!(response.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
