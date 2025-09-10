@@ -8,8 +8,8 @@ fn user_store_basic_flow() {
     let u = User::new(
         "alice".into(),
         "alice@example.com".into(),
-        "hash".into(),
-        Uuid::new_v4(),
+        Some("hash".into()),
+        Some(Uuid::new_v4()),
     );
     let id = u.id;
     store.add_user(u.clone());

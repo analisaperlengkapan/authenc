@@ -1,6 +1,6 @@
 use actix_web::{dev::Payload, Error, FromRequest, HttpRequest};
 use futures::future::{ready, Ready};
-use crate::crypto::jwt::{self, Claims};
+use crate::utils::crypto::jwt::{self, Claims};
 
 pub struct AuthBearer(pub Claims);
 

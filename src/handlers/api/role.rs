@@ -1,6 +1,6 @@
 use actix_web::{delete, get, post, web, HttpResponse, Responder};
 use crate::services::role_store::RoleStore;
-use crate::model::role::Role;
+use crate::models::role::Role;
 use serde::Deserialize;
 use uuid::Uuid;
 

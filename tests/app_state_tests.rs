@@ -5,7 +5,7 @@ use std::sync::Arc;
 #[tokio::test]
 async fn app_state_initializes_all_services() {
     let config = Arc::new(AppConfig::default());
-    let state = AppState::new(config.clone())
+    let state = AppState::new((*config).clone())
         .await
         .expect("AppState::new should succeed");
     assert!(Arc::ptr_eq(&state.config, &config));

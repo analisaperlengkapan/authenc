@@ -15,8 +15,8 @@ pub async fn update_password(
     let (realm, id) = path.into_inner();
     let mut users = data.users.lock().unwrap();
     if let Some(user) = users.iter_mut().find(|u| u.id == id && u.realm == realm) {
-        if crate::crypto::password::verify_password(&user.password_hash, &req.old_password).unwrap_or(false) {
-            match crate::crypto::password::hash_password(&req.new_password) {
+        if crate::utils::crypto::password::verify_password(&user.password_hash, &req.old_password).unwrap_or(false) {
+            match crate::utils::crypto::password::hash_password(&req.new_password) {
                 Ok(new_hash) => {
                     user.password_hash = new_hash;
                     HttpResponse::Ok().body("Password updated")
@@ -121,10 +121,9 @@ pub async fn delete_user(
     }
 }
 use crate::services::user_store::UserStore;
-use crate::model::user::User;
+use crate::models::user::User;
 use actix_web::{http::header::AUTHORIZATION, post};
-use crate::crypto::jwt;
-use crate::crypto::{jwt, password};
+use crate::utils::crypto::{password};
 use serde::Deserialize;
 use uuid::Uuid;
 use actix_web::web::Path;

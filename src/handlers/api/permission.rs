@@ -1,6 +1,6 @@
 use actix_web::{get, post, delete, web, HttpResponse, Responder};
 use crate::services::permission_store::PermissionStore;
-use crate::model::permission::Permission;
+use crate::models::permission::Permission;
 use serde::Deserialize;
 use uuid::Uuid;
 

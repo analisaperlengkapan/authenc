@@ -1,6 +1,6 @@
 use actix_web::{get, post, put, delete, web, HttpResponse, Responder};
 use crate::services::realm_store::RealmStore;
-use crate::model::realm::Realm;
+use crate::models::realm::Realm;
 use serde::Deserialize;
 use uuid::Uuid;
 

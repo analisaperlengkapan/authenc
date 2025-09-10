@@ -1,8 +1,9 @@
 use actix_web::{post, web, HttpResponse, Responder, HttpRequest};
 use crate::error::ApiError;
 use serde::Deserialize;
-use crate::model::user::User;
-use crate::crypto::{password, jwt};
+use crate::models::user::User;
+use crate::utils::crypto::password;
+use crate::utils::jwt;
 use crate::services::user_store::UserStore;
 
 #[derive(Deserialize)]
@@ -16,7 +17,7 @@ pub struct LoginRequest {
 pub async fn login(
     req: web::Json<LoginRequest>,
     http_req: HttpRequest,
-    i18n: web::Data<crate::i18n::I18n>,
+    i18n: web::Data<crate::utils::i18n::I18n>,
     user_store: web::Data<UserStore>,
 ) -> impl Responder {
     let locale = http_req

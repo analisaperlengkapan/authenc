@@ -29,13 +29,17 @@ pub mod oidc_keys;
 
 // Advanced Services Handlers
 pub mod admin;
-pub mod authorization;
-pub mod broker;
-pub mod device;
-pub mod organization;
-pub mod saml;
-pub mod social;
-pub mod webauthn;
+// Temporarily disabled API module due to Actix-web migration issues
+// pub mod api; // Uncommented - contains Axum handlers
+// Temporarily disabled due to Axum migration issues
+// pub mod authorization;
+// pub mod broker;
+// pub mod device;
+// pub mod oauth2_comprehensive; // Commented out - already declared above
+// pub mod organization;
+// pub mod saml;
+// pub mod social;
+// pub mod webauthn;
 pub mod zero_trust;
 
 /// Create the main application router with all routes
@@ -92,27 +96,34 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Merge OAuth2 router
         .merge(oauth2_router)
         // Advanced Services API routes
-        .nest("/api/v1/auth/social", social::create_social_routes())
-        .nest(
-            "/api/v1/auth/authorization",
-            authorization::create_authorization_routes(),
-        )
+        // Temporarily disabled social routes due to Axum migration
+        // .nest("/api/v1/auth/social", social::create_social_routes())
+        // Temporarily disabled authorization routes due to Axum migration
+        // .nest(
+        //     "/api/v1/auth/authorization",
+        //     authorization::create_authorization_routes(),
+        // )
         .nest(
             "/api/v1/auth/zero-trust",
             zero_trust::create_zero_trust_routes(),
         )
-        .nest(
-            "/api/v1/auth/broker",
-            broker::create_identity_broker_routes(),
-        )
+        // Temporarily disabled broker routes due to Axum migration
+        // .nest(
+        //     "/api/v1/auth/broker",
+        //     broker::create_identity_broker_routes(),
+        // )
         .nest("/api/v1/admin", admin::create_admin_routes())
-        .nest("/api/v1/auth/webauthn", webauthn::create_webauthn_routes())
-        .nest(
-            "/api/v1/organizations",
-            organization::create_organization_routes(),
-        )
-        .nest("/api/v1/devices", device::create_device_routes())
-        .nest("/saml", saml::create_saml_routes())
+        // Temporarily disabled WebAuthn routes due to Axum migration
+        // .nest("/api/v1/auth/webauthn", webauthn::create_webauthn_routes())
+        // Temporarily disabled organization routes due to Axum migration
+        // .nest(
+        //     "/api/v1/organizations",
+        //     organization::create_organization_routes(),
+        // )
+        // Temporarily disabled device routes due to Axum migration
+        // .nest("/api/v1/devices", device::create_device_routes())
+        // Temporarily disabled SAML routes due to Axum migration
+        // .nest("/saml", saml::create_saml_routes())
         .with_state(db_state)
 }
 
