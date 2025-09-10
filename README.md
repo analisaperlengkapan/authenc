@@ -111,7 +111,20 @@ Authenc is currently in an exciting development phase with a clear 3-phase roadm
 - **Client Authentication**: client_secret_basic, client_secret_post
 - **Scope Management**: OAuth2 scope validation and enforcement
 
-### Zero Trust Security 🆕
+### OID4VC (OpenID for Verifiable Credentials) 🆕
+- `GET /oid4vc/.well-known/openid-credential-issuer` - Get credential issuer metadata
+- `GET /oid4vc/authorize` - Handle authorization request for credential issuance
+- `POST /oid4vc/token` - Exchange authorization code for access token
+- `POST /oid4vc/credentials` - Issue verifiable credentials
+- `POST /vp/credentials/verify` - Verify verifiable credentials
+
+#### Supported OID4VC Features:
+- **Credential Formats**: JWT-VC-JSON, LDP-VC (JSON-LD)
+- **Batch Operations**: Issue multiple credentials in single request
+- **Deferred Credentials**: Support for deferred credential issuance
+- **Credential Revocation**: Full revocation support with status checking
+- **PersonCredential Support**: Enhanced credential types for identity verification
+- **Ed25519 Signing**: Cryptographically secure credential signing
 - `POST /api/public/zero-trust/authenticate` - Continuous authentication
 - `GET /api/public/zero-trust/risk` - Get risk assessment
 - `POST /api/public/zero-trust/challenge` - Request additional authentication

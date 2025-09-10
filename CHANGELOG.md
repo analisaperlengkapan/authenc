@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Axum Migration Completion**: Successfully completed full migration from Actix-web to Axum framework
 - **Test Suite Enhancement**: All 49 comprehensive tests now passing with proper Axum patterns
 - **Handler Implementation**: Fixed all test handlers to use shared HashMap data stores and return correct HTTP status codes
+- **OID4VC Test Suite Completion**: Fixed all 14 OID4VC tests including credential revocation deadlock resolution and PersonCredential support
 
 ### Changed
 - **BREAKING**: Migrated from Actix-web to Axum for all HTTP routing and middleware
