@@ -1,7 +1,12 @@
 // Security and protection services
 pub mod anomaly_detector;
 pub mod brute_force_protector;
+pub mod client_policy;
+pub mod par;
 pub mod password_policy;
+
+// Storage abstraction layer
+// pub mod storage;
 
 // Storage services
 pub mod group_store;
@@ -52,6 +57,12 @@ pub mod organization;
 
 // SAML services
 pub mod saml;
+
+// OID4VC services
+pub mod oid4vc;
+
+// Kubernetes operator services
+pub mod kubernetes;
 
 // Device management services
 pub mod device;

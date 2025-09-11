@@ -22,13 +22,13 @@ pub struct ApiError {
 impl ApiError {
     /// Create an error response compatible with Actix-web
     pub fn error_response(&self) -> actix_web::HttpResponse {
-        use actix_web::{HttpResponse, http::StatusCode};
-        
+        use actix_web::{http::StatusCode, HttpResponse};
+
         let status = match StatusCode::from_u16(self.code) {
             Ok(code) => code,
             Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        
+
         HttpResponse::build(status).json(serde_json::json!({
             "error": {
                 "code": self.code,

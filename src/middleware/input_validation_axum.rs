@@ -51,7 +51,9 @@ pub async fn input_validation_middleware(
 
         if config.block_suspicious_patterns {
             // URL decode the query string before checking for suspicious patterns
-            let decoded_query = urlencoding::decode(query).unwrap_or_else(|_| query.into()).to_string();
+            let decoded_query = urlencoding::decode(query)
+                .unwrap_or_else(|_| query.into())
+                .to_string();
             if contains_suspicious_patterns(&decoded_query) {
                 warn!("Suspicious pattern detected in query: {}", query);
                 return Err(StatusCode::BAD_REQUEST);
@@ -68,11 +70,17 @@ pub async fn input_validation_middleware(
             }
 
             // Check for suspicious patterns in specific headers
-            if (name.as_str() == header::USER_AGENT.as_str() || name.as_str() == header::REFERER.as_str())
-                && config.block_suspicious_patterns && contains_suspicious_patterns(value_str) {
-                    warn!("Suspicious pattern detected in header {}: {}", name, value_str);
-                    return Err(StatusCode::BAD_REQUEST);
-                }
+            if (name.as_str() == header::USER_AGENT.as_str()
+                || name.as_str() == header::REFERER.as_str())
+                && config.block_suspicious_patterns
+                && contains_suspicious_patterns(value_str)
+            {
+                warn!(
+                    "Suspicious pattern detected in header {}: {}",
+                    name, value_str
+                );
+                return Err(StatusCode::BAD_REQUEST);
+            }
         }
     }
 
@@ -103,12 +111,7 @@ fn contains_suspicious_patterns(input: &str) -> bool {
     ];
 
     // Path traversal patterns
-    let path_patterns = [
-        r"\.\./",
-        r"\.\.\\",
-        r"%2e%2e%2f",
-        r"%2e%2e%5c",
-    ];
+    let path_patterns = [r"\.\./", r"\.\.\\", r"%2e%2e%2f", r"%2e%2e%5c"];
 
     let all_patterns = sql_patterns
         .iter()
@@ -185,7 +188,9 @@ mod tests {
     #[test]
     fn test_suspicious_patterns() {
         assert!(contains_suspicious_patterns("SELECT * FROM users"));
-        assert!(contains_suspicious_patterns("<script>alert('xss')</script>"));
+        assert!(contains_suspicious_patterns(
+            "<script>alert('xss')</script>"
+        ));
         assert!(contains_suspicious_patterns("../../../etc/passwd"));
         assert!(!contains_suspicious_patterns("normal text"));
     }

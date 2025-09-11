@@ -10,9 +10,14 @@ use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLay
 use tracing::{error, info};
 
 use crate::{
-    app::AppState, error::Result, handlers::create_router,
+    app::AppState,
+    error::Result,
+    handlers::create_router,
     middleware::rate_limit_axum::{RateLimitConfig, RateLimitLayer, RateLimiterState},
-    middleware::{input_validation_axum::{input_validation_middleware, InputValidationConfig}, security_headers_axum::security_headers_middleware},
+    middleware::{
+        input_validation_axum::{input_validation_middleware, InputValidationConfig},
+        security_headers_axum::security_headers_middleware,
+    },
 };
 
 /// Axum web application wrapper
@@ -50,7 +55,9 @@ impl AxumApp {
         // Build the router with middleware and routes
         let router = create_router(state.clone())
             // Add rate limiting first (early rejection)
-            .layer(RateLimitLayer::new(RateLimiterState::new(rate_limit_config)))
+            .layer(RateLimitLayer::new(RateLimiterState::new(
+                rate_limit_config,
+            )))
             // Add security middleware layers (order matters!)
             .layer(axum::middleware::from_fn(security_headers_middleware))
             .layer(axum::middleware::from_fn(move |req, next| {

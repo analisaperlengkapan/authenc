@@ -12,6 +12,11 @@ pub enum SocialProvider {
     LinkedIn,
     Microsoft,
     Apple,
+    Amazon,
+    Discord,
+    Slack,
+    Okta,
+    Auth0,
     Custom(String),
 }
 
@@ -291,11 +296,14 @@ impl SocialLoginService for SocialLoginManager {
             SocialProvider::LinkedIn => self.parse_linkedin_profile(user_data),
             SocialProvider::Twitter => self.parse_twitter_profile(user_data),
             SocialProvider::Apple => self.parse_apple_profile(user_data),
-            SocialProvider::Custom(ref provider_name) => match provider_name.as_str() {
-                "discord" => self.parse_discord_profile(user_data),
-                "slack" => self.parse_slack_profile(user_data),
-                _ => self.parse_generic_profile(user_data, &config.provider),
-            },
+            SocialProvider::Amazon => self.parse_amazon_profile(user_data),
+            SocialProvider::Okta => self.parse_okta_profile(user_data),
+            SocialProvider::Auth0 => self.parse_auth0_profile(user_data),
+            SocialProvider::Discord => self.parse_discord_profile(user_data),
+            SocialProvider::Slack => self.parse_slack_profile(user_data),
+            SocialProvider::Custom(ref provider_name) => {
+                self.parse_generic_profile(user_data, &config.provider)
+            }
         };
 
         Ok(profile)
@@ -459,7 +467,7 @@ impl SocialLoginManager {
     /// Parse Discord user profile
     fn parse_discord_profile(&self, data: serde_json::Value) -> SocialUserProfile {
         SocialUserProfile {
-            provider: SocialProvider::Custom("discord".to_string()),
+            provider: SocialProvider::Discord,
             provider_user_id: data["id"].as_str().unwrap_or("").to_string(),
             email: data["email"].as_str().map(|s| s.to_string()),
             name: data["username"].as_str().map(|s| s.to_string()),
@@ -477,7 +485,7 @@ impl SocialLoginManager {
     /// Parse Slack user profile
     fn parse_slack_profile(&self, data: serde_json::Value) -> SocialUserProfile {
         SocialUserProfile {
-            provider: SocialProvider::Custom("slack".to_string()),
+            provider: SocialProvider::Slack,
             provider_user_id: data["user"]["id"].as_str().unwrap_or("").to_string(),
             email: data["user"]["email"].as_str().map(|s| s.to_string()),
             name: data["user"]["name"].as_str().map(|s| s.to_string()),
@@ -486,6 +494,54 @@ impl SocialLoginManager {
             picture_url: data["user"]["image_192"].as_str().map(|s| s.to_string()),
             locale: data["user"]["locale"].as_str().map(|s| s.to_string()),
             verified_email: false,
+            raw_data: data,
+        }
+    }
+
+    /// Parse Amazon user profile
+    fn parse_amazon_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        SocialUserProfile {
+            provider: SocialProvider::Amazon,
+            provider_user_id: data["user_id"].as_str().unwrap_or("").to_string(),
+            email: data["email"].as_str().map(|s| s.to_string()),
+            name: data["name"].as_str().map(|s| s.to_string()),
+            first_name: data["given_name"].as_str().map(|s| s.to_string()),
+            last_name: data["family_name"].as_str().map(|s| s.to_string()),
+            picture_url: None,
+            locale: None,
+            verified_email: data["email_verified"].as_bool().unwrap_or(false),
+            raw_data: data,
+        }
+    }
+
+    /// Parse Okta user profile
+    fn parse_okta_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        SocialUserProfile {
+            provider: SocialProvider::Okta,
+            provider_user_id: data["sub"].as_str().unwrap_or("").to_string(),
+            email: data["email"].as_str().map(|s| s.to_string()),
+            name: data["name"].as_str().map(|s| s.to_string()),
+            first_name: data["given_name"].as_str().map(|s| s.to_string()),
+            last_name: data["family_name"].as_str().map(|s| s.to_string()),
+            picture_url: data["picture"].as_str().map(|s| s.to_string()),
+            locale: data["locale"].as_str().map(|s| s.to_string()),
+            verified_email: data["email_verified"].as_bool().unwrap_or(false),
+            raw_data: data,
+        }
+    }
+
+    /// Parse Auth0 user profile
+    fn parse_auth0_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        SocialUserProfile {
+            provider: SocialProvider::Auth0,
+            provider_user_id: data["sub"].as_str().unwrap_or("").to_string(),
+            email: data["email"].as_str().map(|s| s.to_string()),
+            name: data["name"].as_str().map(|s| s.to_string()),
+            first_name: data["given_name"].as_str().map(|s| s.to_string()),
+            last_name: data["family_name"].as_str().map(|s| s.to_string()),
+            picture_url: data["picture"].as_str().map(|s| s.to_string()),
+            locale: data["locale"].as_str().map(|s| s.to_string()),
+            verified_email: data["email_verified"].as_bool().unwrap_or(false),
             raw_data: data,
         }
     }
@@ -591,7 +647,7 @@ impl OAuthConfigs {
             token_url: "https://discord.com/api/oauth2/token".to_string(),
             user_info_url: "https://discord.com/api/users/@me".to_string(),
             scopes: vec!["identify".to_string(), "email".to_string()],
-            provider: SocialProvider::Custom("discord".to_string()),
+            provider: SocialProvider::Discord,
         }
     }
 
@@ -604,7 +660,54 @@ impl OAuthConfigs {
             token_url: "https://slack.com/api/oauth.v2.access".to_string(),
             user_info_url: "https://slack.com/api/users.identity".to_string(),
             scopes: vec!["identity.basic".to_string(), "identity.email".to_string()],
-            provider: SocialProvider::Custom("slack".to_string()),
+            provider: SocialProvider::Slack,
+        }
+    }
+
+    pub fn amazon() -> OAuthConfig {
+        OAuthConfig {
+            client_id: std::env::var("AMAZON_CLIENT_ID").unwrap_or_default(),
+            client_secret: std::env::var("AMAZON_CLIENT_SECRET").unwrap_or_default(),
+            redirect_uri: std::env::var("AMAZON_REDIRECT_URI").unwrap_or_default(),
+            authorization_url: "https://www.amazon.com/ap/oa".to_string(),
+            token_url: "https://api.amazon.com/auth/o2/token".to_string(),
+            user_info_url: "https://api.amazon.com/user/profile".to_string(),
+            scopes: vec!["profile".to_string(), "profile:user_id".to_string()],
+            provider: SocialProvider::Amazon,
+        }
+    }
+
+    pub fn okta(domain: &str) -> OAuthConfig {
+        OAuthConfig {
+            client_id: std::env::var("OKTA_CLIENT_ID").unwrap_or_default(),
+            client_secret: std::env::var("OKTA_CLIENT_SECRET").unwrap_or_default(),
+            redirect_uri: std::env::var("OKTA_REDIRECT_URI").unwrap_or_default(),
+            authorization_url: format!("https://{}/oauth2/default/v1/authorize", domain),
+            token_url: format!("https://{}/oauth2/default/v1/token", domain),
+            user_info_url: format!("https://{}/oauth2/default/v1/userinfo", domain),
+            scopes: vec![
+                "openid".to_string(),
+                "profile".to_string(),
+                "email".to_string(),
+            ],
+            provider: SocialProvider::Okta,
+        }
+    }
+
+    pub fn auth0(domain: &str) -> OAuthConfig {
+        OAuthConfig {
+            client_id: std::env::var("AUTH0_CLIENT_ID").unwrap_or_default(),
+            client_secret: std::env::var("AUTH0_CLIENT_SECRET").unwrap_or_default(),
+            redirect_uri: std::env::var("AUTH0_REDIRECT_URI").unwrap_or_default(),
+            authorization_url: format!("https://{}/authorize", domain),
+            token_url: format!("https://{}/oauth/token", domain),
+            user_info_url: format!("https://{}/userinfo", domain),
+            scopes: vec![
+                "openid".to_string(),
+                "profile".to_string(),
+                "email".to_string(),
+            ],
+            provider: SocialProvider::Auth0,
         }
     }
 }

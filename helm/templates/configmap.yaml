@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "authenc.fullname" . }}-config
+  labels:
+    {{- include "authenc.labels" . | nindent 4 }}
+data:
+  version: {{ .Chart.AppVersion | quote }}
+  features.json: |
+    {
+      "oidc": {{ .Values.features.oidc }},
+      "saml": {{ .Values.features.saml }},
+      "oid4vc": {{ .Values.features.oid4vc }},
+      "webauthn": {{ .Values.features.webauthn }},
+      "social_login": {{ .Values.features.socialLogin }},
+      "device_management": {{ .Values.features.deviceManagement }},
+      "zero_trust": {{ .Values.features.zeroTrust }}
+    }
+  logging.json: |
+    {
+      "level": "{{ .Values.logging.level }}",
+      "format": "{{ .Values.logging.format }}"
+    }
+  {{- with .Values.extraConfigMaps }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}

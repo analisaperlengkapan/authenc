@@ -288,10 +288,10 @@ impl WebAuthnService {
     // Database operations
     async fn store_challenge(&self, username: &str, challenge: &[u8]) -> Result<()> {
         use crate::database::operations::users;
-        
 
         // Get user ID from username
-        let user = users::get_user_by_username(&self.db, username).await?
+        let user = users::get_user_by_username(&self.db, username)
+            .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
         // For now, store challenge in memory or Redis
@@ -318,7 +318,8 @@ impl WebAuthnService {
         use crate::database::operations::webauthn as webauthn_db;
 
         // Get user ID from username
-        let user = users::get_user_by_username(&self.db, username).await?
+        let user = users::get_user_by_username(&self.db, username)
+            .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
         // Convert service credential to model credential
@@ -350,30 +351,34 @@ impl WebAuthnService {
         use crate::database::operations::webauthn as webauthn_db;
 
         // Get user ID from username
-        let user = users::get_user_by_username(&self.db, username).await?
+        let user = users::get_user_by_username(&self.db, username)
+            .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
         let model_credentials = webauthn_db::get_user_credentials(&self.db, user.id).await?;
 
         // Convert model credentials to service credentials
-        let service_credentials = model_credentials.into_iter().map(|mc| WebauthnCredential {
-            id: mc.id,
-            user_id: mc.user_id,
-            credential_id: mc.credential_id,
-            public_key: mc.public_key,
-            public_key_algorithm: mc.public_key_algorithm,
-            signature_counter: mc.signature_counter,
-            attestation_object: mc.attestation_object,
-            authenticator_data: mc.authenticator_data,
-            user_handle: mc.user_handle,
-            credential_type: mc.credential_type,
-            transports: mc.transports,
-            aaguid: mc.aaguid,
-            attestation_format: mc.attestation_format,
-            created_at: mc.created_at,
-            last_used_at: mc.last_used_at,
-            enabled: mc.enabled,
-        }).collect();
+        let service_credentials = model_credentials
+            .into_iter()
+            .map(|mc| WebauthnCredential {
+                id: mc.id,
+                user_id: mc.user_id,
+                credential_id: mc.credential_id,
+                public_key: mc.public_key,
+                public_key_algorithm: mc.public_key_algorithm,
+                signature_counter: mc.signature_counter,
+                attestation_object: mc.attestation_object,
+                authenticator_data: mc.authenticator_data,
+                user_handle: mc.user_handle,
+                credential_type: mc.credential_type,
+                transports: mc.transports,
+                aaguid: mc.aaguid,
+                attestation_format: mc.attestation_format,
+                created_at: mc.created_at,
+                last_used_at: mc.last_used_at,
+                enabled: mc.enabled,
+            })
+            .collect();
 
         Ok(service_credentials)
     }

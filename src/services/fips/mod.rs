@@ -226,7 +226,8 @@ impl FipsSecurityProvider for OpenSslFipsProvider {
 
     async fn validate_algorithm(&self, algorithm: &str) -> Result<AlgorithmValidation> {
         // OpenSSL FIPS approved algorithms
-        let approved_algorithms = ["AES",
+        let approved_algorithms = [
+            "AES",
             "RSA",
             "ECDSA",
             "SHA-256",
@@ -234,7 +235,8 @@ impl FipsSecurityProvider for OpenSslFipsProvider {
             "SHA-512",
             "HMAC-SHA-256",
             "HMAC-SHA-384",
-            "HMAC-SHA-512"];
+            "HMAC-SHA-512",
+        ];
 
         let is_approved = approved_algorithms.contains(&algorithm);
         let security_strength = match algorithm {
@@ -360,13 +362,12 @@ impl FipsComplianceManager {
 
     /// Validate cryptographic operation
     pub async fn validate_crypto_operation(&self, algorithm: &str) -> Result<()> {
-        if !self.is_algorithm_compliant(algorithm).await?
-            && self.strict_mode {
-                return Err(anyhow::anyhow!(
-                    "Algorithm {} is not FIPS compliant",
-                    algorithm
-                ));
-            }
+        if !self.is_algorithm_compliant(algorithm).await? && self.strict_mode {
+            return Err(anyhow::anyhow!(
+                "Algorithm {} is not FIPS compliant",
+                algorithm
+            ));
+        }
         Ok(())
     }
 }

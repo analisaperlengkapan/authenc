@@ -259,7 +259,7 @@ impl KeyRotationService {
 
     /// Rotate to new key
     pub fn rotate_key(&mut self) -> String {
-        let old_key = std::mem::replace(&mut self.current_key, AesGcmService::new());
+        let old_key = std::mem::take(&mut self.current_key);
         let key_id = format!("key_{}", chrono::Utc::now().timestamp());
 
         self.previous_keys.insert(key_id.clone(), old_key);

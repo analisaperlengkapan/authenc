@@ -16,9 +16,9 @@ pub mod rbac_axum;
 
 pub mod compression_axum;
 pub mod cors_axum;
+pub mod input_validation_axum;
 pub mod mtls_simple;
 pub mod security_headers_axum;
-pub mod input_validation_axum;
 pub mod timeout_axum;
 
 // Re-export middleware types for easier access
@@ -29,8 +29,8 @@ pub use rate_limit_axum::{
 
 pub use compression_axum::{compression_middleware, ContentEncoding};
 pub use cors_axum::{cors_layer, cors_middleware};
-pub use security_headers_axum::security_headers_middleware;
 pub use input_validation_axum::{input_validation_middleware, InputValidationConfig};
+pub use security_headers_axum::security_headers_middleware;
 pub use timeout_axum::{TimeoutLayer, TimeoutMiddleware};
 
 // Re-exports for convenience

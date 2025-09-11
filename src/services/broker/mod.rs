@@ -224,12 +224,10 @@ impl LdapIdentityBroker {
         }
 
         // Create new connection
-        let (conn, mut ldap) = ldap3::LdapConnAsync::new(&format!(
-            "ldap://{}:{}",
-            self.config.host, self.config.port
-        ))
-        .await
-        .map_err(|e| format!("LDAP connection failed: {}", e))?;
+        let (conn, mut ldap) =
+            ldap3::LdapConnAsync::new(&format!("ldap://{}:{}", self.config.host, self.config.port))
+                .await
+                .map_err(|e| format!("LDAP connection failed: {}", e))?;
 
         // Spawn connection handler
         tokio::spawn(async move {
@@ -281,12 +279,10 @@ impl IdentityBroker for LdapIdentityBroker {
         };
 
         // Create new connection for authentication (LDAP doesn't allow multiple binds on same connection)
-        let (auth_conn, mut auth_ldap) = ldap3::LdapConnAsync::new(&format!(
-            "ldap://{}:{}",
-            self.config.host, self.config.port
-        ))
-        .await
-        .map_err(|e| format!("LDAP auth connection failed: {}", e))?;
+        let (auth_conn, mut auth_ldap) =
+            ldap3::LdapConnAsync::new(&format!("ldap://{}:{}", self.config.host, self.config.port))
+                .await
+                .map_err(|e| format!("LDAP auth connection failed: {}", e))?;
 
         // Spawn the auth connection handler
         tokio::spawn(async move {
@@ -365,10 +361,7 @@ impl IdentityBroker for LdapIdentityBroker {
                 .username
                 .clone()
                 .unwrap_or_else(|| external_user.external_id.clone()),
-            email: external_user
-                .email
-                .clone()
-                .unwrap_or_default(),
+            email: external_user.email.clone().unwrap_or_default(),
             email_verified: true, // LDAP users are typically pre-verified
             first_name: external_user.first_name.clone(),
             last_name: external_user.last_name.clone(),
@@ -421,16 +414,19 @@ fn create_user_from_ldap_entry(entry: &SearchEntry, config: &LdapConfig) -> Resu
 
     let email = attrs
         .get(&config.email_attr)
-        .and_then(|v| v.first()).cloned()
+        .and_then(|v| v.first())
+        .cloned()
         .unwrap_or_default();
 
     let first_name = attrs
         .get(&config.first_name_attr)
-        .and_then(|v| v.first()).cloned();
+        .and_then(|v| v.first())
+        .cloned();
 
     let last_name = attrs
         .get(&config.last_name_attr)
-        .and_then(|v| v.first()).cloned();
+        .and_then(|v| v.first())
+        .cloned();
 
     // Convert attributes to JSON
     let attributes = Some(

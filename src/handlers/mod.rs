@@ -40,6 +40,7 @@ pub mod admin;
 // pub mod saml;
 // pub mod social;
 // pub mod webauthn;
+pub mod oid4vc;
 pub mod zero_trust;
 
 /// Create the main application router with all routes
@@ -124,6 +125,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // .nest("/api/v1/devices", device::create_device_routes())
         // Temporarily disabled SAML routes due to Axum migration
         // .nest("/saml", saml::create_saml_routes())
+        .nest("/oid4vc", oid4vc::create_oid4vc_router())
+        .nest("/vp", oid4vc::create_vp_router())
         .with_state(db_state)
 }
 

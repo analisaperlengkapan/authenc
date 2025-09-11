@@ -1,0 +1,28 @@
+apiVersion: v2
+name: authenc
+description: Advanced Authentication and Authorization Service
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - authentication
+  - authorization
+  - identity
+  - oidc
+  - saml
+  - oid4vc
+  - zero-trust
+home: https://github.com/authenc/authenc
+sources:
+  - https://github.com/authenc/authenc
+maintainers:
+  - name: Authenc Team
+    email: team@authenc.io
+annotations:
+  artifacthub.io/category: security
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://authenc.io/docs
+    - name: Source Code
+      url: https://github.com/authenc/authenc

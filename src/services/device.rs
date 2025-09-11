@@ -179,7 +179,6 @@ impl DeviceService {
     /// Get device by ID
     pub async fn get_device(&self, device_id: Uuid) -> Result<Option<DeviceInfo>> {
         use crate::database::operations::devices;
-        
 
         match devices::get_device_by_id(&self.db, device_id).await? {
             Some(model_device) => {
@@ -187,14 +186,22 @@ impl DeviceService {
                 let device_info = DeviceInfo {
                     id: model_device.id,
                     user_id: model_device.user_id,
-                    device_name: model_device.device_name.unwrap_or_else(|| "Unknown Device".to_string()),
-                    device_type: self.detect_device_type(model_device.user_agent.as_ref().unwrap_or(&"".to_string())),
+                    device_name: model_device
+                        .device_name
+                        .unwrap_or_else(|| "Unknown Device".to_string()),
+                    device_type: self.detect_device_type(
+                        model_device.user_agent.as_ref().unwrap_or(&"".to_string()),
+                    ),
                     os: model_device.os.unwrap_or_default(),
                     os_version: model_device.os_version.unwrap_or_default(),
                     browser: model_device.browser,
                     browser_version: model_device.browser_version,
                     ip_address: model_device.ip_address.unwrap_or_default(),
-                    user_agent: model_device.user_agent.as_ref().unwrap_or(&"".to_string()).clone(),
+                    user_agent: model_device
+                        .user_agent
+                        .as_ref()
+                        .unwrap_or(&"".to_string())
+                        .clone(),
                     fingerprint: model_device.device_fingerprint,
                     trust_score: model_device.trust_score,
                     is_trusted: model_device.trust_score > 0.7,
@@ -219,7 +226,6 @@ impl DeviceService {
     /// Get user's devices
     pub async fn get_user_devices(&self, user_id: Uuid) -> Result<Vec<DeviceInfo>> {
         use crate::database::operations::devices;
-        
 
         let model_devices = devices::list_user_devices(&self.db, user_id).await?;
 
@@ -228,14 +234,22 @@ impl DeviceService {
             let device_info = DeviceInfo {
                 id: model_device.id,
                 user_id: model_device.user_id,
-                device_name: model_device.device_name.unwrap_or_else(|| "Unknown Device".to_string()),
-                device_type: self.detect_device_type(model_device.user_agent.as_ref().unwrap_or(&"".to_string())),
+                device_name: model_device
+                    .device_name
+                    .unwrap_or_else(|| "Unknown Device".to_string()),
+                device_type: self.detect_device_type(
+                    model_device.user_agent.as_ref().unwrap_or(&"".to_string()),
+                ),
                 os: model_device.os.unwrap_or_default(),
                 os_version: model_device.os_version.unwrap_or_default(),
                 browser: model_device.browser,
                 browser_version: model_device.browser_version,
                 ip_address: model_device.ip_address.unwrap_or_default(),
-                user_agent: model_device.user_agent.as_ref().unwrap_or(&"".to_string()).clone(),
+                user_agent: model_device
+                    .user_agent
+                    .as_ref()
+                    .unwrap_or(&"".to_string())
+                    .clone(),
                 fingerprint: model_device.device_fingerprint,
                 trust_score: model_device.trust_score,
                 is_trusted: model_device.trust_score > 0.7,

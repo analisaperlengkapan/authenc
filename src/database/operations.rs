@@ -162,11 +162,7 @@ pub mod devices {
 
 /// Database operations for WebAuthn credentials
 pub mod webauthn {
-    use crate::{
-        database::Database,
-        error::Result,
-        models::WebauthnCredential,
-    };
+    use crate::{database::Database, error::Result, models::WebauthnCredential};
     use chrono::Utc;
     use uuid::Uuid;
 
@@ -892,12 +888,8 @@ pub mod saml {
 
 /// Database operations for audit logging
 pub mod audit {
-    use crate::{
-        database::Database,
-        error::Result,
-        models::AuditEvent,
-    };
-    
+    use crate::{database::Database, error::Result, models::AuditEvent};
+
     use uuid::Uuid;
 
     /// Create audit log entry
@@ -1147,36 +1139,36 @@ pub mod users {
 
         let row = client.query_opt(query, &[&user_id]).await?;
         Ok(row.map(|r| User {
-                id: r.get(0),
-                username: r.get(1),
-                email: r.get(2),
-                email_verified: r.get(3),
-                first_name: r.get(4),
-                last_name: r.get(5),
-                phone_number: r.get(6),
-                phone_verified: r.get(7),
-                password_hash: r.get(8),
-                totp_secret: r.get(9),
-                totp_backup_codes: r.get(10),
-                webauthn_enabled: r.get(11),
-                account_locked: r.get(12),
-                account_locked_until: r.get(13),
-                failed_login_attempts: r.get(14),
-                last_login_at: r.get(15),
-                last_failed_login_at: r.get(16),
-                password_changed_at: r.get(17),
-                password_expires_at: r.get(18),
-                require_password_change: r.get(19),
-                realm_id: r.get(20),
-                organization_id: r.get(21),
-                attributes: r
-                    .get::<_, Option<String>>(22)
-                    .and_then(|s: String| serde_json::from_str(&s).ok()),
-                enabled: r.get(23),
-                created_at: r.get(24),
-                updated_at: r.get(25),
-                deleted_at: r.get(26),
-            }))
+            id: r.get(0),
+            username: r.get(1),
+            email: r.get(2),
+            email_verified: r.get(3),
+            first_name: r.get(4),
+            last_name: r.get(5),
+            phone_number: r.get(6),
+            phone_verified: r.get(7),
+            password_hash: r.get(8),
+            totp_secret: r.get(9),
+            totp_backup_codes: r.get(10),
+            webauthn_enabled: r.get(11),
+            account_locked: r.get(12),
+            account_locked_until: r.get(13),
+            failed_login_attempts: r.get(14),
+            last_login_at: r.get(15),
+            last_failed_login_at: r.get(16),
+            password_changed_at: r.get(17),
+            password_expires_at: r.get(18),
+            require_password_change: r.get(19),
+            realm_id: r.get(20),
+            organization_id: r.get(21),
+            attributes: r
+                .get::<_, Option<String>>(22)
+                .and_then(|s: String| serde_json::from_str(&s).ok()),
+            enabled: r.get(23),
+            created_at: r.get(24),
+            updated_at: r.get(25),
+            deleted_at: r.get(26),
+        }))
     }
 
     /// Get user by username
@@ -1197,36 +1189,36 @@ pub mod users {
 
         let row = client.query_opt(query, &[&username]).await?;
         Ok(row.map(|r| User {
-                id: r.get(0),
-                username: r.get(1),
-                email: r.get(2),
-                email_verified: r.get(3),
-                first_name: r.get(4),
-                last_name: r.get(5),
-                phone_number: r.get(6),
-                phone_verified: r.get(7),
-                password_hash: r.get(8),
-                totp_secret: r.get(9),
-                totp_backup_codes: r.get(10),
-                webauthn_enabled: r.get(11),
-                account_locked: r.get(12),
-                account_locked_until: r.get(13),
-                failed_login_attempts: r.get(14),
-                last_login_at: r.get(15),
-                last_failed_login_at: r.get(16),
-                password_changed_at: r.get(17),
-                password_expires_at: r.get(18),
-                require_password_change: r.get(19),
-                realm_id: r.get(20),
-                organization_id: r.get(21),
-                attributes: r
-                    .get::<_, Option<String>>(22)
-                    .and_then(|s: String| serde_json::from_str(&s).ok()),
-                enabled: r.get(23),
-                created_at: r.get(24),
-                updated_at: r.get(25),
-                deleted_at: r.get(26),
-            }))
+            id: r.get(0),
+            username: r.get(1),
+            email: r.get(2),
+            email_verified: r.get(3),
+            first_name: r.get(4),
+            last_name: r.get(5),
+            phone_number: r.get(6),
+            phone_verified: r.get(7),
+            password_hash: r.get(8),
+            totp_secret: r.get(9),
+            totp_backup_codes: r.get(10),
+            webauthn_enabled: r.get(11),
+            account_locked: r.get(12),
+            account_locked_until: r.get(13),
+            failed_login_attempts: r.get(14),
+            last_login_at: r.get(15),
+            last_failed_login_at: r.get(16),
+            password_changed_at: r.get(17),
+            password_expires_at: r.get(18),
+            require_password_change: r.get(19),
+            realm_id: r.get(20),
+            organization_id: r.get(21),
+            attributes: r
+                .get::<_, Option<String>>(22)
+                .and_then(|s: String| serde_json::from_str(&s).ok()),
+            enabled: r.get(23),
+            created_at: r.get(24),
+            updated_at: r.get(25),
+            deleted_at: r.get(26),
+        }))
     }
 
     /// Get user by email

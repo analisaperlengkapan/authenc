@@ -312,9 +312,10 @@ impl AuthorizationManager {
 
         for permission in self.permissions.values() {
             if permission.resource_id.to_string() == context.resource.id
-                && permission.scopes.contains(&context.action) {
-                    relevant_permissions.push(permission.clone());
-                }
+                && permission.scopes.contains(&context.action)
+            {
+                relevant_permissions.push(permission.clone());
+            }
         }
 
         if relevant_permissions.is_empty() {

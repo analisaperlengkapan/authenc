@@ -1,9 +1,9 @@
 use crate::database::Database;
 use crate::error::Result;
 use crate::AuthencError;
+use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::Utc;
 
 pub struct OidcCodeStore {
     db: Arc<Database>,
