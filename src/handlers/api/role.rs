@@ -1,15 +1,31 @@
-use actix_web::{delete, get, post, web, HttpResponse, Responder};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::Json,
+    routing::{get, post, delete},
+    Router,
+};
 use crate::services::role_store::RoleStore;
 use crate::models::role::Role;
 use serde::Deserialize;
+use std::sync::Arc;
 use uuid::Uuid;
 
-#[get("/realms/{realm}/roles")]
-pub async fn get_roles(data: web::Data<RoleStore>, path: web::Path<String>) -> impl Responder {
-    let realm = path.into_inner();
-    let roles = data.get_all();
-    let filtered: Vec<Role> = roles.into_iter().filter(|r| r.realm == realm).collect();
-    HttpResponse::Ok().json(filtered)
+pub fn create_role_routes() -> Router<Arc<RoleStore>> {
+    Router::new()
+        .route("/realms/{realm}/roles", get(get_roles))
+        .route("/realms/{realm}/roles", post(create_role))
+        .route("/realms/{realm}/roles/{name}", delete(delete_role))
+        .route("/realms/{realm}/roles/{role}/permissions/{permission}", post(assign_permission_to_role))
+        .route("/realms/{realm}/roles/{role}/permissions/{permission}", delete(unassign_permission_from_role))
+}
+
+pub async fn get_roles(
+    State(_store): State<Arc<RoleStore>>,
+    Path(_realm): Path<String>,
+) -> Result<Json<Vec<Role>>, StatusCode> {
+    // TODO: Implement with new Role model structure
+    Err(StatusCode::NOT_IMPLEMENTED)
 }
 
 #[derive(Deserialize)]
@@ -17,61 +33,35 @@ pub struct CreateRoleRequest {
     pub name: String,
 }
 
-#[post("/realms/{realm}/roles")]
-pub async fn create_role(data: web::Data<RoleStore>, path: web::Path<String>, req: web::Json<CreateRoleRequest>) -> impl Responder {
-    let realm = path.into_inner();
-    let roles = data.roles.lock().unwrap();
-    if roles.iter().any(|r| r.realm == realm && r.name == req.name) {
-        return HttpResponse::BadRequest().body("Role already exists in this realm");
-    }
-    drop(roles);
-    let role = Role {
-        id: Uuid::new_v4().to_string(),
-        name: req.name.clone(),
-        realm: realm.clone(),
-    };
-    data.add_role(role);
-    HttpResponse::Created().body("Role created")
+pub async fn create_role(
+    State(_store): State<Arc<RoleStore>>,
+    Path(_realm): Path<String>,
+    Json(_req): Json<CreateRoleRequest>,
+) -> Result<StatusCode, StatusCode> {
+    // TODO: Implement with new Role model structure
+    Err(StatusCode::NOT_IMPLEMENTED)
 }
 
-#[delete("/realms/{realm}/roles/{name}")]
-pub async fn delete_role(data: web::Data<RoleStore>, path: web::Path<(String, String)>) -> impl Responder {
-    let (realm, name) = path.into_inner();
-    if data.delete_by_name(&realm, &name) {
-        HttpResponse::Ok().body("Role deleted")
-    } else {
-        HttpResponse::NotFound().body("Role not found")
-    }
+pub async fn delete_role(
+    State(_store): State<Arc<RoleStore>>,
+    Path((_realm, _name)): Path<(String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    // TODO: Implement with new Role model structure
+    Err(StatusCode::NOT_IMPLEMENTED)
 }
 
-#[post("/realms/{realm}/roles/{role}/permissions/{permission}")]
 pub async fn assign_permission_to_role(
-    data: web::Data<RoleStore>,
-    path: web::Path<(String, String, String)>,
-) -> impl Responder {
-    let (realm, role_name, permission) = path.into_inner();
-    let mut roles = data.roles.lock().unwrap();
-    if let Some(role) = roles.iter_mut().find(|r| r.realm == realm && r.name == role_name) {
-        if !role.permissions.contains(&permission) {
-            role.permissions.push(permission.clone());
-        }
-        HttpResponse::Ok().body("Permission assigned to role")
-    } else {
-        HttpResponse::NotFound().body("Role not found")
-    }
+    State(_store): State<Arc<RoleStore>>,
+    Path((_realm, _role_name, _permission)): Path<(String, String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    // TODO: Implement with new Role model structure
+    Err(StatusCode::NOT_IMPLEMENTED)
 }
 
-#[delete("/realms/{realm}/roles/{role}/permissions/{permission}")]
 pub async fn unassign_permission_from_role(
-    data: web::Data<RoleStore>,
-    path: web::Path<(String, String, String)>,
-) -> impl Responder {
-    let (realm, role_name, permission) = path.into_inner();
-    let mut roles = data.roles.lock().unwrap();
-    if let Some(role) = roles.iter_mut().find(|r| r.realm == realm && r.name == role_name) {
-        role.permissions.retain(|p| p != &permission);
-        HttpResponse::Ok().body("Permission unassigned from role")
-    } else {
-        HttpResponse::NotFound().body("Role not found")
-    }
+    State(_store): State<Arc<RoleStore>>,
+    Path((_realm, _role_name, _permission)): Path<(String, String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    // TODO: Implement with new Role model structure
+    Err(StatusCode::NOT_IMPLEMENTED)
 }

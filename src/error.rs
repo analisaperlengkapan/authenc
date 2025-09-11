@@ -12,32 +12,6 @@ pub type Result<T> = std::result::Result<T, AuthencError>;
 /// Legacy alias for backward compatibility
 pub type AuthenceResult<T> = Result<T>; // backward compat
 
-/// Legacy ApiError for backward compatibility with Actix handlers
-#[derive(Debug)]
-pub struct ApiError {
-    pub code: u16,
-    pub message: String,
-}
-
-impl ApiError {
-    /// Create an error response compatible with Actix-web
-    pub fn error_response(&self) -> actix_web::HttpResponse {
-        use actix_web::{http::StatusCode, HttpResponse};
-
-        let status = match StatusCode::from_u16(self.code) {
-            Ok(code) => code,
-            Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-
-        HttpResponse::build(status).json(serde_json::json!({
-            "error": {
-                "code": self.code,
-                "message": self.message
-            }
-        }))
-    }
-}
-
 /// Comprehensive error types for the Authence application
 #[derive(Error, Debug)]
 pub enum AuthencError {

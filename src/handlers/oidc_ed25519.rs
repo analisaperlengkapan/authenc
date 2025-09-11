@@ -160,7 +160,7 @@ pub async fn oidc_userinfo_ed25519(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Extract Authorization header
-    let auth_header = headers
+    let _auth_header = headers
         .get("authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "))

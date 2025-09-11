@@ -47,8 +47,10 @@ impl UserStore {
 
     pub fn verify_password(&self, username: &str, password: &str) -> Result<bool, String> {
         if let Some(_user) = self.get_by_username(username) {
-            // TODO: replace with Argon2 hash verify
-            Ok(password == "password") // Placeholder logic
+            // SECURITY TODO: Replace with proper Argon2 hash verification
+            // This is currently using plain text comparison for development/testing only
+            // Production code MUST use proper password hashing
+            Ok(password == "password") // WARNING: Plain text password comparison
         } else {
             Err("User not found".to_string())
         }

@@ -296,17 +296,17 @@ impl WebAuthnService {
 
         // For now, store challenge in memory or Redis
         // TODO: Implement challenge storage in database
-        Ok(())
+        unimplemented!("Challenge storage in database not yet implemented")
     }
 
     async fn get_challenge(&self, username: &str) -> Result<Option<Vec<u8>>> {
         // TODO: Implement challenge retrieval from database
-        Ok(Some(vec![]))
+        unimplemented!("Challenge retrieval from database not yet implemented")
     }
 
     async fn delete_challenge(&self, username: &str) -> Result<()> {
         // TODO: Implement challenge deletion from database
-        Ok(())
+        unimplemented!("Challenge deletion from database not yet implemented")
     }
 
     async fn store_credential(

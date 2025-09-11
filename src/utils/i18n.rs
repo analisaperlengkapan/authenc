@@ -3,13 +3,15 @@ use std::collections::HashMap;
 use std::fs;
 use unic_langid::LanguageIdentifier;
 
-#[allow(dead_code)]
+/// Internationalization support using Fluent
+/// Note: This module is currently not used but provides foundation for future i18n implementation
 pub struct I18n {
-    #[allow(dead_code)]
     ftl_map: HashMap<String, String>,
 }
 
 impl I18n {
+    /// Create a new I18n instance with the given locales and path
+    /// Note: This function is currently unused but ready for future implementation
     pub fn new(locales: &[&str], path: &str) -> Self {
         let mut ftl_map = HashMap::new();
         for &locale in locales {
@@ -20,7 +22,8 @@ impl I18n {
         I18n { ftl_map }
     }
 
-    #[allow(dead_code)]
+    /// Translate a key to the given locale
+    /// Note: This function is currently unused but ready for future implementation
     pub fn t(&self, locale: &str, key: &str, args: Option<&FluentArgs>) -> String {
         let ftl = self
             .ftl_map

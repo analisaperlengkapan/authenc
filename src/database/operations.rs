@@ -1023,8 +1023,8 @@ pub mod users {
             .map(|v| serde_json::to_string(v).unwrap_or_default());
 
         // Create user ID and timestamp outside
-        let user_id = Uuid::new_v4();
-        let now = Utc::now();
+        let _user_id = Uuid::new_v4();
+        let _now = Utc::now();
 
         let client = db.get_connection().await?;
         let user_id = Uuid::new_v4();

@@ -352,16 +352,16 @@ impl AuthorizationService for AuthorizationManager {
 
     async fn create_policy(&self, _policy: Policy) -> Result<Uuid, String> {
         // TODO: Implement policy creation with persistence
-        Err("Not implemented".to_string())
+        unimplemented!("Policy creation with persistence not yet implemented")
     }
 
     async fn update_policy(&self, _policy: Policy) -> Result<(), String> {
         // TODO: Implement policy update
-        Err("Not implemented".to_string())
+        unimplemented!("Policy update not yet implemented")
     }
 
     async fn delete_policy(&self, _policy_id: &Uuid) -> Result<(), String> {
         // TODO: Implement policy deletion
-        Err("Not implemented".to_string())
+        unimplemented!("Policy deletion not yet implemented")
     }
 }

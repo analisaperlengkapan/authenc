@@ -1,41 +1,32 @@
-use actix_web::{post, delete, web, HttpResponse, Responder};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{post, delete},
+    Router,
+};
 use crate::services::user_store::UserStore;
-use serde::Deserialize;
+use std::sync::Arc;
 
-#[derive(Deserialize)]
-pub struct RoleAssignmentRequest {
-    pub user_id: String,
-    pub role: String,
+pub fn create_user_role_routes() -> Router<Arc<UserStore>> {
+    Router::new()
+        .route("/realms/{realm}/users/{user_id}/roles/{role}", post(assign_role))
+        .route("/realms/{realm}/users/{user_id}/roles/{role}", delete(unassign_role))
 }
 
-#[post("/realms/{realm}/users/{user_id}/roles/{role}")]
 pub async fn assign_role(
-    data: web::Data<UserStore>,
-    path: web::Path<(String, String, String)>,
-) -> impl Responder {
-    let (realm, user_id, role) = path.into_inner();
-    let mut users = data.users.lock().unwrap();
-    if let Some(user) = users.iter_mut().find(|u| u.id == user_id && u.realm == realm) {
-        if !user.roles.contains(&role) {
-            user.roles.push(role.clone());
-        }
-        HttpResponse::Ok().body("Role assigned")
-    } else {
-        HttpResponse::NotFound().body("User not found")
-    }
+    State(_store): State<Arc<UserStore>>,
+    Path((_realm, _user_id, _role)): Path<(String, String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    // TODO: Implement proper role assignment with UserRole table
+    // For now, return Not Implemented
+    Err(StatusCode::NOT_IMPLEMENTED)
 }
 
-#[delete("/realms/{realm}/users/{user_id}/roles/{role}")]
 pub async fn unassign_role(
-    data: web::Data<UserStore>,
-    path: web::Path<(String, String, String)>,
-) -> impl Responder {
-    let (realm, user_id, role) = path.into_inner();
-    let mut users = data.users.lock().unwrap();
-    if let Some(user) = users.iter_mut().find(|u| u.id == user_id && u.realm == realm) {
-        user.roles.retain(|r| r != &role);
-        HttpResponse::Ok().body("Role unassigned")
-    } else {
-        HttpResponse::NotFound().body("User not found")
-    }
+    State(_store): State<Arc<UserStore>>,
+    Path((_realm, _user_id, _role)): Path<(String, String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    // TODO: Implement proper role unassignment with UserRole table
+    // For now, return Not Implemented
+    Err(StatusCode::NOT_IMPLEMENTED)
 }

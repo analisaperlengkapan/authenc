@@ -62,7 +62,7 @@ pub struct ListPoliciesQuery {
 
 /// Get system statistics
 pub async fn get_system_stats(
-    State(db): State<Arc<Database>>,
+    State(_db): State<Arc<Database>>,
 ) -> Result<Json<SystemStats>, StatusCode> {
     // Mock response - in real implementation would use actual service
     let stats = SystemStats {
@@ -284,17 +284,17 @@ pub fn create_admin_routes() -> Router<Arc<Database>> {
         .route("/dashboard", get(get_dashboard_data))
         .route("/users", get(list_users))
         .route("/users", post(create_user))
-        .route("/users/:user_id", get(get_user))
-        .route("/users/:user_id", put(update_user))
-        .route("/users/:user_id", delete(delete_user))
+        .route("/users/{user_id}", get(get_user))
+        .route("/users/{user_id}", put(update_user))
+        .route("/users/{user_id}", delete(delete_user))
         .route("/sessions", get(list_sessions))
-        .route("/sessions/:session_id", delete(terminate_session))
+        .route("/sessions/{session_id}", delete(terminate_session))
         .route("/audit-logs", get(list_audit_logs))
         .route("/roles", get(list_roles))
         .route("/roles", post(create_role))
-        .route("/roles/:role_id", get(get_role))
-        .route("/roles/:role_id", put(update_role))
-        .route("/roles/:role_id", delete(delete_role))
+        .route("/roles/{role_id}", get(get_role))
+        .route("/roles/{role_id}", put(update_role))
+        .route("/roles/{role_id}", delete(delete_role))
         .route("/policies", get(list_policies))
         .route("/policies", post(create_policy))
         .route("/security-events", get(get_security_events))

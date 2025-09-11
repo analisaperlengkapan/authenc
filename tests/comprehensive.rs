@@ -10,7 +10,8 @@ use axum::{
 use axum_test::TestServer;
 use serde_json::json;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[tokio::test]
 async fn test_create_and_get_realm() {
@@ -114,31 +115,6 @@ async fn test_create_and_get_role() {
     let response = server.get("/roles").await;
     assert!(response.status_code().is_success());
 }
-
-/* TODO: Uncomment when API handlers are migrated to Axum
-#[actix_web::test]
-async fn test_create_and_get_permission() {
-    let permission_store = Data::new(PermissionStore::new());
-    let app = test::init_service(
-        App::new()
-            .app_data(permission_store.clone())
-            .service(authenc::handlers::authenc::handlers::api::permission::create_permission)
-            .service(authenc::handlers::authenc::handlers::api::permission::get_permissions),
-    )
-    .await;
-    // Create
-    let req = test::TestRequest::post()
-        .uri("/permissions")
-        .set_json(json!({"name": "read"}))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 201);
-    // Get all permissions
-    let req = test::TestRequest::get().uri("/permissions").to_request();
-    let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
-}
-*/
 
 #[tokio::test]
 async fn test_user_negative_and_update_delete() {
@@ -525,83 +501,6 @@ async fn test_group_crud_and_members_roles() {
     assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
 }
 
-/* TODO: Uncomment when API handlers are migrated to Axum
-#[actix_web::test]
-async fn test_group_duplicate_member_role_idempotency() {
-    use authenc::services::group_store::GroupStore;
-    let group_store = Data::new(GroupStore::new());
-    let app = test::init_service(
-        App::new()
-            .app_data(group_store.clone())
-            .service(authenc::handlers::group::create_group)
-            .service(authenc::handlers::group::add_group_member)
-            .service(authenc::handlers::group::remove_group_member)
-            .service(authenc::handlers::group::add_group_role)
-            .service(authenc::handlers::group::remove_group_role)
-            .service(authenc::handlers::group::get_group_by_id),
-    )
-    .await;
-    let resp = test::call_service(
-        &app,
-        test::TestRequest::post()
-            .uri("/groups")
-            .set_json(json!({"name":"g"}))
-            .to_request(),
-    )
-    .await;
-    let created: serde_json::Value = serde_json::from_slice(&test::read_body(resp).await).unwrap();
-    let gid = created["id"].as_str().unwrap();
-    // Add same member twice -> still success and member appears once
-    for _ in 0..2 {
-        let _ = test::call_service(
-            &app,
-            test::TestRequest::post()
-                .uri(&format!("/groups/{gid}/members/u"))
-                .to_request(),
-        )
-        .await;
-    }
-    let resp = test::call_service(
-        &app,
-        test::TestRequest::get()
-            .uri(&format!("/groups/{gid}"))
-            .to_request(),
-    )
-    .await;
-    let g: serde_json::Value = serde_json::from_slice(&test::read_body(resp).await).unwrap();
-    assert_eq!(g["members"].as_array().unwrap().len(), 1);
-    // Remove twice -> idempotent
-    for _ in 0..2 {
-        let _ = test::call_service(
-            &app,
-            test::TestRequest::delete()
-                .uri(&format!("/groups/{gid}/members/u"))
-                .to_request(),
-        )
-        .await;
-    }
-    // Add same role twice -> still one role
-    for _ in 0..2 {
-        let _ = test::call_service(
-            &app,
-            test::TestRequest::post()
-                .uri(&format!("/groups/{gid}/roles/r"))
-                .to_request(),
-        )
-        .await;
-    }
-    let resp = test::call_service(
-        &app,
-        test::TestRequest::get()
-            .uri(&format!("/groups/{gid}"))
-            .to_request(),
-    )
-    .await;
-    let g: serde_json::Value = serde_json::from_slice(&test::read_body(resp).await).unwrap();
-    assert_eq!(g["roles"].as_array().unwrap().len(), 1);
-}
-*/
-
 #[tokio::test]
 async fn test_sessions_list_empty_for_unknown_user() {
     // Create a simple test router for session operations
@@ -653,7 +552,6 @@ async fn test_oidc_id_token_generation_and_decode() {
     assert_eq!(claims.role.as_deref(), Some("user"));
 }
 
-/* TODO: Uncomment when API handlers are migrated to Axum
 #[tokio::test]
 async fn test_oidc_discovery_smoke() {
     // Create a simple test router for OIDC discovery
@@ -668,105 +566,7 @@ async fn test_oidc_discovery_smoke() {
     // Might be 200 or 500 depending on missing data; just ensure it's a valid HTTP response (not 404)
     assert_ne!(response.status_code(), StatusCode::NOT_FOUND);
 }
-*/
 
-/* TODO: Uncomment when API handlers are migrated to Axum
-#[actix_web::test]
-async fn test_login_and_sessions_flow() {
-    use authenc::services::{
-        anomaly_detector::AnomalyDetector, federation_provider::FederationRegistry,
-        totp_store::TotpStore,
-    };
-    use authenc::services::{
-        brute_force_protector::BruteForceProtector, session_store::SessionStore,
-        user_store::UserStore,
-    };
-    // Prepare stores
-    let user_store = Data::new(UserStore::new());
-    let session_store = Data::new(SessionStore::new());
-    let totp_store = Data::new(TotpStore::new());
-    let brute_force = Data::new(BruteForceProtector::new(5, 300));
-    let anomaly = Data::new(AnomalyDetector::new());
-    let federation = Data::new(FederationRegistry::new());
-    // Seed a user compatible with internal login (plain password storage demo)
-    user_store
-        .add_user(authenc::models::user::User {
-            id: Uuid::parse_str("u-login").unwrap_or(Uuid::new_v4()),
-            username: "dave".into(),
-            email: "dave@example.com".into(),
-            email_verified: false,
-            first_name: None,
-            last_name: None,
-            phone_number: None,
-            phone_verified: false,
-            password_hash: Some("PlainPass1!@#".into()),
-            totp_secret: None,
-            totp_backup_codes: None,
-            webauthn_enabled: false,
-            account_locked: false,
-            account_locked_until: None,
-            failed_login_attempts: 0,
-            last_login_at: None,
-            last_failed_login_at: None,
-            password_changed_at: None,
-            password_expires_at: None,
-            require_password_change: false,
-            realm_id: None,
-            organization_id: None,
-            attributes: None,
-            enabled: true,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            deleted_at: None,
-        })
-        .unwrap();
-    let app = test::init_service(
-        App::new()
-            .app_data(user_store.clone())
-            .app_data(session_store.clone())
-            .app_data(totp_store.clone())
-            .app_data(brute_force.clone())
-            .app_data(anomaly.clone())
-            .app_data(federation.clone())
-            .service(authenc::handlers::auth::login)
-            .service(authenc::handlers::session::list_sessions)
-            .service(authenc::handlers::session::logout),
-    )
-    .await;
-    // Login
-    let resp = test::call_service(
-        &app,
-        test::TestRequest::post()
-            .uri("/login")
-            .set_json(json!({"username":"dave","password":"PlainPass1!@#"}))
-            .to_request(),
-    )
-    .await;
-    assert!(resp.status().is_success());
-    let token_v: serde_json::Value = serde_json::from_slice(&test::read_body(resp).await).unwrap();
-    let token = token_v["token"].as_str().unwrap();
-    // List sessions
-    let resp = test::call_service(
-        &app,
-        test::TestRequest::get()
-            .uri("/sessions")
-            .insert_header(("Authorization", format!("Bearer {token}")))
-            .to_request(),
-    )
-    .await;
-    assert!(resp.status().is_success());
-    // Logout
-    let resp = test::call_service(
-        &app,
-        test::TestRequest::post()
-            .uri("/logout")
-            .insert_header(("Authorization", format!("Bearer {token}")))
-            .to_request(),
-    )
-    .await;
-    assert!(resp.status().is_success());
-}
-*/
 
 #[tokio::test]
 async fn test_login_bruteforce_throttle() {
@@ -811,49 +611,6 @@ async fn test_login_bruteforce_throttle() {
     assert_eq!(response.status_code(), StatusCode::TOO_MANY_REQUESTS);
 }
 
-/* TODO: Uncomment when API handlers are migrated to Axum
-#[actix_web::test]
-async fn test_login_via_federation_provider() {
-    use authenc::services::{
-        anomaly_detector::AnomalyDetector,
-        federation_provider::{DummyFederationProvider, FederationRegistry},
-        totp_store::TotpStore,
-    };
-    use authenc::services::{
-        brute_force_protector::BruteForceProtector, session_store::SessionStore,
-        user_store::UserStore,
-    };
-    let user_store = Data::new(UserStore::new());
-    let session_store = Data::new(SessionStore::new());
-    let totp_store = Data::new(TotpStore::new());
-    let brute_force = Data::new(BruteForceProtector::new(5, 300));
-    let anomaly = Data::new(AnomalyDetector::new());
-    let mut reg = FederationRegistry::new();
-    reg.register(Box::new(DummyFederationProvider));
-    let federation = Data::new(reg);
-    let app = test::init_service(
-        App::new()
-            .app_data(user_store.clone())
-            .app_data(session_store.clone())
-            .app_data(totp_store.clone())
-            .app_data(brute_force.clone())
-            .app_data(anomaly.clone())
-            .app_data(federation.clone())
-            .service(authenc::handlers::auth::login),
-    )
-    .await;
-    // Login using federated user credentials
-    let resp = test::call_service(
-        &app,
-        test::TestRequest::post()
-            .uri("/login")
-            .set_json(json!({"username":"federated","password":"federatedpass"}))
-            .to_request(),
-    )
-    .await;
-    assert!(resp.status().is_success());
-}
-*/
 
 #[tokio::test]
 async fn test_login_requires_totp_when_enabled() {
@@ -2720,48 +2477,51 @@ async fn test_oidc_code_reuse_returns_400() {
         )
         .route(
             "/oidc/token",
-            axum::routing::post(|Form(form): Form<HashMap<String, String>>| async move {
-                let grant_type = form
-                    .get("grant_type")
-                    .cloned()
-                    .unwrap_or_else(|| "".to_string());
-                let code = form.get("code").cloned().unwrap_or_else(|| "".to_string());
-                let redirect_uri = form
-                    .get("redirect_uri")
-                    .cloned()
-                    .unwrap_or_else(|| "".to_string());
-                let client_id = form
-                    .get("client_id")
-                    .cloned()
-                    .unwrap_or_else(|| "".to_string());
+            axum::routing::post({
+                let code_used = Arc::clone(&code_used);
+                move |Form(form): Form<HashMap<String, String>>| {
+                    let code_used = Arc::clone(&code_used);
+                    async move {
+                        let grant_type = form
+                            .get("grant_type")
+                            .cloned()
+                            .unwrap_or_else(|| "".to_string());
+                        let code = form.get("code").cloned().unwrap_or_else(|| "".to_string());
+                        let redirect_uri = form
+                            .get("redirect_uri")
+                            .cloned()
+                            .unwrap_or_else(|| "".to_string());
+                        let client_id = form
+                            .get("client_id")
+                            .cloned()
+                            .unwrap_or_else(|| "".to_string());
 
-                static mut CODE_USED: bool = false;
-
-                if grant_type == "authorization_code"
-                    && code == "test_code_123"
-                    && redirect_uri == "https://cb"
-                    && client_id == "cli7"
-                {
-                    unsafe {
-                        if CODE_USED {
-                            // Code already used - return 400
+                        if grant_type == "authorization_code"
+                            && code == "test_code_123"
+                            && redirect_uri == "https://cb"
+                            && client_id == "cli7"
+                        {
+                            let mut used = code_used.lock().await;
+                            if *used {
+                                // Code already used - return 400
+                                (
+                                    StatusCode::BAD_REQUEST,
+                                    Json(json!({"error": "invalid_grant"})),
+                                )
+                            } else {
+                                *used = true;
+                                (
+                                    StatusCode::OK,
+                                    Json(json!({"access_token": "token", "token_type": "Bearer"})),
+                                )
+                            }
+                        } else {
                             (
                                 StatusCode::BAD_REQUEST,
-                                Json(json!({"error": "invalid_grant"})),
-                            )
-                        } else {
-                            CODE_USED = true;
-                            (
-                                StatusCode::OK,
-                                Json(json!({"access_token": "token", "token_type": "Bearer"})),
+                                Json(json!({"error": "invalid_request"})),
                             )
                         }
                     }
-                } else {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({"error": "invalid_request"})),
-                    )
                 }
             }),
         );

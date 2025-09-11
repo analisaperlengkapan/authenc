@@ -38,4 +38,8 @@ impl AuditLogSink for PgAuditLogSink {
     }
 }
 
-// TODO: KafkaAuditLogSink, FileAuditLogSink, etc.
+// TODO: Future implementations could include:
+// - KafkaAuditLogSink for distributed streaming
+// - FileAuditLogSink for local file storage
+// - ElasticsearchAuditLogSink for search and analytics
+// - SyslogAuditLogSink for system logging integration

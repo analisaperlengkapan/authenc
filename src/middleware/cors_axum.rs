@@ -4,7 +4,7 @@ use axum::{
     http::{header, HeaderValue, Method, Response},
     middleware::Next,
 };
-use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 /// Create a CORS layer with default configuration
 pub fn cors_layer() -> CorsLayer {

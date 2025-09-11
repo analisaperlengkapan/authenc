@@ -10,8 +10,8 @@ fn default_config_sane() {
 
 #[test]
 fn env_override_port() {
-    env::set_var("AUTHENC_PORT", "9090");
+    env::set_var("PORT", "9090");
     let cfg = AppConfig::from_env().unwrap();
     assert_eq!(cfg.server.port, 9090);
-    env::remove_var("AUTHENC_PORT");
+    env::remove_var("PORT");
 }

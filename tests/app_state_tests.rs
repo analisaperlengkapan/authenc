@@ -3,6 +3,7 @@ use authenc::AppConfig;
 use std::sync::Arc;
 
 #[tokio::test]
+#[ignore = "Requires PostgreSQL database to be running"]
 async fn app_state_initializes_all_services() {
     let config = Arc::new(AppConfig::default());
     let state = AppState::new((*config).clone())

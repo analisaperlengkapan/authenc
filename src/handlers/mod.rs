@@ -30,7 +30,7 @@ pub mod oidc_keys;
 // Advanced Services Handlers
 pub mod admin;
 // Temporarily disabled API module due to Actix-web migration issues
-// pub mod api; // Uncommented - contains Axum handlers
+pub mod api; // Uncommented - contains Axum handlers
 // Temporarily disabled due to Axum migration issues
 // pub mod authorization;
 // pub mod broker;
@@ -114,8 +114,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         //     broker::create_identity_broker_routes(),
         // )
         .nest("/api/v1/admin", admin::create_admin_routes())
-        // Temporarily disabled WebAuthn routes due to Axum migration
-        // .nest("/api/v1/auth/webauthn", webauthn::create_webauthn_routes())
+        // API routes for realms, users, roles, permissions
+        .nest("/api/v1/auth", api::realm::create_realm_routes().with_state(state.realm_store.clone()))
+        .nest("/api/v1/auth", api::user::create_user_routes().with_state(state.user_store.clone()))
+        .nest("/api/v1/auth", api::role::create_role_routes().with_state(state.role_store.clone()))
+        .nest("/api/v1/auth", api::permission::create_permission_routes().with_state(state.permission_store.clone()))
+        .nest("/api/v1/auth", api::audit::create_audit_routes().with_state(state.audit_log_store.clone()))
+        .nest("/api/v1/auth", api::auth::create_auth_routes().with_state(state.user_store.clone()))
+        .nest("/api/v1/auth", api::permission_check::create_permission_check_routes().with_state((state.user_store.clone(), state.role_store.clone())))
         // Temporarily disabled organization routes due to Axum migration
         // .nest(
         //     "/api/v1/organizations",

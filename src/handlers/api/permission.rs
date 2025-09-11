@@ -1,15 +1,29 @@
-use actix_web::{get, post, delete, web, HttpResponse, Responder};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::Json,
+    routing::{get, post, delete},
+    Router,
+};
 use crate::services::permission_store::PermissionStore;
 use crate::models::permission::Permission;
 use serde::Deserialize;
+use std::sync::Arc;
 use uuid::Uuid;
 
-#[get("/realms/{realm}/permissions")]
-pub async fn get_permissions(data: web::Data<PermissionStore>, path: web::Path<String>) -> impl Responder {
-    let realm = path.into_inner();
-    let permissions = data.get_all();
-    let filtered: Vec<Permission> = permissions.into_iter().filter(|p| p.realm == realm).collect();
-    HttpResponse::Ok().json(filtered)
+pub fn create_permission_routes() -> Router<Arc<PermissionStore>> {
+    Router::new()
+        .route("/realms/{realm}/permissions", get(get_permissions))
+        .route("/realms/{realm}/permissions", post(create_permission))
+        .route("/realms/{realm}/permissions/{name}", delete(delete_permission))
+}
+
+pub async fn get_permissions(
+    State(_store): State<Arc<PermissionStore>>,
+    Path(_realm): Path<String>,
+) -> Result<Json<Vec<Permission>>, StatusCode> {
+    // TODO: Implement with new Permission model structure
+    Ok(Json(vec![]))
 }
 
 #[derive(Deserialize)]
@@ -18,30 +32,19 @@ pub struct CreatePermissionRequest {
     pub description: Option<String>,
 }
 
-#[post("/realms/{realm}/permissions")]
-pub async fn create_permission(data: web::Data<PermissionStore>, path: web::Path<String>, req: web::Json<CreatePermissionRequest>) -> impl Responder {
-    let realm = path.into_inner();
-    let permissions = data.permissions.lock().unwrap();
-    if permissions.iter().any(|p| p.realm == realm && p.name == req.name) {
-        return HttpResponse::BadRequest().body("Permission already exists in this realm");
-    }
-    drop(permissions);
-    let permission = Permission {
-        id: Uuid::new_v4().to_string(),
-        name: req.name.clone(),
-        realm: realm.clone(),
-        description: req.description.clone(),
-    };
-    data.add_permission(permission);
-    HttpResponse::Created().body("Permission created")
+pub async fn create_permission(
+    State(_store): State<Arc<PermissionStore>>,
+    Path(_realm): Path<String>,
+    Json(_req): Json<CreatePermissionRequest>,
+) -> Result<StatusCode, StatusCode> {
+    // TODO: Implement with new Permission model structure
+    Err(StatusCode::NOT_IMPLEMENTED)
 }
 
-#[delete("/realms/{realm}/permissions/{name}")]
-pub async fn delete_permission(data: web::Data<PermissionStore>, path: web::Path<(String, String)>) -> impl Responder {
-    let (realm, name) = path.into_inner();
-    if data.delete_by_name(&realm, &name) {
-        HttpResponse::Ok().body("Permission deleted")
-    } else {
-        HttpResponse::NotFound().body("Permission not found")
-    }
+pub async fn delete_permission(
+    State(_store): State<Arc<PermissionStore>>,
+    Path((_realm, _name)): Path<(String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    // TODO: Implement with new Permission model structure
+    Err(StatusCode::NOT_IMPLEMENTED)
 }

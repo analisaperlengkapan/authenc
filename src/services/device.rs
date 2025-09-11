@@ -173,6 +173,7 @@ impl DeviceService {
         }
 
         // TODO: Implement other update fields (device_name, etc.)
+        // Currently only trust score updates are supported
         Ok(())
     }
 
@@ -207,9 +208,9 @@ impl DeviceService {
                     is_trusted: model_device.trust_score > 0.7,
                     last_seen: model_device.last_seen_at,
                     created_at: model_device.created_at,
-                    location: None, // TODO: Parse from location_data JSON
+                    location: None, // TODO: Parse from location_data JSON - requires location tracking implementation
                     security_features: DeviceSecurityFeatures {
-                        has_biometrics: false, // TODO: Store in database
+                        has_biometrics: false, // TODO: Store in database - requires biometrics detection implementation
                         has_hardware_security: false,
                         has_screen_lock: false,
                         encryption_enabled: false,
@@ -255,9 +256,9 @@ impl DeviceService {
                 is_trusted: model_device.trust_score > 0.7,
                 last_seen: model_device.last_seen_at,
                 created_at: model_device.created_at,
-                location: None, // TODO: Parse from location_data JSON
+                location: None, // TODO: Parse from location_data JSON - requires location tracking implementation
                 security_features: DeviceSecurityFeatures {
-                    has_biometrics: false, // TODO: Store in database
+                    has_biometrics: false, // TODO: Store in database - requires biometrics detection implementation
                     has_hardware_security: false,
                     has_screen_lock: false,
                     encryption_enabled: false,
