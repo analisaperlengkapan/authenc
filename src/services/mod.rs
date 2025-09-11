@@ -1,5 +1,8 @@
 // Security and protection services
+pub mod advanced_federation;
+pub mod advanced_protocols;
 pub mod anomaly_detector;
+pub mod auth_flow;
 pub mod brute_force_protector;
 pub mod client_policy;
 pub mod par;
@@ -76,6 +79,7 @@ pub mod vault;
 
 // Re-exports for convenience
 pub use anomaly_detector::AnomalyDetector;
+pub use auth_flow::AuthenticationManager;
 pub use brute_force_protector::BruteForceProtector;
 pub use group_store::GroupStore;
 pub use session_store::SessionStore;

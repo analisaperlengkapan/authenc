@@ -148,7 +148,10 @@ mod tests {
     #[tokio::test]
     async fn test_gzip_compression() {
         let app = Router::new()
-            .route("/", get(|| async { "Hello, world!" }))
+            .route("/", get(|| async { 
+                // Create a response larger than 1024 bytes to trigger compression
+                "x".repeat(1025)
+            }))
             .layer(
                 tower::ServiceBuilder::new()
                     .layer(axum::middleware::from_fn(compression_middleware)),

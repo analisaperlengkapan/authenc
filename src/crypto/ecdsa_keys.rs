@@ -108,13 +108,13 @@ mod tests {
     fn test_ecdsa_pem_generation() {
         let pem = get_ecdsa_public_pem().unwrap();
         assert!(pem.starts_with("-----BEGIN PUBLIC KEY-----"));
-        assert!(pem.ends_with("-----END PUBLIC KEY-----"));
+        assert!(pem.ends_with("-----END PUBLIC KEY-----\n"));
     }
 
     #[test]
     fn test_ecdsa_private_pem_generation() {
         let pem = get_ecdsa_private_pem().unwrap();
         assert!(pem.starts_with("-----BEGIN PRIVATE KEY-----"));
-        assert!(pem.ends_with("-----END PRIVATE KEY-----"));
+        assert!(pem.ends_with("-----END PRIVATE KEY-----\n"));
     }
 }

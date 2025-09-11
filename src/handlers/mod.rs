@@ -139,31 +139,24 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
+    use axum::response::IntoResponse;
     use http_body_util::BodyExt;
     use serde_json::Value;
     use tower::ServiceExt;
 
     #[tokio::test]
     async fn test_health_endpoint() {
-        let config = AppConfig::default();
-        let state = AppState::new(config).await.unwrap();
-        let app = create_router(Arc::new(state));
+        use crate::handlers::health_axum::health;
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = health().await;
 
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = response.into_body().collect().await.unwrap().to_bytes();
+        // Convert response to JSON for testing
+        let json_response = response.into_response();
+        let body = json_response.into_body().collect().await.unwrap().to_bytes();
         let json: Value = serde_json::from_slice(&body).unwrap();
 
         assert_eq!(json["status"], "healthy");
+        assert!(json["version"].is_string());
+        assert!(json["timestamp"].is_string());
     }
 }

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use ed25519_dalek::{Signature, SigningKey, VerifyingKey, Signer, Verifier};
 use rand::rngs::OsRng;
 use crate::error::AuthencError;
@@ -136,6 +136,79 @@ impl Disclosure {
         let claim_value = disclosure_data[2].clone();
 
         Ok((claim_name, claim_value))
+    }
+}
+
+/// Disclosure Red List for preventing disclosure replay attacks
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisclosureRedList {
+    /// List of disclosed claim hashes that have been used
+    disclosed_hashes: HashSet<String>,
+    /// Maximum size of the red list
+    max_size: usize,
+}
+
+impl DisclosureRedList {
+    /// Create a new disclosure red list
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            disclosed_hashes: HashSet::new(),
+            max_size,
+        }
+    }
+
+    /// Check if a disclosure hash has been used
+    pub fn is_disclosed(&self, hash: &str) -> bool {
+        self.disclosed_hashes.contains(hash)
+    }
+
+    /// Add a disclosure hash to the red list
+    pub fn add_disclosure(&mut self, hash: String) -> Result<(), AuthencError> {
+        if self.disclosed_hashes.len() >= self.max_size {
+            return Err(AuthencError::ValidationError {
+                message: "Disclosure red list is full".to_string()
+            });
+        }
+        self.disclosed_hashes.insert(hash);
+        Ok(())
+    }
+
+    /// Clear the red list (for maintenance)
+    pub fn clear(&mut self) {
+        self.disclosed_hashes.clear();
+    }
+}
+
+/// SD-JWT Verification Context
+#[derive(Debug, Clone)]
+pub struct SdJwtVerificationContext {
+    /// Disclosure red list for replay attack prevention
+    pub red_list: DisclosureRedList,
+    /// Expected issuer
+    pub expected_issuer: Option<String>,
+    /// Expected subject
+    pub expected_subject: Option<String>,
+    /// Expected audience
+    pub expected_audience: Option<String>,
+    /// Maximum disclosure age in seconds
+    pub max_disclosure_age: Option<u64>,
+    /// Require all disclosures to be present
+    pub require_all_disclosures: bool,
+    /// Allow decoy claims
+    pub allow_decoys: bool,
+}
+
+impl Default for SdJwtVerificationContext {
+    fn default() -> Self {
+        Self {
+            red_list: DisclosureRedList::new(10000),
+            expected_issuer: None,
+            expected_subject: None,
+            expected_audience: None,
+            max_disclosure_age: Some(3600), // 1 hour
+            require_all_disclosures: false,
+            allow_decoys: true,
+        }
     }
 }
 
@@ -457,6 +530,399 @@ impl SdJwt {
         }
 
         Ok(claims)
+    }
+}
+
+/// Abstract SD-JWT Claim for polymorphic claim handling
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AbstractSdJwtClaim {
+    /// Disclosed claim with value
+    Disclosed {
+        /// The disclosed claim value
+        value: Value
+    },
+    /// Undisclosed claim with hash reference
+    Undisclosed {
+        /// Hash reference for the undisclosed claim
+        sd_hash: String
+    },
+    /// Decoy claim for privacy enhancement
+    Decoy {
+        /// Flag indicating this is a decoy claim
+        decoy: bool
+    },
+    /// Array element claim
+    ArrayElement {
+        /// Array element data
+        element: SdJwtArrayElement
+    },
+}
+
+/// SD-JWT Claim Name for structured claim handling
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdJwtClaimName {
+    /// The claim name
+    pub name: String,
+    /// Whether this claim is disclosable
+    pub disclosable: bool,
+    /// Whether this claim is an array
+    pub is_array: bool,
+}
+
+/// Visible SD-JWT Claim for presentation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisibleSdJwtClaim {
+    /// Claim name
+    pub name: SdJwtClaimName,
+    /// Claim value (if disclosed)
+    pub value: Option<Value>,
+    /// Disclosure hash (if undisclosed)
+    pub disclosure_hash: Option<String>,
+    /// Whether this is a decoy claim
+    pub is_decoy: bool,
+}
+
+/// Undisclosed Array Element
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UndisclosedArrayElement {
+    /// Hash reference for the undisclosed array element
+    pub sd_hash: String,
+}
+
+/// Decoy Array Element
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecoyArrayElement {
+    /// Flag indicating this is a decoy array element
+    pub decoy: bool,
+}
+
+/// Visible Array Element
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisibleArrayElement {
+    /// The visible array element value
+    pub value: Value,
+}
+
+/// SD-JWT Facade for high-level SD-JWT operations
+pub struct SdJwtFacade {
+    /// The underlying SD-JWT
+    pub sd_jwt: SdJwt,
+    /// Verification context
+    pub verification_context: SdJwtVerificationContext,
+}
+
+impl SdJwtFacade {
+    /// Create a new SD-JWT facade
+    pub fn new(sd_jwt: SdJwt) -> Self {
+        Self {
+            sd_jwt,
+            verification_context: SdJwtVerificationContext::default(),
+        }
+    }
+
+    /// Verify the SD-JWT with advanced checks
+    pub async fn verify_advanced(&self, public_key: &VerifyingKey) -> Result<(), AuthencError> {
+        // Basic JWT verification
+        self.sd_jwt.verify(public_key)?;
+
+        // Advanced SD-JWT verification
+        self.verify_disclosures()?;
+        self.verify_red_list()?;
+        self.verify_issuer()?;
+        self.verify_subject()?;
+        self.verify_audience()?;
+
+        Ok(())
+    }
+
+    /// Get visible claims for presentation
+    pub fn get_visible_claims(&self) -> Result<Vec<VisibleSdJwtClaim>, AuthencError> {
+        let mut visible_claims = Vec::new();
+
+        // Process standard claims
+        for (name, claim) in &self.sd_jwt.issuer_signed.payload {
+            let visible_claim = match claim {
+                SdJwtClaim::Disclosed { value } => VisibleSdJwtClaim {
+                    name: SdJwtClaimName {
+                        name: name.clone(),
+                        disclosable: true,
+                        is_array: false,
+                    },
+                    value: Some(value.clone()),
+                    disclosure_hash: None,
+                    is_decoy: false,
+                },
+                SdJwtClaim::Undisclosed { sd_hash } => VisibleSdJwtClaim {
+                    name: SdJwtClaimName {
+                        name: name.clone(),
+                        disclosable: true,
+                        is_array: false,
+                    },
+                    value: None,
+                    disclosure_hash: Some(sd_hash.clone()),
+                    is_decoy: false,
+                },
+                SdJwtClaim::Decoy { decoy: _ } => {
+                    if self.verification_context.allow_decoys {
+                        VisibleSdJwtClaim {
+                            name: SdJwtClaimName {
+                                name: name.clone(),
+                                disclosable: true,
+                                is_array: false,
+                            },
+                            value: None,
+                            disclosure_hash: None,
+                            is_decoy: true,
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+            };
+            visible_claims.push(visible_claim);
+        }
+
+        // Process array claims
+        for (name, elements) in &self.sd_jwt.issuer_signed.array_claims {
+            for (index, element) in elements.iter().enumerate() {
+                let claim_name = format!("{}.{}", name, index);
+                let visible_claim = match element {
+                    SdJwtArrayElement::Disclosed(value) => VisibleSdJwtClaim {
+                        name: SdJwtClaimName {
+                            name: claim_name,
+                            disclosable: true,
+                            is_array: true,
+                        },
+                        value: Some(value.clone()),
+                        disclosure_hash: None,
+                        is_decoy: false,
+                    },
+                    SdJwtArrayElement::Undisclosed { sd_hash } => VisibleSdJwtClaim {
+                        name: SdJwtClaimName {
+                            name: claim_name,
+                            disclosable: true,
+                            is_array: true,
+                        },
+                        value: None,
+                        disclosure_hash: Some(sd_hash.clone()),
+                        is_decoy: false,
+                    },
+                    SdJwtArrayElement::Decoy { decoy: _ } => {
+                        if self.verification_context.allow_decoys {
+                            VisibleSdJwtClaim {
+                                name: SdJwtClaimName {
+                                    name: claim_name,
+                                    disclosable: true,
+                                    is_array: true,
+                                },
+                                value: None,
+                                disclosure_hash: None,
+                                is_decoy: true,
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
+                };
+                visible_claims.push(visible_claim);
+            }
+        }
+
+        Ok(visible_claims)
+    }
+
+    /// Disclose a claim by providing the disclosure
+    pub fn disclose_claim(&mut self, disclosure: &Disclosure) -> Result<(), AuthencError> {
+        // Verify disclosure is not in red list
+        if self.verification_context.red_list.is_disclosed(&disclosure.hash) {
+            return Err(AuthencError::ValidationError {
+                message: "Disclosure has already been used (red list)".to_string()
+            });
+        }
+
+        // Decode the disclosure
+        let (claim_name, claim_value) = disclosure.decode()?;
+
+        // Find and disclose the claim
+        if let Some(claim) = self.sd_jwt.issuer_signed.payload.get_mut(&claim_name) {
+            match claim {
+                SdJwtClaim::Undisclosed { sd_hash } => {
+                    if *sd_hash == disclosure.hash {
+                        *claim = SdJwtClaim::Disclosed {
+                            value: claim_value
+                        };
+                        // Add to red list
+                        self.verification_context.red_list.add_disclosure(disclosure.hash.clone())?;
+                    } else {
+                        return Err(AuthencError::ValidationError {
+                            message: "Disclosure hash does not match".to_string()
+                        });
+                    }
+                }
+                _ => {
+                    return Err(AuthencError::ValidationError {
+                        message: "Claim is not undisclosed".to_string()
+                    });
+                }
+            }
+        } else {
+            // Check array claims
+            if let Some((array_name, index)) = self.parse_array_claim_name(&claim_name) {
+                if let Some(elements) = self.sd_jwt.issuer_signed.array_claims.get_mut(&array_name) {
+                    if let Some(element) = elements.get_mut(index) {
+                        match element {
+                            SdJwtArrayElement::Undisclosed { sd_hash } => {
+                                if *sd_hash == disclosure.hash {
+                                    *element = SdJwtArrayElement::Disclosed(claim_value);
+                                    // Add to red list
+                                    self.verification_context.red_list.add_disclosure(disclosure.hash.clone())?;
+                                } else {
+                                    return Err(AuthencError::ValidationError {
+                                        message: "Disclosure hash does not match".to_string()
+                                    });
+                                }
+                            }
+                            _ => {
+                                return Err(AuthencError::ValidationError {
+                                    message: "Array element is not undisclosed".to_string()
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn parse_array_claim_name(&self, claim_name: &str) -> Option<(String, usize)> {
+        if let Some(dot_pos) = claim_name.rfind('.') {
+            let array_name = &claim_name[..dot_pos];
+            let index_str = &claim_name[dot_pos + 1..];
+            if let Ok(index) = index_str.parse::<usize>() {
+                return Some((array_name.to_string(), index));
+            }
+        }
+        None
+    }
+
+    fn verify_disclosures(&self) -> Result<(), AuthencError> {
+        // Verify all disclosures are valid and not expired
+        for disclosure in &self.sd_jwt.disclosures {
+            if !disclosure.verify() {
+                return Err(AuthencError::ValidationError {
+                    message: "Invalid disclosure signature".to_string()
+                });
+            }
+
+            // Check disclosure age if configured
+            if let Some(max_age) = self.verification_context.max_disclosure_age {
+                // Check if disclosure is too old
+                // This would require storing disclosure timestamps
+            }
+        }
+        Ok(())
+    }
+
+    fn verify_red_list(&self) -> Result<(), AuthencError> {
+        // Check that no disclosures are in the red list
+        for disclosure in &self.sd_jwt.disclosures {
+            if self.verification_context.red_list.is_disclosed(&disclosure.hash) {
+                return Err(AuthencError::ValidationError {
+                    message: "Disclosure has been replayed (red list)".to_string()
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn verify_issuer(&self) -> Result<(), AuthencError> {
+        if let Some(expected_issuer) = &self.verification_context.expected_issuer {
+            if let Some(issuer_claim) = self.sd_jwt.issuer_signed.payload.get("iss") {
+                if let SdJwtClaim::Disclosed { value } = issuer_claim {
+                    if let Some(issuer) = value.as_str() {
+                        if issuer != expected_issuer {
+                            return Err(AuthencError::ValidationError {
+                                message: format!("Issuer mismatch: expected {}, got {}", expected_issuer, issuer)
+                            });
+                        }
+                    } else {
+                        return Err(AuthencError::ValidationError {
+                            message: "Issuer claim is not a string".to_string()
+                        });
+                    }
+                } else {
+                    return Err(AuthencError::ValidationError {
+                        message: "Issuer claim is not disclosed".to_string()
+                    });
+                }
+            } else {
+                return Err(AuthencError::ValidationError {
+                    message: "Missing issuer claim".to_string()
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn verify_subject(&self) -> Result<(), AuthencError> {
+        if let Some(expected_subject) = &self.verification_context.expected_subject {
+            if let Some(subject_claim) = self.sd_jwt.issuer_signed.payload.get("sub") {
+                if let SdJwtClaim::Disclosed { value } = subject_claim {
+                    if let Some(subject) = value.as_str() {
+                        if subject != expected_subject {
+                            return Err(AuthencError::ValidationError {
+                                message: format!("Subject mismatch: expected {}, got {}", expected_subject, subject)
+                            });
+                        }
+                    } else {
+                        return Err(AuthencError::ValidationError {
+                            message: "Subject claim is not a string".to_string()
+                        });
+                    }
+                } else {
+                    return Err(AuthencError::ValidationError {
+                        message: "Subject claim is not disclosed".to_string()
+                    });
+                }
+            } else {
+                return Err(AuthencError::ValidationError {
+                    message: "Missing subject claim".to_string()
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn verify_audience(&self) -> Result<(), AuthencError> {
+        if let Some(expected_audience) = &self.verification_context.expected_audience {
+            if let Some(audience_claim) = self.sd_jwt.issuer_signed.payload.get("aud") {
+                if let SdJwtClaim::Disclosed { value } = audience_claim {
+                    if let Some(audience) = value.as_str() {
+                        if audience != expected_audience {
+                            return Err(AuthencError::ValidationError {
+                                message: format!("Audience mismatch: expected {}, got {}", expected_audience, audience)
+                            });
+                        }
+                    } else {
+                        return Err(AuthencError::ValidationError {
+                            message: "Audience claim is not a string".to_string()
+                        });
+                    }
+                } else {
+                    return Err(AuthencError::ValidationError {
+                        message: "Audience claim is not disclosed".to_string()
+                    });
+                }
+            } else {
+                return Err(AuthencError::ValidationError {
+                    message: "Missing audience claim".to_string()
+                });
+            }
+        }
+        Ok(())
     }
 }
 

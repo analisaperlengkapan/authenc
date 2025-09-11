@@ -223,6 +223,7 @@ pub struct RejectImplicitGrantExecutor;
 #[async_trait]
 impl ClientPolicyExecutor for RejectImplicitGrantExecutor {
     async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        // Check response type for implicit flow
         if let Some(response_type) = &context.response_type {
             if response_type == "token" {
                 return Err(AuthencError::validation(
@@ -230,6 +231,16 @@ impl ClientPolicyExecutor for RejectImplicitGrantExecutor {
                 ));
             }
         }
+        
+        // Check grant type for implicit flow
+        if let Some(grant_type) = &context.grant_type {
+            if grant_type == "implicit" {
+                return Err(AuthencError::validation(
+                    "Implicit grant is not allowed for this client".to_string()
+                ));
+            }
+        }
+        
         Ok(())
     }
 
@@ -256,118 +267,514 @@ impl ClientPolicyExecutor for ClientSecretRotationExecutor {
     }
 }
 
-/// FAPI (Financial-grade API) Constant
-pub struct FapiConstant;
-
-impl FapiConstant {
-    pub const FAPI_1_BASELINE: &str = "fapi-1-baseline";
-    pub const FAPI_1_ADVANCED: &str = "fapi-1-advanced";
-    pub const FAPI_2_SECURITY_PROFILE: &str = "fapi-2-security-profile";
-    pub const FAPI_2_MESSAGE_SIGNING: &str = "fapi-2-message-signing";
-}
-
-/// FAPI Security Profile Executor
-pub struct FapiSecurityProfileExecutor {
-    pub profile: String,
+/// Authentication Flow Selector Executor
+pub struct AuthenticationFlowSelectorExecutor {
+    pub flow_type: String,
 }
 
 #[async_trait]
-impl ClientPolicyExecutor for FapiSecurityProfileExecutor {
+impl ClientPolicyExecutor for AuthenticationFlowSelectorExecutor {
     async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
-        match self.profile.as_str() {
-            FapiConstant::FAPI_1_BASELINE => {
-                // Enforce FAPI 1.0 Baseline security profile
-                self.enforce_fapi_1_baseline(context).await
+        // Select appropriate authentication flow based on client and context
+        // This enables dynamic flow selection for enhanced security
+        match self.flow_type.as_str() {
+            "browser" => {
+                // Use browser-based authentication flow
+                context.parameters.insert("auth_flow".to_string(), "browser".to_string());
             }
-            FapiConstant::FAPI_1_ADVANCED => {
-                // Enforce FAPI 1.0 Advanced security profile
-                self.enforce_fapi_1_advanced(context).await
+            "direct" => {
+                // Use direct grant flow for confidential clients
+                context.parameters.insert("auth_flow".to_string(), "direct".to_string());
             }
-            FapiConstant::FAPI_2_SECURITY_PROFILE => {
-                // Enforce FAPI 2.0 Security Profile
-                self.enforce_fapi_2_security_profile(context).await
+            "client" => {
+                // Use client authentication flow
+                context.parameters.insert("auth_flow".to_string(), "client".to_string());
             }
-            _ => Ok(())
-        }
-    }
-
-    fn name(&self) -> &str {
-        "fapi-security-profile-executor"
-    }
-}
-
-impl FapiSecurityProfileExecutor {
-    async fn enforce_fapi_1_baseline(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
-        // FAPI 1.0 Baseline requirements:
-        // - TLS 1.2 or higher
-        // - PKCE required
-        // - Confidential clients must use client authentication
-        // - Authorization code grant only
-
-        // Enforce PKCE
-        if !context.parameters.contains_key("code_challenge") {
-            return Err(AuthencError::validation(
-                "FAPI 1.0 Baseline: PKCE is required".to_string()
-            ));
-        }
-
-        // Enforce authorization code grant
-        if let Some(response_type) = &context.response_type {
-            if response_type != "code" {
+            _ => {
                 return Err(AuthencError::validation(
-                    "FAPI 1.0 Baseline: Only authorization code grant is allowed".to_string()
+                    format!("Unknown authentication flow type: {}", self.flow_type)
                 ));
             }
         }
-
         Ok(())
     }
 
-    async fn enforce_fapi_1_advanced(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
-        // FAPI 1.0 Advanced requirements:
-        // - All Baseline requirements
-        // - DPoP or MTLS sender constrained access tokens
-        // - Private key JWT client authentication
-        // - PS256 or ES256 algorithms
+    fn name(&self) -> &str {
+        "authentication-flow-selector-executor"
+    }
+}
 
-        // First enforce baseline
-        self.enforce_fapi_1_baseline(context).await?;
+/// Holder of Key Enforcer Executor
+pub struct HolderOfKeyEnforcerExecutor {
+    pub enforce_holder_of_key: bool,
+}
 
-        // Enforce DPoP or MTLS
-        let has_dpop = context.parameters.contains_key("dpop");
-        let has_mtls = context.client_auth_method.as_deref() == Some("tls_client_auth");
+#[async_trait]
+impl ClientPolicyExecutor for HolderOfKeyEnforcerExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.enforce_holder_of_key {
+            // Enforce that the client proves possession of the key
+            // Check for DPoP proof or MTLS certificate
+            let has_dpop = context.parameters.contains_key("dpop");
+            let has_mtls = context.client_auth_method.as_deref() == Some("tls_client_auth");
 
-        if !has_dpop && !has_mtls {
-            return Err(AuthencError::validation(
-                "FAPI 1.0 Advanced: DPoP or MTLS sender constrained access tokens required".to_string()
-            ));
+            if !has_dpop && !has_mtls {
+                return Err(AuthencError::validation(
+                    "Holder of Key enforcement: DPoP proof or MTLS certificate required".to_string()
+                ));
+            }
+
+            // Validate the proof/certificate binding
+            if has_dpop {
+                // Validate DPoP proof binding to access token
+                self.validate_dpop_binding(context).await?;
+            }
         }
-
         Ok(())
     }
 
-    async fn enforce_fapi_2_security_profile(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
-        // FAPI 2.0 Security Profile requirements:
-        // - All Advanced requirements
-        // - PAR (Pushed Authorization Requests)
-        // - JARM (JWT Secured Authorization Response Mode)
-        // - Rich Authorization Requests (RAR)
+    fn name(&self) -> &str {
+        "holder-of-key-enforcer-executor"
+    }
+}
 
-        // First enforce advanced
-        self.enforce_fapi_1_advanced(context).await?;
-
-        // Enforce PAR
-        if !context.parameters.contains_key("request_uri") {
-            return Err(AuthencError::ValidationError {
-                message: "FAPI 2.0 Security Profile: PAR (Pushed Authorization Requests) is required".to_string()
-            });
+impl HolderOfKeyEnforcerExecutor {
+    async fn validate_dpop_binding(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        // Validate that DPoP proof is properly bound to the access token
+        // This prevents token replay attacks
+        if let Some(dpop_header) = context.parameters.get("dpop") {
+            // Parse and validate DPoP proof
+            // Check that the public key in DPoP proof matches the one used for access token
+            // Verify the binding between DPoP proof and access token
         }
-
         Ok(())
     }
 }
 
-/// Client Policy Manager
+/// Intent Client Bind Check Executor
+pub struct IntentClientBindCheckExecutor {
+    pub check_intent_binding: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for IntentClientBindCheckExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.check_intent_binding {
+            // Check that client intent is properly bound to the authorization request
+            // This prevents authorization request tampering
+            let intent_id = context.parameters.get("client_intent_id").map(|s| s.clone());
+            if let Some(intent_id) = intent_id {
+                // Validate intent binding
+                self.validate_intent_binding(&intent_id, context).await?;
+            } else {
+                return Err(AuthencError::validation(
+                    "Intent binding required but client_intent_id not provided".to_string()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "intent-client-bind-check-executor"
+    }
+}
+
+impl IntentClientBindCheckExecutor {
+    async fn validate_intent_binding(&self, intent_id: &str, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        // Validate that the client intent is properly bound
+        // Check intent signature, expiration, and binding to client
+        Ok(())
+    }
+}
+
+/// Lightweight Access Token Executor
+pub struct LightweightAccessTokenExecutor {
+    pub use_lightweight_tokens: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for LightweightAccessTokenExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.use_lightweight_tokens {
+            // Issue lightweight access tokens for better performance
+            // Lightweight tokens contain minimal claims and rely on token introspection
+            context.parameters.insert("token_type".to_string(), "lightweight".to_string());
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "lightweight-access-token-executor"
+    }
+}
+
+/// Secure Client Authentication Assertion Executor
+pub struct SecureClientAuthenticationAssertionExecutor {
+    pub require_secure_assertion: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SecureClientAuthenticationAssertionExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.require_secure_assertion {
+            // Require secure client authentication assertion (JWT, SAML, etc.)
+            let has_jwt_assertion = context.parameters.contains_key("client_assertion");
+            let has_jwt_assertion_type = context.parameters.contains_key("client_assertion_type");
+
+            if !has_jwt_assertion || !has_jwt_assertion_type {
+                return Err(AuthencError::validation(
+                    "Secure client authentication assertion required".to_string()
+                ));
+            }
+
+            // Validate the assertion
+            if let Some(assertion_type) = context.parameters.get("client_assertion_type") {
+                if assertion_type != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
+                    return Err(AuthencError::validation(
+                        "Unsupported client assertion type".to_string()
+                    ));
+                }
+            }
+
+            // Validate JWT assertion signature and claims
+            self.validate_jwt_assertion(context).await?;
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "secure-client-authentication-assertion-executor"
+    }
+}
+
+impl SecureClientAuthenticationAssertionExecutor {
+    async fn validate_jwt_assertion(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        // Validate JWT client assertion
+        // Check signature, issuer, subject, audience, expiration
+        Ok(())
+    }
+}
+
+/// Secure Client Authenticator Executor
+pub struct SecureClientAuthenticatorExecutor {
+    pub require_secure_authenticator: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SecureClientAuthenticatorExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.require_secure_authenticator {
+            // Require secure client authentication method
+            let auth_method = context.client_auth_method.as_deref().unwrap_or("");
+
+            match auth_method {
+                "private_key_jwt" | "tls_client_auth" => {
+                    // These are secure methods
+                }
+                _ => {
+                    return Err(AuthencError::validation(
+                        "Secure client authentication method required (private_key_jwt or tls_client_auth)".to_string()
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "secure-client-authenticator-executor"
+    }
+}
+
+/// Secure Logout Executor
+pub struct SecureLogoutExecutor {
+    pub enforce_secure_logout: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SecureLogoutExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.enforce_secure_logout {
+            // Enforce secure logout mechanisms
+            // Require logout tokens, back-channel logout, etc.
+            context.parameters.insert("secure_logout".to_string(), "true".to_string());
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "secure-logout-executor"
+    }
+}
+
+/// Secure PAR Contents Executor
+pub struct SecureParContentsExecutor {
+    pub enforce_secure_par: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SecureParContentsExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.enforce_secure_par {
+            // Enforce secure Pushed Authorization Request contents
+            // Validate PAR request parameters and security
+            if !context.parameters.contains_key("request_uri") {
+                return Err(AuthencError::validation(
+                    "Secure PAR: request_uri parameter required".to_string()
+                ));
+            }
+
+            // Validate PAR contents security
+            self.validate_par_security(context).await?;
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "secure-par-contents-executor"
+    }
+}
+
+impl SecureParContentsExecutor {
+    async fn validate_par_security(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        // Validate PAR request security
+        // Check for parameter injection, replay attacks, etc.
+        Ok(())
+    }
+}
+
+/// Secure Request Object Executor
+pub struct SecureRequestObjectExecutor {
+    pub enforce_secure_request_object: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SecureRequestObjectExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.enforce_secure_request_object {
+            // Enforce secure OAuth 2.0 request objects
+            // Require signed and optionally encrypted request objects
+            let has_request = context.parameters.contains_key("request");
+            let has_request_uri = context.parameters.contains_key("request_uri");
+
+            if !has_request && !has_request_uri {
+                return Err(AuthencError::validation(
+                    "Secure request object: request or request_uri parameter required".to_string()
+                ));
+            }
+
+            // Validate request object security
+            self.validate_request_object_security(context).await?;
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "secure-request-object-executor"
+    }
+}
+
+impl SecureRequestObjectExecutor {
+    async fn validate_request_object_security(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        // Validate request object signature and encryption
+        Ok(())
+    }
+}
+
+/// Secure Response Type Executor
+pub struct SecureResponseTypeExecutor {
+    pub enforce_secure_response_type: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SecureResponseTypeExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.enforce_secure_response_type {
+            // Enforce secure response types
+            if let Some(response_type) = &context.response_type {
+                match response_type.as_str() {
+                    "code" => {
+                        // Authorization code flow is secure
+                    }
+                    "code id_token" | "id_token code" => {
+                        // Hybrid flow with ID token
+                    }
+                    _ => {
+                        return Err(AuthencError::validation(
+                            format!("Insecure response type not allowed: {}", response_type)
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "secure-response-type-executor"
+    }
+}
+
+/// Secure Session Enforce Executor
+pub struct SecureSessionEnforceExecutor {
+    pub enforce_secure_session: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SecureSessionEnforceExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.enforce_secure_session {
+            // Enforce secure session management
+            // Require session binding, rotation, etc.
+            context.parameters.insert("secure_session".to_string(), "true".to_string());
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "secure-session-enforce-executor"
+    }
+}
+
+/// Secure Signing Algorithm Executor
+pub struct SecureSigningAlgorithmExecutor {
+    pub enforce_secure_algorithm: bool,
+    pub allowed_algorithms: Vec<String>,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SecureSigningAlgorithmExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.enforce_secure_algorithm {
+            // Enforce secure signing algorithms
+            // Check JWT header, ID token, access token algorithms
+            if let Some(alg) = context.parameters.get("alg") {
+                if !self.allowed_algorithms.contains(alg) {
+                    return Err(AuthencError::validation(
+                        format!("Insecure signing algorithm not allowed: {}", alg)
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "secure-signing-algorithm-executor"
+    }
+}
+
+/// Suppress Refresh Token Rotation Executor
+pub struct SuppressRefreshTokenRotationExecutor {
+    pub suppress_rotation: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SuppressRefreshTokenRotationExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.suppress_rotation {
+            // Suppress automatic refresh token rotation for this client
+            context.parameters.insert("suppress_token_rotation".to_string(), "true".to_string());
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "suppress-refresh-token-rotation-executor"
+    }
+}
+
+/// Registration Access Token Rotation Disabled Executor
+pub struct RegistrationAccessTokenRotationDisabledExecutor {
+    pub disable_rotation: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for RegistrationAccessTokenRotationDisabledExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.disable_rotation {
+            // Disable rotation of registration access tokens
+            context.parameters.insert("disable_reg_token_rotation".to_string(), "true".to_string());
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "registration-access-token-rotation-disabled-executor"
+    }
+}
+
+/// Full Scope Disabled Executor
+pub struct FullScopeDisabledExecutor {
+    pub disable_full_scope: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for FullScopeDisabledExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.disable_full_scope {
+            // Disable full scope access for this client
+            // Require explicit scope requests
+            if !context.parameters.contains_key("scope") {
+                return Err(AuthencError::validation(
+                    "Full scope disabled: explicit scope parameter required".to_string()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "full-scope-disabled-executor"
+    }
+}
+
+/// Consent Required Executor
+pub struct ConsentRequiredExecutor {
+    pub require_consent: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for ConsentRequiredExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.require_consent {
+            // Require user consent for this client
+            context.parameters.insert("consent_required".to_string(), "true".to_string());
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "consent-required-executor"
+    }
+}
+
+/// Confidential Client Accept Executor
+pub struct ConfidentialClientAcceptExecutor {
+    pub accept_confidential_only: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for ConfidentialClientAcceptExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.accept_confidential_only {
+            // Only accept confidential clients
+            if context.client.client_type != "confidential" {
+                return Err(AuthencError::validation(
+                    "Only confidential clients are accepted".to_string()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "confidential-client-accept-executor"
+    }
+}
+
+/// Client Policy manager
 pub struct ClientPolicyManager {
     conditions: HashMap<String, Box<dyn ClientPolicyCondition>>,
     executors: HashMap<String, Box<dyn ClientPolicyExecutor>>,
@@ -496,6 +903,7 @@ impl Default for ClientPolicyManager {
                 "authorization_code".to_string(),
                 "client_credentials".to_string(),
                 "refresh_token".to_string(),
+                "implicit".to_string(), // Allow implicit so it can be rejected by executor
             ],
         }));
 

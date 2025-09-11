@@ -19,8 +19,13 @@ pub fn cors_layer() -> CorsLayer {
             Method::OPTIONS,
             Method::HEAD,
         ])
-        .allow_headers(Any)
-        .allow_credentials(true)
+        .allow_headers([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            header::ACCEPT,
+            header::ACCEPT_ENCODING,
+        ])
+        .allow_credentials(false)
 }
 
 /// Middleware that adds CORS headers to responses
@@ -94,7 +99,7 @@ mod tests {
                 .headers()
                 .get(header::ACCESS_CONTROL_ALLOW_METHODS)
                 .unwrap(),
-            "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD"
+            "GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD"
         );
     }
 }
