@@ -5,57 +5,94 @@ use std::collections::HashMap;
 /// Social login provider types
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, Hash, PartialEq)]
 pub enum SocialProvider {
+    /// Google OAuth provider
     Google,
+    /// Facebook OAuth provider
     Facebook,
+    /// Twitter OAuth provider
     Twitter,
+    /// GitHub OAuth provider
     GitHub,
+    /// LinkedIn OAuth provider
     LinkedIn,
+    /// Microsoft OAuth provider
     Microsoft,
+    /// Apple OAuth provider
     Apple,
+    /// Amazon OAuth provider
     Amazon,
+    /// Discord OAuth provider
     Discord,
+    /// Slack OAuth provider
     Slack,
+    /// Okta OAuth provider
     Okta,
+    /// Auth0 OAuth provider
     Auth0,
+    /// Custom OAuth provider with name
     Custom(String),
 }
 
 /// OAuth 2.0 configuration for social providers
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OAuthConfig {
+    /// OAuth client ID
     pub client_id: String,
+    /// OAuth client secret
     pub client_secret: String,
+    /// OAuth redirect URI
     pub redirect_uri: String,
+    /// OAuth authorization endpoint URL
     pub authorization_url: String,
+    /// OAuth token endpoint URL
     pub token_url: String,
+    /// OAuth user info endpoint URL
     pub user_info_url: String,
+    /// OAuth scopes to request
     pub scopes: Vec<String>,
+    /// Social provider type
     pub provider: SocialProvider,
 }
 
 /// Social user profile from provider
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SocialUserProfile {
+    /// Social provider type
     pub provider: SocialProvider,
+    /// User ID from the social provider
     pub provider_user_id: String,
+    /// User's email address
     pub email: Option<String>,
+    /// User's full name
     pub name: Option<String>,
+    /// User's first name
     pub first_name: Option<String>,
+    /// User's last name
     pub last_name: Option<String>,
+    /// URL to user's profile picture
     pub picture_url: Option<String>,
+    /// User's locale/language
     pub locale: Option<String>,
+    /// Whether the email is verified
     pub verified_email: bool,
+    /// Raw JSON data from the provider
     pub raw_data: serde_json::Value,
 }
 
 /// Social login session
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SocialLoginSession {
+    /// Unique session identifier
     pub session_id: String,
+    /// OAuth state parameter
     pub state: String,
+    /// Social provider type
     pub provider: SocialProvider,
+    /// Redirect URI after authentication
     pub redirect_uri: String,
+    /// Session creation timestamp
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Session expiration timestamp
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -93,11 +130,17 @@ pub trait SocialLoginService: Send + Sync {
 /// OAuth 2.0 token response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OAuthTokenResponse {
+    /// Access token for API calls
     pub access_token: String,
+    /// Type of the token (usually "Bearer")
     pub token_type: String,
+    /// Token expiration time in seconds
     pub expires_in: Option<u64>,
+    /// Refresh token for token renewal
     pub refresh_token: Option<String>,
+    /// Granted OAuth scopes
     pub scope: Option<String>,
+    /// OpenID Connect ID token
     pub id_token: Option<String>,
 }
 
@@ -105,8 +148,11 @@ use std::sync::RwLock;
 
 /// Social Login Manager
 pub struct SocialLoginManager {
+    /// Configured OAuth providers
     providers: HashMap<SocialProvider, OAuthConfig>,
+    /// Active login sessions
     sessions: RwLock<HashMap<String, SocialLoginSession>>,
+    /// HTTP client for API calls
     http_client: reqwest::Client,
 }
 
@@ -117,6 +163,7 @@ impl Default for SocialLoginManager {
 }
 
 impl SocialLoginManager {
+    /// Create new social login manager
     pub fn new() -> Self {
         Self {
             providers: HashMap::new(),
@@ -301,7 +348,7 @@ impl SocialLoginService for SocialLoginManager {
             SocialProvider::Auth0 => self.parse_auth0_profile(user_data),
             SocialProvider::Discord => self.parse_discord_profile(user_data),
             SocialProvider::Slack => self.parse_slack_profile(user_data),
-            SocialProvider::Custom(ref provider_name) => {
+            SocialProvider::Custom(ref _provider_name) => {
                 self.parse_generic_profile(user_data, &config.provider)
             }
         };
@@ -362,10 +409,9 @@ impl SocialLoginManager {
             name: data["name"].as_str().map(|s| s.to_string()),
             first_name: data["name"]
                 .as_str()
-                .map(|s| s.to_string().split(' ').next().unwrap_or("").to_string()),
+                .map(|s| s.split(' ').next().unwrap_or("").to_string()),
             last_name: data["name"].as_str().map(|s| {
-                s.to_string()
-                    .split(' ')
+                s.split(' ')
                     .skip(1)
                     .collect::<Vec<&str>>()
                     .join(" ")
@@ -551,6 +597,7 @@ impl SocialLoginManager {
 pub struct OAuthConfigs;
 
 impl OAuthConfigs {
+    /// Create Google OAuth configuration
     pub fn google() -> OAuthConfig {
         OAuthConfig {
             client_id: std::env::var("GOOGLE_CLIENT_ID").unwrap_or_default(),
@@ -568,6 +615,7 @@ impl OAuthConfigs {
         }
     }
 
+    /// Create GitHub OAuth configuration
     pub fn github() -> OAuthConfig {
         OAuthConfig {
             client_id: std::env::var("GITHUB_CLIENT_ID").unwrap_or_default(),
@@ -581,6 +629,7 @@ impl OAuthConfigs {
         }
     }
 
+    /// Create Microsoft OAuth configuration
     pub fn microsoft() -> OAuthConfig {
         OAuthConfig {
             client_id: std::env::var("MICROSOFT_CLIENT_ID").unwrap_or_default(),
@@ -599,6 +648,7 @@ impl OAuthConfigs {
         }
     }
 
+    /// Create LinkedIn OAuth configuration
     pub fn linkedin() -> OAuthConfig {
         OAuthConfig {
             client_id: std::env::var("LINKEDIN_CLIENT_ID").unwrap_or_default(),
@@ -612,6 +662,7 @@ impl OAuthConfigs {
         }
     }
 
+    /// Create Twitter OAuth configuration
     pub fn twitter() -> OAuthConfig {
         OAuthConfig {
             client_id: std::env::var("TWITTER_CLIENT_ID").unwrap_or_default(),
@@ -625,6 +676,7 @@ impl OAuthConfigs {
         }
     }
 
+    /// Create Apple OAuth configuration
     pub fn apple() -> OAuthConfig {
         OAuthConfig {
             client_id: std::env::var("APPLE_CLIENT_ID").unwrap_or_default(),
@@ -638,6 +690,7 @@ impl OAuthConfigs {
         }
     }
 
+    /// Create Discord OAuth configuration
     pub fn discord() -> OAuthConfig {
         OAuthConfig {
             client_id: std::env::var("DISCORD_CLIENT_ID").unwrap_or_default(),
@@ -651,6 +704,7 @@ impl OAuthConfigs {
         }
     }
 
+    /// Create Slack OAuth configuration
     pub fn slack() -> OAuthConfig {
         OAuthConfig {
             client_id: std::env::var("SLACK_CLIENT_ID").unwrap_or_default(),
@@ -664,6 +718,7 @@ impl OAuthConfigs {
         }
     }
 
+    /// Create Amazon OAuth configuration
     pub fn amazon() -> OAuthConfig {
         OAuthConfig {
             client_id: std::env::var("AMAZON_CLIENT_ID").unwrap_or_default(),
@@ -677,6 +732,7 @@ impl OAuthConfigs {
         }
     }
 
+    /// Create Okta OAuth configuration
     pub fn okta(domain: &str) -> OAuthConfig {
         OAuthConfig {
             client_id: std::env::var("OKTA_CLIENT_ID").unwrap_or_default(),
@@ -694,6 +750,7 @@ impl OAuthConfigs {
         }
     }
 
+    /// Create Auth0 OAuth configuration
     pub fn auth0(domain: &str) -> OAuthConfig {
         OAuthConfig {
             client_id: std::env::var("AUTH0_CLIENT_ID").unwrap_or_default(),

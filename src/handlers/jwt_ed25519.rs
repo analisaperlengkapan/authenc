@@ -6,25 +6,75 @@ use ed25519_dalek::{Signature, Signer};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
+/// JWT header for Ed25519 signed tokens
+/// 
+/// JWT header containing algorithm and key information for Ed25519 signatures.
+/// Used in JWT tokens signed with Ed25519 for enhanced security.
+/// 
+/// # Security Considerations
+/// - Algorithm must be EdDSA for Ed25519 signatures
+/// - Key ID enables key rotation and validation
+/// - Header is integrity protected by the signature
 pub struct Ed25519JwtHeader {
+    /// Signature algorithm (EdDSA for Ed25519)
     pub alg: String,
+    /// Token type (JWT)
     pub typ: String,
+    /// Key ID for key identification in JWKS
     pub kid: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// OIDC ID token claims for Ed25519 JWTs
+/// 
+/// Standard OIDC claims included in ID tokens.
+/// Contains user identity information and token metadata.
+/// 
+/// # Security Considerations
+/// - Timestamps prevent token reuse attacks
+/// - Audience validation prevents token misuse
+/// - Subject uniquely identifies the user
+/// - Claims are signed and cannot be modified
 pub struct OidcIdTokenClaims {
+    /// Issuer identifier (token issuer)
     pub iss: String,
+    /// Subject identifier (user ID)
     pub sub: String,
+    /// Audience (client ID the token is for)
     pub aud: String,
+    /// Expiration timestamp
     pub exp: i64,
+    /// Issued at timestamp
     pub iat: i64,
+    /// User's email address
     pub email: Option<String>,
+    /// User's display name
     pub name: Option<String>,
+    /// User's role or authorization level
     pub role: Option<String>,
 }
 
 /// Generate JWT token using Ed25519 - secure replacement for RSA
+/// 
+/// Creates a JWT token signed with Ed25519 digital signatures.
+/// Provides better security and performance compared to RSA signatures.
+/// 
+/// # Arguments
+/// * `sub` - Subject identifier (user ID)
+/// * `aud` - Audience (client ID)
+/// * `email` - User's email address
+/// * `name` - User's display name
+/// * `role` - User's role/authorization level
+/// 
+/// # Returns
+/// A complete JWT token with Ed25519 signature
+/// 
+/// # Security Considerations
+/// - Uses Ed25519 for fast, secure signatures
+/// - Includes standard JWT claims (iss, sub, aud, exp, iat)
+/// - One hour token expiration for security
+/// - All claims are signed and tamper-proof
+/// - Crypto operations are monitored for security
 pub fn generate_ed25519_jwt(
     sub: &str,
     aud: &str,
@@ -72,6 +122,22 @@ pub fn generate_ed25519_jwt(
 }
 
 /// Verify Ed25519 JWT token
+/// 
+/// Verifies the signature and validity of an Ed25519 signed JWT token.
+/// Performs comprehensive validation including signature verification.
+/// 
+/// # Arguments
+/// * `token` - The JWT token to verify
+/// 
+/// # Returns
+/// The decoded token claims if verification succeeds
+/// 
+/// # Security Considerations
+/// - Validates JWT format (header.payload.signature)
+/// - Verifies EdDSA algorithm in header
+/// - Cryptographically verifies the signature
+/// - Parses and validates token claims
+/// - Prevents signature bypass attacks
 pub fn verify_ed25519_jwt(token: &str) -> Result<OidcIdTokenClaims, Box<dyn std::error::Error>> {
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
@@ -106,6 +172,18 @@ pub fn verify_ed25519_jwt(token: &str) -> Result<OidcIdTokenClaims, Box<dyn std:
 }
 
 /// Get Ed25519 JWKS endpoint response
+/// 
+/// Provides JSON Web Key Set containing Ed25519 public keys.
+/// Allows clients to verify JWT signatures signed with Ed25519.
+/// 
+/// # Returns
+/// JWKS document containing Ed25519 public key for signature verification
+/// 
+/// # Security Considerations
+/// - Only exposes public keys for signature verification
+/// - Private keys never leave the server
+/// - Supports key rotation through key ID (kid)
+/// - Enables secure token validation by clients
 pub fn get_ed25519_jwks() -> serde_json::Value {
     let jwk = get_ed25519_jwk();
     serde_json::json!({

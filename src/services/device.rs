@@ -8,114 +8,184 @@ use uuid::Uuid;
 /// Device information and metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceInfo {
+    /// Unique identifier for the device
     pub id: Uuid,
+    /// User ID that owns this device
     pub user_id: Uuid,
+    /// Human-readable device name
     pub device_name: String,
+    /// Type of device
     pub device_type: DeviceType,
+    /// Operating system name
     pub os: String,
+    /// Operating system version
     pub os_version: String,
+    /// Browser name (if applicable)
     pub browser: Option<String>,
+    /// Browser version (if applicable)
     pub browser_version: Option<String>,
+    /// IP address of the device
     pub ip_address: String,
+    /// User agent string
     pub user_agent: String,
+    /// Device fingerprint for identification
     pub fingerprint: String,
+    /// Trust score (0.0 to 1.0)
     pub trust_score: f64,
+    /// Whether the device is trusted
     pub is_trusted: bool,
+    /// Last time the device was seen
     pub last_seen: DateTime<Utc>,
+    /// When the device was first registered
     pub created_at: DateTime<Utc>,
+    /// Geographic location of the device
     pub location: Option<DeviceLocation>,
+    /// Security features available on the device
     pub security_features: DeviceSecurityFeatures,
 }
 
 /// Device type classification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DeviceType {
+    /// Desktop computer
     Desktop,
+    /// Mobile phone or smartphone
     Mobile,
+    /// Tablet device
     Tablet,
+    /// Internet of Things device
     IoT,
+    /// Server machine
     Server,
+    /// Unknown device type
     Unknown,
 }
 
 /// Device location information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceLocation {
+    /// Country code or name
     pub country: Option<String>,
+    /// Region or state
     pub region: Option<String>,
+    /// City name
     pub city: Option<String>,
+    /// Latitude coordinate
     pub latitude: Option<f64>,
+    /// Longitude coordinate
     pub longitude: Option<f64>,
 }
 
 /// Device security features
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceSecurityFeatures {
+    /// Whether the device has biometric authentication
     pub has_biometrics: bool,
+    /// Whether the device has hardware security features
     pub has_hardware_security: bool,
+    /// Whether the device has screen lock enabled
     pub has_screen_lock: bool,
+    /// Whether encryption is enabled on the device
     pub encryption_enabled: bool,
+    /// Whether the device supports remote wipe
     pub remote_wipe_capable: bool,
+    /// Whether jailbreak/root has been detected
     pub jailbreak_detected: bool,
 }
 
 /// Device trust policy
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceTrustPolicy {
+    /// Unique identifier for the policy
     pub id: Uuid,
+    /// Human-readable name of the policy
     pub name: String,
+    /// Description of what the policy does
     pub description: String,
+    /// Conditions that must be met for the policy to apply
     pub conditions: Vec<TrustCondition>,
+    /// Action to take when conditions are met
     pub action: TrustAction,
+    /// Whether the policy is currently enabled
     pub enabled: bool,
+    /// Priority of the policy (higher numbers = higher priority)
     pub priority: i32,
 }
 
 /// Trust condition for policy evaluation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TrustCondition {
+    /// Trust score is above the specified threshold
     TrustScoreAbove(f64),
+    /// Trust score is below the specified threshold
     TrustScoreBelow(f64),
+    /// Device type matches the specified type
     DeviceTypeEquals(DeviceType),
+    /// Device location is in the specified list
     LocationIn(Vec<String>),
+    /// Device location is not in the specified list
     LocationNotIn(Vec<String>),
+    /// IP address is within the specified range
     IpInRange(String, String),
+    /// Device has the specified security feature
     HasSecurityFeature(String),
+    /// Device does not have the specified security feature
     NoSecurityFeature(String),
+    /// This is the first login from this device
     FirstTimeLogin,
+    /// Device is known and previously trusted
     KnownDevice,
+    /// Device is unknown
     UnknownDevice,
+    /// Time since last login exceeds specified minutes
     TimeSinceLastLogin(i64), // minutes
 }
 
 /// Action to take when policy matches
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TrustAction {
+    /// Allow the access
     Allow,
+    /// Deny the access
     Deny,
+    /// Require additional authentication challenge
     Challenge(String), // Additional authentication method
+    /// Put device in quarantine
     Quarantine,
+    /// Notify administrator
     NotifyAdmin,
 }
 
 /// Device session information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceSession {
+    /// Unique identifier for the session
     pub id: Uuid,
+    /// Device ID associated with the session
     pub device_id: Uuid,
+    /// User ID associated with the session
     pub user_id: Uuid,
+    /// Session identifier
     pub session_id: String,
+    /// When the session started
     pub started_at: DateTime<Utc>,
+    /// Last activity timestamp
     pub last_activity: DateTime<Utc>,
+    /// IP address of the device during session
     pub ip_address: String,
+    /// Geographic location during session
     pub location: Option<DeviceLocation>,
+    /// Risk score for the session
     pub risk_score: f64,
+    /// Whether the session is currently active
     pub is_active: bool,
 }
 
 /// Device management service
 pub struct DeviceService {
+    /// Database connection
     db: Arc<Database>,
+    /// List of active trust policies
     trust_policies: Vec<DeviceTrustPolicy>,
 }
 
@@ -357,19 +427,19 @@ impl DeviceService {
     }
 
     /// Update device session activity
-    pub async fn update_session_activity(&self, session_id: Uuid) -> Result<()> {
+    pub async fn update_session_activity(&self, _session_id: Uuid) -> Result<()> {
         // In production, update last_activity in database
         Ok(())
     }
 
     /// End device session
-    pub async fn end_session(&self, session_id: Uuid) -> Result<()> {
+    pub async fn end_session(&self, _session_id: Uuid) -> Result<()> {
         // In production, mark session as inactive
         Ok(())
     }
 
     /// Get device sessions
-    pub async fn get_device_sessions(&self, device_id: Uuid) -> Result<Vec<DeviceSession>> {
+    pub async fn get_device_sessions(&self, _device_id: Uuid) -> Result<Vec<DeviceSession>> {
         // In production, retrieve from database
         Ok(vec![])
     }
@@ -452,7 +522,7 @@ impl DeviceService {
             score -= 0.3;
         }
 
-        score.max(0.0).min(1.0)
+        score.clamp(0.0, 1.0)
     }
 
     /// Evaluate trust conditions
@@ -490,7 +560,7 @@ impl DeviceService {
                         true
                     }
                 }
-                TrustCondition::IpInRange(start, end) => {
+                TrustCondition::IpInRange(_start, _end) => {
                     // In production, implement IP range checking
                     false
                 }
@@ -551,10 +621,11 @@ impl DeviceService {
             score += 0.1;
         }
 
-        score.max(0.0).min(1.0)
+        score.clamp(0.0, 1.0)
     }
 
     // Database operations
+    /// Store device information in the database
     async fn store_device(&self, device: &DeviceInfo) -> Result<()> {
         use crate::database::operations::devices;
         use crate::models::device::DeviceInfo as ModelDeviceInfo;
@@ -575,7 +646,8 @@ impl DeviceService {
         Ok(())
     }
 
-    async fn store_session(&self, session: &DeviceSession) -> Result<()> {
+    /// Store device session information in the database
+    async fn store_session(&self, _session: &DeviceSession) -> Result<()> {
         // TODO: Implement session storage in database
         // For now, this is a placeholder
         Ok(())
@@ -585,41 +657,63 @@ impl DeviceService {
 /// Device registration request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeviceRegistrationRequest {
+    /// Human-readable name for the device
     pub device_name: String,
+    /// Operating system name (e.g., "Windows", "macOS", "Linux")
     pub os: String,
+    /// Operating system version
     pub os_version: String,
+    /// Browser name if applicable (e.g., "Chrome", "Firefox")
     pub browser: Option<String>,
+    /// Browser version if applicable
     pub browser_version: Option<String>,
+    /// IP address of the device during registration
     pub ip_address: String,
+    /// Full user agent string from the device
     pub user_agent: String,
+    /// Security features detected on the device
     pub security_features: DeviceSecurityFeatures,
 }
 
 /// Device update request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeviceUpdateRequest {
+    /// Optional new name for the device
     pub device_name: Option<String>,
+    /// Optional updated trust score (0.0 to 1.0)
     pub trust_score: Option<f64>,
+    /// Optional trust status override
     pub is_trusted: Option<bool>,
+    /// Optional updated security features
     pub security_features: Option<DeviceSecurityFeatures>,
 }
 
 /// Trust evaluation context
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TrustEvaluationContext {
+    /// Whether this is the first login for this user
     pub is_first_login: bool,
+    /// Whether this device has been seen before
     pub known_device: bool,
+    /// Whether the login time is unusual for this user
     pub unusual_time: bool,
+    /// Whether the login location has changed significantly
     pub location_changed: bool,
-    pub ip_reputation: f64, // 0.0 to 1.0
+    /// IP reputation score (0.0 to 1.0, higher is better)
+    pub ip_reputation: f64,
+    /// Whether the device fingerprint matches known patterns
     pub fingerprint_match: bool,
 }
 
 /// Trust evaluation result
 #[derive(Debug, Serialize, Deserialize)]
 pub enum TrustResult {
+    /// Device is trusted and login can proceed
     Trusted,
+    /// Device is untrusted but login may still be allowed with additional verification
     Untrusted,
+    /// Additional challenges are required before login can proceed
     ChallengeRequired(Vec<String>),
+    /// Login is denied for this device
     Denied,
 }

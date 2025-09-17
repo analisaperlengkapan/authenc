@@ -5,21 +5,28 @@ use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// OIDC authorization code store for managing OAuth2 authorization codes
 pub struct OidcCodeStore {
+    /// Database connection
     db: Arc<Database>,
+    /// Time-to-live for authorization codes in seconds
     ttl: u64,
 }
 
 impl OidcCodeStore {
+    /// Create new OIDC code store (unimplemented for in-memory)
     pub fn new(_ttl_secs: u64) -> Self {
         // This would need database parameter in production
         unimplemented!("Database-backed OidcCodeStore not implemented")
     }
 
+    /// Create OIDC code store with database connection and TTL
     pub fn with_database(db: Arc<Database>, ttl_secs: u64) -> Self {
         Self { db, ttl: ttl_secs }
     }
 
+    /// Insert new authorization code
+    #[allow(clippy::too_many_arguments)]
     pub async fn insert(
         &self,
         code: String,
@@ -57,6 +64,7 @@ impl OidcCodeStore {
         Ok(())
     }
 
+    /// Take and consume authorization code, returning user ID if valid
     pub async fn take(&self, code: &str, client_id: &str) -> Result<Option<String>> {
         use crate::database::operations::oauth2;
 

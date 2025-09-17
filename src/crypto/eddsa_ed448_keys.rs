@@ -15,23 +15,40 @@ pub static EDDSA_KEYPAIR: Lazy<SigningKey> = Lazy::new(|| {
     SigningKey::generate(&mut OsRng)
 });
 
+/// JSON Web Key Set containing EdDSA public keys
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EddsaJwkSet {
+    /// Array of JSON Web Keys
     pub keys: Vec<EddsaJwk>,
 }
 
+/// Individual EdDSA JSON Web Key
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EddsaJwk {
+    /// Key type (always "OKP" for EdDSA)
     pub kty: String,
+    /// Elliptic curve ("Ed25519" - using Ed25519 as Ed448 not available)
     pub crv: String,
+    /// Base64URL-encoded public key
     pub x: String,
+    /// Key ID for key identification
     pub kid: String,
+    /// Intended use of the key ("sig" for signing)
     #[serde(rename = "use")]
     pub key_use: String,
+    /// Algorithm identifier ("EdDSA")
     pub alg: String,
 }
 
 impl EddsaJwk {
+    /// Creates an EdDSA JWK from a verifying key and key ID.
+    ///
+    /// # Arguments
+    /// * `verifying_key` - The EdDSA verifying key to convert
+    /// * `kid` - The key ID to assign to this JWK
+    ///
+    /// # Returns
+    /// A new `EddsaJwk` instance with the public key and metadata.
     pub fn from_verifying_key(verifying_key: &VerifyingKey, kid: &str) -> Self {
         let public_key_bytes = verifying_key.to_bytes();
         let x = Base64UrlUnpadded::encode_string(&public_key_bytes);

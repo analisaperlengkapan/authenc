@@ -1,5 +1,5 @@
 use authenc::models::user::User;
-use authenc::services::services::user_store::UserStore;
+use authenc::services::stores::user_store::UserStore;
 use uuid::Uuid;
 
 #[test]

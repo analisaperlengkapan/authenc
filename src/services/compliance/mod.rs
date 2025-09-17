@@ -9,83 +9,127 @@ use uuid::Uuid;
 /// Compliance framework types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ComplianceFramework {
+    /// General Data Protection Regulation
     GDPR,
+    /// California Consumer Privacy Act
     CCPA,
+    /// Health Insurance Portability and Accountability Act
     HIPAA,
+    /// Sarbanes-Oxley Act
     SOX,
+    /// Payment Card Industry Data Security Standard
     PciDss,
+    /// ISO 27001 Information Security Management
     ISO27001,
+    /// National Institute of Standards and Technology framework
     NIST,
+    /// Custom compliance framework
     Custom(String),
 }
 
-/// Compliance requirement
+/// Compliance requirement definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplianceRequirement {
+    /// Unique identifier for the requirement
     pub id: Uuid,
+    /// Compliance framework this requirement belongs to
     pub framework: ComplianceFramework,
+    /// Framework-specific requirement identifier
     pub requirement_id: String,
+    /// Human-readable title of the requirement
     pub title: String,
+    /// Detailed description of the requirement
     pub description: String,
+    /// Category this requirement falls under
     pub category: ComplianceCategory,
+    /// Severity level of the requirement
     pub severity: ComplianceSeverity,
+    /// Whether this requirement is currently enabled
     pub enabled: bool,
+    /// Whether this requirement can be checked automatically
     pub automated_check: bool,
 }
 
 /// Compliance categories
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ComplianceCategory {
+    /// Data protection and privacy requirements
     DataProtection,
+    /// Access control and authorization requirements
     AccessControl,
+    /// Audit logging and monitoring requirements
     AuditLogging,
+    /// Encryption and cryptographic requirements
     Encryption,
+    /// Incident response and management requirements
     IncidentResponse,
+    /// Risk assessment and management requirements
     RiskManagement,
+    /// Privacy protection requirements
     Privacy,
+    /// Security assessment and testing requirements
     SecurityAssessment,
 }
 
 /// Compliance severity levels
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ComplianceSeverity {
+    /// Critical severity - immediate action required
     Critical,
+    /// High severity - urgent attention needed
     High,
+    /// Medium severity - should be addressed
     Medium,
+    /// Low severity - minor issue
     Low,
+    /// Informational - for awareness only
     Informational,
 }
 
 /// Compliance check result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplianceCheckResult {
+    /// Unique identifier of the requirement being checked
     pub requirement_id: Uuid,
+    /// Timestamp when the check was performed
     pub check_time: DateTime<Utc>,
+    /// Overall status of the compliance check
     pub status: ComplianceStatus,
+    /// Evidence collected during the check
     pub evidence: Vec<String>,
+    /// List of violations found
     pub violations: Vec<String>,
+    /// Recommended remediation steps
     pub remediation_steps: Vec<String>,
-    pub score: f64, // 0.0 to 100.0
+    /// Compliance score (0.0 to 100.0)
+    pub score: f64,
 }
 
 /// Compliance status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ComplianceStatus {
+    /// Fully compliant with requirements
     Compliant,
+    /// Not compliant with requirements
     NonCompliant,
+    /// Partially compliant with some requirements
     PartiallyCompliant,
+    /// Not applicable to current system
     NotApplicable,
+    /// Compliance status unknown
     Unknown,
 }
 
 /// Compliance check interface
 #[async_trait]
 pub trait ComplianceCheck: Send + Sync {
+    /// Execute the compliance check
     async fn execute(&self) -> Result<ComplianceCheckResult>;
+    /// Get the compliance requirement this check implements
     fn requirement(&self) -> &ComplianceRequirement;
 }
 
-/// GDPR compliance checks
+/// GDPR compliance checks implementation
 pub struct GDPRComplianceChecks;
 
 impl Default for GDPRComplianceChecks {
@@ -95,10 +139,12 @@ impl Default for GDPRComplianceChecks {
 }
 
 impl GDPRComplianceChecks {
+    /// Create a new instance of GDPR compliance checks
     pub fn new() -> Self {
         Self
     }
 
+    /// Create a data encryption compliance check for GDPR
     pub fn data_encryption_check() -> Box<dyn ComplianceCheck> {
         Box::new(GDPRDataEncryptionCheck {
             requirement: ComplianceRequirement {
@@ -116,6 +162,7 @@ impl GDPRComplianceChecks {
         })
     }
 
+    /// Create a data retention compliance check for GDPR
     pub fn data_retention_check() -> Box<dyn ComplianceCheck> {
         Box::new(GDPRDataRetentionCheck {
             requirement: ComplianceRequirement {
@@ -132,6 +179,7 @@ impl GDPRComplianceChecks {
         })
     }
 
+    /// Create a consent management compliance check for GDPR
     pub fn consent_management_check() -> Box<dyn ComplianceCheck> {
         Box::new(GDPRConsentManagementCheck {
             requirement: ComplianceRequirement {
@@ -182,7 +230,7 @@ impl ComplianceCheck for GDPRDataEncryptionCheck {
     }
 }
 
-/// GDPR data retention check
+/// GDPR data retention check implementation
 pub struct GDPRDataRetentionCheck {
     requirement: ComplianceRequirement,
 }
@@ -206,7 +254,7 @@ impl ComplianceCheck for GDPRDataRetentionCheck {
             evidence,
             violations,
             remediation_steps,
-            score: 95.0,
+            score: 100.0,
         })
     }
 
@@ -215,7 +263,7 @@ impl ComplianceCheck for GDPRDataRetentionCheck {
     }
 }
 
-/// GDPR consent management check
+/// GDPR consent management check implementation
 pub struct GDPRConsentManagementCheck {
     requirement: ComplianceRequirement,
 }
@@ -248,7 +296,7 @@ impl ComplianceCheck for GDPRConsentManagementCheck {
     }
 }
 
-/// HIPAA compliance checks
+/// HIPAA compliance checks implementation
 pub struct HIPAAComplianceChecks;
 
 impl Default for HIPAAComplianceChecks {
@@ -258,10 +306,12 @@ impl Default for HIPAAComplianceChecks {
 }
 
 impl HIPAAComplianceChecks {
+    /// Create a new instance of HIPAA compliance checks
     pub fn new() -> Self {
         Self
     }
 
+    /// Create an access control compliance check for HIPAA
     pub fn access_control_check() -> Box<dyn ComplianceCheck> {
         Box::new(HIPAAAccessControlCheck {
             requirement: ComplianceRequirement {
@@ -280,6 +330,7 @@ impl HIPAAComplianceChecks {
         })
     }
 
+    /// Create an audit controls compliance check for HIPAA
     pub fn audit_controls_check() -> Box<dyn ComplianceCheck> {
         Box::new(HIPAAAuditControlsCheck {
             requirement: ComplianceRequirement {
@@ -297,7 +348,7 @@ impl HIPAAComplianceChecks {
     }
 }
 
-/// HIPAA access control check
+/// HIPAA access control check implementation
 pub struct HIPAAAccessControlCheck {
     requirement: ComplianceRequirement,
 }
@@ -331,7 +382,7 @@ impl ComplianceCheck for HIPAAAccessControlCheck {
     }
 }
 
-/// HIPAA audit controls check
+/// HIPAA audit controls check implementation
 pub struct HIPAAAuditControlsCheck {
     requirement: ComplianceRequirement,
 }
@@ -365,15 +416,21 @@ impl ComplianceCheck for HIPAAAuditControlsCheck {
     }
 }
 
-/// Compliance service - main service
+/// Main compliance service that manages compliance checks and frameworks
 pub struct ComplianceService {
+    /// Registered compliance checks
     checks: HashMap<Uuid, Box<dyn ComplianceCheck>>,
+    /// Compliance requirements
     requirements: HashMap<Uuid, ComplianceRequirement>,
+    /// Enabled compliance frameworks
     enabled_frameworks: Vec<ComplianceFramework>,
+    /// Audit service for logging compliance events
+    #[allow(dead_code)]
     audit_service: Arc<dyn ComplianceAuditService>,
 }
 
 impl ComplianceService {
+    /// Create a new compliance service
     pub fn new(audit_service: Arc<dyn ComplianceAuditService>) -> Self {
         Self {
             checks: HashMap::new(),
@@ -383,19 +440,19 @@ impl ComplianceService {
         }
     }
 
-    /// Enable compliance framework
+    /// Enable a compliance framework
     pub fn enable_framework(&mut self, framework: ComplianceFramework) {
         if !self.enabled_frameworks.contains(&framework) {
             self.enabled_frameworks.push(framework);
         }
     }
 
-    /// Disable compliance framework
+    /// Disable a compliance framework
     pub fn disable_framework(&mut self, framework: &ComplianceFramework) {
         self.enabled_frameworks.retain(|f| f != framework);
     }
 
-    /// Register compliance check
+    /// Register a compliance check
     pub fn register_check(&mut self, check: Box<dyn ComplianceCheck>) {
         let requirement = check.requirement().clone();
         let check_id = requirement.id;
@@ -403,7 +460,7 @@ impl ComplianceService {
         self.requirements.insert(check_id, requirement);
     }
 
-    /// Execute all compliance checks
+    /// Execute all registered compliance checks
     pub async fn execute_all_checks(&self) -> Result<Vec<ComplianceCheckResult>> {
         let mut results = Vec::new();
         for check in self.checks.values() {
@@ -413,7 +470,7 @@ impl ComplianceService {
         Ok(results)
     }
 
-    /// Execute specific compliance check
+    /// Execute a specific compliance check by ID
     pub async fn execute_check(&self, check_id: &Uuid) -> Result<Option<ComplianceCheckResult>> {
         if let Some(check) = self.checks.get(check_id) {
             let result = check.execute().await?;
@@ -423,7 +480,7 @@ impl ComplianceService {
         }
     }
 
-    /// Get compliance report
+    /// Generate a comprehensive compliance report
     pub async fn get_compliance_report(&self) -> Result<ComplianceReport> {
         let results = self.execute_all_checks().await?;
         let recommendations = self.generate_recommendations(&results);
@@ -469,62 +526,83 @@ impl ComplianceService {
         recommendations
     }
 
-    /// Get compliance requirements
+    /// Get all compliance requirements
     pub fn get_requirements(&self) -> Vec<&ComplianceRequirement> {
         self.requirements.values().collect()
     }
 
-    /// Get enabled frameworks
+    /// Get enabled compliance frameworks
     pub fn get_enabled_frameworks(&self) -> &[ComplianceFramework] {
         &self.enabled_frameworks
     }
 }
 
-/// Compliance report
+/// Comprehensive compliance report
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplianceReport {
+    /// Timestamp when the report was generated
     pub generated_at: DateTime<Utc>,
+    /// Compliance frameworks included in the report
     pub frameworks: Vec<ComplianceFramework>,
+    /// Overall compliance status
     pub overall_status: ComplianceStatus,
+    /// Overall compliance score (0.0 to 100.0)
     pub overall_score: f64,
+    /// Individual check results
     pub results: Vec<ComplianceCheckResult>,
+    /// Recommended remediation steps
     pub recommendations: Vec<String>,
 }
 
-/// Compliance audit service trait
+/// Compliance audit service trait for logging compliance events
 #[async_trait]
 pub trait ComplianceAuditService: Send + Sync {
+    /// Log a compliance event
     async fn log_compliance_event(&self, event: &ComplianceEvent) -> Result<()>;
 }
 
-/// Compliance event
+/// Compliance event structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplianceEvent {
+    /// Type of compliance event
     pub event_type: ComplianceEventType,
+    /// Compliance framework related to the event
     pub framework: ComplianceFramework,
+    /// ID of the requirement related to the event
     pub requirement_id: String,
+    /// User ID associated with the event (if applicable)
     pub user_id: Option<String>,
+    /// Detailed information about the event
     pub details: String,
+    /// Timestamp when the event occurred
     pub timestamp: DateTime<Utc>,
 }
 
-/// Compliance event types
+/// Types of compliance events
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ComplianceEventType {
+    /// A compliance check was executed
     CheckExecuted,
+    /// A compliance violation was detected
     ViolationDetected,
+    /// Remediation was applied for a violation
     RemediationApplied,
+    /// A compliance framework was enabled
     FrameworkEnabled,
+    /// A compliance framework was disabled
     FrameworkDisabled,
+    /// Manual review is required
     ManualReviewRequired,
 }
 
-/// Data Subject Rights service (GDPR Article 15-22)
+/// Data Subject Rights service for handling GDPR data subject requests
 pub struct DataSubjectRightsService {
+    /// Audit service for logging compliance events
     audit_service: Arc<dyn ComplianceAuditService>,
 }
 
 impl DataSubjectRightsService {
+    /// Create a new data subject rights service
     pub fn new(audit_service: Arc<dyn ComplianceAuditService>) -> Self {
         Self { audit_service }
     }
@@ -608,17 +686,22 @@ impl DataSubjectRightsService {
     }
 }
 
-/// Data access response
+/// Response to a data access request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataAccessResponse {
+    /// Unique identifier for the access request
     pub request_id: String,
+    /// User ID for whom the data is being accessed
     pub user_id: String,
+    /// Personal data collected for the user
     pub data: HashMap<String, String>,
+    /// Current status of the request
     pub status: String,
 }
 
-/// Privacy Impact Assessment service
+/// Privacy Impact Assessment service for managing PIA assessments
 pub struct PrivacyImpactAssessmentService {
+    /// Collection of privacy impact assessments
     assessments: HashMap<Uuid, PrivacyImpactAssessment>,
 }
 
@@ -629,98 +712,135 @@ impl Default for PrivacyImpactAssessmentService {
 }
 
 impl PrivacyImpactAssessmentService {
+    /// Create a new privacy impact assessment service
     pub fn new() -> Self {
         Self {
             assessments: HashMap::new(),
         }
     }
 
-    /// Create new PIA
+    /// Create a new privacy impact assessment
     pub fn create_assessment(&mut self, assessment: PrivacyImpactAssessment) -> Uuid {
         let id = assessment.id;
         self.assessments.insert(id, assessment);
         id
     }
 
-    /// Get PIA by ID
+    /// Get a privacy impact assessment by ID
     pub fn get_assessment(&self, id: &Uuid) -> Option<&PrivacyImpactAssessment> {
         self.assessments.get(id)
     }
 
-    /// Update PIA
+    /// Update an existing privacy impact assessment
     pub fn update_assessment(&mut self, assessment: PrivacyImpactAssessment) -> Result<()> {
         self.assessments.insert(assessment.id, assessment);
         Ok(())
     }
 
-    /// List all PIAs
+    /// List all privacy impact assessments
     pub fn list_assessments(&self) -> Vec<&PrivacyImpactAssessment> {
         self.assessments.values().collect()
     }
 }
 
-/// Privacy Impact Assessment
+/// Privacy Impact Assessment structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrivacyImpactAssessment {
+    /// Unique identifier for the assessment
     pub id: Uuid,
+    /// Name of the project being assessed
     pub project_name: String,
+    /// Description of the project and its data processing activities
     pub description: String,
+    /// Types of personal data being processed
     pub data_types: Vec<String>,
+    /// Purposes for which personal data is being processed
     pub processing_purposes: Vec<String>,
+    /// Identified privacy risks
     pub risks: Vec<PrivacyRisk>,
+    /// Mitigation measures to address identified risks
     pub mitigation_measures: Vec<String>,
+    /// Timestamp when the assessment was created
     pub created_at: DateTime<Utc>,
+    /// Timestamp when the assessment was last updated
     pub updated_at: DateTime<Utc>,
+    /// Current approval status of the assessment
     pub status: PIAApprovalStatus,
 }
 
-/// Privacy risk
+/// Privacy risk identified during assessment
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrivacyRisk {
+    /// Type or category of the risk
     pub risk_type: String,
+    /// Detailed description of the risk
     pub description: String,
+    /// Likelihood of the risk occurring
     pub likelihood: RiskLevel,
+    /// Potential impact if the risk occurs
     pub impact: RiskLevel,
+    /// Whether mitigation measures are required
     pub mitigation_required: bool,
 }
 
-/// Risk levels
+/// Risk severity levels
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RiskLevel {
+    /// Low risk level
     Low,
+    /// Medium risk level
     Medium,
+    /// High risk level
     High,
+    /// Very high risk level
     VeryHigh,
 }
 
-/// PIA approval status
+/// Privacy Impact Assessment approval status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PIAApprovalStatus {
+    /// Assessment is in draft state
     Draft,
+    /// Assessment is under review
     UnderReview,
+    /// Assessment has been approved
     Approved,
+    /// Assessment has been rejected
     Rejected,
+    /// Assessment requires revision
     RequiresRevision,
 }
 
-/// Compliance configuration
+/// Compliance configuration settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplianceConfig {
+    /// Whether compliance features are enabled
     pub enabled: bool,
+    /// List of enabled compliance frameworks
     pub frameworks: Vec<ComplianceFramework>,
+    /// Whether automated compliance scanning is enabled
     pub automated_scanning: bool,
+    /// Interval in hours between automated scans
     pub scan_interval_hours: u32,
+    /// Number of days to retain audit logs
     pub audit_retention_days: u32,
+    /// Data residency requirements by region/country
     pub data_residency_requirements: HashMap<String, String>,
+    /// Encryption requirements for data protection
     pub encryption_requirements: EncryptionRequirements,
 }
 
-/// Encryption requirements
+/// Encryption requirements for data protection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptionRequirements {
+    /// Encryption algorithm to use
     pub algorithm: String,
+    /// Key size in bits
     pub key_size: u32,
+    /// Whether data at rest should be encrypted
     pub at_rest: bool,
+    /// Whether data in transit should be encrypted
     pub in_transit: bool,
+    /// Number of days between key rotations
     pub key_rotation_days: u32,
 }

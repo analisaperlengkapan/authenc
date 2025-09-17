@@ -5,24 +5,34 @@ impl Default for FederationRegistry {
 }
 use crate::models::user::User;
 
+/// Trait for federation providers that can authenticate users from external systems
 pub trait FederationProvider: Send + Sync {
+    /// Get user by username from external system
     fn get_user_by_username(&self, username: &str) -> Option<User>;
+    /// Verify user password against external system
     fn verify_password(&self, username: &str, password: &str) -> bool;
 }
 
+/// Registry for managing multiple federation providers
 pub struct FederationRegistry {
+    /// Collection of registered federation providers
     providers: Vec<Box<dyn FederationProvider>>,
 }
 
 impl FederationRegistry {
+    /// Create new federation registry
     pub fn new() -> Self {
         Self {
             providers: Vec::new(),
         }
     }
+
+    /// Register a federation provider
     pub fn register(&mut self, provider: Box<dyn FederationProvider>) {
         self.providers.push(provider);
     }
+
+    /// Get user by username across all providers
     pub fn get_user_by_username(&self, username: &str) -> Option<User> {
         for p in &self.providers {
             if let Some(u) = p.get_user_by_username(username) {
@@ -31,6 +41,8 @@ impl FederationRegistry {
         }
         None
     }
+
+    /// Verify password across all providers
     pub fn verify_password(&self, username: &str, password: &str) -> bool {
         for p in &self.providers {
             if p.verify_password(username, password) {
@@ -42,6 +54,7 @@ impl FederationRegistry {
 }
 
 // Example stub provider (in-memory, for demo)
+/// Dummy federation provider for testing and demonstration purposes
 pub struct DummyFederationProvider;
 impl FederationProvider for DummyFederationProvider {
     fn get_user_by_username(&self, username: &str) -> Option<User> {

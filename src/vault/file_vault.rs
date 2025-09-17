@@ -5,11 +5,46 @@ use async_trait::async_trait;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// File-based vault provider for storing secrets in the filesystem
 pub struct FileVault {
+    /// Base directory where secrets are stored
     base_dir: PathBuf,
 }
 
 impl FileVault {
+    /// Create a new file-based vault with specified base directory
+    ///
+    /// This constructor initializes a file-based secret vault that stores
+    /// encrypted secrets on the local filesystem. Secrets are organized
+    /// within the specified base directory and can be optionally scoped
+    /// to specific realms for multi-tenancy support.
+    ///
+    /// # Arguments
+    /// * `base_dir` - Base directory path where secrets will be stored
+    ///
+    /// # Returns
+    /// A new `FileVault` instance configured for file-based secret storage
+    ///
+    /// # Security Considerations
+    /// - Base directory should have restrictive file permissions (700)
+    /// - Filesystem should support secure deletion for key rotation
+    /// - Directory should be on encrypted storage for data protection
+    /// - Access to vault directory should be audited and monitored
+    ///
+    /// # File Organization
+    /// - Secrets stored as encrypted files within base directory
+    /// - Optional realm subdirectories for tenant isolation
+    /// - File names derived from secret keys with secure hashing
+    /// - Metadata stored alongside encrypted secret data
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::vault::FileVault;
+    /// use std::path::Path;
+    ///
+    /// let vault = FileVault::new("/var/authenc/secrets");
+    /// // Vault is ready for secret storage operations
+    /// ```
     pub fn new<P: AsRef<Path>>(base_dir: P) -> Self {
         FileVault {
             base_dir: base_dir.as_ref().to_path_buf(),

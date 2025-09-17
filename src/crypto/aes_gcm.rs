@@ -11,22 +11,33 @@ use std::collections::HashMap;
 
 /// AES-GCM encryption service for enhanced security
 pub struct AesGcmService {
+    /// AES-256-GCM encryption key
     key: Key<Aes256Gcm>,
 }
 
+/// Encrypted data structure containing ciphertext, nonce, and authentication tag
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EncryptedData {
+    /// Base64-encoded ciphertext
     pub ciphertext: String,
+    /// Base64-encoded nonce used for encryption
     pub nonce: String,
+    /// Base64-encoded authentication tag
     pub tag: String,
 }
 
+/// Encryption key metadata and data
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EncryptionKey {
+    /// Unique identifier for the encryption key
     pub key_id: String,
+    /// Raw key data bytes
     pub key_data: Vec<u8>,
+    /// Encryption algorithm identifier
     pub algorithm: String,
+    /// Timestamp when the key was created
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Optional expiration timestamp for the key
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 

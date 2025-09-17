@@ -1,9 +1,9 @@
+use crate::utils::crypto::jwt::{self, Claims};
+use axum::http::request::Parts;
 use axum::{
     extract::FromRequestParts,
     http::{header, StatusCode},
 };
-use crate::utils::crypto::jwt::{self, Claims};
-use axum::http::request::Parts;
 
 /// Authentication bearer token extractor for Axum
 #[derive(Debug)]

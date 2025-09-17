@@ -6,17 +6,27 @@ impl Clone for PgAuditLogStore {
     }
 }
 use crate::models::audit_log::AuditLog;
-use crate::services::services::audit_log_store::AuditLogStore;
+use crate::services::stores::audit_log_store::AuditLogStore;
 use anyhow::Result;
 use async_trait::async_trait;
 use deadpool_postgres::{Manager, Pool};
 use tokio_postgres::NoTls;
 
+/// PostgreSQL-based audit log store implementation
 pub struct PgAuditLogStore {
+    /// Database connection pool
     pool: Pool,
 }
 
 impl PgAuditLogStore {
+    /// Create new PostgreSQL audit log store
+    ///
+    /// # Arguments
+    /// * `conn_str` - PostgreSQL connection string
+    ///
+    /// # Returns
+    /// * `Ok(PgAuditLogStore)` on successful connection
+    /// * `Err(anyhow::Error)` if connection fails
     pub async fn new(conn_str: &str) -> Result<Self> {
         let parsed = conn_str
             .parse()
@@ -26,6 +36,14 @@ impl PgAuditLogStore {
         Ok(Self { pool })
     }
 
+    /// Add audit log entry to database
+    ///
+    /// # Arguments
+    /// * `log` - The audit log entry to store
+    ///
+    /// # Returns
+    /// * `Ok(())` on successful insertion
+    /// * `Err(anyhow::Error)` if database operation fails
     pub async fn add_log(&self, log: &AuditLog) -> Result<()> {
         let client = self.pool.get().await?;
         let ts: std::time::SystemTime = log.timestamp.into();
@@ -36,6 +54,11 @@ impl PgAuditLogStore {
         Ok(())
     }
 
+    /// Get all audit log entries ordered by timestamp descending
+    ///
+    /// # Returns
+    /// * `Ok(Vec<AuditLog>)` containing all audit log entries
+    /// * `Err(anyhow::Error)` if database query fails
     pub async fn all(&self) -> Result<Vec<AuditLog>> {
         let client = self.pool.get().await?;
         let rows = client.query("SELECT timestamp, event, user_id, client_id, status, detail FROM audit_logs ORDER BY timestamp DESC", &[]).await?;

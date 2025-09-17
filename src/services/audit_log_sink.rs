@@ -1,20 +1,35 @@
 use crate::models::audit_log::AuditLog;
 
+/// Trait for audit log sinks that can receive and process audit logs
 pub trait AuditLogSink: Send + Sync {
+    /// Send audit log to this sink
+    ///
+    /// # Arguments
+    /// * `log` - The audit log entry to send
     fn send(&self, log: &AuditLog);
 }
 
+/// Multi-sink implementation that sends logs to multiple sinks
 pub struct MultiAuditLogSink {
+    /// Collection of sinks to send logs to
     sinks: Vec<Box<dyn AuditLogSink>>,
 }
 
 impl MultiAuditLogSink {
+    /// Create new multi audit log sink
+    ///
+    /// # Arguments
+    /// * `sinks` - Vector of audit log sinks to send logs to
     pub fn new(sinks: Vec<Box<dyn AuditLogSink>>) -> Self {
         Self { sinks }
     }
 }
 
 impl AuditLogSink for MultiAuditLogSink {
+    /// Send audit log to all configured sinks
+    ///
+    /// # Arguments
+    /// * `log` - The audit log entry to send
     fn send(&self, log: &AuditLog) {
         for sink in &self.sinks {
             sink.send(log);
@@ -23,11 +38,45 @@ impl AuditLogSink for MultiAuditLogSink {
 }
 
 // Example: PostgreSQL sink (wrapper, will call existing PgAuditLogStore)
+/// PostgreSQL audit log sink for persistent audit event storage
+///
+/// This sink implementation provides asynchronous audit log storage using
+/// PostgreSQL as the backend. It wraps the existing `PgAuditLogStore` to
+/// provide a standardized sink interface for audit event processing.
+///
+/// # Fields
+/// * `store` - The underlying PostgreSQL audit log store instance
+///
+/// # Security Considerations
+/// - Ensures audit logs are durably stored in PostgreSQL
+/// - Implements proper transaction handling for data integrity
+/// - Provides connection pooling for high-throughput scenarios
+/// - Supports encryption at rest for sensitive audit data
+///
+/// # Performance Considerations
+/// - Uses asynchronous operations to avoid blocking
+/// - Implements connection pooling for efficient resource usage
+/// - Supports batch operations for high-volume audit logging
+/// - Provides configurable timeouts and retry mechanisms
+///
+/// # Example
+/// ```rust
+/// use authenc::services::audit_log_sink::PgAuditLogSink;
+/// use authenc::services::pg_audit_log_store::PgAuditLogStore;
+///
+/// let pg_store = PgAuditLogStore::new(database_connection);
+/// let sink = PgAuditLogSink { store: pg_store };
+/// ```
 pub struct PgAuditLogSink {
+    /// PostgreSQL audit log store instance
     pub store: crate::services::pg_audit_log_store::PgAuditLogStore,
 }
 
 impl AuditLogSink for PgAuditLogSink {
+    /// Send audit log to PostgreSQL store asynchronously
+    ///
+    /// # Arguments
+    /// * `log` - The audit log entry to send
     fn send(&self, log: &AuditLog) {
         // Fire and forget, or spawn task for async
         let store = self.store.clone();

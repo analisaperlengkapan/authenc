@@ -9,18 +9,25 @@ use std::sync::Arc;
 use crate::app::AppState;
 
 // Handlers
+/// Health check handlers for Axum web framework
 pub mod health_axum;
+/// JWT token handling with Ed25519 signatures for enhanced security
 pub mod jwt_ed25519;
+/// Comprehensive OAuth2 implementation with PKCE and security features
 pub mod oauth2_comprehensive;
+/// OIDC identity provider with Ed25519 JWT signing (secure replacement for RSA)
 pub mod oidc_ed25519;
 pub use health_axum::create_health_routes;
 
 // Legacy Actix handlers (temporarily disabled during migration)
 // mod audit;
 // mod group;
+/// Legacy health handlers (replaced by health_axum)
 mod health;
 // mod oidc_client;
+/// Legacy OIDC JWT handlers with RSA (deprecated - use oidc_ed25519)
 pub mod oidc_jwt;
+/// OIDC cryptographic key management
 pub mod oidc_keys;
 // mod oidc_provider;
 // mod session;
@@ -28,19 +35,23 @@ pub mod oidc_keys;
 // mod totp_verify;
 
 // Advanced Services Handlers
+/// Administrative API endpoints for system management
 pub mod admin;
 // Temporarily disabled API module due to Actix-web migration issues
+/// REST API handlers for authentication and authorization services
 pub mod api; // Uncommented - contains Axum handlers
-// Temporarily disabled due to Axum migration issues
-// pub mod authorization;
-// pub mod broker;
-// pub mod device;
-// pub mod oauth2_comprehensive; // Commented out - already declared above
-// pub mod organization;
-// pub mod saml;
-// pub mod social;
-// pub mod webauthn;
+             // Temporarily disabled due to Axum migration issues
+             // pub mod authorization;
+             // pub mod broker;
+             // pub mod device;
+             // pub mod oauth2_comprehensive; // Commented out - already declared above
+             // pub mod organization;
+             // pub mod saml;
+             // pub mod social;
+             // pub mod webauthn;
+/// OpenID for Verifiable Credentials (OID4VC) handlers
 pub mod oid4vc;
+/// Zero Trust security model handlers and endpoints
 pub mod zero_trust;
 
 /// Create the main application router with all routes
@@ -115,13 +126,35 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // )
         .nest("/api/v1/admin", admin::create_admin_routes())
         // API routes for realms, users, roles, permissions
-        .nest("/api/v1/auth", api::realm::create_realm_routes().with_state(state.realm_store.clone()))
-        .nest("/api/v1/auth", api::user::create_user_routes().with_state(state.user_store.clone()))
-        .nest("/api/v1/auth", api::role::create_role_routes().with_state(state.role_store.clone()))
-        .nest("/api/v1/auth", api::permission::create_permission_routes().with_state(state.permission_store.clone()))
-        .nest("/api/v1/auth", api::audit::create_audit_routes().with_state(state.audit_log_store.clone()))
-        .nest("/api/v1/auth", api::auth::create_auth_routes().with_state(state.user_store.clone()))
-        .nest("/api/v1/auth", api::permission_check::create_permission_check_routes().with_state((state.user_store.clone(), state.role_store.clone())))
+        .nest(
+            "/api/v1/auth",
+            api::realm::create_realm_routes().with_state(state.realm_store.clone()),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::user::create_user_routes().with_state(state.user_store.clone()),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::role::create_role_routes().with_state(state.role_store.clone()),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::permission::create_permission_routes().with_state(state.permission_store.clone()),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::audit::create_audit_routes().with_state(state.audit_log_store.clone()),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::auth::create_auth_routes().with_state(state.user_store.clone()),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::permission_check::create_permission_check_routes()
+                .with_state((state.user_store.clone(), state.role_store.clone())),
+        )
         // Temporarily disabled organization routes due to Axum migration
         // .nest(
         //     "/api/v1/organizations",
@@ -141,11 +174,11 @@ mod tests {
     use super::*;
     use crate::app::AppState;
     use crate::config::AppConfig;
+    use axum::response::IntoResponse;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
     };
-    use axum::response::IntoResponse;
     use http_body_util::BodyExt;
     use serde_json::Value;
     use tower::ServiceExt;
@@ -158,7 +191,12 @@ mod tests {
 
         // Convert response to JSON for testing
         let json_response = response.into_response();
-        let body = json_response.into_body().collect().await.unwrap().to_bytes();
+        let body = json_response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes();
         let json: Value = serde_json::from_slice(&body).unwrap();
 
         assert_eq!(json["status"], "healthy");

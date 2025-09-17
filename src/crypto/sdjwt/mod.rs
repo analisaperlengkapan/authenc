@@ -11,14 +11,13 @@
 //! - Issuer-signed JWT with disclosures
 //! - Holder binding for enhanced security
 
+use crate::error::AuthencError;
+use base64ct::{Base64UrlUnpadded, Encoding};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use base64ct::{Base64UrlUnpadded, Encoding};
 use std::collections::{HashMap, HashSet};
-use ed25519_dalek::{Signature, SigningKey, VerifyingKey, Signer, Verifier};
-use rand::rngs::OsRng;
-use crate::error::AuthencError;
 
 /// Salt for SD-JWT hashing to ensure unlinkability
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,8 +50,7 @@ impl SdJwtSalt {
 
     /// Get salt as bytes
     pub fn as_bytes(&self) -> Result<Vec<u8>, AuthencError> {
-        Base64UrlUnpadded::decode_vec(&self.salt)
-            .map_err(|_| AuthencError::CryptographicError)
+        Base64UrlUnpadded::decode_vec(&self.salt).map_err(|_| AuthencError::CryptographicError)
     }
 }
 
@@ -79,16 +77,13 @@ pub struct Disclosure {
 impl Disclosure {
     /// Create a new disclosure from specification
     pub fn new(spec: DisclosureSpec) -> Result<Self, AuthencError> {
-        let disclosure_data = json!([
-            spec.salt.salt,
-            spec.claim_name,
-            spec.claim_value
-        ]);
+        let disclosure_data = json!([spec.salt.salt, spec.claim_name, spec.claim_value]);
 
-        let disclosure_json = serde_json::to_string(&disclosure_data)
-            .map_err(|_| AuthencError::SerializationError {
-                message: "Failed to serialize disclosure".to_string()
-            })?;
+        let disclosure_json = serde_json::to_string(&disclosure_data).map_err(|_| {
+            AuthencError::SerializationError {
+                message: "Failed to serialize disclosure".to_string(),
+            }
+        })?;
 
         let disclosure_b64 = Base64UrlUnpadded::encode_string(disclosure_json.as_bytes());
 
@@ -116,20 +111,23 @@ impl Disclosure {
         let disclosure_bytes = Base64UrlUnpadded::decode_vec(&self.disclosure)
             .map_err(|_| AuthencError::CryptographicError)?;
 
-        let disclosure_data: Vec<Value> = serde_json::from_slice(&disclosure_bytes)
-            .map_err(|_| AuthencError::SerializationError {
-                message: "Invalid disclosure format".to_string()
+        let disclosure_data: Vec<Value> =
+            serde_json::from_slice(&disclosure_bytes).map_err(|_| {
+                AuthencError::SerializationError {
+                    message: "Invalid disclosure format".to_string(),
+                }
             })?;
 
         if disclosure_data.len() != 3 {
             return Err(AuthencError::ValidationError {
-                message: "Invalid disclosure structure".to_string()
+                message: "Invalid disclosure structure".to_string(),
             });
         }
 
-        let claim_name = disclosure_data[1].as_str()
+        let claim_name = disclosure_data[1]
+            .as_str()
             .ok_or_else(|| AuthencError::ValidationError {
-                message: "Invalid claim name".to_string()
+                message: "Invalid claim name".to_string(),
             })?
             .to_string();
 
@@ -166,7 +164,7 @@ impl DisclosureRedList {
     pub fn add_disclosure(&mut self, hash: String) -> Result<(), AuthencError> {
         if self.disclosed_hashes.len() >= self.max_size {
             return Err(AuthencError::ValidationError {
-                message: "Disclosure red list is full".to_string()
+                message: "Disclosure red list is full".to_string(),
             });
         }
         self.disclosed_hashes.insert(hash);
@@ -219,17 +217,17 @@ pub enum SdJwtClaim {
     /// Disclosed claim with value
     Disclosed {
         /// The disclosed claim value
-        value: Value
+        value: Value,
     },
     /// Undisclosed claim with hash reference
     Undisclosed {
         /// Hash reference for the undisclosed claim
-        sd_hash: String
+        sd_hash: String,
     },
     /// Decoy claim for privacy enhancement
     Decoy {
         /// Flag indicating this is a decoy claim
-        decoy: bool
+        decoy: bool,
     },
 }
 
@@ -242,12 +240,12 @@ pub enum SdJwtArrayElement {
     /// Undisclosed array element with hash
     Undisclosed {
         /// Hash reference for the undisclosed array element
-        sd_hash: String
+        sd_hash: String,
     },
     /// Decoy array element
     Decoy {
         /// Flag indicating this is a decoy array element
-        decoy: bool
+        decoy: bool,
     },
 }
 
@@ -272,11 +270,36 @@ impl IssuerSignedJwt {
         header.insert("typ".to_string(), json!("sd-jwt"));
 
         let mut payload = HashMap::new();
-        payload.insert("iss".to_string(), SdJwtClaim::Disclosed { value: json!(issuer) });
-        payload.insert("sub".to_string(), SdJwtClaim::Disclosed { value: json!(subject) });
-        payload.insert("aud".to_string(), SdJwtClaim::Disclosed { value: json!(audience) });
-        payload.insert("iat".to_string(), SdJwtClaim::Disclosed { value: json!(chrono::Utc::now().timestamp()) });
-        payload.insert("exp".to_string(), SdJwtClaim::Disclosed { value: json!(chrono::Utc::now().timestamp() + 3600) });
+        payload.insert(
+            "iss".to_string(),
+            SdJwtClaim::Disclosed {
+                value: json!(issuer),
+            },
+        );
+        payload.insert(
+            "sub".to_string(),
+            SdJwtClaim::Disclosed {
+                value: json!(subject),
+            },
+        );
+        payload.insert(
+            "aud".to_string(),
+            SdJwtClaim::Disclosed {
+                value: json!(audience),
+            },
+        );
+        payload.insert(
+            "iat".to_string(),
+            SdJwtClaim::Disclosed {
+                value: json!(chrono::Utc::now().timestamp()),
+            },
+        );
+        payload.insert(
+            "exp".to_string(),
+            SdJwtClaim::Disclosed {
+                value: json!(chrono::Utc::now().timestamp() + 3600),
+            },
+        );
 
         Self {
             header,
@@ -287,16 +310,24 @@ impl IssuerSignedJwt {
     }
 
     /// Add selectively disclosable claim
-    pub fn add_selective_claim(&mut self, name: String, value: Value, salt: SdJwtSalt) -> Result<(), AuthencError> {
+    pub fn add_selective_claim(
+        &mut self,
+        name: String,
+        value: Value,
+        salt: SdJwtSalt,
+    ) -> Result<(), AuthencError> {
         let disclosure = Disclosure::new(DisclosureSpec {
             claim_name: name.clone(),
             claim_value: value,
             salt,
         })?;
 
-        self.payload.insert(name, SdJwtClaim::Undisclosed {
-            sd_hash: disclosure.hash,
-        });
+        self.payload.insert(
+            name,
+            SdJwtClaim::Undisclosed {
+                sd_hash: disclosure.hash,
+            },
+        );
 
         Ok(())
     }
@@ -307,7 +338,12 @@ impl IssuerSignedJwt {
     }
 
     /// Add array claim with selective disclosure
-    pub fn add_selective_array_claim(&mut self, name: String, elements: Vec<Value>, salts: Vec<SdJwtSalt>) -> Result<(), AuthencError> {
+    pub fn add_selective_array_claim(
+        &mut self,
+        name: String,
+        elements: Vec<Value>,
+        salts: Vec<SdJwtSalt>,
+    ) -> Result<(), AuthencError> {
         let mut array_elements = Vec::new();
 
         for (i, element) in elements.into_iter().enumerate() {
@@ -335,17 +371,17 @@ impl IssuerSignedJwt {
         let header_b64 = Base64UrlUnpadded::encode_string(
             serde_json::to_string(&self.header)
                 .map_err(|_| AuthencError::SerializationError {
-                    message: "Failed to serialize header".to_string()
+                    message: "Failed to serialize header".to_string(),
                 })?
-                .as_bytes()
+                .as_bytes(),
         );
 
         let payload_b64 = Base64UrlUnpadded::encode_string(
             serde_json::to_string(&self.payload)
                 .map_err(|_| AuthencError::SerializationError {
-                    message: "Failed to serialize payload".to_string()
+                    message: "Failed to serialize payload".to_string(),
                 })?
-                .as_bytes()
+                .as_bytes(),
         );
 
         let message = format!("{}.{}", header_b64, payload_b64);
@@ -357,7 +393,8 @@ impl IssuerSignedJwt {
 
     /// Serialize to SD-JWT format
     pub fn to_sd_jwt(&self) -> String {
-        format!("{}.{}.{}",
+        format!(
+            "{}.{}.{}",
             Base64UrlUnpadded::encode_string(
                 serde_json::to_string(&self.header).unwrap().as_bytes()
             ),
@@ -399,9 +436,10 @@ impl SdJwt {
     pub fn set_holder_binding(&mut self, binding: String) {
         self.holder_binding = Some(binding);
     }
+}
 
-    /// Serialize to full SD-JWT format with disclosures
-    pub fn to_string(&self) -> String {
+impl std::fmt::Display for SdJwt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut parts = vec![self.issuer_signed.to_sd_jwt()];
 
         for disclosure in &self.disclosures {
@@ -412,15 +450,23 @@ impl SdJwt {
             parts.push(binding.clone());
         }
 
-        parts.join("~")
+        write!(f, "{}", parts.join("~"))
     }
+}
 
-    /// Parse SD-JWT from string
+impl SdJwt {
+    /// Create a new SdJwt instance from a string representation
+    ///
+    /// # Arguments
+    /// * `sd_jwt_str` - The SD-JWT string in the format "header.payload~signature"
+    ///
+    /// # Returns
+    /// A Result containing the SdJwt instance or an AuthencError
     pub fn from_string(sd_jwt_str: &str) -> Result<Self, AuthencError> {
         let parts: Vec<&str> = sd_jwt_str.split('~').collect();
         if parts.is_empty() {
             return Err(AuthencError::ValidationError {
-                message: "Invalid SD-JWT format".to_string()
+                message: "Invalid SD-JWT format".to_string(),
             });
         }
 
@@ -428,7 +474,7 @@ impl SdJwt {
         let jwt_parts: Vec<&str> = parts[0].split('.').collect();
         if jwt_parts.len() != 3 {
             return Err(AuthencError::ValidationError {
-                message: "Invalid JWT format".to_string()
+                message: "Invalid JWT format".to_string(),
             });
         }
 
@@ -438,14 +484,18 @@ impl SdJwt {
         let payload_bytes = Base64UrlUnpadded::decode_vec(jwt_parts[1])
             .map_err(|_| AuthencError::CryptographicError)?;
 
-        let header: HashMap<String, Value> = serde_json::from_slice(&header_bytes)
-            .map_err(|_| AuthencError::SerializationError {
-                message: "Invalid header format".to_string()
+        let header: HashMap<String, Value> =
+            serde_json::from_slice(&header_bytes).map_err(|_| {
+                AuthencError::SerializationError {
+                    message: "Invalid header format".to_string(),
+                }
             })?;
 
-        let payload: HashMap<String, SdJwtClaim> = serde_json::from_slice(&payload_bytes)
-            .map_err(|_| AuthencError::SerializationError {
-                message: "Invalid payload format".to_string()
+        let payload: HashMap<String, SdJwtClaim> =
+            serde_json::from_slice(&payload_bytes).map_err(|_| {
+                AuthencError::SerializationError {
+                    message: "Invalid payload format".to_string(),
+                }
             })?;
 
         let issuer_signed = IssuerSignedJwt {
@@ -480,31 +530,39 @@ impl SdJwt {
     /// Verify SD-JWT
     pub fn verify(&self, public_key: &VerifyingKey) -> Result<(), AuthencError> {
         // Verify issuer signature
-        let message = format!("{}.{}",
+        let message = format!(
+            "{}.{}",
             Base64UrlUnpadded::encode_string(
-                serde_json::to_string(&self.issuer_signed.header).unwrap().as_bytes()
+                serde_json::to_string(&self.issuer_signed.header)
+                    .unwrap()
+                    .as_bytes()
             ),
             Base64UrlUnpadded::encode_string(
-                serde_json::to_string(&self.issuer_signed.payload).unwrap().as_bytes()
+                serde_json::to_string(&self.issuer_signed.payload)
+                    .unwrap()
+                    .as_bytes()
             )
         );
 
         let signature_bytes = Base64UrlUnpadded::decode_vec(&self.issuer_signed.signature)
             .map_err(|_| AuthencError::CryptographicError)?;
 
-        let signature_array: [u8; 64] = signature_bytes.as_slice().try_into()
+        let signature_array: [u8; 64] = signature_bytes
+            .as_slice()
+            .try_into()
             .map_err(|_| AuthencError::CryptographicError)?;
 
         let signature = Signature::from_bytes(&signature_array);
 
-        public_key.verify(message.as_bytes(), &signature)
+        public_key
+            .verify(message.as_bytes(), &signature)
             .map_err(|_| AuthencError::CryptographicError)?;
 
         // Verify disclosures
         for disclosure in &self.disclosures {
             if !disclosure.verify() {
                 return Err(AuthencError::ValidationError {
-                    message: "Disclosure verification failed".to_string()
+                    message: "Disclosure verification failed".to_string(),
                 });
             }
         }
@@ -540,22 +598,22 @@ pub enum AbstractSdJwtClaim {
     /// Disclosed claim with value
     Disclosed {
         /// The disclosed claim value
-        value: Value
+        value: Value,
     },
     /// Undisclosed claim with hash reference
     Undisclosed {
         /// Hash reference for the undisclosed claim
-        sd_hash: String
+        sd_hash: String,
     },
     /// Decoy claim for privacy enhancement
     Decoy {
         /// Flag indicating this is a decoy claim
-        decoy: bool
+        decoy: bool,
     },
     /// Array element claim
     ArrayElement {
         /// Array element data
-        element: SdJwtArrayElement
+        element: SdJwtArrayElement,
     },
 }
 
@@ -735,9 +793,13 @@ impl SdJwtFacade {
     /// Disclose a claim by providing the disclosure
     pub fn disclose_claim(&mut self, disclosure: &Disclosure) -> Result<(), AuthencError> {
         // Verify disclosure is not in red list
-        if self.verification_context.red_list.is_disclosed(&disclosure.hash) {
+        if self
+            .verification_context
+            .red_list
+            .is_disclosed(&disclosure.hash)
+        {
             return Err(AuthencError::ValidationError {
-                message: "Disclosure has already been used (red list)".to_string()
+                message: "Disclosure has already been used (red list)".to_string(),
             });
         }
 
@@ -749,43 +811,46 @@ impl SdJwtFacade {
             match claim {
                 SdJwtClaim::Undisclosed { sd_hash } => {
                     if *sd_hash == disclosure.hash {
-                        *claim = SdJwtClaim::Disclosed {
-                            value: claim_value
-                        };
+                        *claim = SdJwtClaim::Disclosed { value: claim_value };
                         // Add to red list
-                        self.verification_context.red_list.add_disclosure(disclosure.hash.clone())?;
+                        self.verification_context
+                            .red_list
+                            .add_disclosure(disclosure.hash.clone())?;
                     } else {
                         return Err(AuthencError::ValidationError {
-                            message: "Disclosure hash does not match".to_string()
+                            message: "Disclosure hash does not match".to_string(),
                         });
                     }
                 }
                 _ => {
                     return Err(AuthencError::ValidationError {
-                        message: "Claim is not undisclosed".to_string()
+                        message: "Claim is not undisclosed".to_string(),
                     });
                 }
             }
         } else {
             // Check array claims
             if let Some((array_name, index)) = self.parse_array_claim_name(&claim_name) {
-                if let Some(elements) = self.sd_jwt.issuer_signed.array_claims.get_mut(&array_name) {
+                if let Some(elements) = self.sd_jwt.issuer_signed.array_claims.get_mut(&array_name)
+                {
                     if let Some(element) = elements.get_mut(index) {
                         match element {
                             SdJwtArrayElement::Undisclosed { sd_hash } => {
                                 if *sd_hash == disclosure.hash {
                                     *element = SdJwtArrayElement::Disclosed(claim_value);
                                     // Add to red list
-                                    self.verification_context.red_list.add_disclosure(disclosure.hash.clone())?;
+                                    self.verification_context
+                                        .red_list
+                                        .add_disclosure(disclosure.hash.clone())?;
                                 } else {
                                     return Err(AuthencError::ValidationError {
-                                        message: "Disclosure hash does not match".to_string()
+                                        message: "Disclosure hash does not match".to_string(),
                                     });
                                 }
                             }
                             _ => {
                                 return Err(AuthencError::ValidationError {
-                                    message: "Array element is not undisclosed".to_string()
+                                    message: "Array element is not undisclosed".to_string(),
                                 });
                             }
                         }
@@ -813,12 +878,12 @@ impl SdJwtFacade {
         for disclosure in &self.sd_jwt.disclosures {
             if !disclosure.verify() {
                 return Err(AuthencError::ValidationError {
-                    message: "Invalid disclosure signature".to_string()
+                    message: "Invalid disclosure signature".to_string(),
                 });
             }
 
             // Check disclosure age if configured
-            if let Some(max_age) = self.verification_context.max_disclosure_age {
+            if let Some(_max_age) = self.verification_context.max_disclosure_age {
                 // Check if disclosure is too old
                 // This would require storing disclosure timestamps
             }
@@ -829,9 +894,13 @@ impl SdJwtFacade {
     fn verify_red_list(&self) -> Result<(), AuthencError> {
         // Check that no disclosures are in the red list
         for disclosure in &self.sd_jwt.disclosures {
-            if self.verification_context.red_list.is_disclosed(&disclosure.hash) {
+            if self
+                .verification_context
+                .red_list
+                .is_disclosed(&disclosure.hash)
+            {
                 return Err(AuthencError::ValidationError {
-                    message: "Disclosure has been replayed (red list)".to_string()
+                    message: "Disclosure has been replayed (red list)".to_string(),
                 });
             }
         }
@@ -845,22 +914,25 @@ impl SdJwtFacade {
                     if let Some(issuer) = value.as_str() {
                         if issuer != expected_issuer {
                             return Err(AuthencError::ValidationError {
-                                message: format!("Issuer mismatch: expected {}, got {}", expected_issuer, issuer)
+                                message: format!(
+                                    "Issuer mismatch: expected {}, got {}",
+                                    expected_issuer, issuer
+                                ),
                             });
                         }
                     } else {
                         return Err(AuthencError::ValidationError {
-                            message: "Issuer claim is not a string".to_string()
+                            message: "Issuer claim is not a string".to_string(),
                         });
                     }
                 } else {
                     return Err(AuthencError::ValidationError {
-                        message: "Issuer claim is not disclosed".to_string()
+                        message: "Issuer claim is not disclosed".to_string(),
                     });
                 }
             } else {
                 return Err(AuthencError::ValidationError {
-                    message: "Missing issuer claim".to_string()
+                    message: "Missing issuer claim".to_string(),
                 });
             }
         }
@@ -874,22 +946,25 @@ impl SdJwtFacade {
                     if let Some(subject) = value.as_str() {
                         if subject != expected_subject {
                             return Err(AuthencError::ValidationError {
-                                message: format!("Subject mismatch: expected {}, got {}", expected_subject, subject)
+                                message: format!(
+                                    "Subject mismatch: expected {}, got {}",
+                                    expected_subject, subject
+                                ),
                             });
                         }
                     } else {
                         return Err(AuthencError::ValidationError {
-                            message: "Subject claim is not a string".to_string()
+                            message: "Subject claim is not a string".to_string(),
                         });
                     }
                 } else {
                     return Err(AuthencError::ValidationError {
-                        message: "Subject claim is not disclosed".to_string()
+                        message: "Subject claim is not disclosed".to_string(),
                     });
                 }
             } else {
                 return Err(AuthencError::ValidationError {
-                    message: "Missing subject claim".to_string()
+                    message: "Missing subject claim".to_string(),
                 });
             }
         }
@@ -903,22 +978,25 @@ impl SdJwtFacade {
                     if let Some(audience) = value.as_str() {
                         if audience != expected_audience {
                             return Err(AuthencError::ValidationError {
-                                message: format!("Audience mismatch: expected {}, got {}", expected_audience, audience)
+                                message: format!(
+                                    "Audience mismatch: expected {}, got {}",
+                                    expected_audience, audience
+                                ),
                             });
                         }
                     } else {
                         return Err(AuthencError::ValidationError {
-                            message: "Audience claim is not a string".to_string()
+                            message: "Audience claim is not a string".to_string(),
                         });
                     }
                 } else {
                     return Err(AuthencError::ValidationError {
-                        message: "Audience claim is not disclosed".to_string()
+                        message: "Audience claim is not disclosed".to_string(),
                     });
                 }
             } else {
                 return Err(AuthencError::ValidationError {
-                    message: "Missing audience claim".to_string()
+                    message: "Missing audience claim".to_string(),
                 });
             }
         }
@@ -948,7 +1026,9 @@ impl SdJwtUtils {
                 let salt = SdJwtSalt::new();
                 issuer_signed.add_selective_claim(key, value, salt)?;
             } else {
-                issuer_signed.payload.insert(key, SdJwtClaim::Disclosed { value });
+                issuer_signed
+                    .payload
+                    .insert(key, SdJwtClaim::Disclosed { value });
             }
         }
 
@@ -971,9 +1051,7 @@ impl SdJwtUtils {
         let mut issuer_signed = IssuerSignedJwt::new(issuer, subject, audience);
 
         for (array_name, elements) in array_claims {
-            let salts: Vec<SdJwtSalt> = elements.iter()
-                .map(|_| SdJwtSalt::new())
-                .collect();
+            let salts: Vec<SdJwtSalt> = elements.iter().map(|_| SdJwtSalt::new()).collect();
 
             issuer_signed.add_selective_array_claim(array_name, elements, salts)?;
         }
@@ -993,11 +1071,9 @@ mod tests {
 
         // Add selective claim
         let salt = SdJwtSalt::new();
-        issuer_signed.add_selective_claim(
-            "email".to_string(),
-            json!("user@example.com"),
-            salt,
-        ).unwrap();
+        issuer_signed
+            .add_selective_claim("email".to_string(), json!("user@example.com"), salt)
+            .unwrap();
 
         // Add decoy claim
         issuer_signed.add_decoy_claim("fake_claim".to_string());
@@ -1013,7 +1089,8 @@ mod tests {
             claim_name: "email".to_string(),
             claim_value: json!("user@example.com"),
             salt: SdJwtSalt::new(),
-        }).unwrap();
+        })
+        .unwrap();
         sd_jwt.add_disclosure(disclosure);
 
         // Verify SD-JWT
@@ -1035,15 +1112,15 @@ mod tests {
         ]);
 
         let sd_jwt = SdJwtUtils::create_privacy_preserving_jwt(
-            "issuer",
-            "subject",
-            "audience",
-            claims,
-            3, // 3 decoy claims
-        ).unwrap();
+            "issuer", "subject", "audience", claims, 3, // 3 decoy claims
+        )
+        .unwrap();
 
         // Should have decoy claims
-        let decoy_count = sd_jwt.issuer_signed.payload.values()
+        let decoy_count = sd_jwt
+            .issuer_signed
+            .payload
+            .values()
             .filter(|claim| matches!(claim, SdJwtClaim::Decoy { .. }))
             .count();
 

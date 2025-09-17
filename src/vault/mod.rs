@@ -7,7 +7,9 @@ use std::collections::HashMap;
 /// Represents a secret value fetched from a vault
 #[derive(Debug, Clone)]
 pub struct Secret {
+    /// The actual secret value
     pub value: String,
+    /// Optional metadata associated with the secret
     pub metadata: Option<HashMap<String, String>>,
 }
 

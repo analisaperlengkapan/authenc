@@ -20,14 +20,18 @@ pub const AUTH_USER_KEY: &str = "authenc.auth_user";
 /// Claims extracted from the JWT token
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AuthUser {
+    /// Unique identifier of the authenticated user
     pub id: String,
+    /// Email address of the authenticated user
     pub email: String,
+    /// List of roles assigned to the authenticated user
     pub roles: Vec<String>,
 }
 
 /// State for auth middleware
 #[derive(Clone)]
 pub struct AuthState {
+    /// Secret key used for JWT token validation
     pub jwt_secret: String,
 }
 

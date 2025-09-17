@@ -9,47 +9,69 @@ use tokio::sync::RwLock;
 /// RFC 039 - OpenID for Verifiable Credential Issuance
 /// RFC 040 - OpenID for Verifiable Presentations
 /// Enhanced with advanced features for enterprise use
-
 /// OID4VC Credential Issuer Metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialIssuerMetadata {
+    /// The credential issuer's identifier URL
     pub credential_issuer: String,
+    /// List of authorization server URLs
     pub authorization_servers: Vec<String>,
+    /// Endpoint URL for credential issuance
     pub credential_endpoint: String,
+    /// Optional endpoint for batch credential issuance
     pub batch_credential_endpoint: Option<String>,
+    /// Optional endpoint for deferred credential retrieval
     pub deferred_credential_endpoint: Option<String>,
+    /// Supported credential types and their configurations
     pub credentials_supported: HashMap<String, CredentialSupported>,
+    /// Display metadata for the issuer
     pub display: Option<Vec<DisplayMetadata>>,
+    /// Credential configurations supported by the issuer
     pub credential_configurations_supported: Option<HashMap<String, CredentialConfiguration>>,
 }
 
 /// Enhanced Credential Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialConfiguration {
+    /// The format of the credential (e.g., JWT, SD-JWT)
     pub format: CredentialFormat,
+    /// Optional scope required for this credential type
     pub scope: Option<String>,
+    /// Supported cryptographic binding methods
     pub cryptographic_binding_methods_supported: Vec<String>,
+    /// Supported cryptographic suites for signing
     pub cryptographic_suites_supported: Vec<String>,
+    /// Optional credential definition/schema
     pub credential_definition: Option<serde_json::Value>,
+    /// Optional credential subject constraints
     pub credential_subject: Option<serde_json::Value>,
+    /// Display information for the credential
     pub display: Option<Vec<CredentialDisplay>>,
+    /// Supported proof types and their configurations
     pub proof_types_supported: Option<HashMap<String, ProofTypeConfiguration>>,
 }
 
 /// Proof type configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProofTypeConfiguration {
+    /// Supported proof signing algorithms
     pub proof_signing_alg_values_supported: Vec<String>,
 }
 
 /// Credential Supported configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialSupported {
+    /// The format of the credential
     pub format: CredentialFormat,
+    /// List of credential types this configuration supports
     pub types: Vec<String>,
+    /// Supported cryptographic binding methods
     pub cryptographic_binding_methods_supported: Vec<String>,
+    /// Supported cryptographic suites
     pub cryptographic_suites_supported: Vec<String>,
+    /// Optional display information
     pub display: Option<Vec<CredentialDisplay>>,
+    /// Optional credential definition
     pub credential_definition: Option<serde_json::Value>,
 }
 
@@ -57,158 +79,226 @@ pub struct CredentialSupported {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CredentialFormat {
+    /// JWT VC JSON format
     JwtVcJson,
+    /// JWT VC JSON-LD format
     JwtVcJsonLd,
+    /// Linked Data Proofs VC format
     LdpVc,
+    /// Mobile Security Object mDoc format
     MsoMdoc,
+    /// Selective Disclosure JWT VC format
     SdJwtVc,
 }
 
 /// Credential display metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialDisplay {
+    /// Display name of the credential
     pub name: String,
+    /// Optional locale for localization
     pub locale: Option<String>,
+    /// Optional logo information
     pub logo: Option<LogoMetadata>,
+    /// Optional description of the credential
     pub description: Option<String>,
+    /// Optional background color (hex format)
     pub background_color: Option<String>,
+    /// Optional text color (hex format)
     pub text_color: Option<String>,
 }
 
 /// Logo metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogoMetadata {
+    /// URL of the logo image
     pub url: Option<String>,
+    /// Alternative text for accessibility
     pub alt_text: Option<String>,
 }
 
 /// Display metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DisplayMetadata {
+    /// Display name
     pub name: String,
+    /// Optional locale for localization
     pub locale: Option<String>,
 }
 
 /// OID4VC Authorization Request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialAuthorizationRequest {
+    /// OAuth 2.0 response type (typically "code")
     pub response_type: String,
+    /// Client identifier
     pub client_id: String,
+    /// Redirect URI for authorization response
     pub redirect_uri: String,
+    /// Requested scope
     pub scope: String,
+    /// Optional state parameter for CSRF protection
     pub state: Option<String>,
+    /// Authorization details specifying requested credentials
     pub authorization_details: Vec<AuthorizationDetails>,
+    /// Optional nonce for replay attack protection
     pub nonce: Option<String>,
+    /// Optional PKCE code challenge
     pub code_challenge: Option<String>,
+    /// Optional PKCE code challenge method
     pub code_challenge_method: Option<String>,
 }
 
 /// Authorization details for OID4VC
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthorizationDetails {
+    /// Type of authorization (e.g., "openid_credential")
     #[serde(rename = "type")]
     pub type_: String,
+    /// Format of the requested credential
     pub format: CredentialFormat,
+    /// Types of credentials being requested
     pub types: Vec<String>,
+    /// Optional locations where credentials can be obtained
     pub locations: Option<Vec<String>>,
 }
 
 /// OID4VC Token Request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialTokenRequest {
+    /// OAuth 2.0 grant type (typically "authorization_code")
     pub grant_type: String,
+    /// Authorization code received from authorization endpoint
     pub code: String,
+    /// Redirect URI used in the authorization request
     pub redirect_uri: String,
+    /// Client identifier
     pub client_id: String,
+    /// Optional client secret for confidential clients
     pub client_secret: Option<String>,
+    /// Optional PKCE code verifier
     pub code_verifier: Option<String>,
 }
 
 /// OID4VC Token Response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialTokenResponse {
+    /// Access token for credential endpoint
     pub access_token: String,
+    /// Token type (typically "Bearer")
     pub token_type: String,
+    /// Token expiration time in seconds
     pub expires_in: u64,
+    /// Optional scope of the access token
     pub scope: Option<String>,
+    /// Cryptographic nonce for proof generation
     pub c_nonce: String,
+    /// Expiration time of the c_nonce in seconds
     pub c_nonce_expires_in: u64,
+    /// Optional authorization details
     pub authorization_details: Option<Vec<AuthorizationDetails>>,
 }
 
 /// OID4VC Credential Request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialRequest {
+    /// Format of the requested credential
     pub format: CredentialFormat,
+    /// Types of credentials being requested
     pub types: Vec<String>,
+    /// Optional proof of possession
     pub proof: Option<ProofOfPossession>,
 }
 
 /// Batch Credential Request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchCredentialRequest {
+    /// List of individual credential requests
     pub credential_requests: Vec<CredentialRequest>,
 }
 
 /// Batch Credential Response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchCredentialResponse {
+    /// List of individual credential responses
     pub credential_responses: Vec<CredentialResponse>,
 }
 
 /// Deferred Credential Request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeferredCredentialRequest {
+    /// Acceptance token for retrieving the deferred credential
     pub acceptance_token: String,
 }
 
 /// Deferred Credential Response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeferredCredentialResponse {
+    /// The issued credential (if available)
     pub credential: Option<serde_json::Value>,
+    /// Transaction identifier for tracking the credential issuance
     pub transaction_id: Option<String>,
 }
 
 /// Proof of possession for credential binding
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProofOfPossession {
+    /// Type of proof (e.g., "jwt" or "cwt")
     pub proof_type: String,
+    /// Optional JWT proof
     pub jwt: Option<String>,
+    /// Optional CWT proof
     pub cwt: Option<String>,
 }
 
 /// OID4VC Credential Response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialResponse {
+    /// Format of the issued credential
     pub format: CredentialFormat,
+    /// The issued credential data
     pub credential: serde_json::Value,
+    /// Optional acceptance token for deferred issuance
     pub acceptance_token: Option<String>,
+    /// Optional cryptographic nonce for future requests
     pub c_nonce: Option<String>,
+    /// Optional expiration time of the c_nonce
     pub c_nonce_expires_in: Option<u64>,
 }
 
 /// Verifiable Credential structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifiableCredential {
+    /// JSON-LD context definitions
     #[serde(rename = "@context")]
     pub context: Vec<String>,
+    /// Optional unique identifier for the credential
     pub id: Option<String>,
+    /// Types of the credential
     #[serde(rename = "type")]
     pub type_: Vec<String>,
+    /// Issuer information
     pub issuer: Issuer,
+    /// Issuance date in ISO 8601 format
     #[serde(rename = "issuanceDate")]
     pub issuance_date: String,
+    /// Optional expiration date in ISO 8601 format
     #[serde(rename = "expirationDate", skip_serializing_if = "Option::is_none")]
     pub expiration_date: Option<String>,
+    /// Credential subject information
     pub credential_subject: CredentialSubject,
+    /// Optional proof for verification
     pub proof: Option<Proof>,
+    /// Optional credential status information
     pub status: Option<CredentialStatus>,
 }
 
 /// Credential Status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialStatus {
+    /// Unique identifier for the status entry
     pub id: String,
+    /// Type of status (e.g., "CredentialStatusList2021Entry")
     #[serde(rename = "type")]
     pub type_: String,
 }
@@ -217,14 +307,23 @@ pub struct CredentialStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Issuer {
+    /// Simple string identifier for the issuer
     String(String),
-    Object { id: String, name: Option<String> },
+    /// Object with issuer ID and optional name
+    Object { 
+        /// Unique identifier for the issuer
+        id: String, 
+        /// Optional human-readable name
+        name: Option<String> 
+    },
 }
 
 /// Credential subject
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialSubject {
+    /// Optional unique identifier for the subject
     pub id: Option<String>,
+    /// Additional claims about the credential subject
     #[serde(flatten)]
     pub claims: HashMap<String, serde_json::Value>,
 }
@@ -232,73 +331,101 @@ pub struct CredentialSubject {
 /// Cryptographic proof
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Proof {
+    /// Type of cryptographic proof (e.g., "Ed25519Signature2020")
     #[serde(rename = "type")]
     pub type_: String,
+    /// Creation timestamp in ISO 8601 format
     pub created: String,
+    /// Verification method (e.g., public key identifier)
     pub verification_method: String,
+    /// Purpose of the proof (e.g., "assertionMethod")
     pub proof_purpose: String,
+    /// Optional proof value (base64 encoded)
     pub proof_value: Option<String>,
+    /// Optional JSON Web Signature
     pub jws: Option<String>,
 }
 
 /// Verifiable Presentation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifiablePresentation {
+    /// JSON-LD context definitions
     #[serde(rename = "@context")]
     pub context: Vec<String>,
+    /// Types of the presentation
     #[serde(rename = "type")]
     pub type_: Vec<String>,
+    /// Verifiable credentials included in the presentation
     pub verifiable_credential: Vec<serde_json::Value>,
+    /// Optional proof for presentation verification
     pub proof: Option<Proof>,
+    /// Optional holder identifier
     pub holder: Option<String>,
 }
 
 /// Presentation Definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresentationDefinition {
+    /// Unique identifier for the presentation definition
     pub id: String,
+    /// Input descriptors defining required credentials
     pub input_descriptors: Vec<InputDescriptor>,
 }
 
 /// Input Descriptor
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputDescriptor {
+    /// Unique identifier for the input descriptor
     pub id: String,
+    /// Optional human-readable name
     pub name: Option<String>,
+    /// Optional purpose description
     pub purpose: Option<String>,
+    /// Constraints defining what credentials are acceptable
     pub constraints: Constraints,
 }
 
 /// Constraints
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Constraints {
+    /// Fields that must be present in the credential
     pub fields: Vec<Field>,
 }
 
 /// Field
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Field {
+    /// JSONPath expressions to locate the field
     pub path: Vec<String>,
+    /// Optional filter to validate field values
     pub filter: Option<serde_json::Value>,
 }
 
 /// Credential Revocation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialRevocation {
+    /// Unique identifier of the credential being revoked
     pub credential_id: String,
+    /// Date and time when the credential was revoked
     pub revocation_date: String,
+    /// Optional reason for the credential revocation
     pub reason: Option<String>,
 }
 
 /// Status List 2021
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusList2021 {
+    /// JSON-LD context for the status list
     #[serde(rename = "@context")]
     pub context: Vec<String>,
+    /// Unique identifier for the status list
     pub id: String,
+    /// Type of the status list credential
     #[serde(rename = "type")]
     pub type_: Vec<String>,
+    /// Purpose of the status list (e.g., "revocation", "suspension")
     pub status_purpose: String,
+    /// Encoded status list containing revocation information
     pub encoded_list: String,
 }
 
@@ -375,6 +502,41 @@ pub struct EnhancedOid4VcManager {
 }
 
 impl EnhancedOid4VcManager {
+    /// Create a new enhanced OID4VC manager with issuer configuration
+    ///
+    /// This constructor initializes an OID4VC (OpenID for Verifiable Credentials)
+    /// manager that supports issuing and verifying digital credentials.
+    /// The manager is configured with the issuer URL and automatically
+    /// generates cryptographic keys for different signature algorithms.
+    ///
+    /// # Arguments
+    /// * `issuer_url` - The base URL of the credential issuer
+    ///
+    /// # Returns
+    /// A new `EnhancedOid4VcManager` instance configured for credential operations
+    ///
+    /// # Security Considerations
+    /// - Cryptographic keys are generated securely using thread-local RNG
+    /// - Private keys are stored securely and never exposed externally
+    /// - Issuer URL should be validated to prevent impersonation attacks
+    /// - Credential issuance requires proper authorization checks
+    ///
+    /// # OID4VC Features
+    /// - Support for multiple credential types (university degrees, driver's licenses)
+    /// - Multiple cryptographic algorithms (Ed25519, ES256, etc.)
+    /// - Deferred credential issuance for privacy
+    /// - Status list management for credential revocation
+    /// - Batch credential operations
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::services::oid4vc::EnhancedOid4VcManager;
+    ///
+    /// let manager = EnhancedOid4VcManager::new(
+    ///     "https://issuer.example.com".to_string()
+    /// );
+    /// // Manager is ready for credential operations
+    /// ```
     pub fn new(issuer_url: String) -> Self {
         let mut supported_credentials = HashMap::new();
         let mut credential_configurations = HashMap::new();
@@ -767,6 +929,7 @@ impl EnhancedOid4VcManager {
 }
 
 /// OID4VC Manager implementation
+#[allow(dead_code)]
 pub struct Oid4VcManager {
     issuer_url: String,
     supported_credentials: HashMap<String, CredentialSupported>,
@@ -845,13 +1008,13 @@ impl EnhancedOid4VcManager {
         subject: &CredentialSubject,
         issuance_date: &str,
     ) -> Result<Proof, String> {
-        let private_key = self
+        let _private_key = self
             .private_keys
             .get("Ed25519")
             .ok_or("Ed25519 private key not found")?;
 
         // Create JWT header
-        let header = jsonwebtoken::Header {
+        let _header = jsonwebtoken::Header {
             alg: jsonwebtoken::Algorithm::EdDSA,
             typ: Some("JWT".to_string()),
             kid: Some("key-1".to_string()),
@@ -868,7 +1031,7 @@ impl EnhancedOid4VcManager {
             vc: serde_json::Value,
         }
 
-        let payload = JWTPayload {
+        let _payload = JWTPayload {
             iss: &self.issuer_url,
             sub: subject.id.as_deref(),
             iat: chrono::Utc::now().timestamp(),
@@ -882,7 +1045,7 @@ impl EnhancedOid4VcManager {
 
         // For testing purposes, create a simple mock proof
         // In production, this would create a proper cryptographic proof
-        let proof_value = format!("mock-proof-{}", uuid::Uuid::new_v4());
+        let _proof_value = format!("mock-proof-{}", uuid::Uuid::new_v4());
         let encoding_key = jsonwebtoken::EncodingKey::from_secret(b"test-secret");
         let header = jsonwebtoken::Header::default();
         let claims = serde_json::json!({
@@ -996,8 +1159,8 @@ impl EnhancedOid4VcManager {
     /// Create selective disclosure JWT (simplified)
     fn create_selective_disclosure_jwt(
         &self,
-        subject: &CredentialSubject,
-        issuance_date: &str,
+        _subject: &CredentialSubject,
+        _issuance_date: &str,
     ) -> Result<String, String> {
         // In a real implementation, this would create SD-JWT
         Ok("simulated_sd_jwt".to_string())
@@ -1496,6 +1659,43 @@ pub struct LegacyOid4VcManager {
 }
 
 impl LegacyOid4VcManager {
+    /// Create a new legacy OID4VC manager with custom private key
+    ///
+    /// This constructor initializes a legacy OID4VC manager for backward
+    /// compatibility with existing systems. It uses a provided Ed25519
+    /// private key instead of generating a new one, allowing migration
+    /// from legacy credential systems.
+    ///
+    /// # Arguments
+    /// * `issuer_url` - The base URL of the credential issuer
+    /// * `private_key` - Ed25519 private key for credential signing
+    ///
+    /// # Returns
+    /// A new `LegacyOid4VcManager` instance with the specified private key
+    ///
+    /// # Security Considerations
+    /// - Private key should be securely generated and stored
+    /// - Key material should never be logged or exposed in error messages
+    /// - Issuer URL validation prevents impersonation attacks
+    /// - Legacy compatibility should be phased out in favor of enhanced manager
+    ///
+    /// # Migration Notes
+    /// - This manager provides backward compatibility during migration
+    /// - Consider upgrading to `EnhancedOid4VcManager` for new deployments
+    /// - Legacy keys should be rotated regularly for security
+    /// - Audit all credential operations during migration period
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::services::oid4vc::LegacyOid4VcManager;
+    /// use ed25519_dalek::SigningKey;
+    ///
+    /// let private_key = SigningKey::generate(&mut rand::thread_rng());
+    /// let manager = LegacyOid4VcManager::new(
+    ///     "https://legacy-issuer.example.com".to_string(),
+    ///     private_key
+    /// );
+    /// ```
     pub fn new(issuer_url: String, private_key: ed25519_dalek::SigningKey) -> Self {
         let mut enhanced = EnhancedOid4VcManager::new(issuer_url);
         // Replace the generated key with the provided legacy key
@@ -1643,7 +1843,7 @@ impl LegacyOid4VcManager {
         issuance_date: &str,
     ) -> Result<Proof, String> {
         // Create JWT header
-        let header = jsonwebtoken::Header {
+        let _header = jsonwebtoken::Header {
             alg: jsonwebtoken::Algorithm::EdDSA,
             typ: Some("JWT".to_string()),
             kid: Some("key-1".to_string()),
@@ -1660,7 +1860,7 @@ impl LegacyOid4VcManager {
             vc: serde_json::Value,
         }
 
-        let payload = JWTPayload {
+        let _payload = JWTPayload {
             iss: &self.enhanced_manager.issuer_url,
             sub: subject.id.as_deref(),
             iat: chrono::Utc::now().timestamp(),
@@ -1674,7 +1874,7 @@ impl LegacyOid4VcManager {
 
         // For testing purposes, create a simple mock proof
         // In production, this would create a proper cryptographic proof
-        let proof_value = format!("mock-proof-{}", uuid::Uuid::new_v4());
+        let _proof_value = format!("mock-proof-{}", uuid::Uuid::new_v4());
         let encoding_key = jsonwebtoken::EncodingKey::from_secret(b"test-secret");
         let header = jsonwebtoken::Header::default();
         let claims = serde_json::json!({

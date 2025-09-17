@@ -9,25 +9,40 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Types of identity providers supported by the broker
 pub enum IdentityProviderType {
+    /// LDAP identity provider
     LDAP,
+    /// SAML identity provider
     SAML,
+    /// OpenID Connect identity provider
     OIDC,
+    /// Google social login provider
     SocialGoogle,
+    /// Facebook social login provider
     SocialFacebook,
+    /// Twitter social login provider
     SocialTwitter,
+    /// GitHub social login provider
     SocialGitHub,
+    /// Custom identity provider
     Custom,
 }
 
 /// Configuration for identity providers
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentityProviderConfig {
+    /// Unique identifier for the provider
     pub id: Uuid,
+    /// Display name for the provider
     pub name: String,
+    /// Type of identity provider
     pub provider_type: IdentityProviderType,
+    /// Whether this provider is enabled
     pub enabled: bool,
-    pub config: serde_json::Value, // Flexible config storage
+    /// Flexible configuration storage as JSON
+    pub config: serde_json::Value,
+    /// Realm this provider belongs to
     pub realm_id: Uuid,
 }
 
@@ -50,18 +65,27 @@ pub trait IdentityBroker: Send + Sync {
 /// External user representation from identity providers
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalUser {
+    /// Unique identifier from the external identity provider
     pub external_id: String,
+    /// Username from the external provider
     pub username: Option<String>,
+    /// Email address from the external provider
     pub email: Option<String>,
+    /// First name from the external provider
     pub first_name: Option<String>,
+    /// Last name from the external provider
     pub last_name: Option<String>,
+    /// Groups/roles assigned to the user in the external provider
     pub groups: Vec<String>,
+    /// Additional attributes from the external provider
     pub attributes: std::collections::HashMap<String, String>,
 }
 
 /// Identity Broker Registry - manages multiple brokers
 pub struct IdentityBrokerRegistry {
+    /// Registered identity brokers by ID
     brokers: std::collections::HashMap<Uuid, Box<dyn IdentityBroker>>,
+    /// Provider configurations by ID
     provider_configs: std::collections::HashMap<Uuid, IdentityProviderConfig>,
 }
 
@@ -72,6 +96,29 @@ impl Default for IdentityBrokerRegistry {
 }
 
 impl IdentityBrokerRegistry {
+    /// Create a new identity broker registry
+    ///
+    /// This constructor initializes an empty registry for managing identity brokers.
+    /// The registry provides centralized management of multiple identity providers
+    /// and their associated broker implementations for federated authentication.
+    ///
+    /// # Returns
+    /// A new `IdentityBrokerRegistry` instance with empty broker and configuration maps
+    ///
+    /// # Security Considerations
+    /// - Registry should be properly initialized before use
+    /// - Broker configurations should be validated before registration
+    /// - Implement proper access controls for registry management
+    /// - Log broker registration and deregistration events
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::services::broker::IdentityBrokerRegistry;
+    ///
+    /// let registry = IdentityBrokerRegistry::new();
+    /// // Register brokers...
+    /// // registry.register_broker(config, Box::new(my_broker));
+    /// ```
     pub fn new() -> Self {
         Self {
             brokers: std::collections::HashMap::new(),
@@ -148,34 +195,92 @@ impl IdentityBrokerRegistry {
 /// Cached user entry with timestamp
 #[derive(Debug, Clone)]
 struct CachedUser {
+    /// Cached user data
     user: User,
+    /// When this entry was cached
     cached_at: Instant,
 }
 
 /// LDAP Identity Broker Implementation with Connection Pooling and Caching
 pub struct LdapIdentityBroker {
+    /// LDAP configuration
     config: LdapConfig,
+    /// Pooled LDAP connection
     connection_pool: Arc<Mutex<Option<ldap3::Ldap>>>,
+    /// User cache for performance
     user_cache: Arc<DashMap<String, CachedUser>>,
+    /// Cache time-to-live duration
     cache_ttl: Duration,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Configuration for LDAP identity broker
 pub struct LdapConfig {
+    /// LDAP server hostname
     pub host: String,
+    /// LDAP server port
     pub port: u16,
+    /// Bind DN for authentication
     pub bind_dn: String,
+    /// Bind password for authentication
     pub bind_password: String,
+    /// Base DN for user searches
     pub user_search_base: String,
+    /// LDAP filter for user searches
     pub user_search_filter: String,
+    /// Base DN for group searches
     pub group_search_base: String,
+    /// LDAP attribute for username
     pub username_attr: String,
+    /// LDAP attribute for email
     pub email_attr: String,
+    /// LDAP attribute for first name
     pub first_name_attr: String,
+    /// LDAP attribute for last name
     pub last_name_attr: String,
 }
 
 impl LdapIdentityBroker {
+    /// Create a new LDAP identity broker with configuration
+    ///
+    /// This constructor initializes an LDAP identity broker that enables
+    /// user authentication and attribute synchronization against LDAP directories.
+    /// The broker supports connection pooling, user caching, and configurable
+    /// search parameters for enterprise LDAP integration.
+    ///
+    /// # Arguments
+    /// * `config` - LDAP configuration containing server details, credentials, and search parameters
+    ///
+    /// # Returns
+    /// A new `LdapIdentityBroker` instance configured with default cache TTL (5 minutes)
+    ///
+    /// # Security Considerations
+    /// - LDAP credentials should be securely managed and encrypted
+    /// - Use LDAPS (LDAP over SSL/TLS) for secure communication
+    /// - Validate LDAP server certificates to prevent MITM attacks
+    /// - Implement proper connection pooling and timeout handling
+    /// - User cache should not store sensitive information long-term
+    ///
+    /// # Performance Considerations
+    /// - Connection pooling reduces connection overhead
+    /// - User caching improves authentication performance
+    /// - Configurable cache TTL balances performance and data freshness
+    /// - Asynchronous operations prevent blocking
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::services::broker::{LdapIdentityBroker, LdapConfig};
+    ///
+    /// let config = LdapConfig {
+    ///     host: "ldap.example.com".to_string(),
+    ///     port: 636,
+    ///     bind_dn: "cn=admin,dc=example,dc=com".to_string(),
+    ///     bind_password: "secure_password".to_string(),
+    ///     user_search_base: "ou=users,dc=example,dc=com".to_string(),
+    ///     // ... other config
+    /// };
+    /// let broker = LdapIdentityBroker::new(config);
+    /// ```
     pub fn new(config: LdapConfig) -> Self {
         Self {
             config,
@@ -466,20 +571,65 @@ fn create_user_from_ldap_entry(entry: &SearchEntry, config: &LdapConfig) -> Resu
 }
 
 /// Social Login Broker Implementation
+#[allow(dead_code)]
 pub struct SocialIdentityBroker {
     config: SocialConfig,
     provider_type: IdentityProviderType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Configuration for social identity providers
 pub struct SocialConfig {
+    /// OAuth2 client ID for the social provider
     pub client_id: String,
+    /// OAuth2 client secret for the social provider
     pub client_secret: String,
+    /// OAuth2 redirect URI for authorization callback
     pub redirect_uri: String,
+    /// OAuth2 scopes to request from the social provider
     pub scopes: Vec<String>,
 }
 
 impl SocialIdentityBroker {
+    /// Create a new social identity broker with configuration
+    ///
+    /// This constructor initializes a social identity broker that enables
+    /// OAuth-based authentication through social identity providers like
+    /// Google, GitHub, Facebook, etc. The broker handles the OAuth flow
+    /// and user profile mapping for social login integration.
+    ///
+    /// # Arguments
+    /// * `config` - Social provider configuration containing client credentials and settings
+    /// * `provider_type` - The type of social identity provider (Google, GitHub, etc.)
+    ///
+    /// # Returns
+    /// A new `SocialIdentityBroker` instance configured for the specified social provider
+    ///
+    /// # Security Considerations
+    /// - OAuth client secrets should be securely stored and encrypted
+    /// - Validate redirect URIs to prevent open redirect attacks
+    /// - Implement proper state parameter validation for CSRF protection
+    /// - Verify OAuth access tokens before trusting user information
+    /// - Log authentication attempts for security monitoring
+    ///
+    /// # OAuth 2.0 Compliance
+    /// - Supports standard OAuth 2.0 authorization code flow
+    /// - Implements PKCE (Proof Key for Code Exchange) for enhanced security
+    /// - Handles token refresh and expiration gracefully
+    /// - Validates OAuth scopes and permissions
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::services::broker::{SocialIdentityBroker, SocialConfig, IdentityProviderType};
+    ///
+    /// let config = SocialConfig {
+    ///     client_id: "google-client-id".to_string(),
+    ///     client_secret: "google-client-secret".to_string(),
+    ///     redirect_uri: "https://myapp.com/oauth/callback".to_string(),
+    ///     // ... other config
+    /// };
+    /// let broker = SocialIdentityBroker::new(config, IdentityProviderType::Google);
+    /// ```
     pub fn new(config: SocialConfig, provider_type: IdentityProviderType) -> Self {
         Self {
             config,

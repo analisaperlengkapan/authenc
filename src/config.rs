@@ -22,21 +22,30 @@ pub struct SamlConfig {
     pub certificate: String,
 }
 
+/// UI configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UiConfig {
+    /// Whether the UI is enabled
     pub enabled: bool,
+    /// Optional UI theme
     pub theme: Option<String>,
 }
 
+/// Multi-database configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MultiDbConfig {
+    /// Whether multi-database support is enabled
     pub enabled: bool,
+    /// List of database URLs for multi-database setup
     pub db_urls: Vec<String>,
 }
 
+/// Secreton configuration for external secret management
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretonConfig {
+    /// Secreton service endpoint URL
     pub endpoint: String,
+    /// Authentication token for Secreton service
     pub token: String,
 }
 
@@ -185,19 +194,54 @@ fn default_internal_prefix() -> String {
     "/internal".to_string()
 }
 
+/// Database configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
+    /// Database server hostname or IP address
     pub host: String,
+    /// Database server port
     pub port: u16,
+    /// Database username
     pub username: String,
+    /// Database password
     pub password: String,
+    /// Database name
     pub database: String,
+    /// Maximum number of database connections
     pub max_connections: u32,
+    /// Connection timeout in seconds
     pub connection_timeout: u64,
+    /// Optional audit log database URL
     pub audit_log_url: Option<String>,
+    /// Connection timeout in seconds (alternative field)
     pub connection_timeout_seconds: u64,
 }
 
+/// Security configuration for the authentication platform
+///
+/// This struct contains all security-related configuration parameters for the
+/// authentication platform, including JWT settings, password policies, rate limiting,
+/// and brute force protection. All fields have sensible defaults and can be
+/// configured via environment variables or configuration files.
+///
+/// # Security Considerations
+/// - JWT secrets should be cryptographically secure random values
+/// - Password policies should follow industry best practices
+/// - Rate limiting helps prevent DoS attacks
+/// - Brute force protection prevents credential stuffing attacks
+/// - All timeouts and limits should be tuned for your security requirements
+///
+/// # Example
+/// ```rust
+/// use authenc::config::SecurityConfig;
+///
+/// let config = SecurityConfig {
+///     jwt_secret: "your-secure-jwt-secret".to_string(),
+///     jwt_expiry: 3600, // 1 hour
+///     password_min_length: 12,
+///     ..Default::default()
+/// };
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
     /// Secret key for JWT signing and validation

@@ -2,7 +2,6 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 use once_cell::sync::Lazy;
 use p521::{
     ecdsa::{signature::Signer, signature::Verifier, SigningKey, VerifyingKey},
-    elliptic_curve::sec1::ToEncodedPoint,
 };
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -14,24 +13,42 @@ pub static ECDSA_P521_KEYPAIR: Lazy<SigningKey> = Lazy::new(|| {
     SigningKey::random(&mut OsRng)
 });
 
+/// JSON Web Key Set containing ECDSA P-521 public keys
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EcdsaP521JwkSet {
+    /// Array of JSON Web Keys
     pub keys: Vec<EcdsaP521Jwk>,
 }
 
+/// Individual ECDSA P-521 JSON Web Key
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EcdsaP521Jwk {
+    /// Key type (always "EC" for ECDSA)
     pub kty: String,
+    /// Elliptic curve (always "P-521" for ECDSA P-521)
     pub crv: String,
+    /// Base64URL-encoded x coordinate of the public key
     pub x: String,
+    /// Base64URL-encoded y coordinate of the public key
     pub y: String,
+    /// Key ID for key identification
     pub kid: String,
+    /// Intended use of the key ("sig" for signing)
     #[serde(rename = "use")]
     pub key_use: String,
+    /// Algorithm identifier ("ES512" for ECDSA P-521)
     pub alg: String,
 }
 
 impl EcdsaP521Jwk {
+    /// Creates an ECDSA P-521 JWK from a verifying key and key ID.
+    ///
+    /// # Arguments
+    /// * `verifying_key` - The ECDSA P-521 verifying key to convert
+    /// * `kid` - The key ID to assign to this JWK
+    ///
+    /// # Returns
+    /// A new `EcdsaP521Jwk` instance with the public key coordinates and metadata.
     pub fn from_verifying_key(verifying_key: &VerifyingKey, kid: &str) -> Self {
         let encoded_point = verifying_key.to_encoded_point(false);
 

@@ -1,5 +1,5 @@
 use crate::services::pg_audit_log_store::PgAuditLogStore;
-use crate::services::services::user_store::UserStore;
+use crate::services::stores::user_store::UserStore;
 // Legacy Actix-web handler - needs migration to Axum
 // TODO: Migrate to Axum handlers
 // TODO: Migrate to Axum - temporarily commented out

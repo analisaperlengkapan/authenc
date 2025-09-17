@@ -16,81 +16,147 @@ pub type AuthenceResult<T> = Result<T>; // backward compat
 #[derive(Error, Debug)]
 pub enum AuthencError {
     // Authentication and authorization errors
+    /// Authentication failed due to invalid credentials or session
     #[error("Authentication failed")]
     AuthenticationFailed,
 
+    /// Access denied due to insufficient permissions
     #[error("Access denied: insufficient permissions")]
     AccessDenied,
 
+    /// Invalid credentials provided during authentication
     #[error("Invalid credentials")]
     InvalidCredentials,
 
+    /// JWT token has expired and needs refresh
     #[error("Token expired")]
     TokenExpired,
 
+    /// JWT token is malformed or invalid
     #[error("Invalid token")]
     InvalidToken,
 
+    /// Account locked due to too many failed authentication attempts
     #[error("Account locked due to too many failed attempts")]
     AccountLocked,
 
+    /// Unauthorized access attempt with custom message
     #[error("Unauthorized: {message}")]
-    Unauthorized { message: String },
+    Unauthorized { 
+        /// The custom error message describing the unauthorized access
+        message: String 
+    },
 
+    /// Forbidden operation with custom message
     #[error("Forbidden: {message}")]
-    Forbidden { message: String },
+    Forbidden { 
+        /// The custom error message describing the forbidden operation
+        message: String 
+    },
 
     // Validation errors
+    /// Input validation failed with custom message
     #[error("Invalid input: {message}")]
-    ValidationError { message: String },
+    ValidationError { 
+        /// The custom error message describing the validation failure
+        message: String 
+    },
 
+    /// Required field is missing from input
     #[error("Required field missing: {field}")]
-    MissingField { field: String },
+    MissingField { 
+        /// The name of the missing required field
+        field: String 
+    },
 
+    /// Field has invalid format
     #[error("Invalid format: {field}")]
-    InvalidFormat { field: String },
+    InvalidFormat { 
+        /// The name of the field with invalid format
+        field: String 
+    },
 
     // Resource errors
+    /// User account not found in the system
     #[error("User not found")]
     UserNotFound,
 
+    /// Requested resource does not exist
     #[error("Resource not found: {resource}")]
-    ResourceNotFound { resource: String },
+    ResourceNotFound { 
+        /// The identifier or name of the resource that was not found
+        resource: String 
+    },
 
+    /// Resource already exists and cannot be created again
     #[error("Resource already exists: {resource}")]
-    ResourceExists { resource: String },
+    ResourceExists { 
+        /// The identifier or name of the resource that already exists
+        resource: String 
+    },
 
+    /// Operation not permitted due to resource state conflict
     #[error("Operation not permitted on resource: {resource}")]
-    ResourceConflict { resource: String },
+    ResourceConflict { 
+        /// The identifier or name of the resource with the state conflict
+        resource: String 
+    },
 
     // System errors
+    /// Database operation failed with custom message
     #[error("Database error: {message}")]
-    DatabaseError { message: String },
+    DatabaseError { 
+        /// The detailed error message from the database operation
+        message: String 
+    },
 
+    /// Configuration is invalid or missing
     #[error("Configuration error: {message}")]
-    ConfigurationError { message: String },
+    ConfigurationError { 
+        /// The detailed error message describing the configuration issue
+        message: String 
+    },
 
+    /// External service dependency failed
     #[error("External service error: {service}")]
-    ExternalServiceError { service: String },
+    ExternalServiceError { 
+        /// The name or identifier of the external service that failed
+        service: String 
+    },
 
+    /// Rate limit exceeded for the operation
     #[error("Rate limit exceeded")]
     RateLimitExceeded,
 
+    /// Service is temporarily unavailable
     #[error("Service temporarily unavailable")]
     ServiceUnavailable,
 
     // Internal errors
+    /// Internal server error with custom message
     #[error("Internal server error: {message}")]
-    InternalError { message: String },
+    InternalError { 
+        /// The detailed error message describing the internal server error
+        message: String 
+    },
 
+    /// Data serialization/deserialization failed
+    #[error("Serialization error: {message}")]
+    SerializationError { 
+        /// The detailed error message from the serialization/deserialization operation
+        message: String 
+    },
+
+    /// Cryptographic operation failed
     #[error("Cryptographic operation failed")]
     CryptographicError,
 
-    #[error("Serialization error: {message}")]
-    SerializationError { message: String },
-
+    /// Network communication failed
     #[error("Network error: {message}")]
-    NetworkError { message: String },
+    NetworkError { 
+        /// The detailed error message describing the network communication failure
+        message: String 
+    },
 }
 
 impl AuthencError {
@@ -129,12 +195,48 @@ impl AuthencError {
         }
     }
 
+    /// Create an unauthorized error for authentication failures
+    ///
+    /// This constructor creates an `AuthencError::Unauthorized` variant to indicate
+    /// that the request lacks valid authentication credentials or the provided
+    /// credentials are invalid/expired.
+    ///
+    /// # Arguments
+    /// * `message` - A descriptive message explaining the authentication failure
+    ///
+    /// # Returns
+    /// An `AuthencError::Unauthorized` instance with the provided message
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::error::AuthencError;
+    ///
+    /// let error = AuthencError::unauthorized("Invalid or expired authentication token");
+    /// ```
     pub fn unauthorized<T: Into<String>>(message: T) -> Self {
         Self::Unauthorized {
             message: message.into(),
         }
     }
 
+    /// Create a forbidden error for access denied scenarios
+    ///
+    /// This constructor creates an `AuthencError::Forbidden` variant to indicate
+    /// that the authenticated user does not have sufficient permissions to access
+    /// the requested resource, even though they are authenticated.
+    ///
+    /// # Arguments
+    /// * `message` - A descriptive message explaining why access was denied
+    ///
+    /// # Returns
+    /// An `AuthencError::Forbidden` instance with the provided message
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::error::AuthencError;
+    ///
+    /// let error = AuthencError::forbidden("User lacks required role for this operation");
+    /// ```
     pub fn forbidden<T: Into<String>>(message: T) -> Self {
         Self::Forbidden {
             message: message.into(),

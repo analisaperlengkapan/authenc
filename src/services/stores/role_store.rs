@@ -1,7 +1,9 @@
 use crate::models::role::Role;
 use std::sync::Mutex;
 
+/// In-memory store for managing roles
 pub struct RoleStore {
+    /// Thread-safe storage of roles
     pub roles: Mutex<Vec<Role>>,
 }
 
@@ -12,20 +14,24 @@ impl Default for RoleStore {
 }
 
 impl RoleStore {
+    /// Create new role store
     pub fn new() -> Self {
         Self {
             roles: Mutex::new(vec![]),
         }
     }
 
+    /// Add role to store
     pub fn add_role(&self, role: Role) {
         self.roles.lock().unwrap().push(role);
     }
 
+    /// Get all roles
     pub fn get_all(&self) -> Vec<Role> {
         self.roles.lock().unwrap().clone()
     }
 
+    /// Get roles by realm ID
     pub fn get_by_realm(&self, realm_id: &str) -> Vec<Role> {
         self.roles
             .lock()
@@ -36,6 +42,7 @@ impl RoleStore {
             .collect()
     }
 
+    /// Get role by name
     pub fn get_by_name(&self, name: &str) -> Option<Role> {
         self.roles
             .lock()
@@ -45,6 +52,7 @@ impl RoleStore {
             .cloned()
     }
 
+    /// Delete role by realm and name
     pub fn delete_by_name(&self, realm_id: &str, name: &str) -> bool {
         let mut roles = self.roles.lock().unwrap();
         let len_before = roles.len();

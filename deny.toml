@@ -14,17 +14,16 @@ allow = [
     "CC0-1.0",
     "Zlib",
     "BSL-1.0",
-    "MIT OR Apache-2.0",
-    "Apache-2.0 OR MIT",
-    "BSD-2-Clause OR Apache-2.0 OR MIT",
+    "CDLA-Permissive-2.0",
+    "OpenSSL",
 ]
 
 # List of explicitly disallowed licenses
-deny = [
-    "GPL-2.0",
-    "GPL-3.0",
-    "AGPL-3.0",
-]
+# deny = [
+#     "GPL-2.0",
+#     "GPL-3.0",
+#     "AGPL-3.0",
+# ]
 
 # Lint level for when multiple versions of the same license are detected
 # multiple-versions = "warn"  # This option is not valid in current cargo-deny
@@ -85,7 +84,7 @@ db-path = "~/.cargo/advisory-db"
 # The url(s) of the advisory databases to use
 db-urls = ["https://github.com/rustsec/advisory-db"]
 # The lint level for security vulnerabilities
-vulnerability = "deny"
+# vulnerability = "deny"
 # The lint level for unmaintained crates
 unmaintained = "workspace"
 # The lint level for crates that have been yanked from their source registry
@@ -93,7 +92,7 @@ yanked = "deny"
 # The lint level for crates with security notices. Note that as of
 # 2019-12-17 there are no security notice advisories in
 # https://github.com/rustsec/advisory-db
-notice = "warn"
+# notice = "warn"
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [

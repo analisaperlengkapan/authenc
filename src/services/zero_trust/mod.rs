@@ -7,129 +7,193 @@ use uuid::Uuid;
 /// Zero Trust security levels
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd)]
 pub enum TrustLevel {
+    /// No trust established
     None = 0,
+    /// Low level of trust
     Low = 1,
+    /// Medium level of trust
     Medium = 2,
+    /// High level of trust
     High = 3,
+    /// Maximum level of trust
     Maximum = 4,
 }
 
 /// Device trust information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceTrust {
+    /// Unique identifier for the device
     pub device_id: String,
+    /// Cryptographic fingerprint of the device
     pub device_fingerprint: String,
+    /// Current trust level of the device
     pub trust_level: TrustLevel,
+    /// Timestamp when the device was last seen
     pub last_seen: DateTime<Utc>,
+    /// Timestamp when the device was first seen
     pub first_seen: DateTime<Utc>,
+    /// Detailed information about the device
     pub device_info: DeviceInfo,
+    /// Compliance status of the device
     pub compliance_status: ComplianceStatus,
 }
 
 /// Device information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceInfo {
+    /// User agent string from the device
     pub user_agent: String,
+    /// IP address of the device
     pub ip_address: String,
+    /// Geographic location of the device
     pub location: Option<Location>,
+    /// Operating system of the device
     pub os: String,
+    /// Browser used on the device
     pub browser: String,
+    /// Screen resolution of the device
     pub screen_resolution: Option<String>,
+    /// Timezone of the device
     pub timezone: Option<String>,
 }
 
 /// Location information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Location {
+    /// Country where the device is located
     pub country: String,
+    /// Region/state where the device is located
     pub region: String,
+    /// City where the device is located
     pub city: String,
+    /// Latitude coordinate
     pub latitude: f64,
+    /// Longitude coordinate
     pub longitude: f64,
 }
 
 /// Device compliance status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ComplianceStatus {
+    /// Device is compliant with security policies
     Compliant,
+    /// Device is not compliant with security policies
     NonCompliant,
+    /// Compliance status is unknown
     Unknown,
+    /// Compliance is currently being checked
     Checking,
 }
 
 /// Risk assessment result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskAssessment {
-    pub score: f64, // 0.0 to 1.0, higher = higher risk
+    /// Risk score from 0.0 to 1.0, higher values indicate higher risk
+    pub score: f64,
+    /// Risk level based on the score
     pub level: RiskLevel,
+    /// Factors contributing to the risk assessment
     pub factors: Vec<RiskFactor>,
+    /// Recommendations to mitigate the risk
     pub recommendations: Vec<String>,
+    /// Timestamp when the assessment was performed
     pub assessed_at: DateTime<Utc>,
 }
 
 /// Risk levels
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RiskLevel {
+    /// Low risk level
     Low,
+    /// Medium risk level
     Medium,
+    /// High risk level
     High,
+    /// Critical risk level
     Critical,
 }
 
 /// Risk factors
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskFactor {
+    /// Type of risk factor
     pub factor_type: String,
+    /// Description of the risk factor
     pub description: String,
+    /// Weight of the risk factor in the assessment
     pub weight: f64,
+    /// Severity level of the risk factor
     pub severity: RiskLevel,
 }
 
 /// Authentication context for continuous verification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthContext {
+    /// Session identifier
     pub session_id: String,
+    /// User identifier
     pub user_id: Uuid,
+    /// Device trust information
     pub device_trust: DeviceTrust,
+    /// Risk assessment for the session
     pub risk_assessment: RiskAssessment,
+    /// Timestamp of last activity
     pub last_activity: DateTime<Utc>,
+    /// Adaptive security controls
     pub adaptive_controls: AdaptiveControls,
 }
 
 /// Adaptive security controls
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdaptiveControls {
+    /// Whether MFA is required
     pub require_mfa: bool,
+    /// Whether device verification is required
     pub require_device_verification: bool,
-    pub session_timeout: u64, // seconds
+    /// Session timeout in seconds
+    pub session_timeout: u64,
+    /// Maximum number of concurrent sessions allowed
     pub max_concurrent_sessions: u32,
+    /// List of allowed geographic locations
     pub allowed_locations: Vec<String>,
+    /// List of blocked actions
     pub blocked_actions: Vec<String>,
 }
 
 /// Zero Trust Policy
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZeroTrustPolicy {
+    /// Unique identifier for the policy
     pub id: Uuid,
+    /// Name of the policy
     pub name: String,
+    /// Description of the policy
     pub description: String,
+    /// Conditions that must be met for the policy to apply
     pub conditions: Vec<PolicyCondition>,
+    /// Actions to take when the policy conditions are met
     pub actions: Vec<PolicyAction>,
+    /// Whether the policy is enabled
     pub enabled: bool,
+    /// ID of the realm the policy belongs to
     pub realm_id: Uuid,
 }
 
 /// Policy condition for zero trust
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolicyCondition {
+    /// Type of condition to evaluate
     pub condition_type: String,
+    /// Parameters for the condition evaluation
     pub parameters: HashMap<String, String>,
 }
 
 /// Policy action for zero trust
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolicyAction {
+    /// Type of action to perform
     pub action_type: String,
+    /// Parameters for the action execution
     pub parameters: HashMap<String, String>,
 }
 
@@ -156,20 +220,31 @@ pub trait ContinuousAuthService: Send + Sync {
 /// Suspicious activity report
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SuspiciousActivity {
+    /// Type of suspicious activity detected
     pub activity_type: String,
+    /// ID of the user associated with the activity
     pub user_id: Uuid,
+    /// Session ID where the activity occurred
     pub session_id: String,
+    /// Device ID where the activity occurred
     pub device_id: String,
+    /// Additional details about the activity
     pub details: HashMap<String, String>,
+    /// Timestamp when the activity was detected
     pub timestamp: DateTime<Utc>,
+    /// Risk score associated with the activity
     pub risk_score: f64,
 }
 
 /// Zero Trust Manager - main service
 pub struct ZeroTrustManager {
+    // Internal storage for device trust information
     device_trust_store: HashMap<String, DeviceTrust>,
+    // Risk assessment policies
     risk_policies: Vec<ZeroTrustPolicy>,
+    // Adaptive control policies
     adaptive_policies: Vec<ZeroTrustPolicy>,
+    // Anomaly detector for detecting unusual patterns
     anomaly_detector: Option<Box<dyn crate::services::anomaly_detector::AnomalyDetectorTrait>>,
 }
 
@@ -180,6 +255,37 @@ impl Default for ZeroTrustManager {
 }
 
 impl ZeroTrustManager {
+    /// Create a new zero trust manager with default configuration
+    ///
+    /// This constructor initializes a zero trust manager that enforces
+    /// continuous verification and least privilege access principles.
+    /// The manager starts with empty device trust store, risk policies,
+    /// and adaptive policies, allowing for dynamic configuration.
+    ///
+    /// # Returns
+    /// A new `ZeroTrustManager` instance with default empty state
+    ///
+    /// # Security Considerations
+    /// - Device trust store starts empty - configure trusted devices explicitly
+    /// - Risk policies should be configured based on organizational requirements
+    /// - Adaptive policies enable dynamic security responses to threats
+    /// - Anomaly detector can be optionally configured for enhanced detection
+    ///
+    /// # Zero Trust Principles
+    /// - Never trust, always verify - continuous authentication required
+    /// - Least privilege access - minimal permissions granted by default
+    /// - Assume breach - network segmentation and monitoring always active
+    /// - Micro-segmentation - granular access controls enforced
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::services::zero_trust::ZeroTrustManager;
+    ///
+    /// let mut manager = ZeroTrustManager::new();
+    /// // Configure policies and detectors as needed
+    /// // manager.set_anomaly_detector(detector);
+    /// // manager.add_risk_policy(policy);
+    /// ```
     pub fn new() -> Self {
         Self {
             device_trust_store: HashMap::new(),
@@ -262,7 +368,7 @@ impl ZeroTrustManager {
 
         // Behavioral factor (using anomaly detector if available)
         if let Some(detector) = &self.anomaly_detector {
-            let behavioral_score = self.calculate_behavioral_risk(context, detector).await;
+            let behavioral_score = self.calculate_behavioral_risk(context, detector.as_ref()).await;
             total_score += behavioral_score * 0.25; // 25% weight
             factors.push(RiskFactor {
                 factor_type: "behavioral".to_string(),
@@ -277,7 +383,7 @@ impl ZeroTrustManager {
         }
 
         // Clamp score between 0 and 1
-        total_score.max(0.0).min(1.0)
+        total_score.clamp(0.0, 1.0)
     }
 
     /// Calculate location-based risk
@@ -307,7 +413,7 @@ impl ZeroTrustManager {
     async fn calculate_behavioral_risk(
         &self,
         _context: &AuthContext,
-        _detector: &Box<dyn crate::services::anomaly_detector::AnomalyDetectorTrait>,
+        _detector: &dyn crate::services::anomaly_detector::AnomalyDetectorTrait,
     ) -> f64 {
         // TODO: Integrate with anomaly detector
         // Check for unusual login times, failed attempts, etc.

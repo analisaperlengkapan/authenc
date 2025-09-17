@@ -19,14 +19,18 @@ use crate::error::AuthencError;
 /// Middleware that enforces role-based access control
 #[derive(Clone)]
 pub struct RequireRole<S> {
+    /// The inner service to wrap with RBAC protection
     inner: S,
+    /// The role required to access the protected resource
     required_role: String,
 }
 
 /// RBAC middleware service
 #[derive(Clone)]
 pub struct RbacMiddleware<S> {
+    /// The inner service to wrap with RBAC protection
     inner: S,
+    /// The role required to access the protected resource
     required_role: String,
 }
 
@@ -112,6 +116,32 @@ pub async fn rbac_middleware(
 pub type RbacLayer<S> = RequireRole<S>;
 
 impl<S> RbacMiddleware<S> {
+    /// Create a new RBAC middleware instance with required role
+    ///
+    /// This constructor creates an RBAC (Role-Based Access Control) middleware
+    /// that will validate that incoming requests have the specified required role.
+    /// The middleware will check user authentication and role assignments before
+    /// allowing access to protected routes.
+    ///
+    /// # Arguments
+    /// * `inner` - The inner service that will be wrapped by RBAC protection
+    /// * `required_role` - The role name that users must have to access the route
+    ///
+    /// # Returns
+    /// A new `RbacMiddleware` instance configured with the required role
+    ///
+    /// # Security Considerations
+    /// - Role names should be validated to prevent injection attacks
+    /// - Consider using role hierarchies for more flexible access control
+    /// - Combine with authentication middleware for complete security
+    /// - Log access denials for security monitoring
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::middleware::rbac_axum::RbacMiddleware;
+    ///
+    /// let middleware = RbacMiddleware::new(my_service, "admin".to_string());
+    /// ```
     pub fn new(inner: S, required_role: String) -> Self {
         Self {
             inner,
@@ -172,6 +202,7 @@ where
 /// Layer that applies the RBAC middleware
 #[derive(Clone)]
 pub struct RequireRoleLayer {
+    /// The role required to access the protected resource
     role: String,
 }
 

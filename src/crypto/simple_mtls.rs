@@ -11,8 +11,11 @@ use tracing::{error, info, warn};
 /// Simplified mTLS configuration for basic client certificate validation
 #[derive(Clone, Debug, Default)]
 pub struct SimpleMtlsConfig {
+    /// Whether client certificates are required for authentication
     pub require_client_cert: bool,
+    /// List of allowed client certificate fingerprints (SHA-256)
     pub allowed_client_fingerprints: Vec<String>,
+    /// List of trusted CA certificate fingerprints for validation
     pub trusted_ca_fingerprints: Vec<String>,
 }
 
@@ -39,8 +42,11 @@ impl SimpleMtlsConfig {
 /// Client certificate information
 #[derive(Debug, Clone)]
 pub struct ClientCertInfo {
+    /// SHA-256 fingerprint of the client certificate
     pub fingerprint: String,
+    /// Subject field from the client certificate
     pub subject: Option<String>,
+    /// Issuer field from the client certificate
     pub issuer: Option<String>,
 }
 

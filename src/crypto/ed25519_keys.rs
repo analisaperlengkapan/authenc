@@ -11,23 +11,40 @@ pub static ED25519_KEYPAIR: Lazy<SigningKey> = Lazy::new(|| {
     SigningKey::generate(&mut OsRng)
 });
 
+/// JSON Web Key Set containing Ed25519 public keys
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ed25519JwkSet {
+    /// Array of JSON Web Keys
     pub keys: Vec<Ed25519Jwk>,
 }
 
+/// Individual Ed25519 JSON Web Key
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ed25519Jwk {
+    /// Key type (always "OKP" for Ed25519)
     pub kty: String,
+    /// Elliptic curve (always "Ed25519")
     pub crv: String,
+    /// Base64URL-encoded public key
     pub x: String,
+    /// Key ID for key identification
     pub kid: String,
+    /// Intended use of the key ("sig" for signing)
     #[serde(rename = "use")]
     pub key_use: String,
+    /// Algorithm identifier ("EdDSA" for Ed25519)
     pub alg: String,
 }
 
 impl Ed25519Jwk {
+    /// Creates an Ed25519 JWK from a verifying key and key ID.
+    ///
+    /// # Arguments
+    /// * `verifying_key` - The Ed25519 verifying key to convert
+    /// * `kid` - The key ID to assign to this JWK
+    ///
+    /// # Returns
+    /// A new `Ed25519Jwk` instance with the public key and metadata.
     pub fn from_verifying_key(verifying_key: &VerifyingKey, kid: &str) -> Self {
         let x = Base64UrlUnpadded::encode_string(verifying_key.as_bytes());
 
@@ -43,6 +60,9 @@ impl Ed25519Jwk {
 }
 
 /// Get the Ed25519 public key in JWK format
+///
+/// # Returns
+/// An `Ed25519Jwk` containing the public key from the global keypair
 pub fn get_ed25519_jwk() -> Ed25519Jwk {
     let verifying_key = ED25519_KEYPAIR.verifying_key();
     Ed25519Jwk::from_verifying_key(&verifying_key, "authence-ed25519-key")

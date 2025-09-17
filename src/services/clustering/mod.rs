@@ -8,64 +8,94 @@ use std::time::Duration;
 /// Cluster node status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum NodeStatus {
+    /// Node is up and running
     Up,
+    /// Node is down
     Down,
+    /// Node is starting up
     Starting,
+    /// Node is shutting down
     Stopping,
+    /// Node status is unknown
     Unknown,
 }
 
 /// Cluster node information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClusterNode {
+    /// Unique identifier for the node
     pub node_id: String,
+    /// Network address of the node
     pub address: String,
+    /// Current status of the node
     pub status: NodeStatus,
+    /// Timestamp when the node was last seen
     pub last_seen: chrono::DateTime<chrono::Utc>,
+    /// Additional metadata about the node
     pub metadata: HashMap<String, String>,
 }
 
 /// Cluster topology
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClusterTopology {
+    /// Name of the cluster
     pub cluster_name: String,
+    /// Map of node IDs to cluster nodes
     pub nodes: HashMap<String, ClusterNode>,
+    /// ID of the current leader node
     pub leader: Option<String>,
+    /// Current term number for leader election
     pub term: u64,
+    /// Timestamp when topology was last updated
     pub last_updated: chrono::DateTime<chrono::Utc>,
 }
 
 /// Cluster event types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClusterEventType {
+    /// A new node joined the cluster
     NodeJoined,
+    /// A node left the cluster
     NodeLeft,
+    /// A node failed
     NodeFailed,
+    /// A new leader was elected
     LeaderElected,
+    /// The current leader was lost
     LeaderLost,
+    /// Data synchronization occurred
     DataSync,
 }
 
 /// Cluster event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClusterEvent {
+    /// Type of cluster event
     pub event_type: ClusterEventType,
+    /// ID of the node involved in the event
     pub node_id: String,
+    /// Additional event data
     pub data: HashMap<String, String>,
+    /// Timestamp when the event occurred
     pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 /// Cluster communication interface
 #[async_trait]
 pub trait ClusterCommunication: Send + Sync {
+    /// Send a message to a specific node
     async fn send_message(&self, node_id: &str, message: &[u8]) -> Result<()>;
+    /// Broadcast a message to all nodes in the cluster
     async fn broadcast_message(&self, message: &[u8]) -> Result<()>;
+    /// Receive a message from the cluster
     async fn receive_message(&self) -> Result<(String, Vec<u8>)>;
 }
 
 /// Infinispan-based cluster communication
 pub struct InfinispanClusterCommunication {
-    cache_manager: Option<String>, // Placeholder for Infinispan
+    /// Infinispan cache manager identifier
+    #[allow(dead_code)]
+    cache_manager: Option<String>,
 }
 
 impl Default for InfinispanClusterCommunication {
@@ -75,6 +105,7 @@ impl Default for InfinispanClusterCommunication {
 }
 
 impl InfinispanClusterCommunication {
+    /// Create a new Infinispan cluster communication instance
     pub fn new() -> Self {
         Self {
             cache_manager: None,
@@ -104,10 +135,13 @@ impl ClusterCommunication for InfinispanClusterCommunication {
 
 /// JGroups-based cluster communication
 pub struct JGroupsClusterCommunication {
+    /// Name of the JGroups channel
+    #[allow(dead_code)]
     channel_name: String,
 }
 
 impl JGroupsClusterCommunication {
+    /// Create a new JGroups cluster communication instance
     pub fn new(channel_name: String) -> Self {
         Self { channel_name }
     }
@@ -136,28 +170,40 @@ impl ClusterCommunication for JGroupsClusterCommunication {
 /// Cluster membership service
 #[async_trait]
 pub trait ClusterMembership: Send + Sync {
+    /// Join a node to the cluster
     async fn join_cluster(&self, node: ClusterNode) -> Result<()>;
+    /// Remove a node from the cluster
     async fn leave_cluster(&self, node_id: &str) -> Result<()>;
+    /// Get the current cluster topology
     async fn get_topology(&self) -> Result<ClusterTopology>;
+    /// Check if a node is the current leader
     async fn is_leader(&self, node_id: &str) -> Result<bool>;
+    /// Elect a new leader
     async fn elect_leader(&self) -> Result<String>;
 }
 
 /// Distributed consensus service
 #[async_trait]
 pub trait DistributedConsensus: Send + Sync {
+    /// Propose a value for consensus
     async fn propose(&self, key: &str, value: &[u8]) -> Result<bool>;
+    /// Get the consensus value for a key
     async fn get_consensus_value(&self, key: &str) -> Result<Option<Vec<u8>>>;
+    /// Get the current leader
     async fn get_leader(&self) -> Result<String>;
 }
 
 /// Raft-based consensus
 pub struct RaftConsensus {
+    /// Unique identifier for this node
     node_id: String,
+    /// List of peer node IDs
+    #[allow(dead_code)]
     peers: Vec<String>,
 }
 
 impl RaftConsensus {
+    /// Create a new Raft consensus instance
     pub fn new(node_id: String, peers: Vec<String>) -> Self {
         Self { node_id, peers }
     }
@@ -184,16 +230,25 @@ impl DistributedConsensus for RaftConsensus {
 
 /// Cluster manager - main service
 pub struct ClusterManager {
+    /// Unique identifier for this node
     node_id: String,
+    /// Name of the cluster
+    #[allow(dead_code)]
     cluster_name: String,
+    /// Communication layer for the cluster
     communication: Box<dyn ClusterCommunication>,
+    /// Membership management service
     membership: Box<dyn ClusterMembership>,
+    /// Distributed consensus service
     consensus: Box<dyn DistributedConsensus>,
+    /// Current cluster topology
     topology: ClusterTopology,
+    /// List of event listeners
     event_listeners: Vec<Box<dyn ClusterEventListener>>,
 }
 
 impl ClusterManager {
+    /// Create a new cluster manager
     pub fn new(
         node_id: String,
         cluster_name: String,
@@ -311,16 +366,20 @@ impl ClusterManager {
 /// Cluster event listener trait
 #[async_trait]
 pub trait ClusterEventListener: Send + Sync {
+    /// Handle cluster event
     async fn on_event(&self, event: &ClusterEvent);
 }
 
 /// Session replication service for sticky sessions
 pub struct SessionReplicationService {
+    /// Cluster manager instance
     cluster_manager: Arc<ClusterManager>,
+    /// Local session cache
     session_cache: HashMap<String, Vec<u8>>,
 }
 
 impl SessionReplicationService {
+    /// Create a new session replication service
     pub fn new(cluster_manager: Arc<ClusterManager>) -> Self {
         Self {
             cluster_manager,
@@ -352,11 +411,14 @@ impl SessionReplicationService {
 
 /// Distributed cache service
 pub struct DistributedCacheService {
+    /// Cluster manager instance
     cluster_manager: Arc<ClusterManager>,
+    /// Local cache with expiry times
     cache: HashMap<String, (Vec<u8>, chrono::DateTime<chrono::Utc>)>,
 }
 
 impl DistributedCacheService {
+    /// Create a new distributed cache service
     pub fn new(cluster_manager: Arc<ClusterManager>) -> Self {
         Self {
             cluster_manager,
@@ -410,46 +472,68 @@ impl DistributedCacheService {
 /// Cluster configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClusterConfig {
+    /// Whether clustering is enabled
     pub enabled: bool,
+    /// Name of the cluster
     pub cluster_name: String,
+    /// Unique identifier for this node
     pub node_id: String,
+    /// Type of cluster communication to use
     pub communication_type: ClusterCommunicationType,
+    /// Type of cluster membership management
     pub membership_type: ClusterMembershipType,
+    /// Type of distributed consensus algorithm
     pub consensus_type: ClusterConsensusType,
+    /// Addresses for service discovery
     pub discovery_addresses: Vec<String>,
+    /// Whether session replication is enabled
     pub session_replication_enabled: bool,
+    /// Whether cache replication is enabled
     pub cache_replication_enabled: bool,
 }
 
 /// Cluster communication types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClusterCommunicationType {
+    /// Infinispan-based communication
     Infinispan,
+    /// JGroups-based communication
     JGroups,
+    /// Custom communication implementation
     Custom,
 }
 
 /// Cluster membership types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClusterMembershipType {
+    /// Kubernetes-based membership
     Kubernetes,
+    /// Static membership configuration
     Static,
+    /// Multicast-based discovery
     Multicast,
+    /// Custom membership implementation
     Custom,
 }
 
 /// Cluster consensus types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClusterConsensusType {
+    /// Raft consensus algorithm
     Raft,
+    /// Paxos consensus algorithm
     Paxos,
+    /// Infinispan-based consensus
     Infinispan,
+    /// Custom consensus implementation
     Custom,
 }
 
 /// Multi-cluster federation service
 pub struct MultiClusterFederationService {
+    /// Map of cluster names to cluster managers
     clusters: HashMap<String, Arc<ClusterManager>>,
+    /// Federation rules for cross-cluster communication
     federation_rules: HashMap<String, FederationRule>,
 }
 
@@ -460,6 +544,7 @@ impl Default for MultiClusterFederationService {
 }
 
 impl MultiClusterFederationService {
+    /// Create a new multi-cluster federation service
     pub fn new() -> Self {
         Self {
             clusters: HashMap::new(),
@@ -490,24 +575,34 @@ impl MultiClusterFederationService {
 /// Federation rule
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FederationRule {
+    /// Name of the federation rule
     pub name: String,
+    /// Source cluster for the rule
     pub source_cluster: String,
+    /// Target cluster for the rule
     pub target_cluster: String,
+    /// Conditions that must be met for the rule to apply
     pub conditions: HashMap<String, String>,
+    /// Actions to take when the rule is triggered
     pub actions: Vec<String>,
 }
 
 /// Federation request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FederationRequest {
+    /// Type of federation request
     pub request_type: String,
+    /// Request data payload
     pub data: Vec<u8>,
+    /// Additional metadata for the request
     pub metadata: HashMap<String, String>,
 }
 
 /// Federation response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FederationResponse {
+    /// Response data payload
     pub data: Vec<u8>,
+    /// Source cluster that handled the request
     pub source_cluster: String,
 }

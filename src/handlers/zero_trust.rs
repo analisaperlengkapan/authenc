@@ -18,62 +18,95 @@ use crate::services::zero_trust::{
 };
 
 #[derive(Deserialize)]
+/// Request payload for assessing security risk of a user action
 pub struct AssessRiskRequest {
+    /// Session identifier
     pub session_id: String,
+    /// User identifier
     pub user_id: Uuid,
+    /// Device fingerprint for tracking
     pub device_fingerprint: String,
+    /// User agent string
     pub user_agent: String,
+    /// IP address of the request
     pub ip_address: String,
+    /// Geographic location information
     pub location: Option<crate::services::zero_trust::Location>,
 }
 
 #[derive(Serialize)]
+/// Response payload containing risk assessment results
 pub struct RiskAssessmentResponse {
+    /// Risk score between 0.0 and 1.0
     pub score: f64,
+    /// Risk level classification
     pub level: RiskLevel,
+    /// Factors contributing to the risk score
     pub factors: Vec<String>,
+    /// Recommended actions to mitigate risk
     pub recommendations: Vec<String>,
+    /// Timestamp when assessment was performed
     pub assessed_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Deserialize)]
+/// Request payload for updating adaptive security controls
 pub struct UpdateAdaptiveControlsRequest {
+    /// Session identifier
     pub session_id: String,
+    /// User identifier
     pub user_id: Uuid,
+    /// Adaptive controls to apply
     pub controls: AdaptiveControls,
 }
 
 #[derive(Serialize)]
+/// Response payload containing updated adaptive controls
 pub struct AdaptiveControlsResponse {
+    /// Session identifier
     pub session_id: String,
+    /// User identifier
     pub user_id: Uuid,
+    /// Applied adaptive controls
     pub controls: AdaptiveControls,
+    /// Timestamp when controls were updated
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Deserialize)]
+/// Request payload for verifying session validity
 pub struct VerifySessionRequest {
+    /// Session identifier to verify
     pub session_id: String,
 }
 
 #[derive(Serialize)]
+/// Response payload containing session verification results
 pub struct SessionVerificationResponse {
+    /// Whether the session is valid
     pub valid: bool,
+    /// Current risk score for the session
     pub risk_score: f64,
+    /// Whether additional authentication is required
     pub requires_additional_auth: bool,
+    /// Active adaptive controls for the session
     pub adaptive_controls: AdaptiveControls,
 }
 
 #[derive(Deserialize)]
+/// Query parameters for retrieving risk analytics data
 pub struct GetRiskAnalyticsQuery {
+    /// Filter by realm ID
     pub realm_id: Option<Uuid>,
+    /// Start date for analytics period
     pub from_date: Option<chrono::DateTime<chrono::Utc>>,
+    /// End date for analytics period
     pub to_date: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Assess risk for a user action
 pub async fn assess_risk(
-    State(db): State<Arc<Database>>,
+    State(_db): State<Arc<Database>>,
     Json(request): Json<AssessRiskRequest>,
 ) -> Result<Json<RiskAssessmentResponse>, StatusCode> {
     // Create device trust info
@@ -117,7 +150,7 @@ pub async fn assess_risk(
     };
 
     // Create auth context
-    let context = AuthContext {
+    let _context = AuthContext {
         session_id: request.session_id.clone(),
         user_id: request.user_id,
         device_trust,
@@ -133,7 +166,7 @@ pub async fn assess_risk(
             Ok(false) // Simplified implementation
         }
     }
-    let detector = SimpleAnomalyDetector;
+    let _detector = SimpleAnomalyDetector;
 
     // Mock response - in real implementation would use actual service
     let response = RiskAssessmentResponse {
@@ -148,7 +181,7 @@ pub async fn assess_risk(
 
 /// Update adaptive controls for a user
 pub async fn update_adaptive_controls(
-    State(db): State<Arc<Database>>,
+    State(_db): State<Arc<Database>>,
     Json(request): Json<UpdateAdaptiveControlsRequest>,
 ) -> Result<Json<AdaptiveControlsResponse>, StatusCode> {
     // Mock response - in real implementation would update via service
@@ -163,8 +196,8 @@ pub async fn update_adaptive_controls(
 
 /// Verify session security
 pub async fn verify_session(
-    State(db): State<Arc<Database>>,
-    Json(request): Json<VerifySessionRequest>,
+    State(_db): State<Arc<Database>>,
+    Json(_request): Json<VerifySessionRequest>,
 ) -> Result<Json<SessionVerificationResponse>, StatusCode> {
     // Mock response - in real implementation would verify via service
     let response = SessionVerificationResponse {
@@ -185,7 +218,7 @@ pub async fn verify_session(
 
 /// Get risk analytics
 pub async fn get_risk_analytics(
-    State(db): State<Arc<Database>>,
+    State(_db): State<Arc<Database>>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Mock response - in real implementation would fetch from service
@@ -200,7 +233,7 @@ pub async fn get_risk_analytics(
 
 /// Get security dashboard data
 pub async fn get_security_dashboard(
-    State(db): State<Arc<Database>>,
+    State(_db): State<Arc<Database>>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Mock response - in real implementation would fetch from service

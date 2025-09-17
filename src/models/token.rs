@@ -5,57 +5,89 @@ use uuid::Uuid;
 /// Authentication token types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TokenType {
+    /// Access token for API authorization
     AccessToken,
+    /// Refresh token for obtaining new access tokens
     RefreshToken,
+    /// ID token containing user identity information
     IdToken,
+    /// Token for email verification
     VerificationToken,
+    /// Token for password reset
     PasswordResetToken,
 }
 
 /// Generic token structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Token {
+    /// Unique identifier for the token
     pub id: Uuid,
+    /// Type of the token
     pub token_type: TokenType,
+    /// Actual token value (hashed or encrypted)
     pub value: String,
+    /// ID of the user this token belongs to
     pub user_id: Option<Uuid>,
+    /// ID of the client this token is issued to
     pub client_id: Option<String>,
+    /// OAuth2 scope of the token
     pub scope: Option<String>,
+    /// Timestamp when the token expires
     pub expires_at: DateTime<Utc>,
+    /// Timestamp when the token was created
     pub created_at: DateTime<Utc>,
+    /// Whether the token has been revoked
     pub revoked: bool,
+    /// Whether the token has been used (for one-time tokens)
     pub used: bool,
 }
 
 /// Token creation request
 #[derive(Debug, Deserialize)]
 pub struct CreateTokenRequest {
+    /// Type of token to create
     pub token_type: TokenType,
+    /// ID of the user for whom the token is created
     pub user_id: Option<Uuid>,
+    /// ID of the client for whom the token is created
     pub client_id: Option<String>,
+    /// OAuth2 scope for the token
     pub scope: Option<String>,
-    pub expires_in: i64, // seconds
+    /// Token lifetime in seconds
+    pub expires_in: i64,
 }
 
 /// Token response (safe for client)
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
+    /// Access token value
     pub access_token: String,
+    /// Type of the token (usually "Bearer")
     pub token_type: String,
+    /// Token lifetime in seconds
     pub expires_in: i64,
+    /// Refresh token value (if issued)
     pub refresh_token: Option<String>,
+    /// OAuth2 scope of the token
     pub scope: Option<String>,
 }
 
 /// JWT token claims
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JwtClaims {
-    pub sub: String, // subject (user_id)
-    pub aud: String, // audience (client_id)
-    pub iss: String, // issuer
-    pub exp: i64,    // expiration time
-    pub iat: i64,    // issued at
-    pub jti: String, // JWT ID
+    /// Subject identifier (user ID)
+    pub sub: String,
+    /// Audience (client ID)
+    pub aud: String,
+    /// Issuer of the token
+    pub iss: String,
+    /// Expiration timestamp
+    pub exp: i64,
+    /// Issued at timestamp
+    pub iat: i64,
+    /// JWT unique identifier
+    pub jti: String,
+    /// OAuth2 scope
     pub scope: Option<String>,
 }
 

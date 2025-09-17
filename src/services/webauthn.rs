@@ -17,14 +17,19 @@ pub struct WebAuthnService {
     relying_party_name: String,
 }
 
+/// WebAuthn registration request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebAuthnRegistrationRequest {
+    /// Username for the WebAuthn credential
     pub username: String,
+    /// Display name for the user
     pub display_name: String,
 }
 
+/// WebAuthn authentication request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebAuthnAuthenticationRequest {
+    /// Username to authenticate
     pub username: String,
 }
 
@@ -51,7 +56,7 @@ impl WebAuthnService {
                 challenge
             });
 
-        let challenge_b64 = Base64UrlUnpadded::encode_string(&challenge_bytes);
+        let _challenge_b64 = Base64UrlUnpadded::encode_string(&challenge_bytes);
 
         // Create user ID
         let user_id = Uuid::new_v4().as_bytes().to_vec();
@@ -190,7 +195,7 @@ impl WebAuthnService {
                 challenge
             });
 
-        let challenge_b64 = Base64UrlUnpadded::encode_string(&challenge_bytes);
+        let _challenge_b64 = Base64UrlUnpadded::encode_string(&challenge_bytes);
 
         let allow_credentials: Vec<PublicKeyCredentialDescriptor> = credentials
             .iter()
@@ -259,7 +264,7 @@ impl WebAuthnService {
         }
 
         // Get credential
-        let credential = self
+        let _credential = self
             .get_credential(username, &response.id)
             .await?
             .ok_or_else(|| AuthencError::unauthorized("Credential not found"))?;
@@ -286,11 +291,12 @@ impl WebAuthnService {
     }
 
     // Database operations
-    async fn store_challenge(&self, username: &str, challenge: &[u8]) -> Result<()> {
+    /// Store WebAuthn challenge for user
+    async fn store_challenge(&self, username: &str, _challenge: &[u8]) -> Result<()> {
         use crate::database::operations::users;
 
         // Get user ID from username
-        let user = users::get_user_by_username(&self.db, username)
+        let _user = users::get_user_by_username(&self.db, username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
@@ -299,16 +305,19 @@ impl WebAuthnService {
         unimplemented!("Challenge storage in database not yet implemented")
     }
 
-    async fn get_challenge(&self, username: &str) -> Result<Option<Vec<u8>>> {
+    /// Get stored WebAuthn challenge for user
+    async fn get_challenge(&self, _username: &str) -> Result<Option<Vec<u8>>> {
         // TODO: Implement challenge retrieval from database
         unimplemented!("Challenge retrieval from database not yet implemented")
     }
 
-    async fn delete_challenge(&self, username: &str) -> Result<()> {
+    /// Delete stored WebAuthn challenge for user
+    async fn delete_challenge(&self, _username: &str) -> Result<()> {
         // TODO: Implement challenge deletion from database
         unimplemented!("Challenge deletion from database not yet implemented")
     }
 
+    /// Store WebAuthn credential for user
     async fn store_credential(
         &self,
         username: &str,
@@ -346,6 +355,7 @@ impl WebAuthnService {
         Ok(())
     }
 
+    /// Get all WebAuthn credentials for user
     async fn get_user_credentials(&self, username: &str) -> Result<Vec<WebauthnCredential>> {
         use crate::database::operations::users;
         use crate::database::operations::webauthn as webauthn_db;
@@ -383,9 +393,10 @@ impl WebAuthnService {
         Ok(service_credentials)
     }
 
+    /// Get specific WebAuthn credential
     async fn get_credential(
         &self,
-        username: &str,
+        _username: &str,
         credential_id: &str,
     ) -> Result<Option<WebauthnCredential>> {
         use crate::database::operations::webauthn as webauthn_db;
@@ -412,9 +423,10 @@ impl WebAuthnService {
         }))
     }
 
+    /// Update WebAuthn credential signature count
     async fn update_credential_sign_count(
         &self,
-        username: &str,
+        _username: &str,
         credential_id: &str,
         sign_count: u32,
     ) -> Result<()> {
@@ -424,6 +436,7 @@ impl WebAuthnService {
         Ok(())
     }
 
+    /// Verify WebAuthn origin
     fn verify_origin(&self, origin: &str) -> bool {
         // In production, verify against allowed origins
         origin.starts_with("https://") || origin.starts_with("http://localhost")

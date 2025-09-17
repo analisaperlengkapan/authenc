@@ -1,4 +1,4 @@
-use deadpool_postgres::{Config, Pool, Runtime};
+use deadpool_postgres::{Pool, Runtime};
 use tokio_postgres::NoTls;
 use tracing::{error, info};
 
@@ -16,18 +16,17 @@ pub struct Database {
 impl Database {
     /// Create new database connection pool
     pub async fn new(config: &DatabaseConfig) -> Result<Self> {
-        let cfg = Config {
-            user: Some(config.username.clone()),
-            password: Some(config.password.clone()),
+        let cfg = deadpool_postgres::Config {
             host: Some(config.host.clone()),
             port: Some(config.port),
+            user: Some(config.username.clone()),
+            password: Some(config.password.clone()),
             dbname: Some(config.database.clone()),
             pool: Some(deadpool_postgres::PoolConfig {
                 max_size: config.max_connections as usize,
                 timeouts: deadpool_postgres::Timeouts::wait_millis(
                     config.connection_timeout * 1000,
-                ),
-                ..Default::default()
+                )
             }),
             ..Default::default()
         };
@@ -197,7 +196,19 @@ impl Database {
     }
 }
 
+/// Database migration utilities and schema management
+///
+/// This module contains database migration scripts and utilities for managing
+/// schema changes, version control, and database upgrades. Migrations ensure
+/// that the database schema remains consistent across different deployments
+/// and versions of the authentication platform.
 pub mod migrations;
+
+/// Database operation utilities and transaction management
+///
+/// This module provides high-level database operations and transaction management
+/// utilities for common database tasks. It includes connection pooling, query
+/// execution, and error handling for database operations.
 pub mod operations;
 /// Database module exports
 pub mod queries;

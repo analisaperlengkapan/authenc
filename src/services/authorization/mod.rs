@@ -6,85 +6,125 @@ use uuid::Uuid;
 /// Authorization decision
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Decision {
+    /// Access is permitted
     Permit,
+    /// Access is denied
     Deny,
+    /// Decision is undecided
     Undecided,
 }
 
 /// Authorization request context
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthorizationContext {
+    /// Subject requesting access
     pub subject: AuthorizationSubject,
+    /// Resource being accessed
     pub resource: AuthorizationResource,
+    /// Action being performed
     pub action: String,
+    /// Environment context
     pub environment: HashMap<String, String>,
 }
 
 /// Authorization subject (user/role)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthorizationSubject {
+    /// Unique identifier for the subject
     pub id: String,
+    /// Username of the subject
     pub username: String,
+    /// Roles assigned to the subject
     pub roles: Vec<String>,
+    /// Groups the subject belongs to
     pub groups: Vec<String>,
+    /// Additional attributes of the subject
     pub attributes: HashMap<String, String>,
 }
 
 /// Authorization resource
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthorizationResource {
+    /// Unique identifier for the resource
     pub id: String,
+    /// Name of the resource
     pub name: String,
+    /// Type of the resource
     pub resource_type: String,
+    /// Owner of the resource
     pub owner: String,
+    /// Additional attributes of the resource
     pub attributes: HashMap<String, String>,
 }
 
 /// Authorization policy
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Policy {
+    /// Unique identifier for the policy
     pub id: Uuid,
+    /// Name of the policy
     pub name: String,
+    /// Description of the policy
     pub description: String,
+    /// Type of the policy
     pub policy_type: PolicyType,
+    /// Logic type for policy evaluation
     pub logic: LogicType,
+    /// Configuration for the policy
     pub config: PolicyConfig,
+    /// Whether the policy is enabled
     pub enabled: bool,
+    /// ID of the realm the policy belongs to
     pub realm_id: Uuid,
 }
 
 /// Policy types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PolicyType {
+    /// Role-based access control policy
     RoleBased,
+    /// Attribute-based access control policy
     AttributeBased,
+    /// Time-based access control policy
     TimeBased,
+    /// Location-based access control policy
     LocationBased,
+    /// Risk-based access control policy
     RiskBased,
+    /// Custom policy type
     Custom,
 }
 
 /// Logic types for combining policies
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LogicType {
+    /// Positive logic (permit unless denied)
     Positive,
+    /// Negative logic (deny unless permitted)
     Negative,
+    /// Consensus logic (majority decision)
     Consensus,
+    /// Affirmative logic (any permit allows)
     Affirmative,
 }
 
 /// Policy configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolicyConfig {
+    /// Roles required by the policy
     pub roles: Vec<String>,
+    /// Attributes required by the policy
     pub attributes: HashMap<String, String>,
+    /// Conditions that must be met
     pub conditions: Vec<PolicyCondition>,
 }
 
 /// Policy condition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolicyCondition {
+    /// Type of condition to evaluate
     pub condition_type: String,
+    /// Configuration for the condition
     pub config: HashMap<String, String>,
 }
 
@@ -110,52 +150,91 @@ pub trait AuthorizationService: Send + Sync {
 /// Resource server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceServer {
+    /// Unique identifier for the resource server
     pub id: Uuid,
+    /// Name of the resource server
     pub name: String,
+    /// Client ID associated with the resource server
     pub client_id: String,
+    /// ID of the realm the resource server belongs to
     pub realm_id: Uuid,
+    /// Resources managed by this server
     pub resources: Vec<Resource>,
-    pub policies: Vec<Uuid>, // Policy IDs
+    /// Policy IDs associated with this server
+    pub policies: Vec<Uuid>,
 }
 
 /// Resource definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Resource {
+    /// Unique identifier for the resource
     pub id: Uuid,
+    /// Name of the resource
     pub name: String,
+    /// Display name of the resource
     pub display_name: String,
+    /// Type of the resource
     pub resource_type: String,
+    /// Owner of the resource
     pub owner: String,
+    /// Scopes associated with the resource
     pub scopes: Vec<String>,
+    /// Additional attributes of the resource
     pub attributes: HashMap<String, String>,
 }
 
 /// Permission definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Permission {
+    /// Unique identifier for the permission
     pub id: Uuid,
+    /// Name of the permission
     pub name: String,
+    /// Description of the permission
     pub description: String,
+    /// ID of the resource this permission applies to
     pub resource_id: Uuid,
+    /// Scopes required for this permission
     pub scopes: Vec<String>,
+    /// Policy IDs that define this permission
     pub policies: Vec<Uuid>,
 }
 
 /// Scope definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scope {
+    /// Unique identifier for the scope
     pub id: Uuid,
+    /// Name of the scope
     pub name: String,
+    /// Display name of the scope
     pub display_name: String,
+    /// URI to the scope's icon
     pub icon_uri: Option<String>,
 }
 
 /// Authorization Manager - main service
 pub struct AuthorizationManager {
+    /// Internal storage for policies
     policies: HashMap<Uuid, Policy>,
+    /// Internal storage for resource servers
     resource_servers: HashMap<Uuid, ResourceServer>,
+    /// Internal storage for permissions
     permissions: HashMap<Uuid, Permission>,
+    /// Internal storage for scopes
     scopes: HashMap<Uuid, Scope>,
+}
+
+impl AuthorizationManager {
+    /// Create new authorization manager
+    pub fn new() -> Self {
+        Self {
+            policies: HashMap::new(),
+            resource_servers: HashMap::new(),
+            permissions: HashMap::new(),
+            scopes: HashMap::new(),
+        }
+    }
 }
 
 impl Default for AuthorizationManager {
@@ -165,17 +244,8 @@ impl Default for AuthorizationManager {
 }
 
 impl AuthorizationManager {
-    pub fn new() -> Self {
-        Self {
-            policies: HashMap::new(),
-            resource_servers: HashMap::new(),
-            permissions: HashMap::new(),
-            scopes: HashMap::new(),
-        }
-    }
-
-    /// Register resource server
-    pub fn register_resource_server(&mut self, server: ResourceServer) {
+    /// Add resource server
+    pub fn add_resource_server(&mut self, server: ResourceServer) {
         self.resource_servers.insert(server.id, server);
     }
 
@@ -192,6 +262,11 @@ impl AuthorizationManager {
     /// Add scope
     pub fn add_scope(&mut self, scope: Scope) {
         self.scopes.insert(scope.id, scope);
+    }
+
+    /// Register resource server
+    pub fn register_resource_server(&mut self, server: ResourceServer) {
+        self.resource_servers.insert(server.id, server);
     }
 
     /// Evaluate access based on policies
@@ -329,7 +404,6 @@ impl AuthorizationManager {
                 return Decision::Permit;
             }
         }
-
         Decision::Deny
     }
 }

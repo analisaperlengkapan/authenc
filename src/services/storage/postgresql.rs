@@ -21,6 +21,7 @@ use crate::services::storage::{StorageConfig, StorageProvider, StorageTransactio
 
 /// PostgreSQL Storage Provider
 pub struct PostgreSQLStorageProvider {
+    /// Database connection pool
     pool: Pool,
 }
 
@@ -213,12 +214,16 @@ impl StorageProvider for PostgreSQLStorageProvider {
 
 /// PostgreSQL Transaction
 pub struct PostgreSQLTransaction {
+    /// Database connection for this transaction
     conn: deadpool_postgres::Object,
+    /// Whether transaction has been committed
     committed: bool,
+    /// Whether transaction has been rolled back
     rolled_back: bool,
 }
 
 impl PostgreSQLTransaction {
+    /// Create new PostgreSQL transaction
     pub fn new(conn: deadpool_postgres::Object) -> Self {
         Self {
             conn,
@@ -261,14 +266,17 @@ impl StorageTransaction for PostgreSQLTransaction {
 
 /// PostgreSQL User Repository
 pub struct PostgreSQLUserRepository {
+    /// Reference to storage provider
     provider: std::sync::Arc<PostgreSQLStorageProvider>,
 }
 
 impl PostgreSQLUserRepository {
+    /// Create new PostgreSQL user repository
     pub fn new(provider: std::sync::Arc<PostgreSQLStorageProvider>) -> Self {
         Self { provider }
     }
 
+    /// Convert database row to User model
     fn row_to_user(&self, row: &Row) -> Result<crate::models::user::User, AuthError> {
         Ok(crate::models::user::User {
             id: row.get("id"),

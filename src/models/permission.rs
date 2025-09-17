@@ -5,46 +5,72 @@ use uuid::Uuid;
 /// Permission entity for fine-grained access control
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Permission {
+    /// Unique identifier for the permission
     pub id: Uuid,
+    /// Name of the permission
     pub name: String,
+    /// Resource this permission applies to
     pub resource: String,
+    /// Action allowed on the resource (read, write, delete, etc.)
     pub action: String,
+    /// Description of what this permission allows
     pub description: Option<String>,
+    /// ID of the realm this permission belongs to
     pub realm_id: Uuid,
+    /// Timestamp when the permission was created
     pub created_at: DateTime<Utc>,
+    /// Timestamp when the permission was last updated
     pub updated_at: DateTime<Utc>,
+    /// Timestamp when the permission was soft deleted
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
 /// Permission creation request
 #[derive(Debug, Deserialize)]
 pub struct CreatePermissionRequest {
+    /// Name of the permission to create
     pub name: String,
+    /// Resource this permission applies to
     pub resource: String,
+    /// Action allowed on the resource
     pub action: String,
+    /// Description of what this permission allows
     pub description: Option<String>,
+    /// ID of the realm this permission belongs to
     pub realm_id: Uuid,
 }
 
 /// Permission update request
 #[derive(Debug, Deserialize)]
 pub struct UpdatePermissionRequest {
+    /// New name for the permission
     pub name: Option<String>,
+    /// New resource for the permission
     pub resource: Option<String>,
+    /// New action for the permission
     pub action: Option<String>,
+    /// New description for the permission
     pub description: Option<String>,
 }
 
 /// Permission response
 #[derive(Debug, Serialize)]
 pub struct PermissionResponse {
+    /// Unique identifier for the permission
     pub id: Uuid,
+    /// Name of the permission
     pub name: String,
+    /// Resource this permission applies to
     pub resource: String,
+    /// Action allowed on the resource
     pub action: String,
+    /// Description of what this permission allows
     pub description: Option<String>,
+    /// ID of the realm this permission belongs to
     pub realm_id: Uuid,
+    /// Timestamp when the permission was created
     pub created_at: DateTime<Utc>,
+    /// Timestamp when the permission was last updated
     pub updated_at: DateTime<Utc>,
 }
 

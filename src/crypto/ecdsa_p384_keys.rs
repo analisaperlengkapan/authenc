@@ -15,24 +15,42 @@ pub static ECDSA_P384_KEYPAIR: Lazy<SigningKey> = Lazy::new(|| {
     SigningKey::random(&mut OsRng)
 });
 
+/// JSON Web Key Set containing ECDSA P-384 public keys
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EcdsaP384JwkSet {
+    /// Array of JSON Web Keys
     pub keys: Vec<EcdsaP384Jwk>,
 }
 
+/// Individual ECDSA P-384 JSON Web Key
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EcdsaP384Jwk {
+    /// Key type (always "EC" for ECDSA)
     pub kty: String,
+    /// Elliptic curve (always "P-384" for ECDSA P-384)
     pub crv: String,
+    /// Base64URL-encoded x coordinate of the public key
     pub x: String,
+    /// Base64URL-encoded y coordinate of the public key
     pub y: String,
+    /// Key ID for key identification
     pub kid: String,
+    /// Intended use of the key ("sig" for signing)
     #[serde(rename = "use")]
     pub key_use: String,
+    /// Algorithm identifier ("ES384" for ECDSA P-384)
     pub alg: String,
 }
 
 impl EcdsaP384Jwk {
+    /// Creates an ECDSA P-384 JWK from a verifying key and key ID.
+    ///
+    /// # Arguments
+    /// * `verifying_key` - The ECDSA P-384 verifying key to convert
+    /// * `kid` - The key ID to assign to this JWK
+    ///
+    /// # Returns
+    /// A new `EcdsaP384Jwk` instance with the public key coordinates and metadata.
     pub fn from_verifying_key(verifying_key: &VerifyingKey, kid: &str) -> Self {
         let public_key = PublicKey::from(verifying_key);
         let encoded_point = public_key.to_encoded_point(false);

@@ -1,9 +1,16 @@
+/// Password policy configuration and validation
 pub struct PasswordPolicy {
+    /// Minimum password length required
     pub min_length: usize,
+    /// Whether uppercase letters are required
     pub require_uppercase: bool,
+    /// Whether lowercase letters are required
     pub require_lowercase: bool,
+    /// Whether digits are required
     pub require_digit: bool,
+    /// Whether special characters are required
     pub require_special: bool,
+    /// List of blacklisted/common passwords
     pub blacklist: Vec<String>,
 }
 
@@ -21,6 +28,7 @@ impl Default for PasswordPolicy {
 }
 
 impl PasswordPolicy {
+    /// Validate password against policy requirements
     pub fn validate(&self, password: &str) -> Result<(), String> {
         if password.len() < self.min_length {
             return Err(format!(

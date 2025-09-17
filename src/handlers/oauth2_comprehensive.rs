@@ -19,142 +19,225 @@ use uuid::Uuid;
 /// JWT Header for Ed25519 signing
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ed25519JwtHeader {
+    /// The algorithm used for signing (EdDSA)
     pub alg: String,
+    /// The type of JWT (usually "JWT")
     pub typ: String,
+    /// The key ID for the signing key
     pub kid: String,
 }
 
 /// OIDC ID Token Claims
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OidcIdTokenClaims {
+    /// The issuer of the token
     pub iss: String,
+    /// The subject (user) identifier
     pub sub: String,
+    /// The audience (client) identifier
     pub aud: String,
+    /// The expiration time
     pub exp: i64,
+    /// The issued at time
     pub iat: i64,
+    /// The user's email address
     pub email: Option<String>,
+    /// The user's full name
     pub name: Option<String>,
+    /// The user's role
     pub role: Option<String>,
 }
 
 /// Comprehensive OAuth2 Authorization Request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OAuth2AuthorizeRequest {
+    /// The response type requested (code, token, id_token)
     pub response_type: String,
+    /// The client identifier
     pub client_id: String,
+    /// The redirect URI for the response
     pub redirect_uri: Option<String>,
+    /// The requested scope
     pub scope: Option<String>,
+    /// The state parameter for CSRF protection
     pub state: Option<String>,
+    /// The code challenge for PKCE
     pub code_challenge: Option<String>,
+    /// The code challenge method for PKCE
     pub code_challenge_method: Option<String>,
+    /// The nonce for replay attack protection
     pub nonce: Option<String>,
+    /// The prompt parameter (none, login, consent, select_account)
     pub prompt: Option<String>,
+    /// The maximum authentication age in seconds
     pub max_age: Option<i64>,
 }
 
 /// OAuth2 Token Request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OAuth2TokenRequest {
+    /// The grant type (authorization_code, refresh_token, password, client_credentials)
     pub grant_type: String,
+    /// The authorization code (for authorization_code grant)
     pub code: Option<String>,
+    /// The redirect URI (for authorization_code grant)
     pub redirect_uri: Option<String>,
+    /// The client identifier
     pub client_id: Option<String>,
+    /// The client secret
     pub client_secret: Option<String>,
+    /// The code verifier for PKCE
     pub code_verifier: Option<String>,
+    /// The refresh token (for refresh_token grant)
     pub refresh_token: Option<String>,
+    /// The requested scope
     pub scope: Option<String>,
+    /// The username (for password grant)
     pub username: Option<String>,
+    /// The password (for password grant)
     pub password: Option<String>,
 }
 
 /// OAuth2 Token Response
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OAuth2TokenResponse {
+    /// The access token
     pub access_token: String,
+    /// The token type (usually "Bearer")
     pub token_type: String,
+    /// The expiration time in seconds
     pub expires_in: i64,
+    /// The refresh token
     pub refresh_token: Option<String>,
+    /// The granted scope
     pub scope: Option<String>,
+    /// The ID token (for OpenID Connect)
     pub id_token: Option<String>,
 }
 
 /// OAuth2 Token Introspection Request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OAuth2IntrospectRequest {
+    /// The token to introspect
     pub token: String,
+    /// The expected token type hint
     pub token_type_hint: Option<String>,
 }
 
 /// OAuth2 Token Introspection Response
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OAuth2IntrospectResponse {
+    /// Whether the token is active
     pub active: bool,
+    /// The client identifier
     pub client_id: Option<String>,
+    /// The subject identifier
     pub subject: Option<String>,
+    /// The token scope
     pub scope: Option<String>,
+    /// The token type
     pub token_type: Option<String>,
+    /// The expiration time
     pub exp: Option<i64>,
+    /// The issued at time
     pub iat: Option<i64>,
+    /// The not before time
     pub nbf: Option<i64>,
+    /// The subject identifier (duplicate of subject)
     pub sub: Option<String>,
+    /// The audience
     pub aud: Option<String>,
+    /// The issuer
     pub iss: Option<String>,
+    /// The JWT ID for uniqueness
     pub jti: Option<String>,
 }
 
 /// OAuth2 Token Revocation Request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OAuth2RevokeRequest {
+    /// The token to revoke
     pub token: String,
+    /// The expected token type hint
     pub token_type_hint: Option<String>,
 }
 
 /// Authorization Code Store Entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthCodeEntry {
+    /// The authorization code
     pub code: String,
+    /// The client identifier
     pub client_id: String,
+    /// The redirect URI
     pub redirect_uri: Option<String>,
+    /// The user identifier
     pub user_id: String,
+    /// The granted scope
     pub scope: Option<String>,
+    /// The code challenge for PKCE
     pub code_challenge: Option<String>,
+    /// The code challenge method for PKCE
     pub code_challenge_method: Option<String>,
+    /// The nonce for replay attack protection
     pub nonce: Option<String>,
+    /// The expiration timestamp
     pub expires_at: i64,
+    /// Whether the code has been used
     pub used: bool,
 }
 
 /// Refresh Token Store Entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefreshTokenEntry {
+    /// The refresh token
     pub token: String,
+    /// The client identifier
     pub client_id: String,
+    /// The user identifier
     pub user_id: String,
+    /// The granted scope
     pub scope: Option<String>,
+    /// The expiration timestamp
     pub expires_at: i64,
+    /// Whether the token has been revoked
     pub revoked: bool,
 }
 
 /// Access Token Claims for JWT
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AccessTokenClaims {
+    /// The issuer of the token
     pub iss: String,
+    /// The subject (user) identifier
     pub sub: String,
+    /// The audience (client) identifier
     pub aud: String,
+    /// The client identifier
     pub client_id: String,
+    /// The expiration time
     pub exp: i64,
+    /// The issued at time
     pub iat: i64,
+    /// The not before time
     pub nbf: i64,
+    /// The JWT ID for uniqueness
     pub jti: String,
+    /// The granted scope
     pub scope: Option<String>,
+    /// The user's roles
     pub roles: Option<Vec<String>>,
+    /// The user's groups
     pub groups: Option<Vec<String>>,
 }
 
 /// In-memory stores (in production, use Redis or database)
 pub struct OAuth2Stores {
+    /// Storage for authorization codes
     pub auth_codes: Arc<tokio::sync::RwLock<HashMap<String, AuthCodeEntry>>>,
+    /// Storage for refresh tokens
     pub refresh_tokens: Arc<tokio::sync::RwLock<HashMap<String, RefreshTokenEntry>>>,
+    /// Storage for access token claims
     pub access_tokens: Arc<tokio::sync::RwLock<HashMap<String, AccessTokenClaims>>>,
 }
 
@@ -165,6 +248,7 @@ impl Default for OAuth2Stores {
 }
 
 impl OAuth2Stores {
+    /// Create new OAuth2 stores
     pub fn new() -> Self {
         Self {
             auth_codes: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
@@ -177,11 +261,21 @@ impl OAuth2Stores {
 /// Combined state for OAuth2 handlers
 #[derive(Clone)]
 pub struct OAuth2AppState {
+    /// The database connection
     pub database: Arc<crate::database::Database>,
+    /// The OAuth2 in-memory stores
     pub oauth2_stores: Arc<OAuth2Stores>,
 }
 
 /// Generate PKCE code challenge
+///
+/// # Arguments
+/// * `code_verifier` - The code verifier string
+/// * `method` - The code challenge method (S256)
+///
+/// # Returns
+/// * `Ok(String)` containing the code challenge
+/// * `Err(AuthencError)` if the method is unsupported
 pub fn generate_code_challenge(code_verifier: &str, method: &str) -> Result<String, AuthencError> {
     match method {
         "S256" => {

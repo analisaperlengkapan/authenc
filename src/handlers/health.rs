@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::database::Database;
 
 /// Health check endpoint for Axum
+#[allow(dead_code)]
 pub async fn health() -> Json<Value> {
     Json(json!({
         "status": "healthy",
@@ -14,6 +15,7 @@ pub async fn health() -> Json<Value> {
 }
 
 /// Readiness check endpoint with database connectivity for Axum
+#[allow(dead_code)]
 pub async fn ready(State(db): State<Arc<Database>>) -> Result<Json<Value>, StatusCode> {
     match db.health_check().await {
         Ok(_) => Ok(Json(json!({
@@ -26,6 +28,7 @@ pub async fn ready(State(db): State<Arc<Database>>) -> Result<Json<Value>, Statu
 }
 
 /// Liveness probe for Axum
+#[allow(dead_code)]
 pub async fn live() -> Json<Value> {
     Json(json!({
         "status": "alive",

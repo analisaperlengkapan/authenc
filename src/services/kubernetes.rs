@@ -12,144 +12,190 @@ use std::collections::BTreeMap;
 
 /// Authenc Kubernetes Operator
 /// Provides cloud-native deployment capabilities with advanced features
-
 /// Authenc Custom Resource Definition
 #[derive(CustomResource, Deserialize, Serialize, Clone, Debug, JsonSchema)]
 #[kube(group = "authenc.io", version = "v1", kind = "Authenc", namespaced)]
 #[kube(status = "AuthencStatus")]
 pub struct AuthencSpec {
-    /// Number of replicas
+    /// Number of replicas for the Authenc deployment
     pub replicas: Option<i32>,
-
-    /// Authenc version
+    /// Authenc version to deploy
     pub version: String,
-
-    /// Database configuration
+    /// Database configuration settings
     pub database: DatabaseConfig,
-
-    /// TLS configuration
+    /// TLS/SSL configuration
     pub tls: TlsConfig,
-
-    /// Feature flags
+    /// Feature flags for enabling/disabling functionality
     pub features: AuthencFeatures,
-
-    /// Resource limits
+    /// Resource limits and requests
     pub resources: ResourceLimits,
-
-    /// Ingress configuration
+    /// Optional ingress configuration
     pub ingress: Option<IngressConfig>,
-
-    /// Monitoring configuration
+    /// Optional monitoring configuration
     pub monitoring: Option<MonitoringConfig>,
 }
 
 /// Database configuration
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct DatabaseConfig {
+    /// Database server hostname or IP address
     pub host: String,
+    /// Database server port number
     pub port: i32,
+    /// Name of the database to connect to
     pub database: String,
+    /// Name of the Kubernetes secret containing the database username
     pub username_secret: String,
+    /// Name of the Kubernetes secret containing the database password
     pub password_secret: String,
+    /// SSL mode for database connection (e.g., "require", "verify-ca", "verify-full")
     pub ssl_mode: String,
 }
 
 /// TLS configuration
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct TlsConfig {
+    /// Whether TLS is enabled for the Authenc deployment
     pub enabled: bool,
+    /// Optional name of the Kubernetes secret containing TLS certificates
     pub secret_name: Option<String>,
+    /// Optional cert-manager issuer for automatic certificate management
     pub cert_manager_issuer: Option<String>,
 }
 
 /// Authenc features
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct AuthencFeatures {
+    /// Enable OpenID Connect authentication protocol
     pub oidc: bool,
+    /// Enable SAML authentication protocol
     pub saml: bool,
+    /// Enable OID4VC (OpenID for Verifiable Credentials) protocol
     pub oid4vc: bool,
+    /// Enable WebAuthn authentication (FIDO2/passkeys)
     pub webauthn: bool,
+    /// Enable social login providers (Google, Facebook, etc.)
     pub social_login: bool,
+    /// Enable device management and tracking features
     pub device_management: bool,
+    /// Enable zero trust security model and adaptive controls
     pub zero_trust: bool,
 }
 
 /// Resource limits
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct ResourceLimits {
+    /// Resource requests (guaranteed minimum resources allocated)
     pub requests: ResourceRequest,
+    /// Resource limits (maximum allowed resources)
     pub limits: ResourceLimit,
 }
 
+/// Resource requests configuration
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct ResourceRequest {
+    /// CPU request in Kubernetes format (e.g., "100m", "0.1")
     pub cpu: String,
+    /// Memory request in Kubernetes format (e.g., "128Mi", "1Gi")
     pub memory: String,
 }
 
+/// Resource limits configuration
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct ResourceLimit {
+    /// CPU limit in Kubernetes format (e.g., "500m", "2")
     pub cpu: String,
+    /// Memory limit in Kubernetes format (e.g., "512Mi", "2Gi")
     pub memory: String,
 }
 
 /// Ingress configuration
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct IngressConfig {
+    /// Whether ingress is enabled for external access
     pub enabled: bool,
+    /// Optional ingress class name for the ingress controller
     pub class_name: Option<String>,
+    /// List of hostnames that the ingress should handle
     pub hosts: Vec<String>,
+    /// Optional TLS configuration for secure HTTPS access
     pub tls: Option<Vec<IngressTls>>,
 }
 
+/// Ingress TLS configuration
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct IngressTls {
+    /// Name of the Kubernetes secret containing the TLS certificate and key
     pub secret_name: String,
+    /// List of hostnames covered by this TLS certificate
     pub hosts: Vec<String>,
 }
 
 /// Monitoring configuration
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct MonitoringConfig {
+    /// Whether monitoring and metrics collection is enabled
     pub enabled: bool,
+    /// Optional Prometheus configuration for metrics scraping
     pub prometheus: Option<PrometheusConfig>,
+    /// Optional Grafana configuration for dashboards
     pub grafana: Option<GrafanaConfig>,
 }
 
+/// Prometheus configuration
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct PrometheusConfig {
+    /// Scrape interval for metrics collection (e.g., "30s", "1m")
     pub scrape_interval: String,
+    /// HTTP path where metrics are exposed (e.g., "/metrics")
     pub metrics_path: String,
 }
 
+/// Grafana configuration
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct GrafanaConfig {
+    /// Optional UID of the dashboard to import
     pub dashboard_uid: Option<String>,
 }
 
 /// Authenc status
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct AuthencStatus {
+    /// Current phase of the Authenc deployment
     pub phase: AuthencPhase,
+    /// List of status conditions
     pub conditions: Vec<Condition>,
+    /// Optional endpoint URL where Authenc is accessible
     pub endpoint: Option<String>,
+    /// Optional version of the running Authenc instance
     pub version: Option<String>,
 }
 
+/// Authenc deployment phase
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub enum AuthencPhase {
+    /// Deployment is pending
     Pending,
+    /// Deployment is running successfully
     Running,
+    /// Deployment has failed
     Failed,
+    /// Deployment status is unknown
     Unknown,
 }
 
+/// Kubernetes condition
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct Condition {
+    /// Type of the condition
     pub type_: String,
+    /// Status of the condition (True, False, Unknown)
     pub status: String,
+    /// Last time the condition transitioned
     pub last_transition_time: Option<String>,
+    /// Machine-readable reason for the condition
     pub reason: Option<String>,
+    /// Human-readable message about the condition
     pub message: Option<String>,
 }
 
@@ -159,6 +205,40 @@ pub struct AuthencOperator {
 }
 
 impl AuthencOperator {
+    /// Create a new Authenc operator with Kubernetes client
+    ///
+    /// This constructor initializes an Authenc operator that manages
+    /// Authenc deployments and resources within a Kubernetes cluster.
+    /// The operator uses the provided Kubernetes client to interact
+    /// with the cluster API for deployment management.
+    ///
+    /// # Arguments
+    /// * `client` - Kubernetes client for cluster communication
+    ///
+    /// # Returns
+    /// A new `AuthencOperator` instance ready for Kubernetes operations
+    ///
+    /// # Security Considerations
+    /// - Kubernetes client should have appropriate RBAC permissions
+    /// - Service account tokens should be properly managed and rotated
+    /// - Network policies should restrict operator access
+    /// - Audit logging should be enabled for all operator actions
+    ///
+    /// # Kubernetes Integration
+    /// - Manages Authenc Custom Resources (CRDs)
+    /// - Handles deployment lifecycle (create, update, delete)
+    /// - Configures services, ingresses, and configmaps
+    /// - Monitors cluster resources and health status
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::services::kubernetes::AuthencOperator;
+    /// use kube::Client;
+    ///
+    /// let client = Client::try_default().await?;
+    /// let operator = AuthencOperator::new(client);
+    /// // Operator is ready for Authenc deployment management
+    /// ```
     pub fn new(client: Client) -> Self {
         Self { client }
     }
@@ -318,12 +398,11 @@ impl AuthencOperator {
                             ..Default::default()
                         }],
                         ..Default::default()
-                    }),
-                    ..Default::default()
+                    })
                 },
                 ..Default::default()
             }),
-            ..Default::default()
+            status: None
         };
 
         Ok(deployment)
@@ -426,7 +505,6 @@ impl AuthencOperator {
                 kind: "ClusterRole".to_string(),
                 name: format!("{}-cluster-role", authenc.name_any()),
             },
-            ..Default::default()
         };
 
         Ok(cluster_role_binding)
@@ -509,6 +587,41 @@ pub struct AuthencController {
 }
 
 impl AuthencController {
+    /// Create a new Authenc controller with Kubernetes client
+    ///
+    /// This constructor initializes an Authenc controller that manages
+    /// the lifecycle of Authenc resources in a Kubernetes cluster.
+    /// The controller uses an embedded Authenc operator to handle
+    /// the actual deployment and resource management operations.
+    ///
+    /// # Arguments
+    /// * `client` - Kubernetes client for cluster communication
+    ///
+    /// # Returns
+    /// A new `AuthencController` instance ready for resource management
+    ///
+    /// # Security Considerations
+    /// - Controller should run with minimal required permissions
+    /// - Watch operations should be properly scoped to authorized namespaces
+    /// - Event logging should capture all controller actions
+    /// - Resource validation should prevent malicious configurations
+    ///
+    /// # Controller Responsibilities
+    /// - Watches for Authenc Custom Resource changes
+    /// - Reconciles desired state with actual cluster state
+    /// - Handles resource creation, updates, and deletion
+    /// - Manages operator lifecycle and error recovery
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::services::kubernetes::AuthencController;
+    /// use kube::Client;
+    ///
+    /// let client = Client::try_default().await?;
+    /// let controller = AuthencController::new(client);
+    /// // Start the controller
+    /// // controller.run().await?;
+    /// ```
     pub fn new(client: Client) -> Self {
         Self {
             operator: AuthencOperator::new(client),

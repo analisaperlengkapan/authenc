@@ -12,13 +12,12 @@
 //! - Replay attack prevention
 //! - Server-side nonce support
 
+use base64ct::Encoding;
+use chrono::{DateTime, Utc};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
-use base64ct::Encoding;
-use ed25519_dalek::{Signature, SigningKey, VerifyingKey, Signer, Verifier};
-use rand::rngs::OsRng;
 
 // Use public types from ed25519_keys module
 pub use crate::crypto::ed25519_keys::{Ed25519Jwk, Ed25519JwkSet};
@@ -105,7 +104,7 @@ impl DPoPProof {
 
         // Add access token hash if provided
         if let Some(token) = access_token {
-            use sha2::{Sha256, Digest};
+            use sha2::{Digest, Sha256};
             let mut hasher = Sha256::new();
             hasher.update(token.as_bytes());
             let hash = hasher.finalize();
@@ -114,11 +113,19 @@ impl DPoPProof {
 
         // Sign the proof
         let header_b64 = base64ct::Base64UrlUnpadded::encode_string(
-            serde_json::to_string(&header).map_err(|_| AuthencError::SerializationError { message: "Failed to serialize header".to_string() })?.as_bytes()
+            serde_json::to_string(&header)
+                .map_err(|_| AuthencError::SerializationError {
+                    message: "Failed to serialize header".to_string(),
+                })?
+                .as_bytes(),
         );
 
         let payload_b64 = base64ct::Base64UrlUnpadded::encode_string(
-            serde_json::to_string(&payload).map_err(|_| AuthencError::SerializationError { message: "Failed to serialize payload".to_string() })?.as_bytes()
+            serde_json::to_string(&payload)
+                .map_err(|_| AuthencError::SerializationError {
+                    message: "Failed to serialize payload".to_string(),
+                })?
+                .as_bytes(),
         );
 
         let message = format!("{}.{}", header_b64, payload_b64);
@@ -133,12 +140,16 @@ impl DPoPProof {
 
     /// Serialize DPoP proof to JWT string
     pub fn to_jwt_string(&self) -> Result<String, AuthencError> {
-        let header_json = serde_json::to_string(&self.header)
-            .map_err(|_| AuthencError::SerializationError { message: "Failed to serialize header".to_string() })?;
+        let header_json =
+            serde_json::to_string(&self.header).map_err(|_| AuthencError::SerializationError {
+                message: "Failed to serialize header".to_string(),
+            })?;
         let header_b64 = base64ct::Base64UrlUnpadded::encode_string(header_json.as_bytes());
 
-        let payload_json = serde_json::to_string(&self.payload)
-            .map_err(|_| AuthencError::SerializationError { message: "Failed to serialize payload".to_string() })?;
+        let payload_json =
+            serde_json::to_string(&self.payload).map_err(|_| AuthencError::SerializationError {
+                message: "Failed to serialize payload".to_string(),
+            })?;
         let payload_b64 = base64ct::Base64UrlUnpadded::encode_string(payload_json.as_bytes());
 
         let signature_b64 = base64ct::Base64UrlUnpadded::encode_string(&self.signature);
@@ -162,11 +173,17 @@ impl DPoPProof {
         let signature_bytes = base64ct::Base64UrlUnpadded::decode_vec(parts[2])
             .map_err(|_| AuthencError::internal("Invalid signature encoding"))?;
 
-        let header: DPoPHeader = serde_json::from_slice(&header_bytes)
-            .map_err(|_| AuthencError::SerializationError { message: "Invalid header format".to_string() })?;
+        let header: DPoPHeader = serde_json::from_slice(&header_bytes).map_err(|_| {
+            AuthencError::SerializationError {
+                message: "Invalid header format".to_string(),
+            }
+        })?;
 
-        let payload: DPoPProofPayload = serde_json::from_slice(&payload_bytes)
-            .map_err(|_| AuthencError::SerializationError { message: "Invalid payload format".to_string() })?;
+        let payload: DPoPProofPayload = serde_json::from_slice(&payload_bytes).map_err(|_| {
+            AuthencError::SerializationError {
+                message: "Invalid payload format".to_string(),
+            }
+        })?;
 
         Ok(Self {
             header,
@@ -186,22 +203,31 @@ impl DPoPProof {
         max_age_seconds: i64,
     ) -> Result<(), AuthencError> {
         // Verify signature
-        let header_json = serde_json::to_string(&self.header)
-            .map_err(|_| AuthencError::SerializationError { message: "Failed to serialize header".to_string() })?;
-        let payload_json = serde_json::to_string(&self.payload)
-            .map_err(|_| AuthencError::SerializationError { message: "Failed to serialize payload".to_string() })?;
+        let header_json =
+            serde_json::to_string(&self.header).map_err(|_| AuthencError::SerializationError {
+                message: "Failed to serialize header".to_string(),
+            })?;
+        let payload_json =
+            serde_json::to_string(&self.payload).map_err(|_| AuthencError::SerializationError {
+                message: "Failed to serialize payload".to_string(),
+            })?;
 
-        let message = format!("{}.{}",
+        let message = format!(
+            "{}.{}",
             base64ct::Base64UrlUnpadded::encode_string(header_json.as_bytes()),
             base64ct::Base64UrlUnpadded::encode_string(payload_json.as_bytes())
         );
 
-        let signature_bytes: [u8; 64] = self.signature.as_slice().try_into()
+        let signature_bytes: [u8; 64] = self
+            .signature
+            .as_slice()
+            .try_into()
             .map_err(|_| AuthencError::validation("Invalid signature length".to_string()))?;
 
         let signature = Signature::from_bytes(&signature_bytes);
 
-        public_key.verify(message.as_bytes(), &signature)
+        public_key
+            .verify(message.as_bytes(), &signature)
             .map_err(|_| AuthencError::internal("DPoP signature verification failed"))?;
 
         // Verify HTTP method
@@ -223,7 +249,7 @@ impl DPoPProof {
         // Verify access token hash if provided
         if let Some(token) = access_token {
             if let Some(ath) = &self.payload.ath {
-                use sha2::{Sha256, Digest};
+                use sha2::{Digest, Sha256};
                 let mut hasher = Sha256::new();
                 hasher.update(token.as_bytes());
                 let expected_hash = base64ct::Base64UrlUnpadded::encode_string(&hasher.finalize());
@@ -252,18 +278,21 @@ impl DPoPProof {
 
     /// Extract public key from DPoP proof
     pub fn extract_public_key(&self) -> Result<VerifyingKey, AuthencError> {
-        let x_b64 = self.header.jwk.get("x")
+        let x_b64 = self
+            .header
+            .jwk
+            .get("x")
             .and_then(|v| v.as_str())
             .ok_or_else(|| AuthencError::validation("Missing x coordinate in JWK"))?;
 
         let x_bytes = base64ct::Base64UrlUnpadded::decode_vec(x_b64)
             .map_err(|_| AuthencError::CryptographicError)?;
 
-        let x_array: [u8; 32] = x_bytes.try_into()
+        let x_array: [u8; 32] = x_bytes
+            .try_into()
             .map_err(|_| AuthencError::validation("Invalid public key length"))?;
 
-        VerifyingKey::from_bytes(&x_array)
-            .map_err(|_| AuthencError::CryptographicError)
+        VerifyingKey::from_bytes(&x_array).map_err(|_| AuthencError::CryptographicError)
     }
 }
 
@@ -420,8 +449,8 @@ pub mod middleware {
         };
 
         // Parse DPoP proof
-        let dpop_proof = DPoPProof::from_jwt_string(dpop_header)
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        let dpop_proof =
+            DPoPProof::from_jwt_string(dpop_header).map_err(|_| StatusCode::BAD_REQUEST)?;
 
         // Extract access token from Authorization header
         let access_token = if let Some(auth_header) = headers.get("Authorization") {
@@ -437,12 +466,14 @@ pub mod middleware {
 
         // Bind token to DPoP proof
         if let Some(token) = access_token {
-            token_binder.bind_token(
-                token,
-                &dpop_proof,
-                request.method().as_str(),
-                request.uri().path(),
-            ).map_err(|_| StatusCode::UNAUTHORIZED)?;
+            token_binder
+                .bind_token(
+                    token,
+                    &dpop_proof,
+                    request.method().as_str(),
+                    request.uri().path(),
+                )
+                .map_err(|_| StatusCode::UNAUTHORIZED)?;
         }
 
         // Add DPoP proof to request extensions for use in handlers
@@ -456,7 +487,6 @@ pub mod middleware {
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_dpop_proof_creation() {
         let keypair = SigningKey::generate(&mut rand::rngs::OsRng);
@@ -467,7 +497,8 @@ mod tests {
             "https://example.com/token",
             Some("access_token_123"),
             Some("nonce_456"),
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(proof.payload.htm, "POST");
         assert_eq!(proof.payload.htu, "https://example.com/token");
@@ -479,13 +510,8 @@ mod tests {
     fn test_dpop_proof_serialization() {
         let keypair = SigningKey::generate(&mut OsRng);
 
-        let proof = DPoPProof::new(
-            &keypair,
-            "GET",
-            "https://example.com/resource",
-            None,
-            None,
-        ).unwrap();
+        let proof =
+            DPoPProof::new(&keypair, "GET", "https://example.com/resource", None, None).unwrap();
 
         let jwt_string = proof.to_jwt_string().unwrap();
         let parsed_proof = DPoPProof::from_jwt_string(&jwt_string).unwrap();
@@ -504,7 +530,8 @@ mod tests {
             "https://example.com/api",
             Some("token_123"),
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Should verify successfully
         let result = proof.verify(
@@ -529,7 +556,8 @@ mod tests {
             "https://example.com/api",
             Some("token_123"),
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Should fail with wrong HTTP method
         let result = proof.verify(
@@ -542,7 +570,10 @@ mod tests {
         );
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("HTTP method mismatch"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("HTTP method mismatch"));
     }
 
     #[test]
@@ -570,7 +601,8 @@ mod tests {
             "https://example.com/protected",
             Some("access_token_xyz"),
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Should bind successfully
         let result = binder.bind_token(
@@ -583,3 +615,5 @@ mod tests {
         assert!(result.is_ok());
     }
 }
+    
+

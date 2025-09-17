@@ -10,161 +10,223 @@ use uuid::Uuid;
 /// SAML 2.0 Service Provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlServiceProvider {
+    /// Entity ID of the service provider
     pub entity_id: String,
+    /// URL for assertion consumer service
     pub assertion_consumer_service_url: String,
+    /// URL for single logout service
     pub single_logout_service_url: Option<String>,
+    /// Name ID format expected
     pub name_id_format: String,
+    /// Whether assertions should be signed
     pub want_assertions_signed: bool,
+    /// Whether responses should be signed
     pub want_response_signed: bool,
 }
 
 /// SAML 2.0 Identity Provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlIdentityProvider {
+    /// Entity ID of the identity provider
     pub entity_id: String,
+    /// Single sign-on URL
     pub sso_url: String,
+    /// Single logout URL
     pub slo_url: Option<String>,
+    /// X.509 certificate for signature verification
     pub certificate: String,
+    /// Name ID format supported
     pub name_id_format: String,
+    /// Whether authentication requests should be signed
     pub want_authn_requests_signed: bool,
 }
 
 /// SAML 2.0 Authentication Request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlAuthnRequest {
+    /// Unique identifier for the request
     pub id: String,
+    /// SAML version
     pub version: String,
+    /// Timestamp when the request was issued
     pub issue_instant: String,
+    /// Assertion consumer service URL
     pub assertion_consumer_service_url: String,
+    /// Issuer of the request
     pub issuer: String,
+    /// Name ID policy
     pub name_id_policy: Option<NameIdPolicy>,
+    /// Requested authentication context
     pub requested_authn_context: Option<RequestedAuthnContext>,
 }
 
 /// Name ID Policy
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NameIdPolicy {
+    /// Name ID format
     pub format: String,
+    /// Whether creation of new identifiers is allowed
     pub allow_create: bool,
 }
 
 /// Requested Authentication Context
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestedAuthnContext {
+    /// Comparison method for authentication context
     pub comparison: String,
+    /// List of authentication context class references
     pub authn_context_class_ref: Vec<String>,
 }
 
 /// SAML 2.0 Response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlResponse {
+    /// Unique identifier for the response
     pub id: String,
+    /// SAML version
     pub version: String,
+    /// Timestamp when the response was issued
     pub issue_instant: String,
+    /// ID of the request this response is for
     pub in_response_to: String,
+    /// Issuer of the response
     pub issuer: String,
+    /// Status of the response
     pub status: SamlStatus,
+    /// SAML assertion (if successful)
     pub assertion: Option<SamlAssertion>,
 }
 
 /// SAML Status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlStatus {
+    /// Status code indicating success or failure
     pub status_code: SamlStatusCode,
 }
 
 /// SAML Status Code
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlStatusCode {
+    /// Status code value
     pub value: String,
 }
 
 /// SAML Assertion
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlAssertion {
+    /// Unique identifier for the assertion
     pub id: String,
+    /// SAML version
     pub version: String,
+    /// Timestamp when the assertion was issued
     pub issue_instant: String,
+    /// Issuer of the assertion
     pub issuer: String,
+    /// Subject of the assertion
     pub subject: SamlSubject,
+    /// Conditions for the assertion validity
     pub conditions: SamlConditions,
+    /// Authentication statement
     pub authn_statement: SamlAuthnStatement,
+    /// Attribute statement (optional)
     pub attribute_statement: Option<SamlAttributeStatement>,
 }
 
 /// SAML Subject
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlSubject {
+    /// Name identifier for the subject
     pub name_id: NameId,
+    /// Subject confirmations
     pub subject_confirmations: Vec<SubjectConfirmation>,
 }
 
 /// Name ID
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NameId {
+    /// Name ID format
     pub format: String,
+    /// Name ID value
     pub value: String,
 }
 
 /// Subject Confirmation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubjectConfirmation {
+    /// Confirmation method
     pub method: String,
+    /// Subject confirmation data
     pub subject_confirmation_data: SubjectConfirmationData,
 }
 
 /// Subject Confirmation Data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubjectConfirmationData {
+    /// Expiration timestamp
     pub not_on_or_after: String,
+    /// Intended recipient
     pub recipient: String,
+    /// Response to request ID
     pub in_response_to: String,
 }
 
 /// SAML Conditions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlConditions {
+    /// Start of validity period
     pub not_before: String,
+    /// End of validity period
     pub not_on_or_after: String,
+    /// Audience restrictions
     pub audience_restriction: Vec<AudienceRestriction>,
 }
 
 /// Audience Restriction
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudienceRestriction {
+    /// List of allowed audiences
     pub audience: Vec<String>,
 }
 
 /// SAML Authentication Statement
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlAuthnStatement {
+    /// Timestamp of authentication
     pub authn_instant: String,
+    /// Session index
     pub session_index: String,
+    /// Authentication context
     pub authn_context: SamlAuthnContext,
 }
 
 /// SAML Authentication Context
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlAuthnContext {
+    /// Authentication context class reference
     pub authn_context_class_ref: String,
 }
 
 /// SAML Attribute Statement
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlAttributeStatement {
+    /// List of SAML attributes
     pub attributes: Vec<SamlAttribute>,
 }
 
 /// SAML Attribute
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlAttribute {
+    /// Attribute name
     pub name: String,
+    /// Attribute name format
     pub name_format: String,
+    /// Attribute values
     pub values: Vec<String>,
 }
 
 /// SAML service for handling SAML 2.0 authentication
 pub struct SamlService {
+    #[allow(dead_code)]
     db: Arc<Database>,
     service_providers: HashMap<String, SamlServiceProvider>,
     identity_providers: HashMap<String, SamlIdentityProvider>,
@@ -257,7 +319,7 @@ impl SamlService {
     pub async fn process_response(
         &self,
         saml_response: &str,
-        relay_state: Option<&str>,
+        _relay_state: Option<&str>,
     ) -> Result<SamlUserInfo> {
         // Decode and decompress
         let decoded = Base64UrlUnpadded::decode_vec(saml_response)
@@ -406,7 +468,7 @@ impl SamlService {
         Ok(result)
     }
 
-    fn parse_saml_xml(&self, xml: &str) -> Result<SamlResponse> {
+    fn parse_saml_xml(&self, _xml: &str) -> Result<SamlResponse> {
         // In production, use proper XML parsing
         // This is a simplified placeholder
         Ok(SamlResponse {
@@ -452,7 +514,7 @@ impl SamlService {
         })
     }
 
-    async fn verify_response(&self, response: &SamlResponse) -> Result<()> {
+    async fn verify_response(&self, _response: &SamlResponse) -> Result<()> {
         // In production, implement proper response verification
         // - Check status
         // - Verify signature
@@ -463,8 +525,8 @@ impl SamlService {
 
     async fn store_authn_request(
         &self,
-        request_id: &str,
-        request: &SamlAuthnRequest,
+        _request_id: &str,
+        _request: &SamlAuthnRequest,
     ) -> Result<()> {
         // In production, store in database with expiration
         Ok(())
@@ -474,9 +536,14 @@ impl SamlService {
 /// User information extracted from SAML response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlUserInfo {
+    /// Name identifier for the user
     pub name_id: String,
+    /// Format of the name identifier
     pub name_id_format: String,
+    /// Session index from the authentication
     pub session_index: String,
+    /// Authentication context class reference
     pub authn_context_class_ref: String,
+    /// User attributes from the SAML assertion
     pub attributes: HashMap<String, Vec<String>>,
 }

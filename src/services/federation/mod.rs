@@ -7,92 +7,148 @@ use uuid::Uuid;
 /// Identity provider types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IdentityProviderType {
+    /// SAML 2.0 identity provider
     SAML,
+    /// OpenID Connect identity provider
     OIDC,
+    /// OAuth 2.0 identity provider
     OAuth2,
+    /// LDAP directory server
     LDAP,
+    /// Kerberos authentication
     Kerberos,
+    /// Social login providers
     SocialLogin,
+    /// Custom identity provider
     Custom,
 }
 
 /// Identity provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentityProviderConfig {
+    /// Unique identifier for the identity provider
     pub id: Uuid,
+    /// Internal name of the provider
     pub name: String,
+    /// Display name shown to users
     pub display_name: String,
+    /// Type of identity provider
     pub provider_type: IdentityProviderType,
+    /// Whether the provider is enabled
     pub enabled: bool,
+    /// Configuration parameters specific to the provider
     pub config: HashMap<String, String>,
+    /// ID of the realm this provider belongs to
     pub realm_id: Uuid,
+    /// Path to truststore for SSL/TLS certificates
     pub truststore_path: Option<String>,
+    /// Path to keystore for client certificates
     pub keystore_path: Option<String>,
 }
 
 /// Identity provider interface
 #[async_trait]
 pub trait IdentityProvider: Send + Sync {
+    /// Authenticate a user with the identity provider
     async fn authenticate(&self, request: &AuthRequest) -> Result<AuthResponse>;
+    /// Get user information from the provider
     async fn get_user_info(&self, token: &str) -> Result<UserInfo>;
+    /// Validate an authentication token
     async fn validate_token(&self, token: &str) -> Result<bool>;
+    /// Logout user from the provider
     async fn logout(&self, token: &str) -> Result<()>;
 }
 
 /// Authentication request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthRequest {
+    /// Username for authentication
     pub username: Option<String>,
+    /// Password for authentication
     pub password: Option<String>,
+    /// SAML assertion for SAML authentication
     pub saml_assertion: Option<String>,
+    /// OIDC authorization code
     pub oidc_code: Option<String>,
+    /// OAuth access token
     pub oauth_token: Option<String>,
+    /// Kerberos ticket for authentication
     pub kerberos_ticket: Option<String>,
+    /// Social login provider name
     pub social_provider: Option<String>,
+    /// Social login access token
     pub social_token: Option<String>,
+    /// Relay state for SAML/OIDC flows
     pub relay_state: Option<String>,
+    /// Additional authentication parameters
     pub parameters: HashMap<String, String>,
 }
 
 /// Authentication response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthResponse {
+    /// Whether authentication was successful
     pub success: bool,
+    /// User ID if authentication succeeded
     pub user_id: Option<String>,
+    /// Username if authentication succeeded
     pub username: Option<String>,
+    /// Email address of the user
     pub email: Option<String>,
+    /// Groups the user belongs to
     pub groups: Vec<String>,
+    /// Roles assigned to the user
     pub roles: Vec<String>,
+    /// Additional user attributes
     pub attributes: HashMap<String, String>,
+    /// Access token for authenticated sessions
     pub token: Option<String>,
+    /// Refresh token for token renewal
     pub refresh_token: Option<String>,
+    /// Token expiration time in seconds
     pub expires_in: Option<u64>,
+    /// Error message if authentication failed
     pub error_message: Option<String>,
 }
 
 /// User information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
+    /// Unique user identifier
     pub user_id: String,
+    /// Username
     pub username: String,
+    /// Email address
     pub email: String,
+    /// User's first name
     pub first_name: Option<String>,
+    /// User's last name
     pub last_name: Option<String>,
+    /// Groups the user belongs to
     pub groups: Vec<String>,
+    /// Roles assigned to the user
     pub roles: Vec<String>,
+    /// Additional user attributes
     pub attributes: HashMap<String, String>,
 }
 
 /// SAML Identity Provider
+#[allow(dead_code)]
 pub struct SamlIdentityProvider {
+    /// Provider configuration
     config: IdentityProviderConfig,
+    /// Service Provider entity ID
     sp_entity_id: String,
+    /// Identity Provider entity ID
     idp_entity_id: String,
+    /// Single Sign-On URL
     sso_url: String,
+    /// X.509 certificate for signature validation
     x509_certificate: String,
 }
 
 impl SamlIdentityProvider {
+    /// Create new SAML identity provider
     pub fn new(config: IdentityProviderConfig) -> Self {
         Self {
             sp_entity_id: config
@@ -182,15 +238,22 @@ impl IdentityProvider for SamlIdentityProvider {
 }
 
 /// OIDC Identity Provider
+#[allow(dead_code)]
 pub struct OidcIdentityProvider {
+    /// Provider configuration
     config: IdentityProviderConfig,
+    /// OIDC issuer URL
     issuer_url: String,
+    /// OAuth client ID
     client_id: String,
+    /// OAuth client secret
     client_secret: String,
+    /// OAuth redirect URI
     redirect_uri: String,
 }
 
 impl OidcIdentityProvider {
+    /// Create new OIDC identity provider
     pub fn new(config: IdentityProviderConfig) -> Self {
         Self {
             issuer_url: config
@@ -280,7 +343,9 @@ impl IdentityProvider for OidcIdentityProvider {
 
 /// Federation service - main service
 pub struct FederationService {
+    /// Registered identity providers
     providers: HashMap<Uuid, Box<dyn IdentityProvider>>,
+    /// Provider configurations
     provider_configs: HashMap<Uuid, IdentityProviderConfig>,
 }
 
@@ -291,6 +356,7 @@ impl Default for FederationService {
 }
 
 impl FederationService {
+    /// Create new federation service
     pub fn new() -> Self {
         Self {
             providers: HashMap::new(),
@@ -345,9 +411,14 @@ impl FederationService {
 /// Federation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FederationConfig {
+    /// Whether federation is enabled
     pub enabled: bool,
+    /// List of configured identity providers
     pub providers: Vec<IdentityProviderConfig>,
+    /// Default identity provider ID
     pub default_provider: Option<Uuid>,
+    /// Allow multiple providers per user
     pub allow_multiple_providers: bool,
+    /// Enable automatic provider discovery
     pub auto_discovery: bool,
 }

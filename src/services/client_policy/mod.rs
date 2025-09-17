@@ -12,13 +12,11 @@
 //! - Secure redirect URI validation
 //! - Token rotation policies
 
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use async_trait::async_trait;
-use uuid::Uuid;
-use chrono::Utc;
 use crate::error::AuthencError;
 use crate::models::oauth2::OAuth2Client;
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Client Policy Context
 #[derive(Debug, Clone)]
@@ -93,6 +91,7 @@ pub struct ClientProfile {
 
 /// Grant Type Condition
 pub struct GrantTypeCondition {
+    /// List of allowed grant types
     pub allowed_grant_types: Vec<String>,
 }
 
@@ -113,6 +112,7 @@ impl ClientPolicyCondition for GrantTypeCondition {
 
 /// Client Roles Condition
 pub struct ClientRolesCondition {
+    /// List of required client roles
     pub required_roles: Vec<String>,
 }
 
@@ -131,6 +131,7 @@ impl ClientPolicyCondition for ClientRolesCondition {
 
 /// PKCE Enforcer Executor
 pub struct PkceEnforcerExecutor {
+    /// Whether to enforce PKCE for this client
     pub enforce_pkce: bool,
 }
 
@@ -140,11 +141,12 @@ impl ClientPolicyExecutor for PkceEnforcerExecutor {
         if self.enforce_pkce {
             // Check if PKCE parameters are present
             let has_code_challenge = context.parameters.contains_key("code_challenge");
-            let has_code_challenge_method = context.parameters.contains_key("code_challenge_method");
+            let has_code_challenge_method =
+                context.parameters.contains_key("code_challenge_method");
 
             if !has_code_challenge || !has_code_challenge_method {
                 return Err(AuthencError::validation(
-                    "PKCE is required for this client".to_string()
+                    "PKCE is required for this client".to_string(),
                 ));
             }
 
@@ -152,7 +154,7 @@ impl ClientPolicyExecutor for PkceEnforcerExecutor {
             if let Some(method) = context.parameters.get("code_challenge_method") {
                 if method != "S256" {
                     return Err(AuthencError::validation(
-                        "Only S256 code challenge method is allowed".to_string()
+                        "Only S256 code challenge method is allowed".to_string(),
                     ));
                 }
             }
@@ -167,6 +169,7 @@ impl ClientPolicyExecutor for PkceEnforcerExecutor {
 
 /// DPoP Bind Enforcer Executor
 pub struct DPoPBindEnforcerExecutor {
+    /// Whether to enforce DPoP binding for this client
     pub enforce_dpop: bool,
 }
 
@@ -177,7 +180,7 @@ impl ClientPolicyExecutor for DPoPBindEnforcerExecutor {
             // Check for DPoP header
             if !context.parameters.contains_key("dpop") {
                 return Err(AuthencError::validation(
-                    "DPoP proof is required for this client".to_string()
+                    "DPoP proof is required for this client".to_string(),
                 ));
             }
 
@@ -194,6 +197,7 @@ impl ClientPolicyExecutor for DPoPBindEnforcerExecutor {
 
 /// Secure Redirect URIs Enforcer Executor
 pub struct SecureRedirectUrisEnforcerExecutor {
+    /// Whether to enforce HTTPS for redirect URIs
     pub enforce_https: bool,
 }
 
@@ -204,7 +208,7 @@ impl ClientPolicyExecutor for SecureRedirectUrisEnforcerExecutor {
             if let Some(redirect_uri) = &context.redirect_uri {
                 if !redirect_uri.starts_with("https://") {
                     return Err(AuthencError::validation(
-                        "Only HTTPS redirect URIs are allowed".to_string()
+                        "Only HTTPS redirect URIs are allowed".to_string(),
                     ));
                 }
             }
@@ -227,20 +231,20 @@ impl ClientPolicyExecutor for RejectImplicitGrantExecutor {
         if let Some(response_type) = &context.response_type {
             if response_type == "token" {
                 return Err(AuthencError::validation(
-                    "Implicit grant is not allowed for this client".to_string()
+                    "Implicit grant is not allowed for this client".to_string(),
                 ));
             }
         }
-        
+
         // Check grant type for implicit flow
         if let Some(grant_type) = &context.grant_type {
             if grant_type == "implicit" {
                 return Err(AuthencError::validation(
-                    "Implicit grant is not allowed for this client".to_string()
+                    "Implicit grant is not allowed for this client".to_string(),
                 ));
             }
         }
-        
+
         Ok(())
     }
 
@@ -251,6 +255,7 @@ impl ClientPolicyExecutor for RejectImplicitGrantExecutor {
 
 /// Client Secret Rotation Executor
 pub struct ClientSecretRotationExecutor {
+    /// Interval in days for client secret rotation
     pub rotation_interval_days: u32,
 }
 
@@ -269,6 +274,7 @@ impl ClientPolicyExecutor for ClientSecretRotationExecutor {
 
 /// Authentication Flow Selector Executor
 pub struct AuthenticationFlowSelectorExecutor {
+    /// Type of authentication flow to use
     pub flow_type: String,
 }
 
@@ -280,20 +286,27 @@ impl ClientPolicyExecutor for AuthenticationFlowSelectorExecutor {
         match self.flow_type.as_str() {
             "browser" => {
                 // Use browser-based authentication flow
-                context.parameters.insert("auth_flow".to_string(), "browser".to_string());
+                context
+                    .parameters
+                    .insert("auth_flow".to_string(), "browser".to_string());
             }
             "direct" => {
                 // Use direct grant flow for confidential clients
-                context.parameters.insert("auth_flow".to_string(), "direct".to_string());
+                context
+                    .parameters
+                    .insert("auth_flow".to_string(), "direct".to_string());
             }
             "client" => {
                 // Use client authentication flow
-                context.parameters.insert("auth_flow".to_string(), "client".to_string());
+                context
+                    .parameters
+                    .insert("auth_flow".to_string(), "client".to_string());
             }
             _ => {
-                return Err(AuthencError::validation(
-                    format!("Unknown authentication flow type: {}", self.flow_type)
-                ));
+                return Err(AuthencError::validation(format!(
+                    "Unknown authentication flow type: {}",
+                    self.flow_type
+                )));
             }
         }
         Ok(())
@@ -306,6 +319,7 @@ impl ClientPolicyExecutor for AuthenticationFlowSelectorExecutor {
 
 /// Holder of Key Enforcer Executor
 pub struct HolderOfKeyEnforcerExecutor {
+    /// Whether to enforce holder-of-key requirement
     pub enforce_holder_of_key: bool,
 }
 
@@ -320,7 +334,8 @@ impl ClientPolicyExecutor for HolderOfKeyEnforcerExecutor {
 
             if !has_dpop && !has_mtls {
                 return Err(AuthencError::validation(
-                    "Holder of Key enforcement: DPoP proof or MTLS certificate required".to_string()
+                    "Holder of Key enforcement: DPoP proof or MTLS certificate required"
+                        .to_string(),
                 ));
             }
 
@@ -339,10 +354,13 @@ impl ClientPolicyExecutor for HolderOfKeyEnforcerExecutor {
 }
 
 impl HolderOfKeyEnforcerExecutor {
-    async fn validate_dpop_binding(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+    async fn validate_dpop_binding(
+        &self,
+        context: &mut ClientPolicyContext,
+    ) -> Result<(), AuthencError> {
         // Validate that DPoP proof is properly bound to the access token
         // This prevents token replay attacks
-        if let Some(dpop_header) = context.parameters.get("dpop") {
+        if let Some(_dpop_header) = context.parameters.get("dpop") {
             // Parse and validate DPoP proof
             // Check that the public key in DPoP proof matches the one used for access token
             // Verify the binding between DPoP proof and access token
@@ -353,6 +371,7 @@ impl HolderOfKeyEnforcerExecutor {
 
 /// Intent Client Bind Check Executor
 pub struct IntentClientBindCheckExecutor {
+    /// Whether to check client intent binding
     pub check_intent_binding: bool,
 }
 
@@ -362,13 +381,15 @@ impl ClientPolicyExecutor for IntentClientBindCheckExecutor {
         if self.check_intent_binding {
             // Check that client intent is properly bound to the authorization request
             // This prevents authorization request tampering
-            let intent_id = context.parameters.get("client_intent_id").map(|s| s.clone());
+            let intent_id = context
+                .parameters
+                .get("client_intent_id").cloned();
             if let Some(intent_id) = intent_id {
                 // Validate intent binding
                 self.validate_intent_binding(&intent_id, context).await?;
             } else {
                 return Err(AuthencError::validation(
-                    "Intent binding required but client_intent_id not provided".to_string()
+                    "Intent binding required but client_intent_id not provided".to_string(),
                 ));
             }
         }
@@ -381,7 +402,11 @@ impl ClientPolicyExecutor for IntentClientBindCheckExecutor {
 }
 
 impl IntentClientBindCheckExecutor {
-    async fn validate_intent_binding(&self, intent_id: &str, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+    async fn validate_intent_binding(
+        &self,
+        _intent_id: &str,
+        _context: &mut ClientPolicyContext,
+    ) -> Result<(), AuthencError> {
         // Validate that the client intent is properly bound
         // Check intent signature, expiration, and binding to client
         Ok(())
@@ -390,6 +415,7 @@ impl IntentClientBindCheckExecutor {
 
 /// Lightweight Access Token Executor
 pub struct LightweightAccessTokenExecutor {
+    /// Whether to use lightweight access tokens
     pub use_lightweight_tokens: bool,
 }
 
@@ -399,7 +425,9 @@ impl ClientPolicyExecutor for LightweightAccessTokenExecutor {
         if self.use_lightweight_tokens {
             // Issue lightweight access tokens for better performance
             // Lightweight tokens contain minimal claims and rely on token introspection
-            context.parameters.insert("token_type".to_string(), "lightweight".to_string());
+            context
+                .parameters
+                .insert("token_type".to_string(), "lightweight".to_string());
         }
         Ok(())
     }
@@ -411,6 +439,7 @@ impl ClientPolicyExecutor for LightweightAccessTokenExecutor {
 
 /// Secure Client Authentication Assertion Executor
 pub struct SecureClientAuthenticationAssertionExecutor {
+    /// Whether to require secure client authentication assertion
     pub require_secure_assertion: bool,
 }
 
@@ -424,7 +453,7 @@ impl ClientPolicyExecutor for SecureClientAuthenticationAssertionExecutor {
 
             if !has_jwt_assertion || !has_jwt_assertion_type {
                 return Err(AuthencError::validation(
-                    "Secure client authentication assertion required".to_string()
+                    "Secure client authentication assertion required".to_string(),
                 ));
             }
 
@@ -432,7 +461,7 @@ impl ClientPolicyExecutor for SecureClientAuthenticationAssertionExecutor {
             if let Some(assertion_type) = context.parameters.get("client_assertion_type") {
                 if assertion_type != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
                     return Err(AuthencError::validation(
-                        "Unsupported client assertion type".to_string()
+                        "Unsupported client assertion type".to_string(),
                     ));
                 }
             }
@@ -449,7 +478,10 @@ impl ClientPolicyExecutor for SecureClientAuthenticationAssertionExecutor {
 }
 
 impl SecureClientAuthenticationAssertionExecutor {
-    async fn validate_jwt_assertion(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+    async fn validate_jwt_assertion(
+        &self,
+        _context: &mut ClientPolicyContext,
+    ) -> Result<(), AuthencError> {
         // Validate JWT client assertion
         // Check signature, issuer, subject, audience, expiration
         Ok(())
@@ -458,6 +490,7 @@ impl SecureClientAuthenticationAssertionExecutor {
 
 /// Secure Client Authenticator Executor
 pub struct SecureClientAuthenticatorExecutor {
+    /// Whether to require secure client authenticator
     pub require_secure_authenticator: bool,
 }
 
@@ -489,6 +522,7 @@ impl ClientPolicyExecutor for SecureClientAuthenticatorExecutor {
 
 /// Secure Logout Executor
 pub struct SecureLogoutExecutor {
+    /// Whether to enforce secure logout mechanisms
     pub enforce_secure_logout: bool,
 }
 
@@ -498,7 +532,9 @@ impl ClientPolicyExecutor for SecureLogoutExecutor {
         if self.enforce_secure_logout {
             // Enforce secure logout mechanisms
             // Require logout tokens, back-channel logout, etc.
-            context.parameters.insert("secure_logout".to_string(), "true".to_string());
+            context
+                .parameters
+                .insert("secure_logout".to_string(), "true".to_string());
         }
         Ok(())
     }
@@ -510,6 +546,7 @@ impl ClientPolicyExecutor for SecureLogoutExecutor {
 
 /// Secure PAR Contents Executor
 pub struct SecureParContentsExecutor {
+    /// Whether to enforce secure PAR contents
     pub enforce_secure_par: bool,
 }
 
@@ -521,7 +558,7 @@ impl ClientPolicyExecutor for SecureParContentsExecutor {
             // Validate PAR request parameters and security
             if !context.parameters.contains_key("request_uri") {
                 return Err(AuthencError::validation(
-                    "Secure PAR: request_uri parameter required".to_string()
+                    "Secure PAR: request_uri parameter required".to_string(),
                 ));
             }
 
@@ -537,7 +574,10 @@ impl ClientPolicyExecutor for SecureParContentsExecutor {
 }
 
 impl SecureParContentsExecutor {
-    async fn validate_par_security(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+    async fn validate_par_security(
+        &self,
+        _context: &mut ClientPolicyContext,
+    ) -> Result<(), AuthencError> {
         // Validate PAR request security
         // Check for parameter injection, replay attacks, etc.
         Ok(())
@@ -546,6 +586,7 @@ impl SecureParContentsExecutor {
 
 /// Secure Request Object Executor
 pub struct SecureRequestObjectExecutor {
+    /// Whether to enforce secure request object
     pub enforce_secure_request_object: bool,
 }
 
@@ -560,7 +601,7 @@ impl ClientPolicyExecutor for SecureRequestObjectExecutor {
 
             if !has_request && !has_request_uri {
                 return Err(AuthencError::validation(
-                    "Secure request object: request or request_uri parameter required".to_string()
+                    "Secure request object: request or request_uri parameter required".to_string(),
                 ));
             }
 
@@ -576,7 +617,10 @@ impl ClientPolicyExecutor for SecureRequestObjectExecutor {
 }
 
 impl SecureRequestObjectExecutor {
-    async fn validate_request_object_security(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+    async fn validate_request_object_security(
+        &self,
+        _context: &mut ClientPolicyContext,
+    ) -> Result<(), AuthencError> {
         // Validate request object signature and encryption
         Ok(())
     }
@@ -584,6 +628,7 @@ impl SecureRequestObjectExecutor {
 
 /// Secure Response Type Executor
 pub struct SecureResponseTypeExecutor {
+    /// Whether to enforce secure response type
     pub enforce_secure_response_type: bool,
 }
 
@@ -601,9 +646,10 @@ impl ClientPolicyExecutor for SecureResponseTypeExecutor {
                         // Hybrid flow with ID token
                     }
                     _ => {
-                        return Err(AuthencError::validation(
-                            format!("Insecure response type not allowed: {}", response_type)
-                        ));
+                        return Err(AuthencError::validation(format!(
+                            "Insecure response type not allowed: {}",
+                            response_type
+                        )));
                     }
                 }
             }
@@ -618,6 +664,7 @@ impl ClientPolicyExecutor for SecureResponseTypeExecutor {
 
 /// Secure Session Enforce Executor
 pub struct SecureSessionEnforceExecutor {
+    /// Whether to enforce secure session
     pub enforce_secure_session: bool,
 }
 
@@ -627,7 +674,9 @@ impl ClientPolicyExecutor for SecureSessionEnforceExecutor {
         if self.enforce_secure_session {
             // Enforce secure session management
             // Require session binding, rotation, etc.
-            context.parameters.insert("secure_session".to_string(), "true".to_string());
+            context
+                .parameters
+                .insert("secure_session".to_string(), "true".to_string());
         }
         Ok(())
     }
@@ -639,7 +688,9 @@ impl ClientPolicyExecutor for SecureSessionEnforceExecutor {
 
 /// Secure Signing Algorithm Executor
 pub struct SecureSigningAlgorithmExecutor {
+    /// Whether to enforce secure signing algorithm
     pub enforce_secure_algorithm: bool,
+    /// List of allowed signing algorithms
     pub allowed_algorithms: Vec<String>,
 }
 
@@ -651,9 +702,10 @@ impl ClientPolicyExecutor for SecureSigningAlgorithmExecutor {
             // Check JWT header, ID token, access token algorithms
             if let Some(alg) = context.parameters.get("alg") {
                 if !self.allowed_algorithms.contains(alg) {
-                    return Err(AuthencError::validation(
-                        format!("Insecure signing algorithm not allowed: {}", alg)
-                    ));
+                    return Err(AuthencError::validation(format!(
+                        "Insecure signing algorithm not allowed: {}",
+                        alg
+                    )));
                 }
             }
         }
@@ -667,6 +719,7 @@ impl ClientPolicyExecutor for SecureSigningAlgorithmExecutor {
 
 /// Suppress Refresh Token Rotation Executor
 pub struct SuppressRefreshTokenRotationExecutor {
+    /// Whether to suppress refresh token rotation
     pub suppress_rotation: bool,
 }
 
@@ -675,7 +728,9 @@ impl ClientPolicyExecutor for SuppressRefreshTokenRotationExecutor {
     async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
         if self.suppress_rotation {
             // Suppress automatic refresh token rotation for this client
-            context.parameters.insert("suppress_token_rotation".to_string(), "true".to_string());
+            context
+                .parameters
+                .insert("suppress_token_rotation".to_string(), "true".to_string());
         }
         Ok(())
     }
@@ -687,6 +742,7 @@ impl ClientPolicyExecutor for SuppressRefreshTokenRotationExecutor {
 
 /// Registration Access Token Rotation Disabled Executor
 pub struct RegistrationAccessTokenRotationDisabledExecutor {
+    /// Whether to disable registration access token rotation
     pub disable_rotation: bool,
 }
 
@@ -695,7 +751,9 @@ impl ClientPolicyExecutor for RegistrationAccessTokenRotationDisabledExecutor {
     async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
         if self.disable_rotation {
             // Disable rotation of registration access tokens
-            context.parameters.insert("disable_reg_token_rotation".to_string(), "true".to_string());
+            context
+                .parameters
+                .insert("disable_reg_token_rotation".to_string(), "true".to_string());
         }
         Ok(())
     }
@@ -707,6 +765,7 @@ impl ClientPolicyExecutor for RegistrationAccessTokenRotationDisabledExecutor {
 
 /// Full Scope Disabled Executor
 pub struct FullScopeDisabledExecutor {
+    /// Whether to disable full scope access
     pub disable_full_scope: bool,
 }
 
@@ -718,7 +777,7 @@ impl ClientPolicyExecutor for FullScopeDisabledExecutor {
             // Require explicit scope requests
             if !context.parameters.contains_key("scope") {
                 return Err(AuthencError::validation(
-                    "Full scope disabled: explicit scope parameter required".to_string()
+                    "Full scope disabled: explicit scope parameter required".to_string(),
                 ));
             }
         }
@@ -732,6 +791,7 @@ impl ClientPolicyExecutor for FullScopeDisabledExecutor {
 
 /// Consent Required Executor
 pub struct ConsentRequiredExecutor {
+    /// Whether to require user consent
     pub require_consent: bool,
 }
 
@@ -740,7 +800,9 @@ impl ClientPolicyExecutor for ConsentRequiredExecutor {
     async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
         if self.require_consent {
             // Require user consent for this client
-            context.parameters.insert("consent_required".to_string(), "true".to_string());
+            context
+                .parameters
+                .insert("consent_required".to_string(), "true".to_string());
         }
         Ok(())
     }
@@ -752,6 +814,7 @@ impl ClientPolicyExecutor for ConsentRequiredExecutor {
 
 /// Confidential Client Accept Executor
 pub struct ConfidentialClientAcceptExecutor {
+    /// Whether to accept confidential clients only
     pub accept_confidential_only: bool,
 }
 
@@ -762,7 +825,7 @@ impl ClientPolicyExecutor for ConfidentialClientAcceptExecutor {
             // Only accept confidential clients
             if context.client.client_type != "confidential" {
                 return Err(AuthencError::validation(
-                    "Only confidential clients are accepted".to_string()
+                    "Only confidential clients are accepted".to_string(),
                 ));
             }
         }
@@ -776,12 +839,16 @@ impl ClientPolicyExecutor for ConfidentialClientAcceptExecutor {
 
 /// Client Policy manager
 pub struct ClientPolicyManager {
+    /// Registered policy conditions
     conditions: HashMap<String, Box<dyn ClientPolicyCondition>>,
+    /// Registered policy executors
     executors: HashMap<String, Box<dyn ClientPolicyExecutor>>,
+    /// Client profiles
     profiles: Vec<ClientProfile>,
 }
 
 impl ClientPolicyManager {
+    /// Create new client policy manager
     pub fn new() -> Self {
         Self {
             conditions: HashMap::new(),
@@ -792,7 +859,8 @@ impl ClientPolicyManager {
 
     /// Register a policy condition
     pub fn register_condition(&mut self, condition: Box<dyn ClientPolicyCondition>) {
-        self.conditions.insert(condition.name().to_string(), condition);
+        self.conditions
+            .insert(condition.name().to_string(), condition);
     }
 
     /// Register a policy executor
@@ -806,7 +874,10 @@ impl ClientPolicyManager {
     }
 
     /// Evaluate and execute policies for a client request
-    pub async fn evaluate_policies(&self, mut context: ClientPolicyContext) -> Result<ClientPolicyContext, AuthencError> {
+    pub async fn evaluate_policies(
+        &self,
+        mut context: ClientPolicyContext,
+    ) -> Result<ClientPolicyContext, AuthencError> {
         // Sort profiles by priority (not implemented yet, would need profile priority)
         for profile in &self.profiles {
             if !profile.enabled {
@@ -912,13 +983,9 @@ impl Default for ClientPolicyManager {
         }));
 
         // Register default executors
-        manager.register_executor(Box::new(PkceEnforcerExecutor {
-            enforce_pkce: true,
-        }));
+        manager.register_executor(Box::new(PkceEnforcerExecutor { enforce_pkce: true }));
 
-        manager.register_executor(Box::new(DPoPBindEnforcerExecutor {
-            enforce_dpop: true,
-        }));
+        manager.register_executor(Box::new(DPoPBindEnforcerExecutor { enforce_dpop: true }));
 
         manager.register_executor(Box::new(SecureRedirectUrisEnforcerExecutor {
             enforce_https: true,

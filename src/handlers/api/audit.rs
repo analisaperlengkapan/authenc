@@ -1,3 +1,5 @@
+use crate::models::audit_log::AuditLog;
+use crate::services::pg_audit_log_store::PgAuditLogStore;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -5,12 +7,11 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use crate::services::pg_audit_log_store::PgAuditLogStore;
-use crate::models::audit_log::AuditLog;
+use chrono::Utc;
 use serde::Deserialize;
 use std::sync::Arc;
-use chrono::Utc;
 
+/// Create audit log routes for a realm
 pub fn create_audit_routes() -> Router<Arc<PgAuditLogStore>> {
     Router::new()
         .route("/realms/{realm}/audit", post(add_audit_log))
@@ -18,16 +19,22 @@ pub fn create_audit_routes() -> Router<Arc<PgAuditLogStore>> {
 }
 
 #[derive(Deserialize)]
+/// Request payload for creating a new audit log entry
 pub struct CreateAuditLogRequest {
+    /// The actor who performed the action
     pub actor: String,
+    /// The action that was performed
     pub action: String,
+    /// The target of the action
     pub target: String,
+    /// Optional additional details about the action
     pub details: Option<String>,
 }
 
+/// Add a new audit log entry to the specified realm
 pub async fn add_audit_log(
     State(store): State<Arc<PgAuditLogStore>>,
-    Path(realm): Path<String>,
+    Path(_realm): Path<String>,
     Json(req): Json<CreateAuditLogRequest>,
 ) -> Result<StatusCode, StatusCode> {
     let log = AuditLog {
@@ -45,6 +52,7 @@ pub async fn add_audit_log(
     }
 }
 
+/// Retrieve all audit logs for the specified realm
 pub async fn get_audit_logs(
     State(store): State<Arc<PgAuditLogStore>>,
     Path(_realm): Path<String>,

@@ -5,7 +5,9 @@ use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// OIDC client store for managing OAuth2/OIDC client registrations
 pub struct OidcClientStore {
+    /// Database connection
     db: Arc<Database>,
 }
 
@@ -16,15 +18,18 @@ impl Default for OidcClientStore {
 }
 
 impl OidcClientStore {
+    /// Create new OIDC client store (unimplemented for in-memory)
     pub fn new() -> Self {
         // This would need database parameter in production
         unimplemented!("Database-backed OidcClientStore not implemented")
     }
 
+    /// Create OIDC client store with database connection
     pub fn with_database(db: Arc<Database>) -> Self {
         Self { db }
     }
 
+    /// Add new OIDC client
     pub async fn add(&self, client: OidcClient) -> Result<()> {
         use crate::database::operations::oauth2;
         use crate::models::OAuth2Client;
@@ -53,6 +58,7 @@ impl OidcClientStore {
         Ok(())
     }
 
+    /// Get OIDC client by client ID
     pub async fn get(&self, client_id: &str) -> Result<Option<OidcClient>> {
         use crate::database::operations::oauth2;
 
@@ -73,6 +79,7 @@ impl OidcClientStore {
         }
     }
 
+    /// Get all OIDC clients
     pub async fn all(&self) -> Result<Vec<OidcClient>> {
         use crate::database::operations::oauth2;
 
@@ -94,6 +101,7 @@ impl OidcClientStore {
         Ok(oidc_clients)
     }
 
+    /// Delete OIDC client by client ID
     pub async fn delete(&self, client_id: &str) -> Result<bool> {
         use crate::database::operations::oauth2;
 

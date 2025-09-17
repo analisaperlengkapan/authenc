@@ -10,18 +10,30 @@ use std::sync::Arc;
 /// Comprehensive application state with all services
 #[derive(Clone)]
 pub struct AppState {
+    /// Application configuration
     pub config: Arc<AppConfig>,
+    /// Database connection pool
     pub database: Arc<crate::database::Database>,
-    pub user_store: Arc<crate::services::services::user_store::UserStore>,
+    /// User data store
+    pub user_store: Arc<crate::services::stores::user_store::UserStore>,
+    /// Session management store
     pub session_store: Arc<crate::services::session_store::SessionStore>,
+    /// TOTP (Time-based One-Time Password) store
     pub totp_store: Arc<crate::services::totp_store::TotpStore>,
+    /// Brute force attack protection service
     pub brute_force_protector: Arc<crate::services::brute_force_protector::BruteForceProtector>,
+    /// Anomaly detection service
     pub anomaly_detector: Arc<crate::services::anomaly_detector::AnomalyDetector>,
+    /// Federation provider registry
     pub federation_registry: Arc<crate::services::federation_provider::FederationRegistry>,
+    /// Audit log storage
     pub audit_log_store: Arc<crate::services::pg_audit_log_store::PgAuditLogStore>,
-    pub realm_store: Arc<crate::services::services::realm_store::RealmStore>,
-    pub role_store: Arc<crate::services::services::role_store::RoleStore>,
-    pub permission_store: Arc<crate::services::services::permission_store::PermissionStore>,
+    /// Realm configuration store
+    pub realm_store: Arc<crate::services::stores::realm_store::RealmStore>,
+    /// Role management store
+    pub role_store: Arc<crate::services::stores::role_store::RoleStore>,
+    /// Permission management store
+    pub permission_store: Arc<crate::services::stores::permission_store::PermissionStore>,
 }
 
 impl AppState {
@@ -48,7 +60,7 @@ impl AppState {
         );
 
         // Initialize other services
-        let user_store = Arc::new(crate::services::services::user_store::UserStore::new());
+        let user_store = Arc::new(crate::services::stores::user_store::UserStore::new());
         let session_store = Arc::new(crate::services::session_store::SessionStore::new());
         let totp_store = Arc::new(crate::services::totp_store::TotpStore::new());
 
@@ -62,10 +74,10 @@ impl AppState {
         let anomaly_detector = Arc::new(crate::services::anomaly_detector::AnomalyDetector::new());
         let federation_registry =
             Arc::new(crate::services::federation_provider::FederationRegistry::new());
-        let realm_store = Arc::new(crate::services::services::realm_store::RealmStore::new());
-        let role_store = Arc::new(crate::services::services::role_store::RoleStore::new());
+        let realm_store = Arc::new(crate::services::stores::realm_store::RealmStore::new());
+        let role_store = Arc::new(crate::services::stores::role_store::RoleStore::new());
         let permission_store =
-            Arc::new(crate::services::services::permission_store::PermissionStore::new());
+            Arc::new(crate::services::stores::permission_store::PermissionStore::new());
 
         Ok(Self {
             config,

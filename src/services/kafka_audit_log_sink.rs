@@ -4,12 +4,16 @@ use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::time::Duration;
 
+/// Kafka-based audit log sink for distributed streaming
 pub struct KafkaAuditLogSink {
+    /// Kafka producer for sending messages
     producer: FutureProducer,
+    /// Kafka topic to send audit logs to
     topic: String,
 }
 
 impl KafkaAuditLogSink {
+    /// Create new Kafka audit log sink
     pub fn new(brokers: &str, topic: &str) -> Result<Self, rdkafka::error::KafkaError> {
         let producer = ClientConfig::new()
             .set("bootstrap.servers", brokers)

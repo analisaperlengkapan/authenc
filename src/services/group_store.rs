@@ -13,6 +13,7 @@ use uuid::Uuid;
 ///
 /// Provides thread-safe CRUD operations for `Group`.
 pub struct GroupStore {
+    /// id -> group mapping
     groups: Arc<RwLock<HashMap<Uuid, Group>>>,
 }
 

@@ -17,31 +17,43 @@
 //! - Enterprise integrations
 
 // Core modules
+/// Application state and initialization
 pub mod app;
+/// Configuration management and validation
 pub mod config;
+/// Cryptographic operations and utilities
 pub mod crypto;
+/// Error types and handling
 pub mod error;
+/// Data models and structures
 pub mod models;
+/// Utility functions and helpers
 pub mod utils;
 
 // Framework integrations
+/// Axum web framework integration
 #[cfg(feature = "axum")]
 #[cfg_attr(docsrs, doc(cfg(feature = "axum")))]
 pub mod axum_app;
 
 // Database layer
+/// Database operations and connection management
 #[cfg(feature = "db")]
 #[cfg_attr(docsrs, doc(cfg(feature = "db")))]
 pub mod database;
 
 // HTTP layer
+/// HTTP request handlers
 pub mod handlers;
+/// HTTP middleware components
 pub mod middleware;
 
 // Business logic
+/// Core business services and logic
 pub mod services;
 
 // Security vault
+/// Secret management and vault operations
 pub mod vault;
 
 // Re-export commonly used items

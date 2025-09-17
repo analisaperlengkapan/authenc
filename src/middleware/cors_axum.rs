@@ -7,6 +7,10 @@ use axum::{
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 /// Create a CORS layer with default configuration
+///
+/// This function creates a CORS layer that allows cross-origin requests from any origin
+/// with common HTTP methods and headers. It's configured for development and testing
+/// environments where strict CORS policies are not required.
 pub fn cors_layer() -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::any())
@@ -29,6 +33,14 @@ pub fn cors_layer() -> CorsLayer {
 }
 
 /// Middleware that adds CORS headers to responses
+///
+/// This middleware adds Cross-Origin Resource Sharing (CORS) headers to HTTP responses
+/// to allow web browsers to make cross-origin requests. The headers include:
+/// - Access-Control-Allow-Origin: Allows requests from any origin
+/// - Access-Control-Allow-Methods: Allows common HTTP methods
+/// - Access-Control-Allow-Headers: Allows any headers
+/// - Access-Control-Allow-Credentials: Allows credentials in requests
+/// - Access-Control-Max-Age: Caches preflight response for 24 hours
 pub async fn cors_middleware(request: Request<Body>, next: Next) -> Response<Body> {
     let response = next.run(request).await;
 

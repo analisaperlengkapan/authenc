@@ -11,14 +11,14 @@
 //! - Integration with OAuth2 flows
 //! - Request object support (JWT Secured Authorization Requests)
 
+use crate::error::AuthencError;
+use crate::models::oauth2::OAuth2Client;
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc, Duration};
 use uuid::Uuid;
-use crate::error::AuthencError;
-use crate::models::oauth2::OAuth2Client;
 
 /// PAR Request Parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,7 +77,10 @@ pub trait PARStorage: Send + Sync {
     async fn store_request(&self, request: StoredPARRequest) -> Result<(), AuthencError>;
 
     /// Retrieve a PAR request by URI
-    async fn get_request(&self, request_uri: &str) -> Result<Option<StoredPARRequest>, AuthencError>;
+    async fn get_request(
+        &self,
+        request_uri: &str,
+    ) -> Result<Option<StoredPARRequest>, AuthencError>;
 
     /// Mark a PAR request as consumed
     async fn consume_request(&self, request_uri: &str) -> Result<(), AuthencError>;
@@ -98,6 +101,32 @@ impl Default for InMemoryPARStorage {
 }
 
 impl InMemoryPARStorage {
+    /// Create a new in-memory PAR storage instance
+    ///
+    /// This constructor initializes an in-memory storage backend for Pushed
+    /// Authorization Requests (PAR). The storage uses a thread-safe HashMap
+    /// protected by RwLock for concurrent access in async environments.
+    ///
+    /// # Returns
+    /// A new `InMemoryPARStorage` instance with empty storage
+    ///
+    /// # Security Considerations
+    /// - Data is stored in memory only and will be lost on restart
+    /// - Not suitable for production use with multiple server instances
+    /// - Consider using persistent storage for production deployments
+    /// - Implement proper cleanup of expired PAR requests
+    ///
+    /// # Performance Considerations
+    /// - Fast in-memory access with O(1) lookup complexity
+    /// - Memory usage scales with number of active PAR requests
+    /// - RwLock provides concurrent read access but exclusive writes
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::services::par::InMemoryPARStorage;
+    ///
+    /// let storage = InMemoryPARStorage::new();
+    /// ```
     pub fn new() -> Self {
         Self {
             storage: Arc::new(RwLock::new(HashMap::new())),
@@ -113,7 +142,10 @@ impl PARStorage for InMemoryPARStorage {
         Ok(())
     }
 
-    async fn get_request(&self, request_uri: &str) -> Result<Option<StoredPARRequest>, AuthencError> {
+    async fn get_request(
+        &self,
+        request_uri: &str,
+    ) -> Result<Option<StoredPARRequest>, AuthencError> {
         let storage = self.storage.read().await;
 
         // Extract request ID from URI (format: urn:ietf:params:oauth:request_uri:{id})
@@ -142,9 +174,7 @@ impl PARStorage for InMemoryPARStorage {
         let mut storage = self.storage.write().await;
         let now = Utc::now();
 
-        storage.retain(|_, request| {
-            !request.consumed && request.expires_at > now
-        });
+        storage.retain(|_, request| !request.consumed && request.expires_at > now);
 
         Ok(())
     }
@@ -222,7 +252,9 @@ impl<S: PARStorage> PARManager<S> {
 
             // Check if already consumed
             if stored_request.consumed {
-                return Err(AuthencError::validation("PAR request already consumed".to_string()));
+                return Err(AuthencError::validation(
+                    "PAR request already consumed".to_string(),
+                ));
             }
 
             Ok(Some((stored_request.request, stored_request.client)))
@@ -251,6 +283,37 @@ pub struct PARAuthorizationHandler<S: PARStorage> {
 }
 
 impl<S: PARStorage> PARAuthorizationHandler<S> {
+    /// Create a new PAR-aware authorization handler
+    ///
+    /// This constructor initializes an OAuth 2.0 authorization handler that supports
+    /// both traditional authorization requests and Pushed Authorization Requests (PAR).
+    /// The handler automatically detects PAR requests and processes them accordingly.
+    ///
+    /// # Arguments
+    /// * `par_manager` - The PAR manager instance for handling PAR operations
+    ///
+    /// # Returns
+    /// A new `PARAuthorizationHandler` instance configured with the PAR manager
+    ///
+    /// # Security Considerations
+    /// - Validates PAR request URIs to prevent injection attacks
+    /// - Enforces PAR request expiration and consumption rules
+    /// - Logs authorization attempts for security monitoring
+    /// - Implements proper error handling for malformed requests
+    ///
+    /// # OAuth 2.0 Compliance
+    /// - Supports RFC 9126 (OAuth 2.0 Pushed Authorization Requests)
+    /// - Maintains backward compatibility with traditional flows
+    /// - Handles PAR request validation and consumption
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::services::par::{PARAuthorizationHandler, PARManager, InMemoryPARStorage};
+    ///
+    /// let storage = InMemoryPARStorage::new();
+    /// let par_manager = PARManager::new(storage, 600); // 10 minutes
+    /// let handler = PARAuthorizationHandler::new(par_manager);
+    /// ```
     pub fn new(par_manager: PARManager<S>) -> Self {
         Self { par_manager }
     }
@@ -263,28 +326,35 @@ impl<S: PARStorage> PARAuthorizationHandler<S> {
         // Check if this is a PAR request (has request_uri)
         if let Some(request_uri) = params.get("request_uri") {
             // PAR flow - get parameters from stored request
-            if let Some((par_request, client)) = self.par_manager
+            if let Some((par_request, client)) = self
+                .par_manager
                 .get_authorization_request(request_uri)
                 .await?
             {
                 // Validate client_id matches if provided in both places
                 if let Some(client_id) = params.get("client_id") {
                     if *client_id != par_request.client_id {
-                        return Err(AuthencError::validation("Client ID mismatch in PAR request".to_string()));
+                        return Err(AuthencError::validation(
+                            "Client ID mismatch in PAR request".to_string(),
+                        ));
                     }
                 }
 
                 // Use PAR parameters for authorization flow
                 self.process_authorization_flow(par_request, client).await
             } else {
-                Err(AuthencError::validation("Invalid or expired request URI".to_string()))
+                Err(AuthencError::validation(
+                    "Invalid or expired request URI".to_string(),
+                ))
             }
         } else {
             // Traditional flow - parameters in URL
-            let par_request = self.parse_traditional_params(params)?;
+            let _par_request = self.parse_traditional_params(params)?;
             // In traditional flow, we'd need to validate client separately
             // For now, return placeholder
-            Err(AuthencError::validation("Traditional OAuth2 flow not implemented in this example".to_string()))
+            Err(AuthencError::validation(
+                "Traditional OAuth2 flow not implemented in this example".to_string(),
+            ))
         }
     }
 
@@ -292,7 +362,7 @@ impl<S: PARStorage> PARAuthorizationHandler<S> {
     async fn process_authorization_flow(
         &self,
         request: PARRequest,
-        client: OAuth2Client,
+        _client: OAuth2Client,
     ) -> Result<String, AuthencError> {
         // This would integrate with your OAuth2 authorization flow
         // For now, return a placeholder authorization code
@@ -310,21 +380,29 @@ impl<S: PARStorage> PARAuthorizationHandler<S> {
         // Note: In real implementation, this should be done after successful token exchange
         // self.par_manager.consume_authorization_request(&request_uri).await?;
 
-        Ok(format!("https://client.example.com/callback?code={}&state={}",
+        Ok(format!(
+            "https://client.example.com/callback?code={}&state={}",
             authorization_code,
-            request.state.unwrap_or_default()))
+            request.state.unwrap_or_default()
+        ))
     }
 
     /// Parse traditional OAuth2 parameters
-    fn parse_traditional_params(&self, params: HashMap<String, String>) -> Result<PARRequest, AuthencError> {
+    fn parse_traditional_params(
+        &self,
+        params: HashMap<String, String>,
+    ) -> Result<PARRequest, AuthencError> {
         Ok(PARRequest {
-            client_id: params.get("client_id")
+            client_id: params
+                .get("client_id")
                 .ok_or_else(|| AuthencError::validation("Missing client_id".to_string()))?
                 .clone(),
-            response_type: params.get("response_type")
+            response_type: params
+                .get("response_type")
                 .ok_or_else(|| AuthencError::validation("Missing response_type".to_string()))?
                 .clone(),
-            redirect_uri: params.get("redirect_uri")
+            redirect_uri: params
+                .get("redirect_uri")
                 .ok_or_else(|| AuthencError::validation("Missing redirect_uri".to_string()))?
                 .clone(),
             scope: params.get("scope").cloned(),
@@ -332,9 +410,21 @@ impl<S: PARStorage> PARAuthorizationHandler<S> {
             nonce: params.get("nonce").cloned(),
             code_challenge: params.get("code_challenge").cloned(),
             code_challenge_method: params.get("code_challenge_method").cloned(),
-            additional_params: params.into_iter()
-                .filter(|(k, _)| !["client_id", "response_type", "redirect_uri", "scope",
-                                  "state", "nonce", "code_challenge", "code_challenge_method"].contains(&k.as_str()))
+            additional_params: params
+                .into_iter()
+                .filter(|(k, _)| {
+                    ![
+                        "client_id",
+                        "response_type",
+                        "redirect_uri",
+                        "scope",
+                        "state",
+                        "nonce",
+                        "code_challenge",
+                        "code_challenge_method",
+                    ]
+                    .contains(&k.as_str())
+                })
                 .collect(),
         })
     }
@@ -342,32 +432,72 @@ impl<S: PARStorage> PARAuthorizationHandler<S> {
 
 /// PAR Middleware for Axum
 pub mod middleware {
-    use axum::{
-        extract::State,
-        http::StatusCode,
-        response::Json,
-        Router,
-    };
+    use axum::{extract::State, http::StatusCode, response::Json, Router};
+    use serde::Deserialize;
     use std::collections::HashMap;
     use std::sync::Arc;
-    use serde::Deserialize;
 
-    use super::{PARManager, PARStorage, PARRequest, PARResponse};
+    use super::{PARManager, PARRequest, PARResponse, PARStorage};
 
     #[derive(Deserialize)]
+    /// PAR push request for OAuth 2.0 Pushed Authorization Requests
+    ///
+    /// This struct represents the request payload for pushing authorization parameters
+    /// to the authorization server as defined in RFC 9126. It contains all the standard
+    /// OAuth 2.0 authorization request parameters that are sent in the request body
+    /// instead of URL parameters for enhanced security.
+    ///
+    /// # Fields
+    /// * `client_id` - OAuth 2.0 client identifier
+    /// * `response_type` - OAuth 2.0 response type (code, token, etc.)
+    /// * `redirect_uri` - Redirect URI for authorization response
+    /// * `scope` - Requested OAuth 2.0 scopes
+    /// * `state` - State parameter for CSRF protection
+    /// * `nonce` - Nonce parameter for replay attack protection
+    ///
+    /// # Security Considerations
+    /// - Request body is encrypted in transit (unlike URL parameters)
+    /// - Prevents authorization parameters from appearing in server logs
+    /// - Protects against referrer header leakage
+    /// - Enables confidential clients to use authorization code flow securely
+    ///
+    /// # RFC 9126 Compliance
+    /// Implements the Pushed Authorization Request endpoint as specified in
+    /// RFC 9126 (OAuth 2.0 Pushed Authorization Requests).
+    ///
+    /// # Example
+    /// ```json
+    /// {
+    ///   "client_id": "client123",
+    ///   "response_type": "code",
+    ///   "redirect_uri": "https://client.example.com/callback",
+    ///   "scope": "openid profile email",
+    ///   "state": "xyz123",
+    ///   "nonce": "abc456"
+    /// }
+    /// ```
     pub struct PARPushRequest {
+        /// Client identifier
         pub client_id: String,
+        /// OAuth2 response type
         pub response_type: String,
+        /// Redirect URI for authorization response
         pub redirect_uri: String,
+        /// Requested scopes
         pub scope: Option<String>,
+        /// State parameter for CSRF protection
         pub state: Option<String>,
+        /// Nonce parameter for replay attack protection
         pub nonce: Option<String>,
+        /// PKCE code challenge
         pub code_challenge: Option<String>,
+        /// PKCE code challenge method
         pub code_challenge_method: Option<String>,
     }
 
     /// PAR middleware state
     pub struct PARMiddlewareState<S: PARStorage> {
+        /// PAR manager instance
         pub par_manager: PARManager<S>,
     }
 
@@ -409,7 +539,11 @@ pub mod middleware {
             additional_params: HashMap::new(),
         };
 
-        match state.par_manager.push_authorization_request(mock_client, par_request).await {
+        match state
+            .par_manager
+            .push_authorization_request(mock_client, par_request)
+            .await
+        {
             Ok(response) => Ok(Json(response)),
             Err(_) => Err(StatusCode::BAD_REQUEST),
         }
@@ -418,7 +552,10 @@ pub mod middleware {
     /// Create PAR routes
     pub fn create_par_routes<S: PARStorage + 'static>(state: Arc<PARMiddlewareState<S>>) -> Router {
         Router::new()
-            .route("/oauth/par", axum::routing::post(push_authorization_request::<S>))
+            .route(
+                "/oauth/par",
+                axum::routing::post(push_authorization_request::<S>),
+            )
             .with_state(state)
     }
 }
@@ -464,10 +601,15 @@ mod tests {
         };
 
         // Push authorization request
-        let response = manager.push_authorization_request(mock_client, par_request).await.unwrap();
+        let response = manager
+            .push_authorization_request(mock_client, par_request)
+            .await
+            .unwrap();
 
         // Verify response
-        assert!(response.request_uri.starts_with("urn:ietf:params:oauth:request_uri:"));
+        assert!(response
+            .request_uri
+            .starts_with("urn:ietf:params:oauth:request_uri:"));
         assert_eq!(response.expires_in, 600);
 
         // Retrieve request
@@ -519,11 +661,19 @@ mod tests {
         };
 
         // Push and consume request
-        let response = manager.push_authorization_request(mock_client, par_request).await.unwrap();
-        manager.consume_authorization_request(&response.request_uri).await.unwrap();
+        let response = manager
+            .push_authorization_request(mock_client, par_request)
+            .await
+            .unwrap();
+        manager
+            .consume_authorization_request(&response.request_uri)
+            .await
+            .unwrap();
 
         // Try to retrieve consumed request
-        let result = manager.get_authorization_request(&response.request_uri).await;
+        let result = manager
+            .get_authorization_request(&response.request_uri)
+            .await;
         assert!(result.is_err()); // Should fail because request was consumed
     }
 
@@ -535,7 +685,10 @@ mod tests {
         let params = HashMap::from([
             ("client_id".to_string(), "test-client".to_string()),
             ("response_type".to_string(), "code".to_string()),
-            ("redirect_uri".to_string(), "https://example.com/callback".to_string()),
+            (
+                "redirect_uri".to_string(),
+                "https://example.com/callback".to_string(),
+            ),
             ("scope".to_string(), "openid profile".to_string()),
             ("custom_param".to_string(), "custom_value".to_string()),
         ]);
@@ -545,6 +698,9 @@ mod tests {
         assert_eq!(request.client_id, "test-client");
         assert_eq!(request.response_type, "code");
         assert_eq!(request.scope, Some("openid profile".to_string()));
-        assert_eq!(request.additional_params.get("custom_param"), Some(&"custom_value".to_string()));
+        assert_eq!(
+            request.additional_params.get("custom_param"),
+            Some(&"custom_value".to_string())
+        );
     }
 }

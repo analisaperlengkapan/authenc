@@ -6,6 +6,16 @@ use axum::{
 };
 
 /// Middleware that adds security headers to responses
+///
+/// This middleware adds various security headers to HTTP responses to help protect
+/// against common web vulnerabilities such as XSS, clickjacking, and content sniffing.
+/// The headers include:
+/// - Strict-Transport-Security: Enforces HTTPS connections
+/// - X-Frame-Options: Prevents clickjacking attacks
+/// - X-Content-Type-Options: Prevents MIME type sniffing
+/// - X-XSS-Protection: Enables XSS filtering in browsers
+/// - Cache-Control, Pragma, Expires: Prevents caching of sensitive content
+/// - Content-Security-Policy: Restricts resource loading to prevent XSS
 pub async fn security_headers_middleware(request: Request, next: Next) -> Response<Body> {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();

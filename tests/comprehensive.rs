@@ -567,7 +567,6 @@ async fn test_oidc_discovery_smoke() {
     assert_ne!(response.status_code(), StatusCode::NOT_FOUND);
 }
 
-
 #[tokio::test]
 async fn test_login_bruteforce_throttle() {
     use std::collections::HashMap;
@@ -610,7 +609,6 @@ async fn test_login_bruteforce_throttle() {
         .await;
     assert_eq!(response.status_code(), StatusCode::TOO_MANY_REQUESTS);
 }
-
 
 #[tokio::test]
 async fn test_login_requires_totp_when_enabled() {

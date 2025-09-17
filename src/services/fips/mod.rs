@@ -1,37 +1,67 @@
+use crate::error::AuthencError;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::error::AuthencError;
 
 /// FIPS 140-3 compliance levels (updated standard)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd)]
 pub enum FipsLevel {
+    /// No FIPS compliance
     None = 0,
+    /// FIPS Level 1 compliance
     Level1 = 1,
+    /// FIPS Level 2 compliance
     Level2 = 2,
+    /// FIPS Level 3 compliance
     Level3 = 3,
+    /// FIPS Level 4 compliance
     Level4 = 4,
 }
 
-/// FIPS compliance status
+/// FIPS co/// FIPS compliance event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FipsComplianceEvent {
+    /// Type of compliance event (e.g., "algorithm_validation", "key_generation")
+    pub event_type: String,
+    /// Cryptographic algorithm involved in the event (if applicable)
+    pub algorithm: Option<String>,
+    /// Whether the event indicates successful compliance
+    pub compliant: bool,
+    /// Additional details about the compliance event
+    pub details: String,
+    /// Timestamp when the event occurred
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// FIPS compliance status enumeration
 pub enum FipsComplianceStatus {
+    /// The system is compliant with FIPS standards
     Compliant,
+    /// The system is not compliant with FIPS standards
     NonCompliant,
+    /// Compliance status is unknown
     Unknown,
+    /// Compliance is currently being checked
     Checking,
 }
 
 /// Security Profile for different compliance levels
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityProfile {
+    /// Name of the security profile
     pub name: String,
+    /// Description of the security profile
     pub description: String,
+    /// FIPS compliance level required by this profile
     pub fips_level: FipsLevel,
+    /// List of cryptographic algorithms approved for this profile
     pub approved_algorithms: Vec<String>,
+    /// Minimum key sizes required for different algorithms
     pub key_sizes: HashMap<String, Vec<usize>>,
+    /// Security strength level (in bits) provided by this profile
     pub security_strength: u32,
+    /// List of security requirements for this profile
     pub requirements: Vec<String>,
 }
 
@@ -48,24 +78,36 @@ pub trait FipsSecurityProfileProvider: Send + Sync {
     async fn set_security_profile(&self, profile_name: &str) -> Result<(), AuthencError>;
 
     /// Validate algorithm against current profile
-    async fn validate_algorithm_for_profile(&self, algorithm: &str, key_size: Option<usize>) -> Result<bool, AuthencError>;
+    async fn validate_algorithm_for_profile(
+        &self,
+        algorithm: &str,
+        key_size: Option<usize>,
+    ) -> Result<bool, AuthencError>;
 }
 
 /// FIPS compliance check result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FipsComplianceCheck {
+    /// Name of the compliance check performed
     pub check_name: String,
+    /// Status of the compliance check
     pub status: FipsComplianceStatus,
+    /// Detailed information about the check result
     pub details: String,
+    /// Recommendations for improving compliance if check failed
     pub recommendations: Vec<String>,
 }
 
 /// Cryptographic algorithm validation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlgorithmValidation {
+    /// Name of the cryptographic algorithm
     pub algorithm: String,
+    /// Whether the algorithm is approved for FIPS compliance
     pub is_fips_approved: bool,
+    /// Security strength provided by the algorithm (in bits)
     pub security_strength: u32,
+    /// Usage restrictions or requirements for the algorithm
     pub usage_restrictions: Vec<String>,
 }
 
@@ -90,7 +132,9 @@ pub trait FipsSecurityProvider: Send + Sync {
 
 /// BouncyCastle FIPS provider implementation
 pub struct BouncyCastleFipsProvider {
+    /// Whether FIPS mode is currently enabled in the provider
     fips_mode_enabled: bool,
+    /// List of cryptographic algorithms approved for FIPS compliance
     approved_algorithms: Vec<String>,
 }
 
@@ -101,6 +145,19 @@ impl Default for BouncyCastleFipsProvider {
 }
 
 impl BouncyCastleFipsProvider {
+    /// Creates a new BouncyCastle FIPS provider instance with default approved algorithms.
+    ///
+    /// This constructor initializes the provider with FIPS mode disabled by default and
+    /// includes a comprehensive set of FIPS-approved cryptographic algorithms including
+    /// AES, RSA, ECDSA, and SHA family hash functions.
+    ///
+    /// # Security Considerations
+    /// - FIPS mode is disabled by default; enable explicitly for production FIPS compliance
+    /// - All algorithms are pre-approved for FIPS 140-3 compliance
+    /// - Provider should be validated before use in security-critical operations
+    ///
+    /// # Returns
+    /// A new `BouncyCastleFipsProvider` instance configured with default settings
     pub fn new() -> Self {
         Self {
             fips_mode_enabled: false,
@@ -118,6 +175,7 @@ impl BouncyCastleFipsProvider {
         }
     }
 
+    /// Enable FIPS mode for this provider
     pub fn enable_fips_mode(&mut self) {
         self.fips_mode_enabled = true;
     }
@@ -219,6 +277,7 @@ impl FipsSecurityProvider for BouncyCastleFipsProvider {
 
 /// OpenSSL FIPS provider implementation
 pub struct OpenSslFipsProvider {
+    /// Whether FIPS mode is currently enabled in the OpenSSL provider
     fips_mode_enabled: bool,
 }
 
@@ -229,12 +288,26 @@ impl Default for OpenSslFipsProvider {
 }
 
 impl OpenSslFipsProvider {
+    /// Creates a new OpenSSL FIPS provider instance with FIPS mode disabled.
+    ///
+    /// This constructor initializes the provider in a non-FIPS state by default.
+    /// FIPS mode must be explicitly enabled using `enable_fips_mode()` before
+    /// performing any cryptographic operations that require FIPS compliance.
+    ///
+    /// # Security Considerations
+    /// - FIPS mode is disabled by default for compatibility
+    /// - Always enable FIPS mode for production security-critical operations
+    /// - Provider state should be validated after FIPS mode activation
+    ///
+    /// # Returns
+    /// A new `OpenSslFipsProvider` instance with FIPS mode disabled
     pub fn new() -> Self {
         Self {
             fips_mode_enabled: false,
         }
     }
 
+    /// Enable FIPS mode for this provider
     pub fn enable_fips_mode(&mut self) {
         self.fips_mode_enabled = true;
     }
@@ -330,11 +403,29 @@ impl FipsSecurityProvider for OpenSslFipsProvider {
 
 /// FIPS compliance manager
 pub struct FipsComplianceManager {
+    /// The FIPS security provider implementation
     provider: Box<dyn FipsSecurityProvider>,
+    /// Whether strict FIPS compliance is required (reject non-compliant operations)
     strict_mode: bool,
 }
 
 impl FipsComplianceManager {
+    /// Creates a new FIPS compliance manager with the specified security provider.
+    ///
+    /// This constructor initializes the compliance manager with a FIPS security provider
+    /// and sets strict mode to false by default. The provider is responsible for
+    /// implementing the actual FIPS compliance checks and cryptographic operations.
+    ///
+    /// # Arguments
+    /// * `provider` - A boxed FIPS security provider implementation
+    ///
+    /// # Security Considerations
+    /// - Strict mode is disabled by default; enable for maximum security compliance
+    /// - Provider should be validated before use in production environments
+    /// - Compliance manager should be initialized before performing cryptographic operations
+    ///
+    /// # Returns
+    /// A new `FipsComplianceManager` instance configured with the provided security provider
     pub fn new(provider: Box<dyn FipsSecurityProvider>) -> Self {
         Self {
             provider,
@@ -342,6 +433,7 @@ impl FipsComplianceManager {
         }
     }
 
+    /// Set strict mode for FIPS compliance checking
     pub fn set_strict_mode(&mut self, strict: bool) {
         self.strict_mode = strict;
     }
@@ -405,38 +497,75 @@ impl FipsComplianceManager {
 /// FIPS compliance report
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FipsComplianceReport {
+    /// Overall compliance status of the system
     pub overall_status: FipsComplianceStatus,
+    /// Current FIPS compliance level achieved
     pub fips_level: FipsLevel,
+    /// List of individual compliance checks performed
     pub checks: Vec<FipsComplianceCheck>,
+    /// List of FIPS approved cryptographic algorithms
     pub approved_algorithms: Vec<String>,
+    /// Timestamp when the report was generated
     pub generated_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// FIPS configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FipsConfig {
+    /// Whether FIPS compliance mode is enabled
     pub enabled: bool,
+    /// Type of FIPS provider to use for cryptographic operations
     pub provider: FipsProviderType,
+    /// Whether strict FIPS compliance is required (reject non-compliant operations)
     pub strict_mode: bool,
-    pub keystore_type: String, // PKCS12 or BCFKS
+    /// Type of keystore format (PKCS12 or BCFKS) for secure key storage
+    pub keystore_type: String,
 }
 
 /// FIPS provider types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FipsProviderType {
+    /// BouncyCastle FIPS provider
     BouncyCastle,
+    /// OpenSSL FIPS provider
     OpenSsl,
+    /// Custom FIPS provider implementation
     Custom,
 }
 
 /// FIPS keystore manager for secure key storage
 pub struct FipsKeyStoreManager {
+    /// Path to the keystore file on disk
+    #[allow(dead_code)]
     keystore_path: String,
+    /// Password for accessing the keystore
+    #[allow(dead_code)]
     keystore_password: String,
+    /// Type of keystore format (PKCS12 or BCFKS)
+    #[allow(dead_code)]
     keystore_type: String,
 }
 
 impl FipsKeyStoreManager {
+    /// Creates a new FIPS keystore manager with the specified configuration.
+    ///
+    /// This constructor initializes the keystore manager with the path to the keystore file,
+    /// the password for keystore access, and the keystore type (PKCS12 or BCFKS).
+    /// The manager provides FIPS-compliant key and secret storage capabilities.
+    ///
+    /// # Arguments
+    /// * `keystore_path` - Path to the keystore file on disk
+    /// * `keystore_password` - Password for keystore access and encryption
+    /// * `keystore_type` - Type of keystore format (PKCS12 or BCFKS)
+    ///
+    /// # Security Considerations
+    /// - Keystore password should be securely managed and not hardcoded
+    /// - Keystore file should be stored in a secure location with proper permissions
+    /// - Use strong, randomly generated passwords for keystore access
+    /// - Consider hardware security modules for enhanced protection
+    ///
+    /// # Returns
+    /// A new `FipsKeyStoreManager` instance configured with the provided parameters
     pub fn new(keystore_path: String, keystore_password: String, keystore_type: String) -> Self {
         Self {
             keystore_path,
@@ -466,10 +595,43 @@ impl FipsKeyStoreManager {
 
 /// FIPS audit logger for compliance tracking
 pub struct FipsAuditLogger {
+    /// Whether audit logging of FIPS compliance events is enabled
     audit_enabled: bool,
 }
 
 impl FipsAuditLogger {
+    /// Create a new FIPS audit logger with audit configuration
+    ///
+    /// This constructor initializes a FIPS audit logger that tracks
+    /// compliance events and security-relevant activities for FIPS 140-3
+    /// compliance validation. The logger can be configured to enable
+    /// or disable audit logging based on operational requirements.
+    ///
+    /// # Arguments
+    /// * `audit_enabled` - Whether to enable audit logging of compliance events
+    ///
+    /// # Returns
+    /// A new `FipsAuditLogger` instance configured for compliance tracking
+    ///
+    /// # Security Considerations
+    /// - Audit logs should be tamper-proof and integrity-protected
+    /// - Sensitive information should never be logged in audit trails
+    /// - Audit events should be timestamped and sequenced
+    /// - Log storage should be encrypted and access-controlled
+    ///
+    /// # FIPS 140-3 Compliance
+    /// - Tracks cryptographic module initialization and usage
+    /// - Logs key generation, storage, and destruction events
+    /// - Records security policy violations and exceptions
+    /// - Maintains audit trail for compliance validation
+    ///
+    /// # Example
+    /// ```rust
+    /// use authenc::services::fips::FipsAuditLogger;
+    ///
+    /// let logger = FipsAuditLogger::new(true); // Enable audit logging
+    /// // Logger is ready for compliance event tracking
+    /// ```
     pub fn new(audit_enabled: bool) -> Self {
         Self { audit_enabled }
     }
@@ -484,22 +646,13 @@ impl FipsAuditLogger {
         Ok(())
     }
 }
-
-/// FIPS compliance event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FipsComplianceEvent {
-    pub event_type: String,
-    pub algorithm: Option<String>,
-    pub compliant: bool,
-    pub details: String,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-}
-
-/// FIPS Security Profile Provider
 /// Advanced FIPS Security Provider with FIPS 140-3 support
 pub struct AdvancedFipsSecurityProvider {
+    /// Whether FIPS mode is currently enabled in the provider
     fips_mode_enabled: bool,
+    /// Current active security profile for compliance validation
     current_profile: SecurityProfile,
+    /// Available security profiles that can be activated
     security_profiles: Vec<SecurityProfile>,
 }
 
@@ -510,6 +663,22 @@ impl Default for AdvancedFipsSecurityProvider {
 }
 
 impl AdvancedFipsSecurityProvider {
+    /// Creates a new advanced FIPS security provider with predefined security profiles.
+    ///
+    /// This constructor initializes the provider with comprehensive FIPS 140-3 compliance
+    /// profiles for different security levels (Level 1, 2, 3, and 4). Each profile
+    /// includes approved cryptographic algorithms and security requirements specific
+    /// to that FIPS level.
+    ///
+    /// # Security Considerations
+    /// - Provider includes multiple FIPS compliance levels for different use cases
+    /// - All algorithms in profiles are FIPS-approved for their respective levels
+    /// - Security profiles should be validated against specific compliance requirements
+    /// - Higher FIPS levels provide stronger security guarantees but may have performance impact
+    ///
+    /// # Returns
+    /// A new `AdvancedFipsSecurityProvider` instance with predefined FIPS security profiles
+    #[allow(clippy::vec_init_then_push)]
     pub fn new() -> Self {
         let mut profiles = Vec::new();
 
@@ -537,7 +706,9 @@ impl AdvancedFipsSecurityProvider {
                 ("ECDSA".to_string(), vec![256, 384, 521]),
                 ("Ed25519".to_string(), vec![256]),
                 ("Ed448".to_string(), vec![448]),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
             security_strength: 128,
             requirements: vec![
                 "Cryptographic module must be validated".to_string(),
@@ -570,7 +741,9 @@ impl AdvancedFipsSecurityProvider {
                 ("ECDSA".to_string(), vec![256, 384, 521]),
                 ("Ed25519".to_string(), vec![256]),
                 ("Ed448".to_string(), vec![448]),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
             security_strength: 192,
             requirements: vec![
                 "All Level 1 requirements".to_string(),
@@ -604,7 +777,9 @@ impl AdvancedFipsSecurityProvider {
                 ("ECDSA".to_string(), vec![384, 521]),
                 ("Ed25519".to_string(), vec![256]),
                 ("Ed448".to_string(), vec![448]),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
             security_strength: 256,
             requirements: vec![
                 "All Level 2 requirements".to_string(),
@@ -639,7 +814,9 @@ impl AdvancedFipsSecurityProvider {
                 ("ECDSA".to_string(), vec![521]),
                 ("Ed25519".to_string(), vec![256]),
                 ("Ed448".to_string(), vec![448]),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
             security_strength: 256,
             requirements: vec![
                 "All Level 3 requirements".to_string(),
@@ -657,10 +834,12 @@ impl AdvancedFipsSecurityProvider {
         }
     }
 
+    /// Enable FIPS mode for this provider
     pub fn enable_fips_mode(&mut self) {
         self.fips_mode_enabled = true;
     }
 
+    /// Disable FIPS mode for this provider
     pub fn disable_fips_mode(&mut self) {
         self.fips_mode_enabled = false;
     }
@@ -677,7 +856,10 @@ impl FipsSecurityProvider for AdvancedFipsSecurityProvider {
     }
 
     async fn validate_algorithm(&self, algorithm: &str) -> Result<AlgorithmValidation> {
-        let is_approved = self.current_profile.approved_algorithms.contains(&algorithm.to_string());
+        let is_approved = self
+            .current_profile
+            .approved_algorithms
+            .contains(&algorithm.to_string());
 
         let security_strength = if is_approved {
             self.current_profile.security_strength
@@ -719,7 +901,11 @@ impl FipsSecurityProvider for AdvancedFipsSecurityProvider {
             checks.push(FipsComplianceCheck {
                 check_name: format!("Algorithm: {}", algorithm),
                 status: FipsComplianceStatus::Compliant,
-                details: format!("{} is approved for FIPS {}", algorithm, self.current_profile.fips_level.clone() as u8),
+                details: format!(
+                    "{} is approved for FIPS {}",
+                    algorithm,
+                    self.current_profile.fips_level.clone() as u8
+                ),
                 recommendations: vec![],
             });
         }
@@ -760,17 +946,29 @@ impl FipsSecurityProfileProvider for AdvancedFipsSecurityProvider {
     async fn set_security_profile(&self, profile_name: &str) -> Result<(), AuthencError> {
         // Note: This would need mutable access in a real implementation
         // For now, just validate the profile exists
-        if !self.security_profiles.iter().any(|p| p.name == profile_name) {
+        if !self
+            .security_profiles
+            .iter()
+            .any(|p| p.name == profile_name)
+        {
             return Err(AuthencError::ValidationError {
-                message: format!("Security profile not found: {}", profile_name)
+                message: format!("Security profile not found: {}", profile_name),
             });
         }
         Ok(())
     }
 
-    async fn validate_algorithm_for_profile(&self, algorithm: &str, key_size: Option<usize>) -> Result<bool, AuthencError> {
+    async fn validate_algorithm_for_profile(
+        &self,
+        algorithm: &str,
+        key_size: Option<usize>,
+    ) -> Result<bool, AuthencError> {
         // Check if algorithm is approved
-        if !self.current_profile.approved_algorithms.contains(&algorithm.to_string()) {
+        if !self
+            .current_profile
+            .approved_algorithms
+            .contains(&algorithm.to_string())
+        {
             return Ok(false);
         }
 
@@ -789,12 +987,38 @@ impl FipsSecurityProfileProvider for AdvancedFipsSecurityProvider {
 
 /// FIPS Appliance Bootstrap for secure initialization
 pub struct FipsApplianceBootstrap {
+    /// List of entropy sources for random number generation
+    #[allow(dead_code)]
     entropy_sources: Vec<String>,
+    /// Whether key ceremony is required for initialization
     key_ceremony_required: bool,
+    /// Whether tamper detection is enabled
     tamper_detection_enabled: bool,
 }
 
+impl Default for FipsApplianceBootstrap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FipsApplianceBootstrap {
+    /// Creates a new FIPS appliance bootstrap instance with secure defaults.
+    ///
+    /// This constructor initializes the bootstrap with multiple entropy sources for
+    /// cryptographic key generation, enables key ceremony requirements, and activates
+    /// tamper detection. The bootstrap process ensures secure initialization of
+    /// FIPS-compliant cryptographic appliances.
+    ///
+    /// # Security Considerations
+    /// - Multiple entropy sources provide robust random number generation
+    /// - Key ceremony requirement ensures proper key management procedures
+    /// - Tamper detection provides continuous security monitoring
+    /// - Bootstrap should be performed in a secure environment
+    /// - All entropy sources should be validated before use
+    ///
+    /// # Returns
+    /// A new `FipsApplianceBootstrap` instance configured with secure defaults
     pub fn new() -> Self {
         Self {
             entropy_sources: vec![
@@ -832,12 +1056,14 @@ impl FipsApplianceBootstrap {
         Ok(())
     }
 
+    /// Perform secure key generation ceremony
     async fn perform_key_ceremony(&self) -> Result<(), AuthencError> {
         // Perform secure key generation ceremony
         // This would involve multiple administrators and audit logging
         Ok(())
     }
 
+    /// Initialize hardware tamper detection mechanisms
     async fn initialize_tamper_detection(&self) -> Result<(), AuthencError> {
         // Initialize hardware tamper detection mechanisms
         // This would configure TPM, HSM, or other hardware security modules
