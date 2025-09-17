@@ -134,6 +134,7 @@ async fn test_xss_attack_prevention() {
 async fn test_csrf_protection() {
     let state = SecurityTestState::new();
     let app = Router::new()
+        .route("/api/users", post(create_user_security_handler))
         .route("/api/users/{id}/update", post(update_user_csrf_handler))
         .route("/api/csrf/token", get(get_csrf_token_handler))
         .route("/api/security/csrf-check", post(validate_csrf_handler))
@@ -443,7 +444,7 @@ async fn search_users_handler(
     State(state): State<SecurityTestState>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<JsonResponse<Value>, StatusCode> {
-    let query = params.get("q").unwrap_or("");
+    let query = params.get("q").map_or("", |s| s.as_str());
 
     // Log security event for potential injection attempt
     let mut security_events = state.security_events.lock().await;
@@ -485,7 +486,7 @@ async fn get_security_events_handler(
 async fn create_post_handler(
     State(_state): State<SecurityTestState>,
     Json(post_data): Json<Value>,
-) -> Result<JsonResponse<Value>, StatusCode> {
+) -> Result<(StatusCode, JsonResponse<Value>), StatusCode> {
     let content = post_data["content"].as_str().unwrap_or("");
 
     // Simple XSS detection
@@ -494,13 +495,16 @@ async fn create_post_handler(
         || content.contains("onerror=")
         || content.contains("onload=")
     {
-        return Err(StatusCode::BAD_REQUEST);
+        return Ok((StatusCode::BAD_REQUEST, JsonResponse(json!({
+            "error": "XSS attempt detected",
+            "content": content
+        }))));
     }
 
-    Ok(JsonResponse(json!({
+    Ok((StatusCode::OK, JsonResponse(json!({
         "post_id": "post123",
         "status": "created"
-    })))
+    }))))
 }
 
 async fn get_post_handler(
@@ -571,8 +575,27 @@ async fn login_attempt_handler(
     let ip = login_data["ip_address"].as_str().unwrap_or("");
     let mut blocked_ips = state.blocked_ips.lock().await;
 
-    // Simple brute force detection
+    // Check if IP is already blocked
     if blocked_ips.contains(&ip.to_string()) {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    // Track failed attempts (simplified - in real implementation this would be per-user)
+    let mut security_events = state.security_events.lock().await;
+    let failed_attempts = security_events.iter()
+        .filter(|event| event["type"] == "failed_login" && event["ip"] == ip)
+        .count();
+
+    // Log the failed attempt
+    security_events.push(json!({
+        "type": "failed_login",
+        "ip": ip,
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }));
+
+    // Block IP after 10 failed attempts
+    if failed_attempts >= 10 {
+        blocked_ips.push(ip.to_string());
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
@@ -591,6 +614,20 @@ async fn brute_force_status_handler(
     })))
 }
 
+async fn create_user_security_handler(
+    State(state): State<SecurityTestState>,
+    Json(user_data): Json<Value>,
+) -> Result<(StatusCode, JsonResponse<Value>), StatusCode> {
+    let mut users = state.users.lock().await;
+    let user_id = format!("user{}", users.len());
+    users.insert(user_id.clone(), user_data);
+
+    Ok((StatusCode::CREATED, JsonResponse(json!({
+        "user_id": user_id,
+        "status": "created"
+    }))))
+}
+
 async fn block_ip_handler(
     State(state): State<SecurityTestState>,
     Json(block_data): Json<Value>,
@@ -605,16 +642,19 @@ async fn block_ip_handler(
 async fn read_file_handler(
     State(_state): State<SecurityTestState>,
     Path(path): Path<String>,
-) -> Result<JsonResponse<Value>, StatusCode> {
+) -> Result<(StatusCode, JsonResponse<Value>), StatusCode> {
     // Simple path traversal detection
     if path.contains("..") || path.contains("/") || path.contains("\\") {
-        return Err(StatusCode::FORBIDDEN);
+        return Ok((StatusCode::FORBIDDEN, JsonResponse(json!({
+            "error": "Path traversal detected",
+            "path": path
+        }))));
     }
 
-    Ok(JsonResponse(json!({
+    Ok((StatusCode::OK, JsonResponse(json!({
         "content": "safe file content",
         "path": path
-    })))
+    }))))
 }
 
 async fn validate_path_handler(
@@ -641,23 +681,27 @@ async fn validate_path_handler(
 async fn execute_command_handler(
     State(_state): State<SecurityTestState>,
     Json(exec_data): Json<Value>,
-) -> Result<JsonResponse<Value>, StatusCode> {
+) -> Result<(StatusCode, JsonResponse<Value>), StatusCode> {
     let command = exec_data["command"].as_str().unwrap_or("");
 
     // Simple command injection detection
     if command.contains(";")
         || command.contains("&&")
         || command.contains("||")
+        || command.contains("|")
         || command.contains("`")
         || command.contains("$(")
     {
-        return Err(StatusCode::FORBIDDEN);
+        return Ok((StatusCode::FORBIDDEN, JsonResponse(json!({
+            "error": "Command injection detected",
+            "command": command
+        }))));
     }
 
-    Ok(JsonResponse(json!({
+    Ok((StatusCode::OK, JsonResponse(json!({
         "output": "command executed safely",
         "exit_code": 0
-    })))
+    }))))
 }
 
 async fn validate_command_handler(
@@ -686,15 +730,15 @@ async fn validate_command_handler(
 async fn create_session_security_handler(
     State(state): State<SecurityTestState>,
     Json(session_data): Json<Value>,
-) -> Result<JsonResponse<Value>, StatusCode> {
+) -> Result<(StatusCode, JsonResponse<Value>), StatusCode> {
     let mut sessions = state.sessions.lock().await;
     let session_id = format!("session{}", sessions.len());
     sessions.insert(session_id.clone(), session_data);
 
-    Ok(JsonResponse(json!({
+    Ok((StatusCode::CREATED, JsonResponse(json!({
         "session_id": session_id,
         "status": "created"
-    })))
+    }))))
 }
 
 async fn validate_session_handler(

@@ -15,6 +15,7 @@
 use base64ct::Encoding;
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -508,7 +509,7 @@ mod tests {
 
     #[test]
     fn test_dpop_proof_serialization() {
-        let keypair = SigningKey::generate(&mut OsRng);
+        let keypair = SigningKey::generate(&mut rand::rngs::OsRng);
 
         let proof =
             DPoPProof::new(&keypair, "GET", "https://example.com/resource", None, None).unwrap();
@@ -522,7 +523,7 @@ mod tests {
 
     #[test]
     fn test_dpop_proof_verification() {
-        let keypair = SigningKey::generate(&mut OsRng);
+        let keypair = SigningKey::generate(&mut rand::rngs::OsRng);
 
         let proof = DPoPProof::new(
             &keypair,
@@ -548,7 +549,7 @@ mod tests {
 
     #[test]
     fn test_dpop_proof_verification_failure() {
-        let keypair = SigningKey::generate(&mut OsRng);
+        let keypair = SigningKey::generate(&mut rand::rngs::OsRng);
 
         let proof = DPoPProof::new(
             &keypair,
@@ -593,7 +594,7 @@ mod tests {
     #[test]
     fn test_token_binder() {
         let mut binder = DPoPTokenBinder::new();
-        let keypair = SigningKey::generate(&mut OsRng);
+        let keypair = SigningKey::generate(&mut rand::rngs::OsRng);
 
         let proof = DPoPProof::new(
             &keypair,
@@ -615,5 +616,3 @@ mod tests {
         assert!(result.is_ok());
     }
 }
-    
-

@@ -14,6 +14,7 @@
 use crate::error::AuthencError;
 use base64ct::{Base64UrlUnpadded, Encoding};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -1066,7 +1067,7 @@ mod tests {
 
     #[test]
     fn test_sd_jwt_creation_and_verification() {
-        let keypair = SigningKey::generate(&mut OsRng);
+        let keypair = SigningKey::generate(&mut rand::rngs::OsRng);
         let mut issuer_signed = IssuerSignedJwt::new("issuer", "subject", "audience");
 
         // Add selective claim

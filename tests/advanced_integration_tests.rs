@@ -430,7 +430,7 @@ async fn test_data_pipeline_integration() {
 async fn create_user_integration_handler(
     State(state): State<IntegrationState>,
     Json(user_data): Json<Value>,
-) -> Result<JsonResponse<Value>, StatusCode> {
+) -> Result<(StatusCode, JsonResponse<Value>), StatusCode> {
     let mut users = state.users.lock().await;
     let user_id = format!("user{}", users.len());
     users.insert(user_id.clone(), user_data.clone());
@@ -444,10 +444,10 @@ async fn create_user_integration_handler(
         "data": user_data
     }));
 
-    Ok(JsonResponse(json!({
+    Ok((StatusCode::CREATED, JsonResponse(json!({
         "user_id": user_id,
         "status": "created"
-    })))
+    }))))
 }
 
 async fn verify_email_handler(
@@ -508,6 +508,16 @@ async fn send_welcome_notification_handler(
 ) -> Result<JsonResponse<Value>, StatusCode> {
     let mut notifications = state.notifications.lock().await;
     notifications.push(notification_data.clone());
+
+    // Log audit event
+    let mut audit_logs = state.audit_logs.lock().await;
+    audit_logs.push(json!({
+        "event": "welcome_notification_sent",
+        "user_id": notification_data["user_id"],
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "template": notification_data["template"],
+        "channels": notification_data["channels"]
+    }));
 
     Ok(JsonResponse(json!({"status": "sent"})))
 }
@@ -591,11 +601,11 @@ async fn sync_external_services_handler(
 async fn submit_leave_request_handler(
     State(_state): State<IntegrationState>,
     Json(_request_data): Json<Value>,
-) -> Result<JsonResponse<Value>, StatusCode> {
-    Ok(JsonResponse(json!({
+) -> Result<(StatusCode, JsonResponse<Value>), StatusCode> {
+    Ok((StatusCode::CREATED, JsonResponse(json!({
         "request_id": "leave_001",
         "status": "submitted"
-    })))
+    }))))
 }
 
 async fn process_approval_handler(

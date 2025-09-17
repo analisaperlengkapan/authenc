@@ -108,13 +108,13 @@ async fn test_concurrent_load_handling() {
         .route("/api/throughput", get(throughput_metrics_handler))
         .with_state(state.clone());
 
-    let server = TestServer::new(app).unwrap();
+    let server = Arc::new(TestServer::new(app).unwrap());
 
     let mut handles = vec![];
 
     // Simulate concurrent requests
     for i in 0..200 {
-        let server_clone = server.clone();
+        let server_clone = Arc::clone(&server);
         let handle = tokio::spawn(async move {
             let start = Instant::now();
             let response = server_clone.get(&format!("/api/concurrent/{}", i)).await;
@@ -305,7 +305,7 @@ async fn test_scalability_under_load() {
         .route("/api/scale/thresholds", get(performance_thresholds_handler))
         .with_state(state.clone());
 
-    let server = TestServer::new(app).unwrap();
+    let server = Arc::new(TestServer::new(app).unwrap());
 
     let mut load_levels = vec![10, 50, 100, 200, 500];
 
@@ -314,7 +314,7 @@ async fn test_scalability_under_load() {
 
         // Generate load at different levels
         for i in 0..load_level {
-            let server_clone = server.clone();
+            let server_clone = Arc::clone(&server);
             let handle = tokio::spawn(async move {
                 let test_data = json!({
                     "operation": "compute",
@@ -527,8 +527,9 @@ async fn performance_metrics_handler(
     let p95_index = (sorted_times.len() as f64 * 0.95) as usize;
     let p99_index = (sorted_times.len() as f64 * 0.99) as usize;
 
-    let p95 = sorted_times.get(p95_index).unwrap_or(&avg as &u64);
-    let p99 = sorted_times.get(p99_index).unwrap_or(&avg as &u64);
+    let avg_u64 = avg as u64;
+    let p95 = sorted_times.get(p95_index).unwrap_or(&avg_u64);
+    let p99 = sorted_times.get(p99_index).unwrap_or(&avg_u64);
 
     Ok(JsonResponse(json!({
         "avg_response_time_ms": avg,

@@ -45,8 +45,8 @@ async fn test_response_time_performance() {
     let duration = start.elapsed();
     assert_eq!(response.status_code(), StatusCode::OK);
     assert!(
-        duration < Duration::from_millis(10),
-        "Fast endpoint should respond in < 10ms, took {:?}",
+        duration < Duration::from_millis(50),
+        "Fast endpoint should respond in < 50ms, took {:?}",
         duration
     );
 

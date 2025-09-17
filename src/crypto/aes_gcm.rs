@@ -348,7 +348,7 @@ mod tests {
         let encrypted = rotation_service.encrypt(plaintext).unwrap();
 
         // Rotate key
-        let old_key_id = rotation_service.rotate_key();
+        let _old_key_id = rotation_service.rotate_key();
 
         // Should still be able to decrypt with current key
         let decrypted = rotation_service.decrypt(&encrypted, None).unwrap();
