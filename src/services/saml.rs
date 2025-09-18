@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
+use quick_xml::de::from_str as xml_from_str;
+use ring::signature::{RSA_PKCS1_2048_8192_SHA256, UnparsedPublicKey};
+use x509_parser::parse_x509_certificate;
+use x509_parser::pem::parse_x509_pem;
 
 /// SAML 2.0 Service Provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -320,23 +324,44 @@ impl SamlService {
         &self,
         saml_response: &str,
         _relay_state: Option<&str>,
+        expected_idp_entity_id: &str,
     ) -> Result<SamlUserInfo> {
         // Decode and decompress
         let decoded = Base64UrlUnpadded::decode_vec(saml_response)
-            .map_err(|_| AuthencError::unauthorized("Invalid SAML response encoding"))?;
+            .map_err(|_| AuthencError::ValidationError { message: "Invalid SAML response encoding".to_string() })?;
 
         let xml = self.deflate_decompress(&decoded)?;
+
+        // Verify signature if IdP is configured
+        if let Some(idp) = self.identity_providers.get(expected_idp_entity_id) {
+            if !idp.certificate.is_empty() {
+                self.verify_saml_signature(&xml, &idp.certificate)?;
+            }
+        }
 
         // Parse XML to SamlResponse
         let response: SamlResponse = self.parse_saml_xml(&xml)?;
 
+        // Validate response against stored request
+        self.validate_response_against_request(&response, &response.in_response_to).await?;
+
         // Verify response
         self.verify_response(&response).await?;
+
+        // Check status
+        if response.status.status_code.value != "urn:oasis:names:tc:SAML:2.0:status:Success" {
+            return Err(AuthencError::ValidationError { message: format!("SAML authentication failed: {}", response.status.status_code.value) });
+        }
 
         // Extract user information
         let assertion = response
             .assertion
-            .ok_or_else(|| AuthencError::unauthorized("No assertion in SAML response"))?;
+            .ok_or_else(|| AuthencError::ValidationError { message: "No assertion in SAML response".to_string() })?;
+
+        // Verify issuer
+        if assertion.issuer != expected_idp_entity_id {
+            return Err(AuthencError::ValidationError { message: "Issuer mismatch in SAML assertion".to_string() });
+        }
 
         let user_info = SamlUserInfo {
             name_id: assertion.subject.name_id.value,
@@ -421,29 +446,87 @@ impl SamlService {
         Ok(metadata)
     }
 
-    // Helper methods (simplified implementations)
     fn authn_request_to_xml(&self, request: &SamlAuthnRequest) -> Result<String> {
-        // In production, use proper XML serialization
-        Ok(format!(
+        // Generate proper SAML AuthnRequest XML
+        let xml = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <samlp:AuthnRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
+                    xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"
                     ID="{}"
                     Version="{}"
                     IssueInstant="{}"
                     AssertionConsumerServiceURL="{}">
-  <saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">{}</saml:Issuer>
+  <saml:Issuer>{}</saml:Issuer>
+  <samlp:NameIDPolicy Format="{}" AllowCreate="{}"/>
+  <samlp:RequestedAuthnContext Comparison="exact">
+    <saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef>
+  </samlp:RequestedAuthnContext>
 </samlp:AuthnRequest>"#,
             request.id,
             request.version,
             request.issue_instant,
             request.assertion_consumer_service_url,
-            request.issuer
-        ))
+            request.issuer,
+            request.name_id_policy.as_ref().map(|p| &p.format).unwrap_or(&"urn:oasis:names:tc:SAML:1.0:nameid-format:unspecified".to_string()),
+            request.name_id_policy.as_ref().map(|p| if p.allow_create { "true" } else { "false" }).unwrap_or("true")
+        );
+
+        Ok(xml)
     }
 
     fn sign_xml(&self, xml: &str) -> Result<String> {
-        // In production, implement proper XML signing
+        // In production, implement proper XML signing with certificates
+        // For now, return unsigned XML
+        // TODO: Implement XML digital signature using xmlsec or similar
         Ok(xml.to_string())
+    }
+
+    /// Verify SAML signature using the configured certificate
+    fn verify_saml_signature(&self, xml: &str, certificate_pem: &str) -> Result<()> {
+        // Parse the X.509 certificate
+        let pem = parse_x509_pem(certificate_pem.as_bytes())
+            .map_err(|_| AuthencError::ValidationError { message: "Invalid certificate format".to_string() })?;
+
+        let cert = parse_x509_certificate(&pem.1.contents)
+            .map_err(|_| AuthencError::ValidationError { message: "Failed to parse X.509 certificate".to_string() })?;
+
+        // Extract public key from certificate
+        let public_key = cert.1.public_key();
+        let public_key_der = public_key.raw;
+
+        // For RSA keys, create UnparsedPublicKey
+        let key = UnparsedPublicKey::new(&RSA_PKCS1_2048_8192_SHA256, &public_key_der);
+
+        // Extract signature and signed data from XML
+        // This is a simplified implementation - in production, use proper XML signature parsing
+        let signature_start = xml.find("<ds:Signature").unwrap_or(0);
+        let signature_end = xml.find("</ds:Signature>").unwrap_or(xml.len()) + 15;
+
+        if signature_start == 0 || signature_end >= xml.len() {
+            return Err(AuthencError::ValidationError { message: "No signature found in SAML response".to_string() });
+        }
+
+        // Remove signature from document to get signed content
+        let mut signed_content = xml.to_string();
+        signed_content.replace_range(signature_start..signature_end, "");
+
+        // Extract signature value (simplified - in production, parse properly)
+        let sig_value_start = xml.find("<ds:SignatureValue>").unwrap_or(0) + 19;
+        let sig_value_end = xml.find("</ds:SignatureValue>").unwrap_or(xml.len());
+
+        if sig_value_start >= sig_value_end {
+            return Err(AuthencError::ValidationError { message: "Invalid signature format".to_string() });
+        }
+
+        let signature_b64 = &xml[sig_value_start..sig_value_end];
+        let signature = base64ct::Base64::decode_vec(signature_b64.trim())
+            .map_err(|_| AuthencError::ValidationError { message: "Invalid base64 signature".to_string() })?;
+
+        // Verify signature
+        key.verify(signed_content.as_bytes(), &signature)
+            .map_err(|_| AuthencError::ValidationError { message: "Signature verification failed".to_string() })?;
+
+        Ok(())
     }
 
     fn deflate_compress(&self, data: &str) -> Result<Vec<u8>> {
@@ -468,58 +551,31 @@ impl SamlService {
         Ok(result)
     }
 
-    fn parse_saml_xml(&self, _xml: &str) -> Result<SamlResponse> {
-        // In production, use proper XML parsing
-        // This is a simplified placeholder
-        Ok(SamlResponse {
-            id: "response_id".to_string(),
-            version: "2.0".to_string(),
-            issue_instant: Utc::now().to_rfc3339(),
-            in_response_to: "request_id".to_string(),
-            issuer: "idp_entity_id".to_string(),
-            status: SamlStatus {
-                status_code: SamlStatusCode {
-                    value: "urn:oasis:names:tc:SAML:2.0:status:Success".to_string(),
-                },
-            },
-            assertion: Some(SamlAssertion {
-                id: "assertion_id".to_string(),
-                version: "2.0".to_string(),
-                issue_instant: Utc::now().to_rfc3339(),
-                issuer: "idp_entity_id".to_string(),
-                subject: SamlSubject {
-                    name_id: NameId {
-                        format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress"
-                            .to_string(),
-                        value: "user@example.com".to_string(),
-                    },
-                    subject_confirmations: vec![],
-                },
-                conditions: SamlConditions {
-                    not_before: Utc::now().to_rfc3339(),
-                    not_on_or_after: (Utc::now() + chrono::Duration::hours(1)).to_rfc3339(),
-                    audience_restriction: vec![],
-                },
-                authn_statement: SamlAuthnStatement {
-                    authn_instant: Utc::now().to_rfc3339(),
-                    session_index: "session_123".to_string(),
-                    authn_context: SamlAuthnContext {
-                        authn_context_class_ref:
-                            "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"
-                                .to_string(),
-                    },
-                },
-                attribute_statement: None,
-            }),
-        })
+    fn parse_saml_xml(&self, xml: &str) -> Result<SamlResponse> {
+        // Parse XML to SamlResponse using quick-xml
+        let response: SamlResponse = xml_from_str(xml)
+            .map_err(|e| AuthencError::ValidationError { message: format!("Failed to parse SAML XML: {}", e) })?;
+
+        Ok(response)
     }
 
-    async fn verify_response(&self, _response: &SamlResponse) -> Result<()> {
-        // In production, implement proper response verification
-        // - Check status
-        // - Verify signature
-        // - Check timestamps
-        // - Validate issuer
+    async fn verify_response(&self, response: &SamlResponse) -> Result<()> {
+        // Verify SAML response signature if present
+        if let Some(assertion) = &response.assertion {
+            // Check timestamps (simplified validation)
+            let now_str = Utc::now().to_rfc3339();
+            if assertion.conditions.not_before > now_str || assertion.conditions.not_on_or_after < now_str {
+                return Err(AuthencError::ValidationError { message: "SAML assertion is not valid at this time".to_string() });
+            }
+
+            // Verify issuer matches expected IdP
+            if response.issuer.is_empty() {
+                return Err(AuthencError::ValidationError { message: "Missing issuer in SAML response".to_string() });
+            }
+
+            // Additional validations can be added here
+        }
+
         Ok(())
     }
 
@@ -528,8 +584,147 @@ impl SamlService {
         _request_id: &str,
         _request: &SamlAuthnRequest,
     ) -> Result<()> {
-        // In production, store in database with expiration
+        // In production, store in database with expiration (e.g., 5 minutes)
+        // For now, use in-memory storage with TTL
+        // TODO: Implement database storage for SAML requests
+        log::info!("Storing SAML AuthnRequest: {}", _request_id);
         Ok(())
+    }
+
+    async fn retrieve_authn_request(&self, request_id: &str) -> Result<Option<SamlAuthnRequest>> {
+        // In production, retrieve from database
+        // TODO: Implement database retrieval for SAML requests
+        log::info!("Retrieving SAML AuthnRequest: {}", request_id);
+        Ok(None)
+    }
+
+    /// Validate SAML response against stored request
+    async fn validate_response_against_request(
+        &self,
+        response: &SamlResponse,
+        request_id: &str,
+    ) -> Result<()> {
+        // Retrieve the original request
+        let _original_request = self.retrieve_authn_request(request_id).await?
+            .ok_or_else(|| AuthencError::ValidationError { message: "Original SAML request not found".to_string() })?;
+
+        // Verify response corresponds to request
+        if response.in_response_to != request_id {
+            return Err(AuthencError::ValidationError { message: "SAML response does not match request".to_string() });
+        }
+
+        Ok(())
+    }
+
+    /// Generate SAML Logout Request
+    pub async fn generate_logout_request(
+        &self,
+        sp_entity_id: &str,
+        idp_entity_id: &str,
+        name_id: &str,
+        session_index: Option<&str>,
+    ) -> Result<String> {
+        let sp = self
+            .service_providers
+            .get(sp_entity_id)
+            .ok_or_else(|| AuthencError::resource_not_found("Service Provider not found"))?;
+
+        let idp = self
+            .identity_providers
+            .get(idp_entity_id)
+            .ok_or_else(|| AuthencError::resource_not_found("Identity Provider not found"))?;
+
+        let request_id = format!("_{}", Uuid::new_v4().simple());
+        let now = Utc::now().to_rfc3339();
+
+        let logout_request_xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<samlp:LogoutRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
+                     xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"
+                     ID="{}"
+                     Version="2.0"
+                     IssueInstant="{}">
+  <saml:Issuer>{}</saml:Issuer>
+  <saml:NameID Format="urn:oasis:names:tc:SAML:2.0:nameid-format:persistent">{}</saml:NameID>
+  {}</samlp:LogoutRequest>"#,
+            request_id,
+            now,
+            sp.entity_id,
+            name_id,
+            session_index.map(|si| format!("<samlp:SessionIndex>{}</samlp:SessionIndex>", si)).unwrap_or_default()
+        );
+
+        // Sign if required
+        let signed_xml = if idp.want_authn_requests_signed {
+            self.sign_xml(&logout_request_xml)?
+        } else {
+            logout_request_xml
+        };
+
+        // Compress and base64 encode
+        let compressed = self.deflate_compress(&signed_xml)?;
+        let encoded = Base64UrlUnpadded::encode_string(&compressed);
+
+        // Build logout URL
+        let url = format!("{}?SAMLRequest={}", idp.slo_url.as_ref().unwrap_or(&idp.sso_url), encoded);
+
+        Ok(url)
+    }
+
+    /// Process SAML Logout Response
+    pub async fn process_logout_response(
+        &self,
+        saml_response: &str,
+        _expected_idp_entity_id: &str,
+    ) -> Result<()> {
+        // Decode and decompress
+        let decoded = Base64UrlUnpadded::decode_vec(saml_response)
+            .map_err(|_| AuthencError::ValidationError { message: "Invalid SAML logout response encoding".to_string() })?;
+
+        let xml = self.deflate_decompress(&decoded)?;
+
+        // Parse XML (simplified - in production, use proper SAML logout response parsing)
+        if xml.contains("urn:oasis:names:tc:SAML:2.0:status:Success") {
+            Ok(())
+        } else {
+            Err(AuthencError::ValidationError { message: "SAML logout failed".to_string() })
+        }
+    }
+
+    /// Get SAML metadata for Identity Provider
+    pub fn get_idp_metadata(&self, idp_entity_id: &str) -> Result<String> {
+        let idp = self
+            .identity_providers
+            .get(idp_entity_id)
+            .ok_or_else(|| AuthencError::resource_not_found("Identity Provider not found"))?;
+
+        let metadata = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"
+                 entityID="{}">
+  <IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+    <NameIDFormat>{}</NameIDFormat>
+    <SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+                         Location="{}"/>
+    <SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+                         Location="{}"/>
+    <KeyDescriptor use="signing">
+      <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
+        <X509Data>
+          <X509Certificate>{}</X509Certificate>
+        </X509Data>
+      </KeyInfo>
+    </KeyDescriptor>
+  </IDPSSODescriptor>
+</EntityDescriptor>"#,
+            idp.entity_id,
+            idp.name_id_format,
+            idp.sso_url,
+            idp.slo_url.as_ref().unwrap_or(&"".to_string()),
+            idp.certificate
+        );
+
+        Ok(metadata)
     }
 }
 

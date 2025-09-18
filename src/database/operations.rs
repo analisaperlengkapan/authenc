@@ -1038,9 +1038,9 @@ pub mod users {
                 account_locked_until, failed_login_attempts, last_login_at,
                 last_failed_login_at, password_changed_at, password_expires_at,
                 require_password_change, realm_id, organization_id, attributes,
-                enabled, created_at, updated_at
+                enabled, federated, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
             RETURNING
                 id, username, email, email_verified, first_name, last_name,
                 phone_number, phone_verified, password_hash, totp_secret,
@@ -1048,7 +1048,7 @@ pub mod users {
                 account_locked_until, failed_login_attempts, last_login_at,
                 last_failed_login_at, password_changed_at, password_expires_at,
                 require_password_change, realm_id, organization_id, attributes,
-                enabled, created_at, updated_at, deleted_at
+                enabled, federated, created_at, updated_at, deleted_at
         "#;
 
         let row = client
@@ -1079,6 +1079,7 @@ pub mod users {
                     &organization_id,
                     &attributes_json,
                     &true, // enabled
+                    &false, // federated (default to false for regular user creation)
                     &now,
                     &now,
                 ],
@@ -1113,9 +1114,10 @@ pub mod users {
                 .get::<_, Option<String>>(22)
                 .and_then(|s: String| serde_json::from_str(&s).ok()),
             enabled: row.get(23),
-            created_at: row.get(24),
-            updated_at: row.get(25),
-            deleted_at: row.get(26),
+            federated: row.get(24),
+            created_at: row.get(25),
+            updated_at: row.get(26),
+            deleted_at: row.get(27),
         };
 
         Ok(user)
@@ -1132,7 +1134,7 @@ pub mod users {
                 account_locked_until, failed_login_attempts, last_login_at,
                 last_failed_login_at, password_changed_at, password_expires_at,
                 require_password_change, realm_id, organization_id, attributes,
-                enabled, created_at, updated_at, deleted_at
+                enabled, federated, created_at, updated_at, deleted_at
             FROM users
             WHERE id = $1 AND deleted_at IS NULL
         "#;
@@ -1165,9 +1167,10 @@ pub mod users {
                 .get::<_, Option<String>>(22)
                 .and_then(|s: String| serde_json::from_str(&s).ok()),
             enabled: r.get(23),
-            created_at: r.get(24),
-            updated_at: r.get(25),
-            deleted_at: r.get(26),
+            federated: r.get(24),
+            created_at: r.get(25),
+            updated_at: r.get(26),
+            deleted_at: r.get(27),
         }))
     }
 
@@ -1182,7 +1185,7 @@ pub mod users {
                 account_locked_until, failed_login_attempts, last_login_at,
                 last_failed_login_at, password_changed_at, password_expires_at,
                 require_password_change, realm_id, organization_id, attributes,
-                enabled, created_at, updated_at, deleted_at
+                enabled, federated, created_at, updated_at, deleted_at
             FROM users
             WHERE username = $1 AND deleted_at IS NULL
         "#;
@@ -1215,9 +1218,10 @@ pub mod users {
                 .get::<_, Option<String>>(22)
                 .and_then(|s: String| serde_json::from_str(&s).ok()),
             enabled: r.get(23),
-            created_at: r.get(24),
-            updated_at: r.get(25),
-            deleted_at: r.get(26),
+            federated: r.get(24),
+            created_at: r.get(25),
+            updated_at: r.get(26),
+            deleted_at: r.get(27),
         }))
     }
 
@@ -1429,9 +1433,10 @@ pub mod users {
                 .get::<_, Option<String>>(22)
                 .and_then(|s: String| serde_json::from_str(&s).ok()),
             enabled: row.get(23),
-            created_at: row.get(24),
-            updated_at: row.get(25),
-            deleted_at: row.get(26),
+            federated: row.get(24),
+            created_at: row.get(25),
+            updated_at: row.get(26),
+            deleted_at: row.get(27),
         }
     }
 }
@@ -1675,5 +1680,624 @@ pub mod realms {
             updated_at: row.get(43),
             deleted_at: row.get(44),
         }
+    }
+}
+
+/// Database operations for role management
+pub mod roles {
+    use crate::{
+        database::Database,
+        error::Result,
+        models::Role,
+    };
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    /// Create a new role
+    pub async fn create_role(
+        db: &Database,
+        name: &str,
+        description: Option<&str>,
+        realm_id: &Uuid,
+    ) -> Result<Role> {
+        let client = db.get_connection().await?;
+        let role_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO roles (id, name, description, realm_id, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING
+                id, name, description, realm_id, composite, client_role,
+                client_id, attributes, created_at, updated_at
+        "#;
+
+        let row = client
+            .query_one(
+                query,
+                &[
+                    &role_id,
+                    &name,
+                    &description,
+                    &realm_id,
+                    &now,
+                    &now,
+                ],
+            )
+            .await?;
+
+        // Convert row to Role
+        Ok(Role {
+            id: row.get(0),
+            name: row.get(1),
+            description: row.get(2),
+            realm_id: row.get(3),
+            composite: row.get(4),
+            client_role: row.get(5),
+            client_id: row.get(6),
+            attributes: row
+                .get::<_, Option<String>>(7)
+                .and_then(|s: String| serde_json::from_str(&s).ok()),
+            created_at: row.get(8),
+            updated_at: row.get(9),
+            deleted_at: None, // Not selected in query
+        })
+    }
+
+    /// Get role by ID
+    pub async fn get_role_by_id(db: &Database, role_id: &Uuid) -> Result<Option<Role>> {
+        let client = db.get_connection().await?;
+        let query = r#"
+            SELECT
+                id, name, description, realm_id, composite, client_role,
+                client_id, attributes, created_at, updated_at
+            FROM roles
+            WHERE id = $1 AND deleted_at IS NULL
+        "#;
+
+        let row = client.query_opt(query, &[&role_id]).await?;
+        Ok(row.map(|r| Role {
+            id: r.get(0),
+            name: r.get(1),
+            description: r.get(2),
+            realm_id: r.get(3),
+            composite: r.get(4),
+            client_role: r.get(5),
+            client_id: r.get(6),
+            attributes: r
+                .get::<_, Option<String>>(7)
+                .and_then(|s: String| serde_json::from_str(&s).ok()),
+            created_at: r.get(8),
+            updated_at: r.get(9),
+            deleted_at: None, // Not selected in query
+        }))
+    }
+
+    /// List roles by realm
+    pub async fn list_roles_by_realm(db: &Database, realm_id: &Uuid) -> Result<Vec<Role>> {
+        let client = db.get_connection().await?;
+        let query = r#"
+            SELECT
+                id, name, description, realm_id, composite, client_role,
+                client_id, attributes, created_at, updated_at
+            FROM roles
+            WHERE realm_id = $1 AND deleted_at IS NULL
+            ORDER BY created_at DESC
+        "#;
+
+        let rows = client.query(query, &[&realm_id]).await?;
+        let mut roles = Vec::new();
+
+        for row in rows {
+            roles.push(Role {
+                id: row.get(0),
+                name: row.get(1),
+                description: row.get(2),
+                realm_id: row.get(3),
+                composite: row.get(4),
+                client_role: row.get(5),
+                client_id: row.get(6),
+                attributes: row
+                    .get::<_, Option<String>>(7)
+                    .and_then(|s: String| serde_json::from_str(&s).ok()),
+                created_at: row.get(8),
+                updated_at: row.get(9),
+                deleted_at: None, // Not selected in query
+            });
+        }
+
+        Ok(roles)
+    }
+
+    /// Assign role to user
+    pub async fn assign_role_to_user(
+        db: &Database,
+        user_id: &Uuid,
+        role_id: &Uuid,
+    ) -> Result<()> {
+        let client = db.get_connection().await?;
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO user_roles (user_id, role_id, assigned_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, role_id) DO NOTHING
+        "#;
+
+        client.execute(query, &[&user_id, &role_id, &now]).await?;
+        Ok(())
+    }
+
+    /// Remove role from user
+    pub async fn remove_role_from_user(
+        db: &Database,
+        user_id: &Uuid,
+        role_id: &Uuid,
+    ) -> Result<()> {
+        let client = db.get_connection().await?;
+        let query = r#"
+            DELETE FROM user_roles
+            WHERE user_id = $1 AND role_id = $2
+        "#;
+
+        client.execute(query, &[&user_id, &role_id]).await?;
+        Ok(())
+    }
+
+    /// Get user roles
+    pub async fn get_user_roles(db: &Database, user_id: &Uuid) -> Result<Vec<Role>> {
+        let client = db.get_connection().await?;
+        let query = r#"
+            SELECT r.id, r.name, r.description, r.realm_id, r.composite, r.client_role,
+                   r.client_id, r.attributes, r.created_at, r.updated_at
+            FROM roles r
+            JOIN user_roles ur ON r.id = ur.role_id
+            WHERE ur.user_id = $1 AND r.deleted_at IS NULL
+        "#;
+
+        let rows = client.query(query, &[&user_id]).await?;
+        let mut roles = Vec::new();
+
+        for row in rows {
+            roles.push(Role {
+                id: row.get(0),
+                name: row.get(1),
+                description: row.get(2),
+                realm_id: row.get(3),
+                composite: row.get(4),
+                client_role: row.get(5),
+                client_id: row.get(6),
+                attributes: row
+                    .get::<_, Option<String>>(7)
+                    .and_then(|s: String| serde_json::from_str(&s).ok()),
+                created_at: row.get(8),
+                updated_at: row.get(9),
+                deleted_at: None, // Not selected in query
+            });
+        }
+
+        Ok(roles)
+    }
+}
+
+/// Database operations for identity provider management
+pub mod identity_providers {
+    use crate::{
+        database::Database,
+        error::Result,
+    };
+    use chrono::{DateTime, Utc};
+    use serde_json::Value;
+    use uuid::Uuid;
+
+    /// Identity provider data structure for database operations
+    #[derive(Debug, Clone)]
+    pub struct IdentityProviderData {
+        /// Unique identifier for the identity provider
+        pub id: Uuid,
+        /// Internal name of the identity provider
+        pub name: String,
+        /// Display name shown to users
+        pub display_name: String,
+        /// Type of identity provider (SAML, OIDC, etc.)
+        pub provider_type: String,
+        /// Whether the provider is enabled
+        pub enabled: bool,
+        /// ID of the realm this provider belongs to
+        pub realm_id: Uuid,
+        /// Configuration data as JSON
+        pub config: Value,
+        /// Path to truststore for SSL certificates
+        pub truststore_path: Option<String>,
+        /// Path to keystore for client certificates
+        pub keystore_path: Option<String>,
+        /// When the provider was created
+        pub created_at: DateTime<Utc>,
+        /// When the provider was last updated
+        pub updated_at: DateTime<Utc>,
+    }
+
+    /// Create a new identity provider
+    pub async fn create_identity_provider(
+        db: &Database,
+        name: &str,
+        display_name: &str,
+        provider_type: &str,
+        enabled: bool,
+        realm_id: Uuid,
+        config: Value,
+        truststore_path: Option<&str>,
+        keystore_path: Option<&str>,
+    ) -> Result<IdentityProviderData> {
+        let config_json = serde_json::to_string(&config)?;
+
+        let query = r#"
+            INSERT INTO identity_providers (
+                name, display_name, provider_type, enabled, realm_id,
+                config, truststore_path, keystore_path
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+            RETURNING id, name, display_name, provider_type, enabled, realm_id,
+                      config, truststore_path, keystore_path, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &name,
+                    &display_name,
+                    &provider_type,
+                    &enabled,
+                    &realm_id,
+                    &config_json,
+                    &truststore_path,
+                    &keystore_path,
+                ],
+            )
+            .await?;
+
+        Ok(IdentityProviderData {
+            id: row.get(0),
+            name: row.get(1),
+            display_name: row.get(2),
+            provider_type: row.get(3),
+            enabled: row.get(4),
+            realm_id: row.get(5),
+            config: {
+                let json_str: String = row.get(6);
+                serde_json::from_str(&json_str)?
+            },
+            truststore_path: row.get(7),
+            keystore_path: row.get(8),
+            created_at: row.get(9),
+            updated_at: row.get(10),
+        })
+    }
+
+    /// Get identity provider by ID
+    pub async fn get_identity_provider_by_id(
+        db: &Database,
+        provider_id: Uuid,
+    ) -> Result<Option<IdentityProviderData>> {
+        let query = r#"
+            SELECT id, name, display_name, provider_type, enabled, realm_id,
+                   config, truststore_path, keystore_path, created_at, updated_at
+            FROM identity_providers
+            WHERE id = $1 AND deleted_at IS NULL
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&provider_id]).await?;
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row: &tokio_postgres::Row = &rows[0];
+        Ok(Some(IdentityProviderData {
+            id: row.get(0),
+            name: row.get(1),
+            display_name: row.get(2),
+            provider_type: row.get(3),
+            enabled: row.get(4),
+            realm_id: row.get(5),
+            config: {
+                let json_str: String = row.get(6);
+                serde_json::from_str(&json_str)?
+            },
+            truststore_path: row.get(7),
+            keystore_path: row.get(8),
+            created_at: row.get(9),
+            updated_at: row.get(10),
+        }))
+    }
+
+    /// Get all identity providers for a realm
+    pub async fn get_identity_providers_by_realm(
+        db: &Database,
+        realm_id: Uuid,
+    ) -> Result<Vec<IdentityProviderData>> {
+        let query = r#"
+            SELECT id, name, display_name, provider_type, enabled, realm_id,
+                   config, truststore_path, keystore_path, created_at, updated_at
+            FROM identity_providers
+            WHERE realm_id = $1 AND deleted_at IS NULL
+            ORDER BY display_name
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&realm_id]).await?;
+        let mut providers = Vec::new();
+
+        for row in rows {
+            providers.push(IdentityProviderData {
+                id: row.get(0),
+                name: row.get(1),
+                display_name: row.get(2),
+                provider_type: row.get(3),
+                enabled: row.get(4),
+                realm_id: row.get(5),
+                config: {
+                    let json_str: String = row.get(6);
+                    serde_json::from_str(&json_str)?
+                },
+                truststore_path: row.get(7),
+                keystore_path: row.get(8),
+                created_at: row.get(9),
+                updated_at: row.get(10),
+            });
+        }
+
+        Ok(providers)
+    }
+
+    /// Update identity provider
+    pub async fn update_identity_provider(
+        db: &Database,
+        provider_id: Uuid,
+        name: Option<&str>,
+        display_name: Option<&str>,
+        provider_type: Option<&str>,
+        enabled: Option<bool>,
+        config: Option<Value>,
+        truststore_path: Option<&str>,
+        keystore_path: Option<&str>,
+    ) -> Result<IdentityProviderData> {
+        let config_json = config.as_ref()
+            .map(|c| serde_json::to_string(c))
+            .transpose()?;
+
+        let query = r#"
+            UPDATE identity_providers
+            SET name = COALESCE($2, name),
+                display_name = COALESCE($3, display_name),
+                provider_type = COALESCE($4, provider_type),
+                enabled = COALESCE($5, enabled),
+                config = COALESCE($6::jsonb, config),
+                truststore_path = COALESCE($7, truststore_path),
+                keystore_path = COALESCE($8, keystore_path),
+                updated_at = NOW()
+            WHERE id = $1 AND deleted_at IS NULL
+            RETURNING id, name, display_name, provider_type, enabled, realm_id,
+                      config, truststore_path, keystore_path, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &provider_id,
+                    &name,
+                    &display_name,
+                    &provider_type,
+                    &enabled,
+                    &config_json,
+                    &truststore_path,
+                    &keystore_path,
+                ],
+            )
+            .await?;
+
+        Ok(IdentityProviderData {
+            id: row.get(0),
+            name: row.get(1),
+            display_name: row.get(2),
+            provider_type: row.get(3),
+            enabled: row.get(4),
+            realm_id: row.get(5),
+            config: {
+                let json_str: String = row.get(6);
+                serde_json::from_str(&json_str)?
+            },
+            truststore_path: row.get(7),
+            keystore_path: row.get(8),
+            created_at: row.get(9),
+            updated_at: row.get(10),
+        })
+    }
+
+    /// Delete identity provider (soft delete)
+    pub async fn delete_identity_provider(
+        db: &Database,
+        provider_id: Uuid,
+    ) -> Result<()> {
+        let query = r#"
+            UPDATE identity_providers
+            SET deleted_at = NOW()
+            WHERE id = $1 AND deleted_at IS NULL
+        "#;
+
+        db.execute(query, &[&provider_id]).await?;
+        Ok(())
+    }
+
+    /// Check if identity provider exists and is enabled
+    pub async fn identity_provider_exists_and_enabled(
+        db: &Database,
+        provider_id: Uuid,
+    ) -> Result<bool> {
+        let query = r#"
+            SELECT EXISTS(
+                SELECT 1 FROM identity_providers
+                WHERE id = $1 AND enabled = true AND deleted_at IS NULL
+            )
+        "#;
+
+        let row: tokio_postgres::Row = db.query_one(query, &[&provider_id]).await?;
+        Ok(row.get(0))
+    }
+}
+
+/// Database operations for federated identity management
+pub mod federated_identities {
+    use crate::{
+        database::Database,
+        error::Result,
+        models::user::{FederatedIdentity, CreateFederatedIdentityRequest},
+    };
+    use uuid::Uuid;
+
+    /// Create a new federated identity link
+    pub async fn create_federated_identity(
+        db: &Database,
+        request: &CreateFederatedIdentityRequest,
+    ) -> Result<FederatedIdentity> {
+        let external_attributes_json = request
+            .external_attributes
+            .as_ref()
+            .map(|v| serde_json::to_string(v))
+            .transpose()?;
+
+        let query = r#"
+            INSERT INTO federated_identities (
+                user_id, identity_provider_id, external_id, external_username,
+                external_email, external_attributes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            RETURNING id, user_id, identity_provider_id, external_id, external_username,
+                      external_email, external_attributes, last_login_at, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &request.user_id,
+                    &request.identity_provider_id,
+                    &request.external_id,
+                    &request.external_username,
+                    &request.external_email,
+                    &external_attributes_json,
+                ],
+            )
+            .await?;
+
+        Ok(FederatedIdentity {
+            id: row.get(0),
+            user_id: row.get(1),
+            identity_provider_id: row.get(2),
+            external_id: row.get(3),
+            external_username: row.get(4),
+            external_email: row.get(5),
+            external_attributes: row
+                .get::<_, Option<String>>(6)
+                .and_then(|s: String| serde_json::from_str(&s).ok()),
+            last_login_at: row.get(7),
+            created_at: row.get(8),
+            updated_at: row.get(9),
+        })
+    }
+
+    /// Get federated identity by external ID and provider
+    pub async fn get_federated_identity_by_external_id(
+        db: &Database,
+        identity_provider_id: Uuid,
+        external_id: &str,
+    ) -> Result<Option<FederatedIdentity>> {
+        let query = r#"
+            SELECT id, user_id, identity_provider_id, external_id, external_username,
+                   external_email, external_attributes, last_login_at, created_at, updated_at
+            FROM federated_identities
+            WHERE identity_provider_id = $1 AND external_id = $2
+        "#;
+
+        let rows = db.query(query, &[&identity_provider_id, &external_id]).await?;
+        Ok(rows.into_iter().next().map(|r: tokio_postgres::Row| FederatedIdentity {
+            id: r.get(0),
+            user_id: r.get(1),
+            identity_provider_id: r.get(2),
+            external_id: r.get(3),
+            external_username: r.get(4),
+            external_email: r.get(5),
+            external_attributes: r
+                .get::<_, Option<String>>(6)
+                .and_then(|s: String| serde_json::from_str(&s).ok()),
+            last_login_at: r.get(7),
+            created_at: r.get(8),
+            updated_at: r.get(9),
+        }))
+    }
+
+    /// Get all federated identities for a user
+    pub async fn get_federated_identities_by_user(
+        db: &Database,
+        user_id: Uuid,
+    ) -> Result<Vec<FederatedIdentity>> {
+        let query = r#"
+            SELECT id, user_id, identity_provider_id, external_id, external_username,
+                   external_email, external_attributes, last_login_at, created_at, updated_at
+            FROM federated_identities
+            WHERE user_id = $1
+            ORDER BY created_at
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&user_id]).await?;
+        let mut identities = Vec::new();
+
+        for row in rows {
+            identities.push(FederatedIdentity {
+                id: row.get(0),
+                user_id: row.get(1),
+                identity_provider_id: row.get(2),
+                external_id: row.get(3),
+                external_username: row.get(4),
+                external_email: row.get(5),
+                external_attributes: row
+                    .get::<_, Option<String>>(6)
+                    .and_then(|s: String| serde_json::from_str(&s).ok()),
+                last_login_at: row.get(7),
+                created_at: row.get(8),
+                updated_at: row.get(9),
+            });
+        }
+
+        Ok(identities)
+    }
+
+    /// Update last login time for federated identity
+    pub async fn update_last_login(
+        db: &Database,
+        federated_identity_id: Uuid,
+    ) -> Result<()> {
+        let query = r#"
+            UPDATE federated_identities
+            SET last_login_at = NOW(), updated_at = NOW()
+            WHERE id = $1
+        "#;
+
+        db.execute(query, &[&federated_identity_id]).await?;
+        Ok(())
+    }
+
+    /// Delete federated identity link
+    pub async fn delete_federated_identity(
+        db: &Database,
+        federated_identity_id: Uuid,
+    ) -> Result<()> {
+        let query = r#"
+            DELETE FROM federated_identities
+            WHERE id = $1
+        "#;
+
+        db.execute(query, &[&federated_identity_id]).await?;
+        Ok(())
     }
 }

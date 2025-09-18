@@ -116,6 +116,7 @@ pub async fn create_user(
         organization_id: None,
         attributes: None,
         enabled: request.enabled.unwrap_or(true),
+        federated: false,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         deleted_at: None,

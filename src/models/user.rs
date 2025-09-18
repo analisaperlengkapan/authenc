@@ -75,6 +75,8 @@ pub struct User {
     pub attributes: Option<serde_json::Value>,
     /// Whether the user account is enabled
     pub enabled: bool,
+    /// Whether this user was created via identity provider federation
+    pub federated: bool,
     /// Timestamp when the user was created
     pub created_at: DateTime<Utc>,
     /// Timestamp when the user was last updated
@@ -644,6 +646,7 @@ impl User {
             organization_id: None,
             attributes: None,
             enabled: true,
+            federated: false,
             created_at: now,
             updated_at: now,
             deleted_at: None,
@@ -822,9 +825,84 @@ impl TryFrom<tokio_postgres::Row> for User {
                 json_str.and_then(|s| serde_json::from_str(&s).ok())
             },
             enabled: row.try_get("enabled")?,
+            federated: row.try_get("federated")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
             deleted_at: row.try_get("deleted_at")?,
         })
     }
+}
+
+/// Federated identity linking a user to an external identity provider
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FederatedIdentity {
+    /// Unique identifier for the federated identity link
+    pub id: Uuid,
+    /// ID of the user in Authenc
+    pub user_id: Uuid,
+    /// ID of the identity provider
+    pub identity_provider_id: Uuid,
+    /// External user ID from the identity provider
+    pub external_id: String,
+    /// External username from the identity provider
+    pub external_username: Option<String>,
+    /// External email from the identity provider
+    pub external_email: Option<String>,
+    /// Additional attributes from the identity provider
+    pub external_attributes: Option<serde_json::Value>,
+    /// Timestamp of the last login via this identity provider
+    pub last_login_at: Option<DateTime<Utc>>,
+    /// Timestamp when this link was created
+    pub created_at: DateTime<Utc>,
+    /// Timestamp when this link was last updated
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request to create a federated identity link
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateFederatedIdentityRequest {
+    /// ID of the user in Authenc
+    pub user_id: Uuid,
+    /// ID of the identity provider
+    pub identity_provider_id: Uuid,
+    /// External user ID from the identity provider
+    pub external_id: String,
+    /// External username from the identity provider
+    pub external_username: Option<String>,
+    /// External email from the identity provider
+    pub external_email: Option<String>,
+    /// Additional attributes from the identity provider
+    pub external_attributes: Option<serde_json::Value>,
+}
+
+/// JIT user provisioning request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JITUserProvisioningRequest {
+    /// ID of the identity provider
+    pub identity_provider_id: Uuid,
+    /// External user ID from the identity provider
+    pub external_id: String,
+    /// External username from the identity provider
+    pub external_username: Option<String>,
+    /// External email from the identity provider
+    pub external_email: Option<String>,
+    /// User's first name from the identity provider
+    pub first_name: Option<String>,
+    /// User's last name from the identity provider
+    pub last_name: Option<String>,
+    /// Additional attributes from the identity provider
+    pub external_attributes: Option<serde_json::Value>,
+    /// ID of the realm where the user should be created
+    pub realm_id: Uuid,
+}
+
+/// JIT user provisioning response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JITUserProvisioningResponse {
+    /// The created or existing user
+    pub user: User,
+    /// Whether a new user was created (true) or existing user was found (false)
+    pub created: bool,
+    /// The federated identity link
+    pub federated_identity: FederatedIdentity,
 }

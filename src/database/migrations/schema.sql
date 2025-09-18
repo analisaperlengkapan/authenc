@@ -29,11 +29,28 @@ CREATE TABLE IF NOT EXISTS users (
     email_verified BOOLEAN NOT NULL DEFAULT false,
     enabled BOOLEAN NOT NULL DEFAULT true,
     realm_id UUID REFERENCES realms(id) ON DELETE CASCADE,
+    -- Federation fields
+    federated BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ,
     last_login_at TIMESTAMPTZ,
     login_count INTEGER NOT NULL DEFAULT 0
+);
+
+-- Federated identities (links users to external identity providers)
+CREATE TABLE IF NOT EXISTS federated_identities (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    identity_provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
+    external_id VARCHAR(255) NOT NULL, -- External user ID from the identity provider
+    external_username VARCHAR(255), -- External username from the identity provider
+    external_email VARCHAR(255), -- External email from the identity provider
+    external_attributes JSONB, -- Additional attributes from the identity provider
+    last_login_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(identity_provider_id, external_id)
 );
 
 -- ============================================================================
@@ -342,6 +359,17 @@ CREATE INDEX IF NOT EXISTS idx_saml_idp_entity_id ON saml_identity_providers(ent
 CREATE INDEX IF NOT EXISTS idx_saml_sessions_user_id ON saml_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_saml_sessions_expires ON saml_sessions(expires_at);
 
+-- Federated identities indexes
+CREATE INDEX IF NOT EXISTS idx_federated_identities_user_id ON federated_identities(user_id);
+CREATE INDEX IF NOT EXISTS idx_federated_identities_provider_id ON federated_identities(identity_provider_id);
+CREATE INDEX IF NOT EXISTS idx_federated_identities_external_id ON federated_identities(identity_provider_id, external_id);
+
+-- Identity provider indexes
+CREATE INDEX IF NOT EXISTS idx_identity_providers_realm_id ON identity_providers(realm_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_identity_providers_type ON identity_providers(provider_type) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_identity_providers_enabled ON identity_providers(enabled) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_identity_provider_mappers_provider_id ON identity_provider_mappers(identity_provider_id);
+
 -- Session indexes
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_session_id ON user_sessions(session_id);
@@ -376,6 +404,44 @@ CREATE TRIGGER update_organization_members_updated_at BEFORE UPDATE ON organizat
 CREATE TRIGGER update_oauth2_clients_updated_at BEFORE UPDATE ON oauth2_clients FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_saml_service_providers_updated_at BEFORE UPDATE ON saml_service_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_saml_identity_providers_updated_at BEFORE UPDATE ON saml_identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- IDENTITY BROKERING TABLES
+-- ============================================================================
+
+-- Identity providers (supports SAML, OIDC, OAuth2, LDAP, Kerberos, Social)
+CREATE TABLE IF NOT EXISTS identity_providers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    provider_type VARCHAR(50) NOT NULL CHECK (provider_type IN ('SAML', 'OIDC', 'OAuth2', 'LDAP', 'Kerberos', 'SocialLogin', 'Custom')),
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    realm_id UUID NOT NULL REFERENCES realms(id) ON DELETE CASCADE,
+    config JSONB NOT NULL DEFAULT '{}',
+    truststore_path TEXT,
+    keystore_path TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ,
+    UNIQUE(name, realm_id)
+);
+
+-- Identity provider mappers (for attribute mapping)
+CREATE TABLE IF NOT EXISTS identity_provider_mappers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    identity_provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    mapper_type VARCHAR(50) NOT NULL,
+    config JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(identity_provider_id, name)
+);
+
+-- Update triggers for identity providers
+CREATE TRIGGER update_identity_providers_updated_at BEFORE UPDATE ON identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_identity_provider_mappers_updated_at BEFORE UPDATE ON identity_provider_mappers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_federated_identities_updated_at BEFORE UPDATE ON federated_identities FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Function to clean up expired tokens and sessions
 CREATE OR REPLACE FUNCTION cleanup_expired_data()

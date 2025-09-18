@@ -42,12 +42,18 @@ pub mod admin;
 pub mod api; // Uncommented - contains Axum handlers
              // Temporarily disabled due to Axum migration issues
              // pub mod authorization;
-             // pub mod broker;
-             // pub mod device;
+/// Identity broker handlers for external authentication providers
+pub mod broker;
+/// Device management handlers
+pub mod device;
+/// Federated authentication handlers with JIT provisioning
+pub mod federated_auth;
              // pub mod oauth2_comprehensive; // Commented out - already declared above
              // pub mod organization;
-             // pub mod saml;
-             // pub mod social;
+/// SAML authentication handlers
+pub mod saml;
+/// Social login handlers
+pub mod social;
              // pub mod webauthn;
 /// OpenID for Verifiable Credentials (OID4VC) handlers
 pub mod oid4vc;
@@ -120,10 +126,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             zero_trust::create_zero_trust_routes(),
         )
         // Temporarily disabled broker routes due to Axum migration
-        // .nest(
-        //     "/api/v1/auth/broker",
-        //     broker::create_identity_broker_routes(),
-        // )
+        .nest(
+            "/api/v1/auth/broker",
+            broker::create_identity_broker_routes(),
+        )
+        // Federated authentication routes with JIT provisioning
+        .nest(
+            "/api/v1/auth/federated",
+            federated_auth::create_federated_auth_routes(),
+        )
         .nest("/api/v1/admin", admin::create_admin_routes())
         // API routes for realms, users, roles, permissions
         .nest(

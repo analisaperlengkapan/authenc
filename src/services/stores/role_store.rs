@@ -37,7 +37,7 @@ impl RoleStore {
             .lock()
             .unwrap()
             .iter()
-            .filter(|r| r.realm_id.to_string() == realm_id)
+            .filter(|r| r.realm_id.map(|id| id.to_string()).as_ref() == Some(&realm_id.to_string()))
             .cloned()
             .collect()
     }
@@ -56,7 +56,7 @@ impl RoleStore {
     pub fn delete_by_name(&self, realm_id: &str, name: &str) -> bool {
         let mut roles = self.roles.lock().unwrap();
         let len_before = roles.len();
-        roles.retain(|r| !(r.realm_id.to_string() == realm_id && r.name == name));
+        roles.retain(|r| !(r.realm_id.map(|id| id.to_string()).as_ref() == Some(&realm_id.to_string()) && r.name == name));
         roles.len() < len_before
     }
 }

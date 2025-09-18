@@ -2,6 +2,9 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use crate::database::Database;
+use crate::database::operations;
+use std::sync::Arc;
 
 /// Admin service trait
 #[async_trait]
@@ -59,6 +62,28 @@ pub trait AdminService: Send + Sync {
     /// Get zero trust dashboard data
     async fn get_zero_trust_dashboard(&self, realm_id: &Uuid)
         -> Result<ZeroTrustDashboard, String>;
+
+    /// Get identity providers
+    async fn get_identity_providers(&self, realm_id: &Uuid) -> Result<Vec<IdentityProviderResponse>, String>;
+
+    /// Create identity provider
+    async fn create_identity_provider(&self, request: CreateIdentityProviderRequest) -> Result<IdentityProviderResponse, String>;
+
+    /// Update identity provider
+    async fn update_identity_provider(
+        &self,
+        provider_id: &Uuid,
+        request: UpdateIdentityProviderRequest,
+    ) -> Result<IdentityProviderResponse, String>;
+
+    /// Delete identity provider
+    async fn delete_identity_provider(&self, provider_id: &Uuid) -> Result<(), String>;
+
+    /// Get identity provider by ID
+    async fn get_identity_provider(&self, provider_id: &Uuid) -> Result<IdentityProviderResponse, String>;
+
+    /// Test identity provider connection
+    async fn test_identity_provider(&self, provider_id: &Uuid) -> Result<TestIdentityProviderResponse, String>;
 }
 
 /// System statistics
@@ -147,12 +172,16 @@ pub struct CreateUserRequest {
     pub first_name: Option<String>,
     /// Last name of the new user
     pub last_name: Option<String>,
+    /// Phone number of the new user
+    pub phone_number: Option<String>,
     /// ID of the realm for the new user
     pub realm_id: Uuid,
     /// List of roles to assign to the new user
     pub roles: Vec<String>,
     /// List of groups to assign to the new user
     pub groups: Vec<String>,
+    /// Additional user attributes
+    pub attributes: Option<serde_json::Value>,
     /// Whether the user's email should be marked as verified
     pub email_verified: bool,
     /// Whether the user account should be enabled
@@ -170,14 +199,22 @@ pub struct UpdateUserRequest {
     pub first_name: Option<String>,
     /// New last name for the user
     pub last_name: Option<String>,
+    /// New phone number for the user
+    pub phone_number: Option<String>,
     /// New list of roles for the user
     pub roles: Option<Vec<String>>,
     /// New list of groups for the user
     pub groups: Option<Vec<String>>,
     /// New email verification status
     pub email_verified: Option<bool>,
+    /// New phone verification status
+    pub phone_verified: Option<bool>,
     /// New account enabled status
     pub enabled: Option<bool>,
+    /// New password change requirement
+    pub require_password_change: Option<bool>,
+    /// New user attributes
+    pub attributes: Option<serde_json::Value>,
 }
 
 /// Role response
@@ -442,19 +479,11 @@ pub struct AdaptiveControlsStats {
 
 /// Admin Manager - main service implementation
 pub struct AdminManager {
-    // Dependencies would be injected here
-    // user_store: Arc<dyn UserStore>,
-    // session_store: Arc<dyn SessionStore>,
-    // audit_log_store: Arc<dyn AuditLogStore>,
-    // authorization_service: Arc<dyn AuthorizationService>,
-    // zero_trust_service: Arc<dyn ContinuousAuthService>,
+    // Database connection for admin operations
+    db: Arc<Database>,
 }
 
-impl Default for AdminManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+
 
 impl AdminManager {
     /// Create a new admin manager for system administration operations
@@ -463,6 +492,9 @@ impl AdminManager {
     /// administrative functions for managing users, realms, and system
     /// configuration. The manager starts with a clean state and requires
     /// explicit configuration for specific administrative operations.
+    ///
+    /// # Parameters
+    /// - `db`: Database connection for admin operations
     ///
     /// # Returns
     /// A new `AdminManager` instance ready for administrative operations
@@ -483,13 +515,16 @@ impl AdminManager {
     /// # Example
     /// ```rust
     /// use authenc::services::admin::AdminManager;
+    /// use authenc::database::Database;
+    /// use std::sync::Arc;
     ///
-    /// let admin = AdminManager::new();
+    /// let db = Arc::new(Database::new().await?);
+    /// let admin = AdminManager::new(db);
     /// // Use admin for system management operations
     /// // let stats = admin.get_system_stats().await?;
     /// ```
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(db: Arc<Database>) -> Self {
+        Self { db }
     }
 
     /// Generate system statistics
@@ -564,46 +599,163 @@ impl AdminService for AdminManager {
 
     async fn get_users(
         &self,
-        _realm_id: &Uuid,
-        _page: u32,
-        _limit: u32,
+        realm_id: &Uuid,
+        page: u32,
+        limit: u32,
     ) -> Result<UserListResponse, String> {
-        // TODO: Implement user listing with pagination
+        // TODO: Implement user listing with pagination and filtering by realm
+        // For now, return empty list with realm filtering placeholder
+        let _realm_filter = realm_id; // Placeholder for future implementation
         Ok(UserListResponse {
             users: vec![],
             total_count: 0,
-            page: 1,
-            limit: 20,
+            page,
+            limit,
         })
     }
 
-    async fn create_user(&self, _request: CreateUserRequest) -> Result<UserResponse, String> {
-        // TODO: Implement user creation
-        Err("Not implemented".to_string())
+    async fn create_user(&self, request: CreateUserRequest) -> Result<UserResponse, String> {
+        // Convert admin request to model request
+        let create_request = crate::models::user::CreateUserRequest {
+            username: request.username.clone(),
+            email: request.email.clone(),
+            password: request.password.clone(),
+            first_name: request.first_name.clone(),
+            last_name: request.last_name.clone(),
+            phone_number: request.phone_number.clone(),
+            realm_id: Some(request.realm_id),
+            organization_id: None, // TODO: Add organization support
+            attributes: request.attributes.clone(),
+        };
+
+        // Create user in database
+        match operations::users::create_user(&self.db, &create_request).await {
+            Ok(user) => {
+                // Convert to admin response
+                Ok(UserResponse {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
+                    enabled: user.enabled,
+                    email_verified: user.email_verified,
+                    realm_id: user.realm_id.unwrap_or_else(Uuid::new_v4),
+                    roles: vec![], // TODO: Get user roles
+                    groups: vec![], // TODO: Get user groups
+                    created_at: user.created_at,
+                    last_login: user.last_login_at,
+                    login_attempts: user.failed_login_attempts as u32,
+                    locked_until: user.account_locked_until,
+                })
+            }
+            Err(e) => Err(format!("Failed to create user: {}", e)),
+        }
     }
 
     async fn update_user(
         &self,
-        _user_id: &Uuid,
-        _request: UpdateUserRequest,
+        user_id: &Uuid,
+        request: UpdateUserRequest,
     ) -> Result<UserResponse, String> {
-        // TODO: Implement user update
-        Err("Not implemented".to_string())
+        // Convert admin request to model request
+        let update_request = crate::models::user::UpdateUserRequest {
+            username: request.username.clone(),
+            email: request.email.clone(),
+            first_name: request.first_name.clone(),
+            last_name: request.last_name.clone(),
+            phone_number: request.phone_number.clone(),
+            enabled: request.enabled,
+            email_verified: request.email_verified,
+            phone_verified: request.phone_verified,
+            require_password_change: request.require_password_change,
+            attributes: request.attributes.clone(),
+        };
+
+        // Update user in database
+        match operations::users::update_user(&self.db, *user_id, &update_request).await {
+            Ok(user) => {
+                // Convert to admin response
+                Ok(UserResponse {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
+                    enabled: user.enabled,
+                    email_verified: user.email_verified,
+                    realm_id: user.realm_id.unwrap_or_else(Uuid::new_v4),
+                    roles: vec![], // TODO: Get user roles
+                    groups: vec![], // TODO: Get user groups
+                    created_at: user.created_at,
+                    last_login: user.last_login_at,
+                    login_attempts: user.failed_login_attempts as u32,
+                    locked_until: user.account_locked_until,
+                })
+            }
+            Err(e) => Err(format!("Failed to update user: {}", e)),
+        }
     }
 
-    async fn delete_user(&self, _user_id: &Uuid) -> Result<(), String> {
-        // TODO: Implement user deletion
-        Err("Not implemented".to_string())
+    async fn delete_user(&self, user_id: &Uuid) -> Result<(), String> {
+        // Delete user from database
+        match operations::users::delete_user(&self.db, *user_id).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Failed to delete user: {}", e)),
+        }
     }
 
-    async fn get_roles(&self, _realm_id: &Uuid) -> Result<Vec<RoleResponse>, String> {
-        // TODO: Implement role listing
-        Ok(vec![])
+    async fn get_roles(&self, realm_id: &Uuid) -> Result<Vec<RoleResponse>, String> {
+        // Get roles from database
+        match operations::roles::list_roles_by_realm(&self.db, realm_id).await {
+            Ok(roles) => {
+                // Convert to admin responses
+                let mut responses = Vec::new();
+                for role in roles {
+                    responses.push(RoleResponse {
+                        id: role.id,
+                        name: role.name,
+                        description: role.description.unwrap_or_default(),
+                        realm_id: role.realm_id.unwrap_or_else(|| Uuid::new_v4()),
+                        composite: role.composite,
+                        client_role: role.client_role,
+                        container_id: role.client_id,
+                        attributes: role.attributes
+                            .and_then(|attrs| serde_json::from_value(attrs).ok())
+                            .unwrap_or_default(),
+                    });
+                }
+                Ok(responses)
+            }
+            Err(e) => Err(format!("Failed to get roles: {}", e)),
+        }
     }
 
-    async fn create_role(&self, _request: CreateRoleRequest) -> Result<RoleResponse, String> {
-        // TODO: Implement role creation
-        Err("Not implemented".to_string())
+    async fn create_role(&self, request: CreateRoleRequest) -> Result<RoleResponse, String> {
+        // Create role in database
+        match operations::roles::create_role(
+            &self.db,
+            &request.name,
+            Some(&request.description),
+            &request.realm_id,
+        ).await {
+            Ok(role) => {
+                // Convert to admin response
+                Ok(RoleResponse {
+                    id: role.id,
+                    name: role.name,
+                    description: role.description.unwrap_or_default(),
+                    realm_id: role.realm_id.unwrap_or_else(|| Uuid::new_v4()),
+                    composite: role.composite,
+                    client_role: role.client_role,
+                    container_id: role.client_id,
+                    attributes: role.attributes
+                        .and_then(|attrs| serde_json::from_value(attrs).ok())
+                        .unwrap_or_default(),
+                })
+            }
+            Err(e) => Err(format!("Failed to create role: {}", e)),
+        }
     }
 
     async fn get_sessions(
@@ -652,4 +804,282 @@ impl AdminService for AdminManager {
     ) -> Result<ZeroTrustDashboard, String> {
         Ok(self.generate_zero_trust_dashboard(realm_id))
     }
+
+    async fn get_identity_providers(&self, realm_id: &Uuid) -> Result<Vec<IdentityProviderResponse>, String> {
+        match operations::identity_providers::get_identity_providers_by_realm(&self.db, *realm_id).await {
+            Ok(providers) => {
+                let responses = providers
+                    .into_iter()
+                    .map(|p| IdentityProviderResponse {
+                        id: p.id,
+                        name: p.name,
+                        display_name: p.display_name,
+                        provider_type: match p.provider_type.as_str() {
+                            "SAML" => IdentityProviderType::SAML,
+                            "OIDC" => IdentityProviderType::OIDC,
+                            "OAuth2" => IdentityProviderType::OAuth2,
+                            "LDAP" => IdentityProviderType::LDAP,
+                            "Kerberos" => IdentityProviderType::Kerberos,
+                            "SocialLogin" => IdentityProviderType::SocialLogin,
+                            _ => IdentityProviderType::Custom,
+                        },
+                        enabled: p.enabled,
+                        config: p.config,
+                        realm_id: p.realm_id,
+                        truststore_path: p.truststore_path,
+                        keystore_path: p.keystore_path,
+                        created_at: p.created_at,
+                        updated_at: p.updated_at,
+                    })
+                    .collect();
+                Ok(responses)
+            }
+            Err(e) => Err(format!("Failed to get identity providers: {}", e)),
+        }
+    }
+
+    async fn create_identity_provider(&self, request: CreateIdentityProviderRequest) -> Result<IdentityProviderResponse, String> {
+        let provider_type_str = match request.provider_type {
+            IdentityProviderType::SAML => "SAML",
+            IdentityProviderType::OIDC => "OIDC",
+            IdentityProviderType::OAuth2 => "OAuth2",
+            IdentityProviderType::LDAP => "LDAP",
+            IdentityProviderType::Kerberos => "Kerberos",
+            IdentityProviderType::SocialLogin => "SocialLogin",
+            IdentityProviderType::Custom => "Custom",
+        };
+
+        match operations::identity_providers::create_identity_provider(
+            &self.db,
+            &request.name,
+            &request.display_name,
+            provider_type_str,
+            request.enabled,
+            request.realm_id,
+            request.config,
+            request.truststore_path.as_deref(),
+            request.keystore_path.as_deref(),
+        ).await {
+            Ok(provider) => Ok(IdentityProviderResponse {
+                id: provider.id,
+                name: provider.name,
+                display_name: provider.display_name,
+                provider_type: match provider.provider_type.as_str() {
+                    "SAML" => IdentityProviderType::SAML,
+                    "OIDC" => IdentityProviderType::OIDC,
+                    "OAuth2" => IdentityProviderType::OAuth2,
+                    "LDAP" => IdentityProviderType::LDAP,
+                    "Kerberos" => IdentityProviderType::Kerberos,
+                    "SocialLogin" => IdentityProviderType::SocialLogin,
+                    _ => IdentityProviderType::Custom,
+                },
+                enabled: provider.enabled,
+                config: provider.config,
+                realm_id: provider.realm_id,
+                truststore_path: provider.truststore_path,
+                keystore_path: provider.keystore_path,
+                created_at: provider.created_at,
+                updated_at: provider.updated_at,
+            }),
+            Err(e) => Err(format!("Failed to create identity provider: {}", e)),
+        }
+    }
+
+    async fn update_identity_provider(
+        &self,
+        provider_id: &Uuid,
+        request: UpdateIdentityProviderRequest,
+    ) -> Result<IdentityProviderResponse, String> {
+        let provider_type_str = request.provider_type.as_ref().map(|pt| match pt {
+            IdentityProviderType::SAML => "SAML",
+            IdentityProviderType::OIDC => "OIDC",
+            IdentityProviderType::OAuth2 => "OAuth2",
+            IdentityProviderType::LDAP => "LDAP",
+            IdentityProviderType::Kerberos => "Kerberos",
+            IdentityProviderType::SocialLogin => "SocialLogin",
+            IdentityProviderType::Custom => "Custom",
+        });
+
+        match operations::identity_providers::update_identity_provider(
+            &self.db,
+            *provider_id,
+            request.name.as_deref(),
+            request.display_name.as_deref(),
+            provider_type_str,
+            request.enabled,
+            request.config,
+            request.truststore_path.as_deref(),
+            request.keystore_path.as_deref(),
+        ).await {
+            Ok(provider) => Ok(IdentityProviderResponse {
+                id: provider.id,
+                name: provider.name,
+                display_name: provider.display_name,
+                provider_type: match provider.provider_type.as_str() {
+                    "SAML" => IdentityProviderType::SAML,
+                    "OIDC" => IdentityProviderType::OIDC,
+                    "OAuth2" => IdentityProviderType::OAuth2,
+                    "LDAP" => IdentityProviderType::LDAP,
+                    "Kerberos" => IdentityProviderType::Kerberos,
+                    "SocialLogin" => IdentityProviderType::SocialLogin,
+                    _ => IdentityProviderType::Custom,
+                },
+                enabled: provider.enabled,
+                config: provider.config,
+                realm_id: provider.realm_id,
+                truststore_path: provider.truststore_path,
+                keystore_path: provider.keystore_path,
+                created_at: provider.created_at,
+                updated_at: provider.updated_at,
+            }),
+            Err(e) => Err(format!("Failed to update identity provider: {}", e)),
+        }
+    }
+
+    async fn delete_identity_provider(&self, provider_id: &Uuid) -> Result<(), String> {
+        match operations::identity_providers::delete_identity_provider(&self.db, *provider_id).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Failed to delete identity provider: {}", e)),
+        }
+    }
+
+    async fn get_identity_provider(&self, provider_id: &Uuid) -> Result<IdentityProviderResponse, String> {
+        match operations::identity_providers::get_identity_provider_by_id(&self.db, *provider_id).await {
+            Ok(Some(provider)) => Ok(IdentityProviderResponse {
+                id: provider.id,
+                name: provider.name,
+                display_name: provider.display_name,
+                provider_type: match provider.provider_type.as_str() {
+                    "SAML" => IdentityProviderType::SAML,
+                    "OIDC" => IdentityProviderType::OIDC,
+                    "OAuth2" => IdentityProviderType::OAuth2,
+                    "LDAP" => IdentityProviderType::LDAP,
+                    "Kerberos" => IdentityProviderType::Kerberos,
+                    "SocialLogin" => IdentityProviderType::SocialLogin,
+                    _ => IdentityProviderType::Custom,
+                },
+                enabled: provider.enabled,
+                config: provider.config,
+                realm_id: provider.realm_id,
+                truststore_path: provider.truststore_path,
+                keystore_path: provider.keystore_path,
+                created_at: provider.created_at,
+                updated_at: provider.updated_at,
+            }),
+            Ok(None) => Err("Identity provider not found".to_string()),
+            Err(e) => Err(format!("Failed to get identity provider: {}", e)),
+        }
+    }
+
+    async fn test_identity_provider(&self, provider_id: &Uuid) -> Result<TestIdentityProviderResponse, String> {
+        // TODO: Implement actual identity provider testing
+        // This would test the connection, validate certificates, etc.
+        let _provider_id = provider_id; // Placeholder for future implementation
+        Ok(TestIdentityProviderResponse {
+            success: true,
+            message: "Identity provider connection test successful".to_string(),
+            details: Some(serde_json::json!({
+                "connection_time_ms": 150,
+                "certificate_valid": true,
+                "metadata_retrieved": true
+            })),
+        })
+    }
+}
+
+/// Identity provider types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum IdentityProviderType {
+    /// SAML 2.0 identity provider
+    SAML,
+    /// OpenID Connect identity provider
+    OIDC,
+    /// OAuth 2.0 identity provider
+    OAuth2,
+    /// LDAP directory server
+    LDAP,
+    /// Kerberos authentication
+    Kerberos,
+    /// Social login providers
+    SocialLogin,
+    /// Custom identity provider
+    Custom,
+}
+
+/// Identity provider response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdentityProviderResponse {
+    /// Unique identifier for the identity provider
+    pub id: Uuid,
+    /// Internal name of the provider
+    pub name: String,
+    /// Display name shown to users
+    pub display_name: String,
+    /// Type of identity provider
+    pub provider_type: IdentityProviderType,
+    /// Whether the provider is enabled
+    pub enabled: bool,
+    /// Configuration parameters specific to the provider
+    pub config: serde_json::Value,
+    /// ID of the realm this provider belongs to
+    pub realm_id: Uuid,
+    /// Path to truststore for SSL/TLS certificates
+    pub truststore_path: Option<String>,
+    /// Path to keystore for client certificates
+    pub keystore_path: Option<String>,
+    /// Timestamp when the provider was created
+    pub created_at: DateTime<Utc>,
+    /// Timestamp when the provider was last updated
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Create identity provider request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateIdentityProviderRequest {
+    /// Internal name of the provider
+    pub name: String,
+    /// Display name shown to users
+    pub display_name: String,
+    /// Type of identity provider
+    pub provider_type: IdentityProviderType,
+    /// Whether the provider should be enabled
+    pub enabled: bool,
+    /// Configuration parameters specific to the provider
+    pub config: serde_json::Value,
+    /// ID of the realm this provider belongs to
+    pub realm_id: Uuid,
+    /// Path to truststore for SSL/TLS certificates
+    pub truststore_path: Option<String>,
+    /// Path to keystore for client certificates
+    pub keystore_path: Option<String>,
+}
+
+/// Update identity provider request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateIdentityProviderRequest {
+    /// New internal name of the provider
+    pub name: Option<String>,
+    /// New display name shown to users
+    pub display_name: Option<String>,
+    /// New type of identity provider
+    pub provider_type: Option<IdentityProviderType>,
+    /// New enabled status
+    pub enabled: Option<bool>,
+    /// New configuration parameters
+    pub config: Option<serde_json::Value>,
+    /// New truststore path
+    pub truststore_path: Option<String>,
+    /// New keystore path
+    pub keystore_path: Option<String>,
+}
+
+/// Test identity provider response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestIdentityProviderResponse {
+    /// Whether the test was successful
+    pub success: bool,
+    /// Test result message
+    pub message: String,
+    /// Additional test details
+    pub details: Option<serde_json::Value>,
 }

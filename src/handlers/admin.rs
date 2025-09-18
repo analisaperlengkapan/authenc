@@ -1,9 +1,11 @@
 use crate::database::Database;
 use crate::error::AuthencError;
 use crate::services::admin::{
-    AuditLogResponse, CreatePolicyRequest, CreateRoleRequest, CreateUserRequest, PolicyResponse,
-    RoleResponse, SecurityEvent, SessionListResponse, SystemStats, UpdateUserRequest,
-    UserListResponse, UserResponse,
+    AdminManager, AdminService, AuditLogResponse, CreatePolicyRequest, CreateRoleRequest,
+    CreateUserRequest, PolicyResponse, RoleResponse, SecurityEvent, SessionListResponse,
+    SystemStats, UpdateUserRequest, UserListResponse, UserResponse,
+    IdentityProviderResponse, CreateIdentityProviderRequest, UpdateIdentityProviderRequest,
+    TestIdentityProviderResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -128,17 +130,21 @@ pub async fn get_dashboard_data(
 
 /// List users with filtering and pagination
 pub async fn list_users(
-    State(_db): State<Arc<Database>>,
+    State(db): State<Arc<Database>>,
     Query(query): Query<ListUsersQuery>,
 ) -> Result<Json<UserListResponse>, StatusCode> {
-    // Mock response - in real implementation would fetch from service
-    let response = UserListResponse {
-        users: vec![],
-        total_count: 0,
-        page: query.page.unwrap_or(1),
-        limit: query.limit.unwrap_or(20),
-    };
-    Ok(Json(response))
+    let admin_manager = AdminManager::new(db);
+    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+    let page = query.page.unwrap_or(1);
+    let limit = query.limit.unwrap_or(20);
+
+    match admin_manager.get_users(&realm_id, page, limit).await {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => {
+            eprintln!("Failed to list users: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Get user by ID
@@ -152,30 +158,51 @@ pub async fn get_user(
 
 /// Create a new user
 pub async fn create_user(
-    State(_db): State<Arc<Database>>,
-    Json(_request): Json<CreateUserRequest>,
+    State(db): State<Arc<Database>>,
+    Json(request): Json<CreateUserRequest>,
 ) -> Result<Json<UserResponse>, StatusCode> {
-    // Mock response - in real implementation would create via service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(db);
+
+    match admin_manager.create_user(request).await {
+        Ok(user) => Ok(Json(user)),
+        Err(e) => {
+            eprintln!("Failed to create user: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Update user
 pub async fn update_user(
-    State(_db): State<Arc<Database>>,
-    Path(_user_id): Path<Uuid>,
-    Json(_request): Json<UpdateUserRequest>,
+    State(db): State<Arc<Database>>,
+    Path(user_id): Path<Uuid>,
+    Json(request): Json<UpdateUserRequest>,
 ) -> Result<Json<UserResponse>, StatusCode> {
-    // Mock response - in real implementation would update via service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(db);
+
+    match admin_manager.update_user(&user_id, request).await {
+        Ok(user) => Ok(Json(user)),
+        Err(e) => {
+            eprintln!("Failed to update user: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Delete user
 pub async fn delete_user(
-    State(_db): State<Arc<Database>>,
-    Path(_user_id): Path<Uuid>,
+    State(db): State<Arc<Database>>,
+    Path(user_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    // Mock response - in real implementation would delete via service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(db);
+
+    match admin_manager.delete_user(&user_id).await {
+        Ok(_) => Ok(StatusCode::NO_CONTENT),
+        Err(e) => {
+            eprintln!("Failed to delete user: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// List user sessions
@@ -219,20 +246,35 @@ pub async fn list_audit_logs(
 
 /// List roles
 pub async fn list_roles(
-    State(_db): State<Arc<Database>>,
-    Query(_query): Query<ListRolesQuery>,
+    State(db): State<Arc<Database>>,
+    Query(query): Query<ListRolesQuery>,
 ) -> Result<Json<Vec<RoleResponse>>, StatusCode> {
-    // Mock response - in real implementation would fetch from service
-    Ok(Json(vec![]))
+    let admin_manager = AdminManager::new(db);
+    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+
+    match admin_manager.get_roles(&realm_id).await {
+        Ok(roles) => Ok(Json(roles)),
+        Err(e) => {
+            eprintln!("Failed to list roles: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Create role
 pub async fn create_role(
-    State(_db): State<Arc<Database>>,
-    Json(_request): Json<CreateRoleRequest>,
+    State(db): State<Arc<Database>>,
+    Json(request): Json<CreateRoleRequest>,
 ) -> Result<Json<RoleResponse>, StatusCode> {
-    // Mock response - in real implementation would create via service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(db);
+
+    match admin_manager.create_role(request).await {
+        Ok(role) => Ok(Json(role)),
+        Err(e) => {
+            eprintln!("Failed to create role: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Get role by ID
@@ -306,6 +348,115 @@ pub async fn get_risk_analytics(
     Ok(Json(analytics))
 }
 
+/// List identity providers
+pub async fn list_identity_providers(
+    State(db): State<Arc<Database>>,
+    Query(query): Query<ListIdentityProvidersQuery>,
+) -> Result<Json<Vec<IdentityProviderResponse>>, StatusCode> {
+    let admin_manager = AdminManager::new(db);
+    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+
+    match admin_manager.get_identity_providers(&realm_id).await {
+        Ok(providers) => Ok(Json(providers)),
+        Err(e) => {
+            eprintln!("Failed to list identity providers: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Get identity provider by ID
+pub async fn get_identity_provider(
+    State(db): State<Arc<Database>>,
+    Path(provider_id): Path<Uuid>,
+) -> Result<Json<IdentityProviderResponse>, StatusCode> {
+    let admin_manager = AdminManager::new(db);
+
+    match admin_manager.get_identity_provider(&provider_id).await {
+        Ok(provider) => Ok(Json(provider)),
+        Err(e) => {
+            eprintln!("Failed to get identity provider: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Create identity provider
+pub async fn create_identity_provider(
+    State(db): State<Arc<Database>>,
+    Json(request): Json<CreateIdentityProviderRequest>,
+) -> Result<Json<IdentityProviderResponse>, StatusCode> {
+    let admin_manager = AdminManager::new(db);
+
+    match admin_manager.create_identity_provider(request).await {
+        Ok(provider) => Ok(Json(provider)),
+        Err(e) => {
+            eprintln!("Failed to create identity provider: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Update identity provider
+pub async fn update_identity_provider(
+    State(db): State<Arc<Database>>,
+    Path(provider_id): Path<Uuid>,
+    Json(request): Json<UpdateIdentityProviderRequest>,
+) -> Result<Json<IdentityProviderResponse>, StatusCode> {
+    let admin_manager = AdminManager::new(db);
+
+    match admin_manager.update_identity_provider(&provider_id, request).await {
+        Ok(provider) => Ok(Json(provider)),
+        Err(e) => {
+            eprintln!("Failed to update identity provider: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Delete identity provider
+pub async fn delete_identity_provider(
+    State(db): State<Arc<Database>>,
+    Path(provider_id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let admin_manager = AdminManager::new(db);
+
+    match admin_manager.delete_identity_provider(&provider_id).await {
+        Ok(_) => Ok(StatusCode::NO_CONTENT),
+        Err(e) => {
+            eprintln!("Failed to delete identity provider: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Test identity provider connection
+pub async fn test_identity_provider(
+    State(db): State<Arc<Database>>,
+    Path(provider_id): Path<Uuid>,
+) -> Result<Json<TestIdentityProviderResponse>, StatusCode> {
+    let admin_manager = AdminManager::new(db);
+
+    match admin_manager.test_identity_provider(&provider_id).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            eprintln!("Failed to test identity provider: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+#[derive(Deserialize)]
+/// Query parameters for listing identity providers
+pub struct ListIdentityProvidersQuery {
+    /// Filter identity providers by realm ID
+    pub realm_id: Option<Uuid>,
+    /// Filter by provider type
+    pub provider_type: Option<String>,
+    /// Filter by enabled status
+    pub enabled: Option<bool>,
+}
+
 /// Create admin routes
 pub fn create_admin_routes() -> Router<Arc<Database>> {
     Router::new()
@@ -328,4 +479,10 @@ pub fn create_admin_routes() -> Router<Arc<Database>> {
         .route("/policies", post(create_policy))
         .route("/security-events", get(get_security_events))
         .route("/risk-analytics", get(get_risk_analytics))
+        .route("/identity-providers", get(list_identity_providers))
+        .route("/identity-providers", post(create_identity_provider))
+        .route("/identity-providers/{provider_id}", get(get_identity_provider))
+        .route("/identity-providers/{provider_id}", put(update_identity_provider))
+        .route("/identity-providers/{provider_id}", delete(delete_identity_provider))
+        .route("/identity-providers/{provider_id}/test", post(test_identity_provider))
 }

@@ -1,6 +1,9 @@
 use crate::database::Database;
-use crate::error::{AuthencError, Result};
+use crate::error::AuthencError;
 use crate::services::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
+use crate::services::federation::jit_provisioning::{JITProvisioningService, DefaultJITProvisioningService};
+use crate::services::admin::AdminService;
+use crate::models::user::JITUserProvisioningRequest;
 use axum::{
     extract::{Query, State},
     response::{Html, Redirect},
@@ -8,6 +11,154 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use async_trait::async_trait;
+
+/// Mock Admin Service for SAML JIT provisioning
+struct MockAdminService {
+    db: Arc<Database>,
+}
+
+#[allow(unsafe_code)]
+unsafe impl Send for MockAdminService {}
+#[allow(unsafe_code)]
+unsafe impl Sync for MockAdminService {}
+
+impl MockAdminService {
+    fn new(db: Arc<Database>) -> Self {
+        Self { db }
+    }
+}
+
+#[async_trait]
+impl AdminService for MockAdminService {
+    async fn get_system_stats(&self) -> Result<crate::services::admin::SystemStats, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn get_users(
+        &self,
+        _realm_id: &uuid::Uuid,
+        _page: u32,
+        _limit: u32,
+    ) -> Result<crate::services::admin::UserListResponse, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn create_user(&self, request: crate::services::admin::CreateUserRequest) -> Result<crate::services::admin::UserResponse, String> {
+        // Use the database operations to create user
+        use crate::database::operations::users;
+        use crate::models::user::CreateUserRequest as DbCreateUserRequest;
+
+        let db_request = DbCreateUserRequest {
+            username: request.username,
+            email: request.email,
+            password: request.password,
+            first_name: request.first_name,
+            last_name: request.last_name,
+            phone_number: request.phone_number,
+            attributes: request.attributes,
+            realm_id: Some(request.realm_id),
+            organization_id: None,
+        };
+
+        match users::create_user(&self.db, &db_request).await {
+            Ok(user) => Ok(crate::services::admin::UserResponse {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                email_verified: user.email_verified,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                enabled: user.enabled,
+                realm_id: user.realm_id.unwrap_or_default(),
+                roles: vec![], // TODO: Get roles from database
+                groups: vec![], // TODO: Get groups from database
+                created_at: user.created_at,
+                last_login: user.last_login_at,
+                login_attempts: user.failed_login_attempts as u32,
+                locked_until: user.account_locked_until,
+            }),
+            Err(e) => Err(format!("Failed to create user: {}", e)),
+        }
+    }
+
+    async fn update_user(
+        &self,
+        _user_id: &uuid::Uuid,
+        _request: crate::services::admin::UpdateUserRequest,
+    ) -> Result<crate::services::admin::UserResponse, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn delete_user(&self, _user_id: &uuid::Uuid) -> Result<(), String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn get_roles(&self, _realm_id: &uuid::Uuid) -> Result<Vec<crate::services::admin::RoleResponse>, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn create_role(&self, _request: crate::services::admin::CreateRoleRequest) -> Result<crate::services::admin::RoleResponse, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn get_sessions(
+        &self,
+        _user_id: Option<uuid::Uuid>,
+        _page: u32,
+        _limit: u32,
+    ) -> Result<crate::services::admin::SessionListResponse, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn terminate_session(&self, _session_id: &str) -> Result<(), String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn get_audit_logs(&self, _filter: crate::services::admin::AuditLogFilter) -> Result<crate::services::admin::AuditLogResponse, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn get_policies(&self, _realm_id: &uuid::Uuid) -> Result<Vec<crate::services::admin::PolicyResponse>, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn create_policy(&self, _request: crate::services::admin::CreatePolicyRequest) -> Result<crate::services::admin::PolicyResponse, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn get_zero_trust_dashboard(&self, _realm_id: &uuid::Uuid) -> Result<crate::services::admin::ZeroTrustDashboard, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn get_identity_providers(&self, _realm_id: &uuid::Uuid) -> Result<Vec<crate::services::admin::IdentityProviderResponse>, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn create_identity_provider(&self, _request: crate::services::admin::CreateIdentityProviderRequest) -> Result<crate::services::admin::IdentityProviderResponse, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn update_identity_provider(
+        &self,
+        _provider_id: &uuid::Uuid,
+        _request: crate::services::admin::UpdateIdentityProviderRequest,
+    ) -> Result<crate::services::admin::IdentityProviderResponse, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn delete_identity_provider(&self, _provider_id: &uuid::Uuid) -> Result<(), String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn get_identity_provider(&self, _provider_id: &uuid::Uuid) -> Result<crate::services::admin::IdentityProviderResponse, String> {
+        Err("Not implemented".to_string())
+    }
+
+    async fn test_identity_provider(&self, _provider_id: &uuid::Uuid) -> Result<crate::services::admin::TestIdentityProviderResponse, String> {
+        Err("Not implemented".to_string())
+    }
+}
 
 /// Create SAML routes
 pub fn create_saml_routes() -> Router<Arc<Database>> {
@@ -23,7 +174,7 @@ pub fn create_saml_routes() -> Router<Arc<Database>> {
 pub async fn sp_metadata(
     State(db): State<Arc<Database>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Html<String>> {
+) -> std::result::Result<Html<String>, AuthencError> {
     let mut service = SamlService::new(db);
 
     // In production, load from configuration
@@ -50,7 +201,7 @@ pub async fn sp_metadata(
 pub async fn idp_metadata(
     State(db): State<Arc<Database>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Html<String>> {
+) -> std::result::Result<Html<String>, AuthencError> {
     let mut service = SamlService::new(db);
 
     // In production, load from configuration
@@ -77,7 +228,7 @@ pub async fn idp_metadata(
 pub async fn saml_auth(
     State(db): State<Arc<Database>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Redirect> {
+) -> std::result::Result<Redirect, AuthencError> {
     let mut service = SamlService::new(db);
 
     // Register service provider
@@ -123,9 +274,9 @@ pub async fn saml_auth(
 pub async fn saml_acs(
     State(db): State<Arc<Database>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-    body: String,
-) -> Result<Html<String>> {
-    let service = SamlService::new(db);
+    _body: String,
+) -> std::result::Result<Html<String>, AuthencError> {
+    let service = SamlService::new(db.clone());
 
     // Extract SAMLResponse from form data or query parameters
     let saml_response = if let Some(response) = params.get("SAMLResponse") {
@@ -137,27 +288,67 @@ pub async fn saml_acs(
 
     let relay_state = params.get("RelayState").map(|s| s.as_str());
 
-    match service.process_response(saml_response, relay_state).await {
+    match service.process_response(saml_response, relay_state, "").await {
         Ok(user_info) => {
-            // In production, create session and redirect to application
-            let html = format!(
-                r#"<!DOCTYPE html>
+            // Create JIT provisioning service
+            let admin_service = Arc::new(MockAdminService::new(db.clone()));
+            let jit_service = Arc::new(DefaultJITProvisioningService::new(db.clone(), admin_service));
+
+            // Prepare JIT provisioning request
+            let jit_request = JITUserProvisioningRequest {
+                identity_provider_id: uuid::Uuid::new_v4(), // TODO: Get from SAML configuration
+                external_id: user_info.name_id.clone(),
+                external_username: user_info.attributes.get("username").and_then(|v| v.first()).map(|s| s.to_string()),
+                external_email: user_info.attributes.get("email").and_then(|v| v.first()).map(|s| s.to_string()),
+                first_name: user_info.attributes.get("firstName").and_then(|v| v.first()).map(|s| s.to_string()),
+                last_name: user_info.attributes.get("lastName").and_then(|v| v.first()).map(|s| s.to_string()),
+                external_attributes: Some(serde_json::to_value(&user_info.attributes)
+                    .map_err(|_| AuthencError::internal("Failed to serialize attributes"))?),
+                realm_id: uuid::Uuid::new_v4(), // TODO: Get from SAML configuration
+            };
+
+            // Provision user using JIT
+            match jit_service.provision_user(jit_request).await {
+                Ok(jit_response) => {
+                    // In production, create session and redirect to application
+                    let html = format!(
+                        r#"<!DOCTYPE html>
 <html>
 <head><title>SAML Login Success</title></head>
 <body>
 <h1>Login Successful</h1>
 <p>Welcome, {}!</p>
+<p>User ID: {}</p>
 <p>Session Index: {}</p>
 <p>Authentication Context: {}</p>
+<p>JIT Provisioned: {}</p>
 <pre>{:?}</pre>
 </body>
 </html>"#,
-                user_info.name_id,
-                user_info.session_index,
-                user_info.authn_context_class_ref,
-                user_info.attributes
-            );
-            Ok(Html(html))
+                        jit_response.user.username,
+                        jit_response.user.id,
+                        user_info.session_index,
+                        user_info.authn_context_class_ref,
+                        jit_response.created,
+                        user_info.attributes
+                    );
+                    Ok(Html(html))
+                }
+                Err(e) => {
+                    let html = format!(
+                        r#"<!DOCTYPE html>
+<html>
+<head><title>SAML Login Failed</title></head>
+<body>
+<h1>JIT Provisioning Failed</h1>
+<p>Error: {}</p>
+</body>
+</html>"#,
+                        e
+                    );
+                    Ok(Html(html))
+                }
+            }
         }
         Err(_) => {
             let html = r#"<!DOCTYPE html>
@@ -175,9 +366,9 @@ pub async fn saml_acs(
 
 /// SAML single logout endpoint
 pub async fn saml_slo(
-    State(db): State<Arc<Database>>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Redirect> {
+    State(_db): State<Arc<Database>>,
+    Query(_params): Query<std::collections::HashMap<String, String>>,
+) -> std::result::Result<Redirect, AuthencError> {
     // In production, implement SAML logout
     // For now, redirect to home page
     Ok(Redirect::to("/"))

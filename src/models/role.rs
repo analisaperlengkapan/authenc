@@ -12,6 +12,10 @@ use uuid::Uuid;
 /// * `name` - Role name (unique within realm)
 /// * `description` - Optional human-readable description
 /// * `realm_id` - ID of the realm this role belongs to
+/// * `composite` - Whether this is a composite role (contains other roles)
+/// * `client_role` - Whether this is a client-specific role
+/// * `client_id` - Client identifier if this is a client role
+/// * `attributes` - Additional role attributes as JSON
 /// * `created_at` - Role creation timestamp
 /// * `updated_at` - Last modification timestamp
 /// * `deleted_at` - Soft delete timestamp (None if active)
@@ -31,7 +35,15 @@ pub struct Role {
     /// Optional description of the role's purpose and permissions
     pub description: Option<String>,
     /// ID of the realm this role belongs to (enforces multi-tenancy)
-    pub realm_id: Uuid,
+    pub realm_id: Option<Uuid>,
+    /// Whether this is a composite role (contains other roles)
+    pub composite: bool,
+    /// Whether this is a client-specific role
+    pub client_role: bool,
+    /// Client identifier if this is a client role
+    pub client_id: Option<String>,
+    /// Additional role attributes as JSON
+    pub attributes: Option<serde_json::Value>,
     /// Timestamp when the role was created
     pub created_at: DateTime<Utc>,
     /// Timestamp when the role was last updated
@@ -127,7 +139,7 @@ impl From<Role> for RoleResponse {
             id: role.id,
             name: role.name,
             description: role.description,
-            realm_id: role.realm_id,
+            realm_id: role.realm_id.unwrap_or_else(Uuid::new_v4),
             created_at: role.created_at,
             updated_at: role.updated_at,
         }
@@ -158,7 +170,11 @@ impl Role {
             id: Uuid::new_v4(),
             name,
             description,
-            realm_id,
+            realm_id: Some(realm_id),
+            composite: false,
+            client_role: false,
+            client_id: None,
+            attributes: None,
             created_at: now,
             updated_at: now,
             deleted_at: None,

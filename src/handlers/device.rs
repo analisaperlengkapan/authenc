@@ -89,7 +89,7 @@ pub async fn register_device(
 /// List devices handler
 pub async fn list_devices(
     State(db): State<Arc<Database>>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
+    Query(_params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>> {
     let service = DeviceService::new(db);
 
@@ -142,9 +142,9 @@ pub async fn update_device(
 /// Delete device handler
 pub async fn delete_device(
     State(db): State<Arc<Database>>,
-    Path(id): Path<Uuid>,
+    Path(_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(db);
+    let _service = DeviceService::new(db);
 
     // In production, implement device deletion
     Ok(Json(serde_json::json!({

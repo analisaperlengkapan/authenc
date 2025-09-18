@@ -112,6 +112,82 @@ impl ClientPolicyCondition for GrantTypeCondition {
     }
 }
 
+/// Client Access Type Condition
+pub struct ClientAccessTypeCondition {
+    /// List of allowed client access types
+    pub allowed_access_types: Vec<String>,
+}
+
+#[async_trait]
+impl ClientPolicyCondition for ClientAccessTypeCondition {
+    async fn evaluate(&self, context: &ClientPolicyContext) -> Result<bool, AuthencError> {
+        // Check client access type (confidential, public, bearer-only)
+        // Use client_type field which represents the access type
+        Ok(self.allowed_access_types.contains(&context.client.client_type))
+    }
+
+    fn name(&self) -> &str {
+        "client-access-type-condition"
+    }
+}
+
+/// Client Attributes Condition
+pub struct ClientAttributesCondition {
+    /// Required client attributes (stored as JSON in client metadata)
+    pub required_attributes: HashMap<String, String>,
+}
+
+#[async_trait]
+impl ClientPolicyCondition for ClientAttributesCondition {
+    async fn evaluate(&self, context: &ClientPolicyContext) -> Result<bool, AuthencError> {
+        // For now, check basic client properties as attributes
+        // In a full implementation, this would check a metadata/attributes field
+        for (key, expected_value) in &self.required_attributes {
+            match key.as_str() {
+                "client_type" => {
+                    if context.client.client_type != *expected_value {
+                        return Ok(false);
+                    }
+                }
+                "enabled" => {
+                    let enabled_str = context.client.enabled.to_string();
+                    if enabled_str != *expected_value {
+                        return Ok(false);
+                    }
+                }
+                _ => {
+                    // Unknown attribute - could be extended to check custom attributes
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    fn name(&self) -> &str {
+        "client-attributes-condition"
+    }
+}
+
+/// Client Protocol Condition
+pub struct ClientProtocolCondition {
+    /// List of allowed protocols
+    pub allowed_protocols: Vec<String>,
+}
+
+#[async_trait]
+impl ClientPolicyCondition for ClientProtocolCondition {
+    async fn evaluate(&self, _context: &ClientPolicyContext) -> Result<bool, AuthencError> {
+        // For now, assume all clients use OAuth2/OIDC protocol
+        // In a full implementation, this would check a protocol field
+        Ok(self.allowed_protocols.contains(&"openid-connect".to_string()))
+    }
+
+    fn name(&self) -> &str {
+        "client-protocol-condition"
+    }
+}
+
 /// Client Roles Condition
 pub struct ClientRolesCondition {
     /// List of required client roles
@@ -128,6 +204,125 @@ impl ClientPolicyCondition for ClientRolesCondition {
 
     fn name(&self) -> &str {
         "client-roles-condition"
+    }
+}
+
+/// Client Updater Context Condition
+pub struct ClientUpdaterContextCondition {
+    /// List of allowed updater contexts
+    pub allowed_updater_contexts: Vec<String>,
+}
+
+#[async_trait]
+impl ClientPolicyCondition for ClientUpdaterContextCondition {
+    async fn evaluate(&self, _context: &ClientPolicyContext) -> Result<bool, AuthencError> {
+        // Check the context in which the client is being updated
+        // This would check the current user/admin context
+        Ok(true) // Placeholder - implement based on your admin context
+    }
+
+    fn name(&self) -> &str {
+        "client-updater-context-condition"
+    }
+}
+
+/// Client Updater Source Groups Condition
+pub struct ClientUpdaterSourceGroupsCondition {
+    /// List of allowed source groups
+    pub allowed_source_groups: Vec<String>,
+}
+
+#[async_trait]
+impl ClientPolicyCondition for ClientUpdaterSourceGroupsCondition {
+    async fn evaluate(&self, _context: &ClientPolicyContext) -> Result<bool, AuthencError> {
+        // Check if the updater belongs to allowed groups
+        // This would integrate with your group management system
+        Ok(true) // Placeholder - implement based on your group system
+    }
+
+    fn name(&self) -> &str {
+        "client-updater-source-groups-condition"
+    }
+}
+
+/// Client Updater Source Hosts Condition
+pub struct ClientUpdaterSourceHostsCondition {
+    /// List of allowed source hosts
+    pub allowed_source_hosts: Vec<String>,
+}
+
+#[async_trait]
+impl ClientPolicyCondition for ClientUpdaterSourceHostsCondition {
+    async fn evaluate(&self, _context: &ClientPolicyContext) -> Result<bool, AuthencError> {
+        // Check if the updater's IP/host is allowed
+        // This would check the request source
+        Ok(true) // Placeholder - implement based on your network validation
+    }
+
+    fn name(&self) -> &str {
+        "client-updater-source-hosts-condition"
+    }
+}
+
+/// Client Updater Source Roles Condition
+pub struct ClientUpdaterSourceRolesCondition {
+    /// List of allowed source roles
+    pub allowed_source_roles: Vec<String>,
+}
+
+#[async_trait]
+impl ClientPolicyCondition for ClientUpdaterSourceRolesCondition {
+    async fn evaluate(&self, _context: &ClientPolicyContext) -> Result<bool, AuthencError> {
+        // Check if the updater has required roles
+        // This would integrate with your role management system
+        Ok(true) // Placeholder - implement based on your role system
+    }
+
+    fn name(&self) -> &str {
+        "client-updater-source-roles-condition"
+    }
+}
+
+/// Any Client Condition
+pub struct AnyClientCondition;
+
+#[async_trait]
+impl ClientPolicyCondition for AnyClientCondition {
+    async fn evaluate(&self, _context: &ClientPolicyContext) -> Result<bool, AuthencError> {
+        // Always returns true - matches any client
+        Ok(true)
+    }
+
+    fn name(&self) -> &str {
+        "any-client-condition"
+    }
+}
+
+/// ACR (Authentication Context Class Reference) Condition
+pub struct AcrCondition {
+    /// List of allowed ACR values
+    pub allowed_acr_values: Vec<String>,
+}
+
+#[async_trait]
+impl ClientPolicyCondition for AcrCondition {
+    async fn evaluate(&self, context: &ClientPolicyContext) -> Result<bool, AuthencError> {
+        // Check ACR values in the authentication request
+        if let Some(acr_values) = context.parameters.get("acr_values") {
+            let requested_acr: Vec<&str> = acr_values.split(' ').collect();
+            for acr in requested_acr {
+                if !self.allowed_acr_values.contains(&acr.to_string()) {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn name(&self) -> &str {
+        "acr-condition"
     }
 }
 
@@ -415,27 +610,188 @@ impl IntentClientBindCheckExecutor {
     }
 }
 
-/// Lightweight Access Token Executor
-pub struct LightweightAccessTokenExecutor {
+/// Use Lightweight Access Token Executor
+pub struct UseLightweightAccessTokenExecutor {
     /// Whether to use lightweight access tokens
-    pub use_lightweight_tokens: bool,
+    pub use_lightweight: bool,
 }
 
 #[async_trait]
-impl ClientPolicyExecutor for LightweightAccessTokenExecutor {
+impl ClientPolicyExecutor for UseLightweightAccessTokenExecutor {
     async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
-        if self.use_lightweight_tokens {
-            // Issue lightweight access tokens for better performance
-            // Lightweight tokens contain minimal claims and rely on token introspection
-            context
-                .parameters
-                .insert("token_type".to_string(), "lightweight".to_string());
+        if self.use_lightweight {
+            // Configure client to use lightweight access tokens
+            // This would modify the token issuance process
+            context.parameters.insert(
+                "use_lightweight_token".to_string(),
+                "true".to_string()
+            );
         }
         Ok(())
     }
 
     fn name(&self) -> &str {
-        "lightweight-access-token-executor"
+        "use-lightweight-access-token-executor"
+    }
+}
+
+/// FAPI (Financial-grade API) Constant
+pub struct FapiConstant;
+
+impl FapiConstant {
+    /// FAPI 1.0 Baseline security profile
+    pub const FAPI_1_BASELINE: &str = "fapi-1-baseline";
+    /// FAPI 1.0 Advanced security profile
+    pub const FAPI_1_ADVANCED: &str = "fapi-1-advanced";
+    /// FAPI 2.0 Security Profile
+    pub const FAPI_2_SECURITY_PROFILE: &str = "fapi-2-security-profile";
+    /// FAPI 2.0 Message Signing
+    pub const FAPI_2_MESSAGE_SIGNING: &str = "fapi-2-message-signing";
+}
+
+/// SAML Avoid Redirect Binding Executor
+pub struct SamlAvoidRedirectBindingExecutor {
+    /// Whether to avoid SAML redirect binding
+    pub avoid_redirect_binding: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SamlAvoidRedirectBindingExecutor {
+    async fn execute(&self, _context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.avoid_redirect_binding {
+            // For OAuth2/OIDC clients, this doesn't apply
+            // In a full implementation with SAML support, this would check protocol
+            // For now, this is a no-op for OAuth2 clients
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "saml-avoid-redirect-binding-executor"
+    }
+}
+
+/// SAML Secure Client URIs Executor
+pub struct SamlSecureClientUrisExecutor {
+    /// Whether to enforce secure SAML client URIs
+    pub enforce_secure_uris: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SamlSecureClientUrisExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.enforce_secure_uris {
+            // For OAuth2/OIDC clients, validate redirect URIs use HTTPS
+            if let Some(redirect_uri) = &context.redirect_uri {
+                if !redirect_uri.starts_with("https://") {
+                    return Err(AuthencError::validation(
+                        "Client redirect URIs must use HTTPS".to_string(),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "saml-secure-client-uris-executor"
+    }
+}
+
+/// SAML Signature Enforcer Executor
+pub struct SamlSignatureEnforcerExecutor {
+    /// Whether to enforce SAML signatures
+    pub enforce_signatures: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SamlSignatureEnforcerExecutor {
+    async fn execute(&self, _context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.enforce_signatures {
+            // For OAuth2/OIDC clients, this doesn't apply directly
+            // In a full implementation with SAML support, this would enforce signatures
+            // For now, this is a no-op for OAuth2 clients
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "saml-signature-enforcer-executor"
+    }
+}
+
+/// Secure Signing Algorithm for Signed JWT Executor
+pub struct SecureSigningAlgorithmForSignedJwtExecutor {
+    /// List of allowed signing algorithms
+    pub allowed_algorithms: Vec<String>,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for SecureSigningAlgorithmForSignedJwtExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        // Validate signing algorithm for signed JWTs
+        if let Some(alg) = context.parameters.get("alg") {
+            if !self.allowed_algorithms.contains(alg) {
+                return Err(AuthencError::validation(
+                    format!("Signing algorithm '{}' is not allowed", alg),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "secure-signing-algorithm-for-signed-jwt-executor"
+    }
+}
+
+/// Reject Resource Owner Password Credentials Grant Executor
+pub struct RejectResourceOwnerPasswordCredentialsGrantExecutor {
+    /// Whether to reject ROPC grant
+    pub reject_ropc: bool,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for RejectResourceOwnerPasswordCredentialsGrantExecutor {
+    async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.reject_ropc {
+            if let Some(grant_type) = &context.grant_type {
+                if grant_type == "password" {
+                    return Err(AuthencError::validation(
+                        "Resource Owner Password Credentials grant is not allowed".to_string(),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "reject-resource-owner-password-credentials-grant-executor"
+    }
+}
+
+/// Reject Request Executor
+pub struct RejectRequestExecutor {
+    /// Whether to reject the request
+    pub reject_request: bool,
+    /// Rejection reason
+    pub rejection_reason: Option<String>,
+}
+
+#[async_trait]
+impl ClientPolicyExecutor for RejectRequestExecutor {
+    async fn execute(&self, _context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
+        if self.reject_request {
+            let reason = self.rejection_reason.as_deref()
+                .unwrap_or("Request rejected by policy");
+            return Err(AuthencError::validation(reason.to_string()));
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "reject-request-executor"
     }
 }
 
