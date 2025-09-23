@@ -7,6 +7,68 @@ use crate::error::{Result, AuthencError as Error};
 use crate::spi::{Provider, ProviderFactory, Spi, ProviderConfig, SpiError};
 use crate::utils::crypto::password::{hash_password, verify_password};
 
+/// Credential input for authentication attempts
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CredentialInput {
+    pub credential_id: Option<String>,
+    pub credential_type: String,
+    pub challenge_response: String,
+}
+
+impl CredentialInput {
+    pub fn new(credential_type: String, challenge_response: String) -> Self {
+        Self {
+            credential_id: None,
+            credential_type,
+            challenge_response,
+        }
+    }
+
+    pub fn get_credential_id(&self) -> Option<&str> {
+        self.credential_id.as_deref()
+    }
+
+    pub fn get_type(&self) -> &str {
+        &self.credential_type
+    }
+
+    pub fn get_challenge_response(&self) -> &str {
+        &self.challenge_response
+    }
+}
+
+/// Credential input updater for managing credential updates
+#[async_trait]
+pub trait CredentialInputUpdater: Send + Sync {
+    /// Check if this updater supports the given credential type
+    fn supports_credential_type(&self, credential_type: &str) -> bool;
+
+    /// Update credential with input
+    async fn update_credential(&self, realm_id: &str, user_id: &str, input: &CredentialInput) -> Result<bool>;
+
+    /// Disable a credential type for a user
+    async fn disable_credential_type(&self, realm_id: &str, user_id: &str, credential_type: &str) -> Result<()>;
+
+    /// Get disableable credential types for a user
+    async fn get_disableable_credential_types(&self, realm_id: &str, user_id: &str) -> Result<Vec<String>>;
+
+    /// Get credentials managed by this updater
+    async fn get_credentials(&self, realm_id: &str, user_id: &str) -> Result<Vec<CredentialModel>>;
+}
+
+/// Credential input validator for validating authentication attempts
+#[async_trait]
+pub trait CredentialInputValidator: Send + Sync {
+    /// Check if this validator supports the given credential type
+    fn supports_credential_type(&self, credential_type: &str) -> bool;
+
+    /// Check if credential type is configured for user
+    async fn is_configured_for(&self, realm_id: &str, user_id: &str, credential_type: &str) -> Result<bool>;
+
+    /// Validate credential input
+    async fn is_valid(&self, realm_id: &str, user_id: &str, input: &CredentialInput) -> Result<bool>;
+}
+
 /// Credential model representing a user credential
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialModel {

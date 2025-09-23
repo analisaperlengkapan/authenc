@@ -6,10 +6,13 @@
 // Core SPI traits and interfaces
 pub mod admin_console;
 pub mod authenticator;
+pub mod component;
 pub mod credential;
 pub mod events;
+pub mod keys;
 pub mod ldap_federation;
 pub mod locale;
+pub mod policy;
 pub mod protocol_mappers;
 pub mod required_actions;
 pub mod sessions;
@@ -22,10 +25,13 @@ pub mod validation;
 // Re-export commonly used SPI items
 pub use admin_console::{AdminConsoleProvider, DefaultAdminConsoleProviderFactory, AdminConsoleSpi, AdminConsoleConfig, AdminConsoleFeature};
 pub use authenticator::{Authenticator, AuthenticatorProvider, AuthenticatorSpi, AuthenticatorConfig, AuthenticatorType, AuthenticationContext, AuthenticationResult, AuthenticationFlowType, DefaultAuthenticatorProviderFactory};
+pub use component::{ComponentFactory, ComponentFactoryProvider, ComponentSpi, ComponentModel, ComponentValidationException, SubComponentFactory};
 pub use credential::{CredentialProvider, CredentialProviderFactory, CredentialSpi, CredentialModel, CredentialTypeMetadata, CredentialMetadata};
 pub use events::{EventProvider, EventProviderFactory, EventsSpi, EventType, Event, AdminEvent};
+pub use keys::{KeyProvider, KeyManager, KeysSpi, KeyMetadata, RsaKeyMetadata, SecretKeyMetadata, KeyStatus, KeyMetadataTrait};
 pub use ldap_federation::{LdapFederationProvider, LdapFederationProviderFactory, LdapFederationSpi, LdapFederationConfig};
 pub use locale::{LocaleProvider, LocaleProviderFactory, LocaleSpi};
+pub use policy::{PasswordPolicyProvider, PasswordPolicyManager, PolicySpi, PolicyError, PasswordPolicyConfigException};
 pub use protocol_mappers::{ProtocolMapper, ProtocolMapperProvider, ProtocolMapperSpi, ProtocolMapperConfig, ProtocolMapperType, ProtocolMapperContext, DefaultProtocolMapperProviderFactory};
 pub use required_actions::{RequiredActionProvider, RequiredActionProviderFactory, RequiredActionSpi, RequiredActionContext, RequiredActionResult, RequiredActionConfigProperty, RequiredActionPropertyType, DefaultRequiredActionProviderFactory};
 pub use sessions::{SessionProvider, SessionProviderFactory, SessionSpi, SessionProviderType, SessionQueryContext, DefaultSessionProviderFactory};

@@ -278,9 +278,13 @@ mod tests {
     async fn test_default_ldap_federation_factory() {
         let factory = DefaultLdapFederationProviderFactory::new();
         let config = LdapFederationConfig::default();
-        let config_value = serde_json::to_value(&config).unwrap();
 
-        let provider = <DefaultLdapFederationProviderFactory as ProviderFactory<dyn LdapFederationProvider>>::create(&factory, &ProviderConfig::new()).await.unwrap();
+        // Create ProviderConfig with LDAP config properties
+        let mut provider_config = ProviderConfig::new();
+        provider_config.set_property("server_url".to_string(), config.server_url.clone());
+        provider_config.set_property("base_dn".to_string(), config.base_dn.clone());
+
+        let provider = <DefaultLdapFederationProviderFactory as ProviderFactory<dyn LdapFederationProvider>>::create(&factory, &provider_config).await.unwrap();
         assert!(provider.is_enabled());
     }
 }

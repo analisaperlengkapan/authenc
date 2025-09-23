@@ -11,6 +11,8 @@ pub mod auth_flow;
 pub mod brute_force_protector;
 /// Client policy enforcement and validation
 pub mod client_policy;
+/// Service managers for coordinating complex operations
+pub mod managers;
 /// Pushed Authorization Requests (PAR) implementation
 pub mod par;
 /// Password policy enforcement and validation
