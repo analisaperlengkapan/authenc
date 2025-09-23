@@ -1,4 +1,4 @@
-use crate::database::Database;
+use crate::app::AppState;
 use crate::services::social::{
     OAuthConfig, SocialLoginManager, SocialLoginService, SocialProvider,
 };
@@ -41,7 +41,7 @@ pub struct SocialUserProfile {
 
 /// Handler for initiating social login
 pub async fn initiate_login(
-    State(_db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<InitiateLoginRequest>,
 ) -> Result<Json<InitiateLoginResponse>, StatusCode> {
     // Create social login manager with configurations
@@ -120,7 +120,7 @@ pub async fn initiate_login(
 
 /// Handler for social login callback
 pub async fn social_callback(
-    State(_db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Query(query): Query<CallbackQuery>,
 ) -> Result<Json<SocialUserProfile>, StatusCode> {
     // Create social login manager with configurations
@@ -204,7 +204,7 @@ pub async fn social_callback(
 }
 
 /// Create social login routes
-pub fn create_social_routes() -> Router<Arc<Database>> {
+pub fn create_social_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/social/initiate", post(initiate_login))
         .route("/social/callback", get(social_callback))

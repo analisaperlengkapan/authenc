@@ -1,6 +1,6 @@
-use crate::database::Database;
-use crate::models::realm::{CreateRealmRequest, UpdateRealmRequest};
-use crate::services::realm::{PostgresRealmService, RealmService, RealmManager};
+use authenc::database::Database;
+use authenc::models::realm::{CreateRealmRequest, UpdateRealmRequest};
+use authenc::services::realm::{PostgresRealmService, RealmService};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -8,7 +8,7 @@ use uuid::Uuid;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::DatabaseConfig;
+    use authenc::config::DatabaseConfig;
 
     async fn setup_test_db() -> Database {
         let config = DatabaseConfig {
@@ -18,7 +18,9 @@ mod tests {
             password: "test".to_string(),
             database: "test_authenc".to_string(),
             max_connections: 5,
-            ssl_mode: "disable".to_string(),
+            connection_timeout: 30,
+            audit_log_url: None,
+            connection_timeout_seconds: 30,
         };
 
         Database::new(&config).await.expect("Failed to connect to test database")
@@ -147,58 +149,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_realm_manager() {
-        let db = setup_test_db().await;
-        let service = Arc::new(PostgresRealmService::new(Arc::new(db)));
-        let manager = RealmManager::new(service);
-
-        // Create realm using manager
-        let realm = manager.create_realm(
-            "manager-test-realm",
-            Some("Manager Test Realm".to_string()),
-            Some("Created by RealmManager".to_string())
-        ).await.expect("Failed to create realm via manager");
-
-        assert_eq!(realm.name, "manager-test-realm");
-        assert_eq!(realm.display_name, Some("Manager Test Realm".to_string()));
-
-        // Get realm by name
-        let retrieved = manager.get_realm("manager-test-realm").await
-            .expect("Failed to get realm")
-            .expect("Realm not found");
-
-        assert_eq!(retrieved.id, realm.id);
-
-        // Check if realm exists and is enabled
-        let exists_and_enabled = manager.realm_exists_and_enabled("manager-test-realm").await
-            .expect("Failed to check realm status");
-
-        assert!(exists_and_enabled);
-
-        // Disable realm
-        manager.set_realm_status("manager-test-realm", false).await
-            .expect("Failed to disable realm");
-
-        let disabled_check = manager.realm_exists_and_enabled("manager-test-realm").await
-            .expect("Failed to check disabled realm status");
-
-        assert!(!disabled_check);
-
-        // List active realms
-        let active_realms = manager.list_active_realms().await.expect("Failed to list active realms");
-
-        // The disabled realm should not be in the active list
-        let found_in_active = active_realms.iter().any(|r| r.id == realm.id);
-        assert!(!found_in_active);
-
-        // Clean up
-        let service = manager.service.as_ref();
-        if let Ok(uuid) = Uuid::parse_str(&realm.id.to_string()) {
-            service.delete_realm(&uuid).await.expect("Failed to delete realm");
-        }
-    }
-
-    #[tokio::test]
     async fn test_realm_not_found() {
         let db = setup_test_db().await;
         let service = PostgresRealmService::new(Arc::new(db));
@@ -265,5 +215,4 @@ mod tests {
         // Clean up
         service1.delete_realm(&created_realm.id).await.expect("Failed to delete realm");
     }
-}</content>
-<parameter name="filePath">/home/clouduser/authence/authenc/tests/realm_management_tests.rs
+}

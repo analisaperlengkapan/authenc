@@ -116,8 +116,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Merge OAuth2 router
         .merge(oauth2_router)
         // Advanced Services API routes
-        // Temporarily disabled social routes due to Axum migration
-        .nest("/api/v1/auth/social", social::create_social_routes())
+        // Social login routes
+        .nest("/api/v1/auth/social", social::create_social_routes().with_state(state.clone()))
         // Temporarily disabled authorization routes due to Axum migration
         // .nest(
         //     "/api/v1/auth/authorization",

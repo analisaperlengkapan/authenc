@@ -441,7 +441,7 @@ Authenc provides enterprise-grade user federation capabilities:
 - **Password Authentication**: Kerberos password authentication
 - **Realm Configuration**: Multi-realm Kerberos support
 
-#### **Social Login Providers**
+#### **✅ Social Login Providers** (Enabled)
 - **Google OAuth2**: Google account integration
 - **GitHub OAuth2**: GitHub developer authentication
 - **Facebook OAuth2**: Facebook social login
@@ -1217,7 +1217,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ### 🟡 PHASE 2: ENTERPRISE FEATURES (Q4 2025)
 **Status:** 📋 PLANNED | **Timeline:** December 2025 - March 2026
-- [ ] **Social Login Integration** - 10+ OAuth2/OIDC providers (Google, GitHub, Microsoft, Facebook, LinkedIn)
+- [x] **Social Login Integration** - 10+ OAuth2/OIDC providers (Google, GitHub, Microsoft, Facebook, LinkedIn) ✅
 - [ ] **LDAP/Active Directory** - Enterprise directory integration with Kerberos
 - [ ] **Fine-grained Authorization** - RGAC with UMA 2.0 resource permissions
 - [ ] **Clustering & High Availability** - Redis caching and PostgreSQL replication
