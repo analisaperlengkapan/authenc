@@ -72,6 +72,19 @@ pub struct PgAuditLogSink {
     pub store: crate::services::pg_audit_log_store::PgAuditLogStore,
 }
 
+impl PgAuditLogSink {
+    /// Create a new PostgreSQL audit log sink
+    ///
+    /// # Arguments
+    /// * `store` - The PostgreSQL audit log store instance
+    ///
+    /// # Returns
+    /// A new PgAuditLogSink instance
+    pub fn new(store: crate::services::pg_audit_log_store::PgAuditLogStore) -> Self {
+        Self { store }
+    }
+}
+
 impl AuditLogSink for PgAuditLogSink {
     /// Send audit log to PostgreSQL store asynchronously
     ///

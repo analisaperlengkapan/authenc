@@ -493,7 +493,7 @@ pub struct ClusterConfig {
 }
 
 /// Cluster communication types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ClusterCommunicationType {
     /// Infinispan-based communication
     Infinispan,
@@ -504,7 +504,7 @@ pub enum ClusterCommunicationType {
 }
 
 /// Cluster membership types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ClusterMembershipType {
     /// Kubernetes-based membership
     Kubernetes,
@@ -517,7 +517,7 @@ pub enum ClusterMembershipType {
 }
 
 /// Cluster consensus types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ClusterConsensusType {
     /// Raft consensus algorithm
     Raft,

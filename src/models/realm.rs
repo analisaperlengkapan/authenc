@@ -99,7 +99,7 @@ pub struct Realm {
 }
 
 /// Realm creation request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CreateRealmRequest {
     /// Name of the realm (must be unique)
     pub name: String,

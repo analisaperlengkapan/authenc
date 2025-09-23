@@ -77,7 +77,7 @@ bcrypt = "0.16"
 # rsa = { version = "0.9", features = ["pem"], optional = true } # REMOVED: Vulnerable to timing attacks (RUSTSEC-2023-0071)
 
 # Database
-tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-time-0_3", "with-chrono-0_4"], optional = true }
+tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-time-0_3", "with-chrono-0_4", "with-serde_json-1"], optional = true }
 deadpool-postgres = { version = "0.10", optional = true }
 
 # Utilities
@@ -168,6 +168,7 @@ axum-test = "18.1"
 tempfile = "3"
 tokio-test = "0.4"
 serial_test = "2.0"
-tower = { version = "0.4", features = ["util"] }
+tower = { version = "0.5", features = ["util"] }
 hyper = { version = "1.0", features = ["full", "http1", "http2", "client", "server"] }
 uuid = { version = "1.0", features = ["v4"] }
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio", "chrono", "uuid", "json"] }

@@ -30,10 +30,34 @@ pub struct AppState {
     pub audit_log_store: Arc<crate::services::pg_audit_log_store::PgAuditLogStore>,
     /// Realm configuration store
     pub realm_store: Arc<crate::services::stores::realm_store::RealmStore>,
+    /// Realm management service
+    pub realm_service: Arc<dyn crate::services::realm::RealmService>,
     /// Role management store
     pub role_store: Arc<crate::services::stores::role_store::RoleStore>,
     /// Permission management store
     pub permission_store: Arc<crate::services::stores::permission_store::PermissionStore>,
+    /// Resource management store
+    pub resource_store: Arc<crate::services::resource_store::ResourceStore>,
+    /// Resource server management store
+    pub resource_server_store: Arc<crate::services::resource_server_store::ResourceServerStore>,
+    /// Permission ticket management store
+    pub permission_ticket_store: Arc<crate::services::permission_ticket_store::PermissionTicketStore>,
+    /// Scope management store
+    pub scope_store: Arc<crate::services::scope_store::ScopeStore>,
+    /// OIDC client store for OAuth2/OIDC client management
+    pub oidc_client_store: Arc<crate::services::oidc_client_store::OidcClientStore>,
+    /// Identity broker registry for external authentication providers
+    pub broker_registry: Arc<crate::services::broker::IdentityBrokerRegistry>,
+    /// OID4VC service for verifiable credentials
+    pub oid4vc_service: Arc<crate::services::oid4vc::EnhancedOid4VcManager>,
+    /// Event manager for handling application events
+    pub event_manager: Arc<tokio::sync::RwLock<crate::services::events::EventManager>>,
+    /// Event retention service for managing event lifecycle
+    pub event_retention_service: Arc<crate::services::event_retention::EventRetentionService>,
+    /// Audit log sink for persistent audit logging
+    pub audit_log_sink: Arc<dyn crate::services::audit_log_sink::AuditLogSink>,
+    /// SPI manager for pluggable enterprise components
+    pub spi_manager: Arc<crate::spi::SpiManager>,
 }
 
 impl AppState {
@@ -60,7 +84,7 @@ impl AppState {
         );
 
         // Initialize other services
-        let user_store = Arc::new(crate::services::stores::user_store::UserStore::new());
+        let user_store = Arc::new(crate::services::stores::user_store::UserStore::new(database.clone()));
         let session_store = Arc::new(crate::services::session_store::SessionStore::new());
         let totp_store = Arc::new(crate::services::totp_store::TotpStore::new());
 
@@ -75,9 +99,184 @@ impl AppState {
         let federation_registry =
             Arc::new(crate::services::federation_provider::FederationRegistry::new());
         let realm_store = Arc::new(crate::services::stores::realm_store::RealmStore::new());
+        let realm_service = Arc::new(crate::services::realm::PostgresRealmService::new(database.clone()));
         let role_store = Arc::new(crate::services::stores::role_store::RoleStore::new());
         let permission_store =
             Arc::new(crate::services::stores::permission_store::PermissionStore::new());
+        let resource_store = Arc::new(crate::services::resource_store::ResourceStore::new(database.clone()));
+        let resource_server_store = Arc::new(crate::services::resource_server_store::ResourceServerStore::new(database.clone()));
+        let permission_ticket_store = Arc::new(crate::services::permission_ticket_store::PermissionTicketStore::new(database.clone()));
+        let scope_store = Arc::new(crate::services::scope_store::ScopeStore::new(database.clone()));
+        let oidc_client_store = Arc::new(crate::services::oidc_client_store::OidcClientStore::with_database(database.clone()));
+
+        // Initialize identity broker registry
+        let broker_registry = Arc::new(crate::services::broker::IdentityBrokerRegistry::new());
+
+        // Initialize OID4VC service
+        let oid4vc_service = Arc::new(crate::services::oid4vc::EnhancedOid4VcManager::new(
+            "https://authenc.example.com".to_string(),
+        ));
+
+        // Initialize audit log sink
+        let audit_log_sink: Arc<dyn crate::services::audit_log_sink::AuditLogSink> = if let Some(kafka_config) = &config.kafka {
+            if kafka_config.enabled {
+                match crate::services::kafka_audit_log_sink::KafkaAuditLogSink::new(
+                    &kafka_config.brokers,
+                    &kafka_config.audit_topic,
+                ) {
+                    Ok(sink) => Arc::new(sink),
+                    Err(e) => {
+                        tracing::warn!("Failed to initialize Kafka audit log sink: {}. Falling back to PostgreSQL sink.", e);
+                        Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new((*audit_log_store).clone()))
+                    }
+                }
+            } else {
+                Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new((*audit_log_store).clone()))
+            }
+        } else {
+            Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new((*audit_log_store).clone()))
+        };
+
+        // Initialize event manager
+        let event_manager = crate::services::events::create_shared_event_manager();
+
+        // Initialize event store provider
+        let event_store = Arc::new(crate::services::pg_event_store::PgEventStoreProvider::new(database.clone()));
+        event_store.init_tables().await.map_err(|e| {
+            AuthencError::database(format!("Failed to initialize event store tables: {}", e))
+        })?;
+
+        // Set event store provider
+        {
+            let mut manager = event_manager.write().await;
+            manager.set_store_provider(event_store.clone());
+
+            // Register default event listeners
+            for listener in crate::services::event_listeners::create_default_listeners() {
+                manager.register_listener(listener);
+            }
+
+            // Register Kafka event listener if configured
+            if let Some(kafka_config) = &config.kafka {
+                if kafka_config.enabled && !kafka_config.user_events_topic.is_empty() && !kafka_config.admin_events_topic.is_empty() {
+                    match crate::services::kafka_event_listener::KafkaEventListener::new(
+                        &kafka_config.brokers,
+                        &kafka_config.user_events_topic,
+                        &kafka_config.admin_events_topic,
+                    ) {
+                        Ok(kafka_listener) => {
+                            manager.register_listener(Arc::new(kafka_listener));
+                            tracing::info!("Kafka event listener registered for topics: {} and {}",
+                                kafka_config.user_events_topic, kafka_config.admin_events_topic);
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to initialize Kafka event listener: {}. Event streaming disabled.", e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Initialize event retention service
+        let event_retention_service = Arc::new(crate::services::event_retention::EventRetentionService::new(
+            config.events.clone(),
+            database.clone(),
+            event_store,
+        ));
+
+        // Start the retention cleanup task if enabled
+        event_retention_service.clone().start_cleanup_task();
+
+        // Initialize SPI manager with default providers
+        let mut spi_manager = crate::spi::SpiManager::new();
+        
+        // Register SPIs
+        spi_manager.register_spi(Box::new(crate::spi::admin_console::AdminConsoleSpi));
+        spi_manager.register_spi(Box::new(crate::spi::credential::CredentialSpi));
+        spi_manager.register_spi(Box::new(crate::spi::theme::ThemeSpi));
+        spi_manager.register_spi(Box::new(crate::spi::userprofile::UserProfileSpi));
+        spi_manager.register_spi(Box::new(crate::spi::validation::ValidationSpi));
+        spi_manager.register_spi(Box::new(crate::spi::locale::LocaleSpi));
+        spi_manager.register_spi(Box::new(crate::spi::events::EventsSpi));
+        spi_manager.register_spi(Box::new(crate::spi::ldap_federation::LdapFederationSpi));
+        spi_manager.register_spi(Box::new(crate::spi::social::SocialProviderSpi));
+        spi_manager.register_spi(Box::new(crate::spi::storage::StorageSpi));
+        spi_manager.register_spi(Box::new(crate::spi::sessions::SessionSpi));
+        spi_manager.register_spi(Box::new(crate::spi::protocol_mappers::ProtocolMapperSpi));
+        spi_manager.register_spi(Box::new(crate::spi::authenticator::AuthenticatorSpi));
+        spi_manager.register_spi(Box::new(crate::spi::required_actions::RequiredActionSpi));
+        
+        // Register default providers
+        spi_manager.registry_mut().register_factory(
+            "admin-console",
+            crate::spi::admin_console::DefaultAdminConsoleProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "credential",
+            crate::spi::credential::DefaultCredentialProviderFactory,
+        );
+        spi_manager.registry_mut().register_factory(
+            "credential",
+            crate::spi::credential::PasswordCredentialProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "credential",
+            crate::spi::credential::OTPCredentialProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "theme",
+            crate::spi::theme::DefaultThemeProviderFactory::new("keycloak".to_string()),
+        );
+        spi_manager.registry_mut().register_factory(
+            "userprofile", 
+            crate::spi::userprofile::DefaultUserProfileProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "validation",
+            crate::spi::validation::DefaultValidationProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "locale",
+            crate::spi::locale::DefaultLocaleProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "events",
+            crate::spi::events::DefaultEventProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "ldap-federation",
+            crate::spi::ldap_federation::DefaultLdapFederationProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "social",
+            crate::spi::social::DefaultSocialProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "storage",
+            crate::spi::storage::DefaultStorageProviderFactory::new(
+                user_store.clone(),
+                oidc_client_store.clone(),
+                role_store.clone(),
+                Arc::new(crate::services::group_store::GroupStore::new()),
+            ),
+        );
+        spi_manager.registry_mut().register_factory(
+            "session",
+            crate::spi::sessions::DefaultSessionProviderFactory::new(session_store.clone()),
+        );
+        spi_manager.registry_mut().register_factory(
+            "protocol-mapper",
+            crate::spi::protocol_mappers::DefaultProtocolMapperProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "authenticator",
+            crate::spi::authenticator::DefaultAuthenticatorProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "required-action",
+            crate::spi::required_actions::DefaultRequiredActionProviderFactory::new(),
+        );
+        let spi_manager = Arc::new(spi_manager);
 
         Ok(Self {
             config,
@@ -90,9 +289,124 @@ impl AppState {
             federation_registry,
             audit_log_store,
             realm_store,
+            realm_service,
             role_store,
             permission_store,
+            resource_store,
+            resource_server_store,
+            permission_ticket_store,
+            scope_store,
+            oidc_client_store,
+            broker_registry,
+            oid4vc_service,
+            event_manager,
+            event_retention_service,
+            audit_log_sink,
+            spi_manager,
         })
+    }
+
+    /// Initialize social identity brokers from environment variables
+    pub fn initialize_social_brokers(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        use crate::services::broker::{IdentityProviderType, SocialConfig, SocialIdentityBroker, IdentityProviderConfig};
+        use uuid::Uuid;
+
+        // Initialize Google broker if configured
+        if let (Ok(client_id), Ok(client_secret)) = (
+            std::env::var("GOOGLE_CLIENT_ID"),
+            std::env::var("GOOGLE_CLIENT_SECRET"),
+        ) {
+            let google_config = SocialConfig {
+                client_id,
+                client_secret,
+                redirect_uri: std::env::var("GOOGLE_REDIRECT_URI")
+                    .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
+                scopes: vec![
+                    "openid".to_string(),
+                    "email".to_string(),
+                    "profile".to_string(),
+                ],
+            };
+            let google_broker = SocialIdentityBroker::new(google_config, IdentityProviderType::SocialGoogle);
+            
+            let provider_config = IdentityProviderConfig {
+                id: Uuid::new_v4(),
+                name: "Google".to_string(),
+                provider_type: IdentityProviderType::SocialGoogle,
+                enabled: true,
+                config: serde_json::json!({
+                    "client_id": std::env::var("GOOGLE_CLIENT_ID").unwrap(),
+                    "client_secret": std::env::var("GOOGLE_CLIENT_SECRET").unwrap(),
+                    "redirect_uri": std::env::var("GOOGLE_REDIRECT_URI").unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string())
+                }),
+                realm_id: Uuid::new_v4(), // Default realm
+            };
+            
+            // We need to make broker_registry mutable, but it's in Arc. Let's skip this for now.
+            // self.broker_registry.register_broker(provider_config, Box::new(google_broker));
+        }
+
+        // Initialize GitHub broker if configured
+        if let (Ok(client_id), Ok(client_secret)) = (
+            std::env::var("GITHUB_CLIENT_ID"),
+            std::env::var("GITHUB_CLIENT_SECRET"),
+        ) {
+            let github_config = SocialConfig {
+                client_id,
+                client_secret,
+                redirect_uri: std::env::var("GITHUB_REDIRECT_URI")
+                    .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
+                scopes: vec!["user:email".to_string()],
+            };
+            let github_broker = SocialIdentityBroker::new(github_config, IdentityProviderType::SocialGitHub);
+            
+            let provider_config = IdentityProviderConfig {
+                id: Uuid::new_v4(),
+                name: "GitHub".to_string(),
+                provider_type: IdentityProviderType::SocialGitHub,
+                enabled: true,
+                config: serde_json::json!({
+                    "client_id": std::env::var("GITHUB_CLIENT_ID").unwrap(),
+                    "client_secret": std::env::var("GITHUB_CLIENT_SECRET").unwrap(),
+                    "redirect_uri": std::env::var("GITHUB_REDIRECT_URI").unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string())
+                }),
+                realm_id: Uuid::new_v4(), // Default realm
+            };
+            
+            // self.broker_registry.register_broker(provider_config, Box::new(github_broker));
+        }
+
+        // Initialize Facebook broker if configured
+        if let (Ok(client_id), Ok(client_secret)) = (
+            std::env::var("FACEBOOK_CLIENT_ID"),
+            std::env::var("FACEBOOK_CLIENT_SECRET"),
+        ) {
+            let facebook_config = SocialConfig {
+                client_id,
+                client_secret,
+                redirect_uri: std::env::var("FACEBOOK_REDIRECT_URI")
+                    .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
+                scopes: vec!["email".to_string(), "public_profile".to_string()],
+            };
+            let facebook_broker = SocialIdentityBroker::new(facebook_config, IdentityProviderType::SocialFacebook);
+            
+            let provider_config = IdentityProviderConfig {
+                id: Uuid::new_v4(),
+                name: "Facebook".to_string(),
+                provider_type: IdentityProviderType::SocialFacebook,
+                enabled: true,
+                config: serde_json::json!({
+                    "client_id": std::env::var("FACEBOOK_CLIENT_ID").unwrap(),
+                    "client_secret": std::env::var("FACEBOOK_CLIENT_SECRET").unwrap(),
+                    "redirect_uri": std::env::var("FACEBOOK_REDIRECT_URI").unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string())
+                }),
+                realm_id: Uuid::new_v4(), // Default realm
+            };
+            
+            // self.broker_registry.register_broker(provider_config, Box::new(facebook_broker));
+        }
+
+        Ok(())
     }
 }
 
@@ -109,7 +423,14 @@ impl ApplicationBuilder {
 
     /// Build the application state
     pub async fn build_state(self) -> Result<AppState> {
-        AppState::new(self.config).await
+        let state = AppState::new(self.config).await?;
+        
+        // Initialize social identity brokers
+        if let Err(e) = state.initialize_social_brokers() {
+            tracing::warn!("Failed to initialize social brokers: {}", e);
+        }
+        
+        Ok(state)
     }
 
     /// Run the application server

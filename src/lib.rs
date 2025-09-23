@@ -56,6 +56,10 @@ pub mod services;
 /// Secret management and vault operations
 pub mod vault;
 
+// SPI architecture
+/// Service Provider Interface framework for extensibility
+pub mod spi;
+
 // Re-export commonly used items
 pub use config::AppConfig;
 pub use error::{AuthencError, Result};

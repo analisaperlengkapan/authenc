@@ -1,66 +1,71 @@
-use crate::models::user::User;
-use std::sync::Mutex;
+use async_trait::async_trait;
+use std::sync::Arc;
 use uuid::Uuid;
 
-/// In-memory store for managing users
-pub struct UserStore {
-    /// Thread-safe storage of users
-    pub users: Mutex<Vec<User>>,
-}
+use crate::database::{Database, operations};
+use crate::error::AuthencError;
+use crate::models::user::{User, CreateUserRequest, UpdateUserRequest};
 
-impl Default for UserStore {
-    fn default() -> Self {
-        Self::new()
-    }
+/// User store for managing users in the database
+#[derive(Debug, Clone)]
+pub struct UserStore {
+    /// Database instance
+    database: Arc<Database>,
 }
 
 impl UserStore {
-    /// Create new user store
-    pub fn new() -> Self {
-        Self {
-            users: Mutex::new(vec![]),
-        }
+    /// Create a new user store
+    pub fn new(database: Arc<Database>) -> Self {
+        Self { database }
     }
+}
 
-    /// Add user to store
-    pub fn add_user(&self, user: User) {
-        self.users.lock().unwrap().push(user);
-    }
-
-    /// Get all users
-    pub fn get_all(&self) -> Vec<User> {
-        self.users.lock().unwrap().clone()
-    }
+/// Trait for user store operations
+#[async_trait]
+pub trait UserStoreTrait: Send + Sync {
+    /// Get user by ID
+    async fn get_user(&self, user_id: Uuid) -> Result<Option<User>, AuthencError>;
 
     /// Get user by username
-    pub fn get_by_username(&self, username: &str) -> Option<User> {
-        self.users
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|u| u.username == username)
-            .cloned()
+    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AuthencError>;
+
+    /// Get user by email
+    async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, AuthencError>;
+
+    /// Create a new user
+    async fn add_user(&self, request: CreateUserRequest) -> Result<User, AuthencError>;
+
+    /// Update user
+    async fn update_user(&self, user_id: Uuid, request: UpdateUserRequest) -> Result<User, AuthencError>;
+
+    /// Get all users
+    async fn get_all(&self) -> Result<Vec<User>, AuthencError>;
+}
+
+/// Implementation of UserStoreTrait for UserStore
+#[async_trait]
+impl UserStoreTrait for UserStore {
+    async fn get_user(&self, user_id: Uuid) -> Result<Option<User>, AuthencError> {
+        operations::users::get_user_by_id(&self.database, user_id).await
     }
 
-    /// Get user by ID
-    pub fn get_by_id(&self, id: &Uuid) -> Option<User> {
-        self.users
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|u| u.id == *id)
-            .cloned()
+    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AuthencError> {
+        operations::users::get_user_by_username(&self.database, username).await
     }
 
-    /// Verify user password (WARNING: Currently uses plain text comparison)
-    pub fn verify_password(&self, username: &str, password: &str) -> Result<bool, String> {
-        if let Some(_user) = self.get_by_username(username) {
-            // SECURITY TODO: Replace with proper Argon2 hash verification
-            // This is currently using plain text comparison for development/testing only
-            // Production code MUST use proper password hashing
-            Ok(password == "password") // WARNING: Plain text password comparison
-        } else {
-            Err("User not found".to_string())
-        }
+    async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, AuthencError> {
+        operations::users::get_user_by_email(&self.database, email).await
+    }
+
+    async fn add_user(&self, request: CreateUserRequest) -> Result<User, AuthencError> {
+        operations::users::create_user(&self.database, &request).await
+    }
+
+    async fn update_user(&self, user_id: Uuid, request: UpdateUserRequest) -> Result<User, AuthencError> {
+        operations::users::update_user(&self.database, user_id, &request).await
+    }
+
+    async fn get_all(&self) -> Result<Vec<User>, AuthencError> {
+        operations::users::get_all_users(&self.database).await
     }
 }

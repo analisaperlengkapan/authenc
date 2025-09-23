@@ -26,6 +26,14 @@ pub mod group_store;
 pub mod oidc_client_store;
 /// OIDC authorization code storage
 pub mod oidc_code_store;
+/// Permission ticket storage and management
+pub mod permission_ticket_store;
+/// Resource data storage and management
+pub mod resource_store;
+/// Resource server storage and management
+pub mod resource_server_store;
+/// Scope storage and management
+pub mod scope_store;
 /// Session storage and management
 pub mod session_store;
 /// TOTP secret storage and management
@@ -52,10 +60,22 @@ pub use stores::*;
 // Audit and logging services
 /// Audit log sink interface and implementations
 pub mod audit_log_sink;
+/// Event system and listener management
+pub mod events;
+/// Event listener implementations
+pub mod event_listeners;
 /// Kafka-based audit log streaming
 pub mod kafka_audit_log_sink;
+/// Kafka-based event streaming
+pub mod kafka_event_listener;
 /// PostgreSQL audit log storage
 pub mod pg_audit_log_store;
+/// PostgreSQL event storage
+pub mod pg_event_store;
+/// Event retention and lifecycle management
+pub mod event_retention;
+#[cfg(test)]
+mod event_retention_tests;
 
 // Federation services
 /// Identity broker and federation management
@@ -88,6 +108,10 @@ pub mod webauthn;
 // Organization services
 /// Organization management and multi-tenancy
 pub mod organization;
+
+/// Realm services
+/// Multi-tenant realm management and isolation
+pub mod realm;
 
 // SAML services
 /// SAML 2.0 protocol implementation

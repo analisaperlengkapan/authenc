@@ -262,26 +262,28 @@ pub struct WebAuthnCredentialLegacy {
     pub transports: Vec<String>,
 }
 
-/// WebAuthn registration challenge (legacy)
+/// WebAuthn registration options (standard format)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebAuthnRegistrationChallengeLegacy {
+pub struct WebAuthnRegistrationOptions {
     /// Base64url encoded challenge bytes
     pub challenge: String,
     /// Relying party information
     pub rp: RelyingParty,
-    /// User information for registration
+    /// User information
     pub user: WebAuthnUser,
     /// Supported public key credential parameters
     pub pub_key_cred_params: Vec<PubKeyCredParam>,
     /// Authenticator selection criteria
     pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
+    /// Timeout in milliseconds
+    pub timeout: Option<u32>,
+    /// List of credentials to exclude
+    pub exclude_credentials: Vec<PublicKeyCredentialDescriptor>,
     /// Attestation conveyance preference
     pub attestation: Option<String>,
     /// WebAuthn extensions
-    pub extensions: Option<HashMap<String, serde_json::Value>>,
-}
-
-/// Relying party information
+    pub extensions: Option<serde_json::Value>,
+}/// Relying party information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelyingParty {
     /// Unique identifier for the relying party

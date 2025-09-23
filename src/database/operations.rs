@@ -2,11 +2,12 @@
 pub mod devices {
     use crate::{
         database::Database,
-        error::Result,
+        error::{Result, AuthencError},
         models::{Device, DeviceInfo},
     };
     use chrono::Utc;
     use uuid::Uuid;
+    use log::error;
 
     /// Register a new device in the database
     pub async fn register_device(
@@ -27,7 +28,7 @@ pub mod devices {
             RETURNING
                 id, user_id, device_name, device_fingerprint, trust_score,
                 risk_level, os, os_version, browser, browser_version,
-                ip_address, user_agent, location_data, last_seen_at,
+                ip_address, user_agent, last_seen_at,
                 first_seen_at, created_at, updated_at
         "#;
 
@@ -44,7 +45,7 @@ pub mod devices {
                     &device_info.os_version,
                     &device_info.browser,
                     &device_info.browser_version,
-                    &device_info.ip_address.map(|ip| ip.to_string()),
+                    &device_info.ip_address,
                     &device_info.user_agent,
                     &now,
                     &now,
@@ -52,7 +53,11 @@ pub mod devices {
                     &now,
                 ],
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                error!("Device registration query failed: {}", e);
+                AuthencError::database(&format!("Database query failed: {}", e))
+            })?;
 
         // Convert row to Device
         row.try_into()
@@ -64,7 +69,7 @@ pub mod devices {
             SELECT
                 id, user_id, device_name, device_fingerprint, trust_score,
                 risk_level, os, os_version, browser, browser_version,
-                ip_address, user_agent, location_data, last_seen_at,
+                ip_address, user_agent, last_seen_at,
                 first_seen_at, created_at, updated_at
             FROM devices
             WHERE id = $1
@@ -177,10 +182,9 @@ pub mod webauthn {
 
         let query = r#"
             INSERT INTO webauthn_credentials (
-                id, user_id, credential_id, public_key, attestation_type,
-                authenticator_data, client_data_json, user_handle,
-                signature_count, backup_eligible, backup_state,
-                created_at, last_used_at
+                id, user_id, credential_id, public_key, public_key_algorithm,
+                signature_counter, attestation_object, authenticator_data,
+                user_handle, credential_type, transports, created_at, last_used_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         "#;
@@ -193,10 +197,10 @@ pub mod webauthn {
                 &credential.credential_id,
                 &credential.public_key,
                 &credential.public_key_algorithm,
+                &credential.signature_counter,
                 &credential.attestation_object,
                 &credential.authenticator_data,
                 &credential.user_handle,
-                &credential.signature_counter,
                 &credential.credential_type,
                 &credential.transports,
                 &now,
@@ -1032,23 +1036,25 @@ pub mod users {
 
         let query = r#"
             INSERT INTO users (
-                id, username, email, email_verified, first_name, last_name,
+                id, username, email, first_name, last_name,
                 phone_number, phone_verified, password_hash, totp_secret,
                 totp_backup_codes, webauthn_enabled, account_locked,
-                account_locked_until, failed_login_attempts, last_login_at,
-                last_failed_login_at, password_changed_at, password_expires_at,
-                require_password_change, realm_id, organization_id, attributes,
-                enabled, federated, created_at, updated_at
+                account_locked_until, failed_login_attempts, last_failed_login_at,
+                password_changed_at, password_expires_at, require_password_change,
+                organization_id, attributes, email_verified, enabled,
+                realm_id, federated, created_at, updated_at, deleted_at,
+                last_login_at, login_count
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
             RETURNING
-                id, username, email, email_verified, first_name, last_name,
+                id, username, email, first_name, last_name,
                 phone_number, phone_verified, password_hash, totp_secret,
                 totp_backup_codes, webauthn_enabled, account_locked,
-                account_locked_until, failed_login_attempts, last_login_at,
-                last_failed_login_at, password_changed_at, password_expires_at,
-                require_password_change, realm_id, organization_id, attributes,
-                enabled, federated, created_at, updated_at, deleted_at
+                account_locked_until, failed_login_attempts, last_failed_login_at,
+                password_changed_at, password_expires_at, require_password_change,
+                organization_id, attributes, email_verified, enabled,
+                realm_id, federated, created_at, updated_at, deleted_at,
+                last_login_at, login_count
         "#;
 
         let row = client
@@ -1058,7 +1064,6 @@ pub mod users {
                     &user_id,
                     &username,
                     &email,
-                    &false, // email_verified
                     &first_name,
                     &last_name,
                     &phone_number,
@@ -1070,54 +1075,56 @@ pub mod users {
                     &false,                         // account_locked
                     &None::<chrono::DateTime<Utc>>, // account_locked_until
                     &0i32,                          // failed_login_attempts
-                    &None::<chrono::DateTime<Utc>>, // last_login_at
                     &None::<chrono::DateTime<Utc>>, // last_failed_login_at
                     &None::<chrono::DateTime<Utc>>, // password_changed_at
                     &None::<chrono::DateTime<Utc>>, // password_expires_at
                     &false,                         // require_password_change
-                    &realm_id,
                     &organization_id,
-                    &attributes_json,
+                    &request.attributes,
+                    &true, // email_verified
                     &true, // enabled
+                    &realm_id,
                     &false, // federated (default to false for regular user creation)
                     &now,
                     &now,
+                    &None::<chrono::DateTime<Utc>>, // deleted_at
+                    &None::<chrono::DateTime<Utc>>, // last_login_at
+                    &0i32, // login_count
                 ],
             )
             .await?;
 
         // Convert row to User by extracting values directly
         let user = User {
-            id: row.get(0),
-            username: row.get(1),
-            email: row.get(2),
-            email_verified: row.get(3),
-            first_name: row.get(4),
-            last_name: row.get(5),
-            phone_number: row.get(6),
-            phone_verified: row.get(7),
-            password_hash: row.get(8),
-            totp_secret: row.get(9),
-            totp_backup_codes: row.get(10),
-            webauthn_enabled: row.get(11),
-            account_locked: row.get(12),
-            account_locked_until: row.get(13),
-            failed_login_attempts: row.get(14),
-            last_login_at: row.get(15),
-            last_failed_login_at: row.get(16),
-            password_changed_at: row.get(17),
-            password_expires_at: row.get(18),
-            require_password_change: row.get(19),
-            realm_id: row.get(20),
-            organization_id: row.get(21),
-            attributes: row
-                .get::<_, Option<String>>(22)
-                .and_then(|s: String| serde_json::from_str(&s).ok()),
-            enabled: row.get(23),
-            federated: row.get(24),
-            created_at: row.get(25),
-            updated_at: row.get(26),
-            deleted_at: row.get(27),
+            id: row.get("id"),
+            username: row.get("username"),
+            email: row.get("email"),
+            email_verified: row.get("email_verified"),
+            first_name: row.get("first_name"),
+            last_name: row.get("last_name"),
+            phone_number: row.get("phone_number"),
+            phone_verified: row.get("phone_verified"),
+            password_hash: row.get("password_hash"),
+            totp_secret: row.get("totp_secret"),
+            totp_backup_codes: row.get("totp_backup_codes"),
+            webauthn_enabled: row.get("webauthn_enabled"),
+            account_locked: row.get("account_locked"),
+            account_locked_until: row.get("account_locked_until"),
+            failed_login_attempts: row.get("failed_login_attempts"),
+            last_failed_login_at: row.get("last_failed_login_at"),
+            password_changed_at: row.get("password_changed_at"),
+            password_expires_at: row.get("password_expires_at"),
+            require_password_change: row.get("require_password_change"),
+            organization_id: row.get("organization_id"),
+            attributes: row.get("attributes"),
+            enabled: row.get("enabled"),
+            realm_id: row.get("realm_id"),
+            federated: row.get("federated"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+            deleted_at: row.get("deleted_at"),
+            last_login_at: row.get("last_login_at"),
+            login_count: row.get("login_count"),
         };
 
         Ok(user)
@@ -1134,43 +1141,42 @@ pub mod users {
                 account_locked_until, failed_login_attempts, last_login_at,
                 last_failed_login_at, password_changed_at, password_expires_at,
                 require_password_change, realm_id, organization_id, attributes,
-                enabled, federated, created_at, updated_at, deleted_at
+                enabled, federated, created_at, updated_at, deleted_at, login_count
             FROM users
             WHERE id = $1 AND deleted_at IS NULL
         "#;
 
         let row = client.query_opt(query, &[&user_id]).await?;
         Ok(row.map(|r| User {
-            id: r.get(0),
-            username: r.get(1),
-            email: r.get(2),
-            email_verified: r.get(3),
-            first_name: r.get(4),
-            last_name: r.get(5),
-            phone_number: r.get(6),
-            phone_verified: r.get(7),
-            password_hash: r.get(8),
-            totp_secret: r.get(9),
-            totp_backup_codes: r.get(10),
-            webauthn_enabled: r.get(11),
-            account_locked: r.get(12),
-            account_locked_until: r.get(13),
-            failed_login_attempts: r.get(14),
-            last_login_at: r.get(15),
-            last_failed_login_at: r.get(16),
-            password_changed_at: r.get(17),
-            password_expires_at: r.get(18),
-            require_password_change: r.get(19),
-            realm_id: r.get(20),
-            organization_id: r.get(21),
-            attributes: r
-                .get::<_, Option<String>>(22)
-                .and_then(|s: String| serde_json::from_str(&s).ok()),
-            enabled: r.get(23),
-            federated: r.get(24),
-            created_at: r.get(25),
-            updated_at: r.get(26),
-            deleted_at: r.get(27),
+            id: r.get("id"),
+            username: r.get("username"),
+            email: r.get("email"),
+            email_verified: r.get("email_verified"),
+            first_name: r.get("first_name"),
+            last_name: r.get("last_name"),
+            phone_number: r.get("phone_number"),
+            phone_verified: r.get("phone_verified"),
+            password_hash: r.get("password_hash"),
+            totp_secret: r.get("totp_secret"),
+            totp_backup_codes: r.get("totp_backup_codes"),
+            webauthn_enabled: r.get("webauthn_enabled"),
+            account_locked: r.get("account_locked"),
+            account_locked_until: r.get("account_locked_until"),
+            failed_login_attempts: r.get("failed_login_attempts"),
+            last_failed_login_at: r.get("last_failed_login_at"),
+            password_changed_at: r.get("password_changed_at"),
+            password_expires_at: r.get("password_expires_at"),
+            require_password_change: r.get("require_password_change"),
+            organization_id: r.get("organization_id"),
+            attributes: r.get("attributes"),
+            enabled: r.get("enabled"),
+            realm_id: r.get("realm_id"),
+            federated: r.get("federated"),
+            created_at: r.get("created_at"),
+            updated_at: r.get("updated_at"),
+            deleted_at: r.get("deleted_at"),
+            last_login_at: r.get("last_login_at"),
+            login_count: r.get("login_count"),
         }))
     }
 
@@ -1185,43 +1191,42 @@ pub mod users {
                 account_locked_until, failed_login_attempts, last_login_at,
                 last_failed_login_at, password_changed_at, password_expires_at,
                 require_password_change, realm_id, organization_id, attributes,
-                enabled, federated, created_at, updated_at, deleted_at
+                enabled, federated, created_at, updated_at, deleted_at, login_count
             FROM users
             WHERE username = $1 AND deleted_at IS NULL
         "#;
 
         let row = client.query_opt(query, &[&username]).await?;
         Ok(row.map(|r| User {
-            id: r.get(0),
-            username: r.get(1),
-            email: r.get(2),
-            email_verified: r.get(3),
-            first_name: r.get(4),
-            last_name: r.get(5),
-            phone_number: r.get(6),
-            phone_verified: r.get(7),
-            password_hash: r.get(8),
-            totp_secret: r.get(9),
-            totp_backup_codes: r.get(10),
-            webauthn_enabled: r.get(11),
-            account_locked: r.get(12),
-            account_locked_until: r.get(13),
-            failed_login_attempts: r.get(14),
-            last_login_at: r.get(15),
-            last_failed_login_at: r.get(16),
-            password_changed_at: r.get(17),
-            password_expires_at: r.get(18),
-            require_password_change: r.get(19),
-            realm_id: r.get(20),
-            organization_id: r.get(21),
-            attributes: r
-                .get::<_, Option<String>>(22)
-                .and_then(|s: String| serde_json::from_str(&s).ok()),
-            enabled: r.get(23),
-            federated: r.get(24),
-            created_at: r.get(25),
-            updated_at: r.get(26),
-            deleted_at: r.get(27),
+            id: r.get("id"),
+            username: r.get("username"),
+            email: r.get("email"),
+            email_verified: r.get("email_verified"),
+            first_name: r.get("first_name"),
+            last_name: r.get("last_name"),
+            phone_number: r.get("phone_number"),
+            phone_verified: r.get("phone_verified"),
+            password_hash: r.get("password_hash"),
+            totp_secret: r.get("totp_secret"),
+            totp_backup_codes: r.get("totp_backup_codes"),
+            webauthn_enabled: r.get("webauthn_enabled"),
+            account_locked: r.get("account_locked"),
+            account_locked_until: r.get("account_locked_until"),
+            failed_login_attempts: r.get("failed_login_attempts"),
+            last_failed_login_at: r.get("last_failed_login_at"),
+            password_changed_at: r.get("password_changed_at"),
+            password_expires_at: r.get("password_expires_at"),
+            require_password_change: r.get("require_password_change"),
+            organization_id: r.get("organization_id"),
+            attributes: r.get("attributes"),
+            enabled: r.get("enabled"),
+            realm_id: r.get("realm_id"),
+            federated: r.get("federated"),
+            created_at: r.get("created_at"),
+            updated_at: r.get("updated_at"),
+            deleted_at: r.get("deleted_at"),
+            last_login_at: r.get("last_login_at"),
+            login_count: r.get("login_count"),
         }))
     }
 
@@ -1267,13 +1272,14 @@ pub mod users {
                 updated_at = $12
             WHERE id = $1 AND deleted_at IS NULL
             RETURNING
-                id, username, email, email_verified, first_name, last_name,
+                id, username, email, first_name, last_name,
                 phone_number, phone_verified, password_hash, totp_secret,
                 totp_backup_codes, webauthn_enabled, account_locked,
-                account_locked_until, failed_login_attempts, last_login_at,
-                last_failed_login_at, password_changed_at, password_expires_at,
-                require_password_change, realm_id, organization_id, attributes,
-                enabled, created_at, updated_at, deleted_at
+                account_locked_until, failed_login_attempts, last_failed_login_at,
+                password_changed_at, password_expires_at, require_password_change,
+                organization_id, attributes, email_verified, enabled,
+                realm_id, federated, created_at, updated_at, deleted_at,
+                last_login_at, login_count
         "#;
 
         let row = db
@@ -1429,15 +1435,72 @@ pub mod users {
             require_password_change: row.get(19),
             realm_id: row.get(20),
             organization_id: row.get(21),
-            attributes: row
-                .get::<_, Option<String>>(22)
-                .and_then(|s: String| serde_json::from_str(&s).ok()),
+            attributes: row.get(22),
             enabled: row.get(23),
             federated: row.get(24),
             created_at: row.get(25),
             updated_at: row.get(26),
             deleted_at: row.get(27),
+            login_count: row.get(28),
         }
+    }
+
+    /// Get all users
+    pub async fn get_all_users(db: &Database) -> Result<Vec<User>> {
+        let client = db.get_connection().await?;
+        let query = r#"
+            SELECT
+                id, username, email, first_name, last_name,
+                phone_number, phone_verified, password_hash, totp_secret,
+                totp_backup_codes, webauthn_enabled, account_locked,
+                account_locked_until, failed_login_attempts, last_failed_login_at,
+                password_changed_at, password_expires_at, require_password_change,
+                organization_id, attributes, email_verified, enabled,
+                realm_id, federated, created_at, updated_at, deleted_at,
+                last_login_at, login_count
+            FROM users
+            WHERE deleted_at IS NULL
+            ORDER BY created_at DESC
+        "#;
+
+        let rows = client.query(query, &[]).await?;
+        let mut users = Vec::new();
+
+        for row in rows {
+            users.push(User {
+                id: row.get("id"),
+                username: row.get("username"),
+                email: row.get("email"),
+                email_verified: row.get("email_verified"),
+                first_name: row.get("first_name"),
+                last_name: row.get("last_name"),
+                phone_number: row.get("phone_number"),
+                phone_verified: row.get("phone_verified"),
+                password_hash: row.get("password_hash"),
+                totp_secret: row.get("totp_secret"),
+                totp_backup_codes: row.get("totp_backup_codes"),
+                webauthn_enabled: row.get("webauthn_enabled"),
+                account_locked: row.get("account_locked"),
+                account_locked_until: row.get("account_locked_until"),
+                failed_login_attempts: row.get("failed_login_attempts"),
+                last_failed_login_at: row.get("last_failed_login_at"),
+                password_changed_at: row.get("password_changed_at"),
+                password_expires_at: row.get("password_expires_at"),
+                require_password_change: row.get("require_password_change"),
+                organization_id: row.get("organization_id"),
+                attributes: row.get("attributes"),
+                enabled: row.get("enabled"),
+                realm_id: row.get("realm_id"),
+                federated: row.get("federated"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+                deleted_at: row.get("deleted_at"),
+                last_login_at: row.get("last_login_at"),
+                login_count: row.get("login_count"),
+            });
+        }
+
+        Ok(users)
     }
 }
 
@@ -2299,5 +2362,611 @@ pub mod federated_identities {
 
         db.execute(query, &[&federated_identity_id]).await?;
         Ok(())
+    }
+}
+
+/// Database operations for resource management
+pub mod resources {
+    use crate::{
+        database::Database,
+        error::Result,
+        models::{
+            resource::{Resource, CreateResourceRequest, UpdateResourceRequest},
+            permission_ticket::{PermissionTicket, CreatePermissionTicketRequest},
+            scope::{Scope, CreateScopeRequest, UpdateScopeRequest},
+            resource_server::{ResourceServer, CreateResourceServerRequest, UpdateResourceServerRequest},
+        },
+    };
+    use chrono::Utc;
+    use uuid::Uuid;
+    use serde_json;
+
+    /// Create a new resource server
+    pub async fn create_resource_server(
+        db: &Database,
+        request: CreateResourceServerRequest,
+        realm_id: Uuid,
+    ) -> Result<ResourceServer> {
+        let server_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO resource_servers (
+                id, client_id, name, description, enabled, realm_id,
+                policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING
+                id, client_id, name, description, enabled, realm_id,
+                policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
+                created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &server_id,
+                    &request.client_id,
+                    &request.name,
+                    &request.description,
+                    &true, // enabled
+                    &realm_id,
+                    &"enforcing".to_string(), // default policy_enforcement_mode
+                    &"unanimous".to_string(), // default decision_strategy
+                    &false, // allow_remote_resource_management
+                    &now,
+                    &now,
+                ],
+            )
+            .await?;
+
+        Ok(ResourceServer {
+            id: row.get::<_, Uuid>(0),
+            client_id: row.get::<_, String>(1),
+            name: Some(row.get::<_, String>(2)),
+            description: row.get::<_, Option<String>>(3),
+            enabled: row.get::<_, bool>(4),
+            realm_id: row.get::<_, Uuid>(5),
+            policy_enforcement_mode: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(6)))?,
+            decision_strategy: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(7)))?,
+            allow_remote_resource_management: row.get::<_, bool>(8),
+            created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(9),
+            updated_at: row.get::<_, chrono::DateTime<chrono::Utc>>(10),
+        })
+    }
+
+    /// Get resource server by ID
+    pub async fn get_resource_server(
+        db: &Database,
+        server_id: Uuid,
+    ) -> Result<Option<ResourceServer>> {
+        let query = r#"
+            SELECT id, client_id, name, description, enabled, realm_id,
+                   policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
+                   created_at, updated_at
+            FROM resource_servers
+            WHERE id = $1
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&server_id]).await?;
+        let row = rows.into_iter().next();
+
+        match row {
+            Some(row) => Ok(Some(ResourceServer {
+                id: row.get::<_, Uuid>(0),
+                client_id: row.get::<_, String>(1),
+                name: Some(row.get::<_, String>(2)),
+                description: row.get::<_, Option<String>>(3),
+                enabled: row.get::<_, bool>(4),
+                realm_id: row.get::<_, Uuid>(5),
+                policy_enforcement_mode: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(6)))?,
+                decision_strategy: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(7)))?,
+                allow_remote_resource_management: row.get::<_, bool>(8),
+                created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(9),
+                updated_at: row.get::<_, chrono::DateTime<chrono::Utc>>(10),
+            })),
+            None => Ok(None),
+        }
+    }
+
+    /// Get resource server by client ID and realm
+    pub async fn get_resource_server_by_client(
+        db: &Database,
+        client_id: &str,
+        realm_id: Uuid,
+    ) -> Result<Option<ResourceServer>> {
+        let query = r#"
+            SELECT id, client_id, name, description, enabled, realm_id,
+                   policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
+                   created_at, updated_at
+            FROM resource_servers
+            WHERE client_id = $1 AND realm_id = $2
+        "#;
+
+        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&client_id, &realm_id];
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &params).await?;
+        let row = rows.into_iter().next();
+
+        match row {
+            Some(row) => Ok(Some(ResourceServer {
+                id: row.get::<_, Uuid>(0),
+                client_id: row.get::<_, String>(1),
+                name: Some(row.get::<_, String>(2)),
+                description: row.get::<_, Option<String>>(3),
+                enabled: row.get::<_, bool>(4),
+                realm_id: row.get::<_, Uuid>(5),
+                policy_enforcement_mode: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(6)))?,
+                decision_strategy: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(7)))?,
+                allow_remote_resource_management: row.get::<_, bool>(8),
+                created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(9),
+                updated_at: row.get::<_, chrono::DateTime<chrono::Utc>>(10),
+            })),
+            None => Ok(None),
+        }
+    }
+
+    /// Create a new scope
+    pub async fn create_scope(
+        db: &Database,
+        request: CreateScopeRequest,
+        realm_id: Uuid,
+        resource_server_id: Uuid,
+    ) -> Result<Scope> {
+        let scope_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO scopes (
+                id, name, display_name, icon_uri, realm_id, resource_server_id,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING
+                id, name, display_name, icon_uri, realm_id, resource_server_id,
+                created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &scope_id,
+                    &request.name,
+                    &request.display_name,
+                    &request.icon_uri,
+                    &realm_id,
+                    &resource_server_id,
+                    &now,
+                    &now,
+                ],
+            )
+            .await?;
+
+        Ok(Scope {
+            id: row.get(0),
+            name: row.get(1),
+            display_name: row.get(2),
+            icon_uri: row.get(3),
+            realm_id: row.get(4),
+            resource_server_id: row.get(5),
+            created_at: row.get(6),
+            updated_at: row.get(7),
+        })
+    }
+
+    /// Get scope by ID
+    pub async fn get_scope(db: &Database, scope_id: Uuid) -> Result<Option<Scope>> {
+        let query = r#"
+            SELECT id, name, display_name, icon_uri, realm_id, resource_server_id,
+                   created_at, updated_at
+            FROM scopes
+            WHERE id = $1
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&scope_id]).await?;
+        let row = rows.into_iter().next();
+
+        match row {
+            Some(row) => Ok(Some(Scope {
+                id: row.get::<_, Uuid>(0),
+                name: row.get(1),
+                display_name: row.get(2),
+                icon_uri: row.get(3),
+                realm_id: row.get(4),
+                resource_server_id: row.get(5),
+                created_at: row.get(6),
+                updated_at: row.get(7),
+            })),
+            None => Ok(None),
+        }
+    }
+
+    /// Get scope by name and resource server
+    pub async fn get_scope_by_name(
+        db: &Database,
+        name: &str,
+        resource_server_id: Uuid,
+    ) -> Result<Option<Scope>> {
+        let query = r#"
+            SELECT id, name, display_name, icon_uri, realm_id, resource_server_id,
+                   created_at, updated_at
+            FROM scopes
+            WHERE name = $1 AND resource_server_id = $2
+        "#;
+
+        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&name, &resource_server_id];
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &params).await?;
+        let row = rows.into_iter().next();
+
+        match row {
+            Some(row) => Ok(Some(Scope {
+                id: row.get::<_, Uuid>(0),
+                name: row.get(1),
+                display_name: row.get(2),
+                icon_uri: row.get(3),
+                realm_id: row.get(4),
+                resource_server_id: row.get(5),
+                created_at: row.get(6),
+                updated_at: row.get(7),
+            })),
+            None => Ok(None),
+        }
+    }
+
+    /// Create a new resource
+    pub async fn create_resource(
+        db: &Database,
+        request: CreateResourceRequest,
+        realm_id: Uuid,
+        resource_server_id: Uuid,
+        owner: String,
+    ) -> Result<Resource> {
+        let resource_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO resources (
+                id, name, display_name, uris, icon_uri, resource_type, owner,
+                enabled, realm_id, resource_server_id, scopes, attributes,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING
+                id, name, display_name, uris, icon_uri, resource_type, owner,
+                enabled, realm_id, resource_server_id, scopes, attributes,
+                created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &resource_id,
+                    &request.name,
+                    &request.display_name,
+                    &request.uris.unwrap_or_default(),
+                    &request.icon_uri,
+                    &request.resource_type,
+                    &owner,
+                    &true, // enabled
+                    &realm_id,
+                    &resource_server_id,
+                    &request.scopes.unwrap_or_default(),
+                    &request.attributes
+                        .as_ref()
+                        .map(|attrs| serde_json::to_string(attrs).unwrap_or_else(|_| "{}".to_string()))
+                        .unwrap_or_else(|| "{}".to_string()),
+                    &now,
+                    &now,
+                ],
+            )
+            .await?;
+
+        Ok(Resource {
+            id: row.get(0),
+            name: row.get(1),
+            display_name: row.get(2),
+            uris: row.get(3),
+            icon_uri: row.get(4),
+            resource_type: row.get(5),
+            owner: row.get(6),
+            enabled: row.get(7),
+            realm_id: row.get(8),
+            resource_server_id: row.get(9),
+            scopes: row.get(10),
+            attributes: serde_json::from_str(&row.get::<_, String>(11)).unwrap_or_default(),
+            created_at: row.get(12),
+            updated_at: row.get(13),
+        })
+    }
+
+    /// Get resource by ID
+    pub async fn get_resource(db: &Database, resource_id: Uuid) -> Result<Option<Resource>> {
+        let query = r#"
+            SELECT id, name, display_name, uris, icon_uri, resource_type, owner,
+                   enabled, realm_id, resource_server_id, scopes, attributes,
+                   created_at, updated_at
+            FROM resources
+            WHERE id = $1
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&resource_id]).await?;
+        let row = rows.into_iter().next();
+
+        match row {
+            Some(row) => Ok(Some(Resource {
+                id: row.get::<_, Uuid>(0),
+                name: row.get(1),
+                display_name: row.get(2),
+                uris: row.get(3),
+                icon_uri: row.get(4),
+                resource_type: row.get(5),
+                owner: row.get(6),
+                enabled: row.get(7),
+                realm_id: row.get(8),
+                resource_server_id: row.get(9),
+                scopes: row.get(10),
+                attributes: serde_json::from_str(&row.get::<_, String>(11)).unwrap_or_default(),
+                created_at: row.get(12),
+                updated_at: row.get(13),
+            })),
+            None => Ok(None),
+        }
+    }
+
+    /// Get resource by name and resource server
+    pub async fn get_resource_by_name(
+        db: &Database,
+        name: &str,
+        resource_server_id: Uuid,
+    ) -> Result<Option<Resource>> {
+        let query = r#"
+            SELECT id, name, display_name, uris, icon_uri, resource_type, owner,
+                   enabled, realm_id, resource_server_id, scopes, attributes,
+                   created_at, updated_at
+            FROM resources
+            WHERE name = $1 AND resource_server_id = $2
+        "#;
+
+        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&name, &resource_server_id];
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &params).await?;
+        let row = rows.into_iter().next();
+
+        match row {
+            Some(row) => Ok(Some(Resource {
+                id: row.get(0),
+                name: row.get(1),
+                display_name: row.get(2),
+                uris: row.get(3),
+                icon_uri: row.get(4),
+                resource_type: row.get(5),
+                owner: row.get(6),
+                enabled: row.get(7),
+                realm_id: row.get(8),
+                resource_server_id: row.get(9),
+                scopes: row.get(10),
+                attributes: serde_json::from_str(&row.get::<_, String>(11)).unwrap_or_default(),
+                created_at: row.get(12),
+                updated_at: row.get(13),
+            })),
+            None => Ok(None),
+        }
+    }
+
+    /// Get resources by owner
+    pub async fn get_resources_by_owner(
+        db: &Database,
+        owner: &str,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<Resource>> {
+        let limit = max.unwrap_or(20);
+        let offset = first.unwrap_or(0);
+
+        let query = r#"
+            SELECT id, name, display_name, uris, icon_uri, resource_type, owner,
+                   enabled, realm_id, resource_server_id, scopes, attributes,
+                   created_at, updated_at
+            FROM resources
+            WHERE owner = $1 AND enabled = true
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&owner, &limit, &offset]).await?;
+
+        let mut resources = Vec::new();
+        for row in rows {
+            resources.push(Resource {
+                id: row.get(0),
+                name: row.get(1),
+                display_name: row.get(2),
+                uris: row.get(3),
+                icon_uri: row.get(4),
+                resource_type: row.get(5),
+                owner: row.get(6),
+                enabled: row.get(7),
+                realm_id: row.get(8),
+                resource_server_id: row.get(9),
+                scopes: row.get(10),
+                attributes: serde_json::from_str(&row.get::<_, String>(11)).unwrap_or_default(),
+                created_at: row.get(12),
+                updated_at: row.get(13),
+            });
+        }
+
+        Ok(resources)
+    }
+
+    /// Create a permission ticket
+    pub async fn create_permission_ticket(
+        db: &Database,
+        request: CreatePermissionTicketRequest,
+        owner: String,
+        realm_id: Uuid,
+        resource_server_id: Uuid,
+    ) -> Result<PermissionTicket> {
+        let ticket_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO permission_tickets (
+                id, resource_id, scope_id, owner, requester, granted,
+                granted_timestamp, realm_id, resource_server_id,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING
+                id, resource_id, scope_id, owner, requester, granted,
+                granted_timestamp, realm_id, resource_server_id,
+                created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &ticket_id,
+                    &request.resource_id,
+                    &request.scope_id,
+                    &owner,
+                    &request.requester,
+                    &false, // granted
+                    &None::<chrono::DateTime<Utc>>, // granted_timestamp
+                    &realm_id,
+                    &resource_server_id,
+                    &now,
+                    &now,
+                ],
+            )
+            .await?;
+
+        Ok(PermissionTicket {
+            id: row.get(0),
+            resource_id: row.get(1),
+            scope_id: row.get(2),
+            owner: row.get(3),
+            requester: row.get(4),
+            granted: row.get(5),
+            granted_timestamp: row.get(6),
+            realm_id: row.get(7),
+            resource_server_id: row.get(8),
+            created_at: row.get(9),
+            updated_at: row.get(10),
+        })
+    }
+
+    /// Get permission ticket by ID
+    pub async fn get_permission_ticket(
+        db: &Database,
+        ticket_id: Uuid,
+    ) -> Result<Option<PermissionTicket>> {
+        let query = r#"
+            SELECT id, resource_id, scope_id, owner, requester, granted,
+                   granted_timestamp, realm_id, resource_server_id,
+                   created_at, updated_at
+            FROM permission_tickets
+            WHERE id = $1
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&ticket_id]).await?;
+        let row = rows.into_iter().next();
+
+        match row {
+            Some(row) => Ok(Some(PermissionTicket {
+                id: row.get::<_, Uuid>(0),
+                resource_id: row.get(1),
+                scope_id: row.get(2),
+                owner: row.get(3),
+                requester: row.get(4),
+                granted: row.get(5),
+                granted_timestamp: row.get(6),
+                realm_id: row.get(7),
+                resource_server_id: row.get(8),
+                created_at: row.get(9),
+                updated_at: row.get(10),
+            })),
+            None => Ok(None),
+        }
+    }
+
+    /// Grant permission ticket
+    pub async fn grant_permission_ticket(db: &Database, ticket_id: Uuid) -> Result<PermissionTicket> {
+        let now = Utc::now();
+
+        let query = r#"
+            UPDATE permission_tickets
+            SET granted = true, granted_timestamp = $2, updated_at = $2
+            WHERE id = $1
+            RETURNING
+                id, resource_id, scope_id, owner, requester, granted,
+                granted_timestamp, realm_id, resource_server_id,
+                created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db.query_one(query, &[&ticket_id, &now]).await?;
+
+        Ok(PermissionTicket {
+            id: row.get(0),
+            resource_id: row.get(1),
+            scope_id: row.get(2),
+            owner: row.get(3),
+            requester: row.get(4),
+            granted: row.get(5),
+            granted_timestamp: row.get(6),
+            realm_id: row.get(7),
+            resource_server_id: row.get(8),
+            created_at: row.get(9),
+            updated_at: row.get(10),
+        })
+    }
+
+    /// Get granted resources for user
+    pub async fn get_granted_resources(
+        db: &Database,
+        user_id: &str,
+        name_filter: Option<&str>,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<Uuid>> {
+        let limit = max.unwrap_or(20);
+        let offset = first.unwrap_or(0);
+
+        let mut query = r#"
+            SELECT DISTINCT r.id
+            FROM resources r
+            INNER JOIN permission_tickets pt ON r.id = pt.resource_id
+            WHERE pt.requester = $1 AND pt.granted = true
+        "#.to_string();
+
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&user_id];
+
+        let name_param: String;
+        if let Some(name) = name_filter {
+            query.push_str(" AND r.name ILIKE $2");
+            name_param = format!("%{}%", name);
+            params.push(&name_param);
+        } else {
+            name_param = String::new(); // Initialize to avoid uninitialized variable
+        }
+
+        query.push_str(" ORDER BY r.created_at DESC LIMIT $");
+        query.push_str(&(params.len() + 1).to_string());
+        query.push_str(" OFFSET $");
+        query.push_str(&(params.len() + 2).to_string());
+
+        params.push(&limit);
+        params.push(&offset);
+
+        let rows: Vec<tokio_postgres::Row> = db.query(&query, &params).await?;
+
+        let mut resource_ids = Vec::new();
+        for row in rows {
+            resource_ids.push(row.get(0));
+        }
+
+        Ok(resource_ids)
     }
 }

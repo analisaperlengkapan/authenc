@@ -495,6 +495,7 @@ impl IdentityBroker for LdapIdentityBroker {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             deleted_at: None,
+            login_count: 0,
         };
         Ok(user)
     }
@@ -569,6 +570,7 @@ fn create_user_from_ldap_entry(entry: &SearchEntry, config: &LdapConfig) -> Resu
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         deleted_at: None,
+        login_count: 0,
     })
 }
 

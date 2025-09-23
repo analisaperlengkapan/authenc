@@ -243,9 +243,9 @@ pub fn create_identity_broker_routes() -> Router<Arc<Database>> {
     Router::new()
         .route("/providers", post(create_provider))
         .route("/providers", get(list_providers))
-        .route("/providers/:provider_id", get(get_provider))
-        .route("/providers/:provider_id", put(update_provider))
-        .route("/providers/:provider_id", delete(delete_provider))
+        .route("/providers/{provider_id}", get(get_provider))
+        .route("/providers/{provider_id}", put(update_provider))
+        .route("/providers/{provider_id}", delete(delete_provider))
         .route("/authenticate", post(authenticate))
         .route("/sync-user", post(sync_user))
 }

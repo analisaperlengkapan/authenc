@@ -1,5 +1,7 @@
+use crate::handlers::api::auth_bearer::AuthBearer;
 use crate::models::role::Role;
-use crate::services::role_store::RoleStore;
+use crate::services::stores::role_store::RoleStore;
+use crate::app::AppState;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -9,9 +11,12 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use uuid::Uuid;
+use crate::models::events::{ResourceType, OperationType, AuthDetails};
+use crate::services::events::AdminEventBuilder;
 
 /// Create role management routes for a realm
-pub fn create_role_routes() -> Router<Arc<RoleStore>> {
+pub fn create_role_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/realms/{realm}/roles", get(get_roles))
         .route("/realms/{realm}/roles", post(create_role))
@@ -28,53 +33,164 @@ pub fn create_role_routes() -> Router<Arc<RoleStore>> {
 
 /// Get all roles in the specified realm
 pub async fn get_roles(
-    State(_store): State<Arc<RoleStore>>,
-    Path(_realm): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Path(realm): Path<String>,
 ) -> Result<Json<Vec<Role>>, StatusCode> {
-    // TODO: Implement with new Role model structure
-    Err(StatusCode::NOT_IMPLEMENTED)
+    // Get realm by name to get the UUID
+    let realm_obj = match state.realm_store.get_by_name(&realm) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    let roles = state.role_store.get_by_realm(&realm_obj.id.to_string());
+    Ok(Json(roles))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 /// Request payload for creating a new role within a realm
 pub struct CreateRoleRequest {
     /// The unique name identifier for the role
     pub name: String,
+    /// Optional description of the role's purpose
+    pub description: Option<String>,
+    /// Whether this is a composite role (contains other roles)
+    pub composite: Option<bool>,
+    /// Whether this is a client-specific role
+    pub client_role: Option<bool>,
+    /// Client identifier if this is a client role
+    pub client_id: Option<String>,
+    /// Additional role attributes as JSON
+    pub attributes: Option<serde_json::Value>,
 }
 
 /// Create a new role in the specified realm
 pub async fn create_role(
-    State(_store): State<Arc<RoleStore>>,
-    Path(_realm): Path<String>,
-    Json(_req): Json<CreateRoleRequest>,
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
+    Path(realm): Path<String>,
+    Json(req): Json<CreateRoleRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    // TODO: Implement with new Role model structure
-    Err(StatusCode::NOT_IMPLEMENTED)
+    // Get realm by name to get the UUID
+    let realm_obj = match state.realm_store.get_by_name(&realm) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Check if role already exists
+    if state.role_store.get_by_name(&req.name).is_some() {
+        return Err(StatusCode::CONFLICT);
+    }
+
+    // Create the role
+    let role = Role {
+        id: Uuid::new_v4(),
+        name: req.name.clone(),
+        description: req.description,
+        realm_id: Some(realm_obj.id),
+        composite: req.composite.unwrap_or(false),
+        client_role: req.client_role.unwrap_or(false),
+        client_id: req.client_id,
+        attributes: req.attributes,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        deleted_at: None,
+    };
+
+    state.role_store.add_role(role.clone());
+
+    // Fire admin event
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None, // Could be looked up from user store if needed
+        ip_address: None, // Could be extracted from request headers
+        user_agent: None, // Could be extracted from request headers
+    };
+
+    let resource_path = format!("/realms/{}/roles/{}", realm, role.name);
+    let representation = serde_json::to_string(&role).unwrap_or_default();
+
+    let admin_event = AdminEventBuilder::new(
+        realm_obj.id.to_string(),
+        auth_details,
+        ResourceType::RealmRole,
+        OperationType::Create,
+        resource_path,
+    )
+    .representation(representation)
+    .build();
+
+    if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, true).await {
+        tracing::error!("Failed to fire admin event for role creation: {}", e);
+    }
+
+    Ok(StatusCode::CREATED)
 }
 
 /// Delete a role from the specified realm
 pub async fn delete_role(
-    State(_store): State<Arc<RoleStore>>,
-    Path((_realm, _name)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
+    Path((realm, name)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // TODO: Implement with new Role model structure
-    Err(StatusCode::NOT_IMPLEMENTED)
+    // Get realm by name to get the UUID
+    let realm_obj = match state.realm_store.get_by_name(&realm) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Get the role before deleting for event representation
+    let role = match state.role_store.get_by_name(&name) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Delete the role
+    if !state.role_store.delete_by_name(&realm_obj.id.to_string(), &name) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // Fire admin event
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None, // Could be looked up from user store if needed
+        ip_address: None, // Could be extracted from request headers
+        user_agent: None, // Could be extracted from request headers
+    };
+
+    let resource_path = format!("/realms/{}/roles/{}", realm, name);
+    let representation = serde_json::to_string(&role).unwrap_or_default();
+
+    let admin_event = AdminEventBuilder::new(
+        realm_obj.id.to_string(),
+        auth_details,
+        ResourceType::RealmRole,
+        OperationType::Delete,
+        resource_path,
+    )
+    .representation(representation)
+    .build();
+
+    if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, true).await {
+        tracing::error!("Failed to fire admin event for role deletion: {}", e);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Assign a permission to a role in the specified realm
 pub async fn assign_permission_to_role(
-    State(_store): State<Arc<RoleStore>>,
+    State(_state): State<Arc<AppState>>,
     Path((_realm, _role_name, _permission)): Path<(String, String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // TODO: Implement with new Role model structure
+    // TODO: Implement role-permission assignment with proper relationship model
     Err(StatusCode::NOT_IMPLEMENTED)
 }
 
 /// Remove a permission from a role in the specified realm
 pub async fn unassign_permission_from_role(
-    State(_store): State<Arc<RoleStore>>,
+    State(_state): State<Arc<AppState>>,
     Path((_realm, _role_name, _permission)): Path<(String, String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // TODO: Implement with new Role model structure
+    // TODO: Implement role-permission unassignment with proper relationship model
     Err(StatusCode::NOT_IMPLEMENTED)
 }

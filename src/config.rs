@@ -49,6 +49,55 @@ pub struct SecretonConfig {
     pub token: String,
 }
 
+/// Kafka configuration for audit log streaming
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct KafkaConfig {
+    /// Whether Kafka audit logging is enabled
+    pub enabled: bool,
+    /// Kafka broker addresses (comma-separated)
+    pub brokers: String,
+    /// Kafka topic for audit logs
+    pub audit_topic: String,
+    /// Kafka topic for user events
+    pub user_events_topic: String,
+    /// Kafka topic for admin events
+    pub admin_events_topic: String,
+    /// Client ID for Kafka producer
+    pub client_id: Option<String>,
+    /// Message timeout in milliseconds
+    pub message_timeout_ms: Option<u32>,
+    /// Compression type (none, gzip, snappy, lz4, zstd)
+    pub compression: Option<String>,
+}
+
+/// Event retention and lifecycle configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EventsConfig {
+    /// Whether event retention is enabled
+    pub enabled: bool,
+    /// Retention period for user events in days (default: 90)
+    #[serde(default = "default_user_event_retention_days")]
+    pub user_event_retention_days: u32,
+    /// Retention period for admin events in days (default: 365)
+    #[serde(default = "default_admin_event_retention_days")]
+    pub admin_event_retention_days: u32,
+    /// Maximum number of events to delete in a single cleanup batch (default: 10000)
+    #[serde(default = "default_max_cleanup_batch_size")]
+    pub max_cleanup_batch_size: u32,
+    /// Cleanup interval in hours (default: 24)
+    #[serde(default = "default_cleanup_interval_hours")]
+    pub cleanup_interval_hours: u32,
+    /// Whether to archive events before deletion (default: false)
+    pub archive_before_delete: bool,
+    /// Archive directory path (if archiving is enabled)
+    pub archive_directory: Option<String>,
+}
+
+fn default_user_event_retention_days() -> u32 { 90 }
+fn default_admin_event_retention_days() -> u32 { 365 }
+fn default_max_cleanup_batch_size() -> u32 { 10000 }
+fn default_cleanup_interval_hours() -> u32 { 24 }
+
 use std::{env, net::SocketAddr, path::PathBuf, time::Duration};
 
 use serde::{Deserialize, Serialize};
@@ -95,6 +144,12 @@ pub struct AppConfig {
 
     /// Secret management configuration (if using external secret management)
     pub secreton: Option<SecretonConfig>,
+
+    /// Kafka configuration for audit log streaming
+    pub kafka: Option<KafkaConfig>,
+
+    /// Event retention and lifecycle configuration
+    pub events: EventsConfig,
 }
 
 /// Server configuration options
@@ -619,6 +674,8 @@ impl Default for AppConfig {
             ui: None,
             multi_db: None,
             secreton: None,
+            kafka: None,
+            events: EventsConfig::default(),
         }
     }
 }

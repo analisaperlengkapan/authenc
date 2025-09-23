@@ -56,11 +56,12 @@ impl WebAuthnService {
                 challenge
             });
 
-        let _challenge_b64 = Base64UrlUnpadded::encode_string(&challenge_bytes);
+        let challenge_b64 = Base64UrlUnpadded::encode_string(&challenge_bytes);
 
         // Create user ID
         let user_id = Uuid::new_v4().as_bytes().to_vec();
 
+        // Create the registration challenge for database storage
         let registration_challenge = WebauthnRegistrationChallenge {
             id: Uuid::new_v4(),
             user_id: Uuid::nil(), // Would be looked up from username
@@ -69,7 +70,7 @@ impl WebAuthnService {
             relying_party_name: self.relying_party_name.clone(),
             user_name: request.username.clone(),
             user_display_name: Some(request.display_name.clone()),
-            user_id_bytes: user_id,
+            user_id_bytes: user_id.clone(),
             public_key_credential_parameters: vec![
                 WebauthnPublicKeyCredentialParameter {
                     ty: "public-key".to_string(),
@@ -101,7 +102,44 @@ impl WebAuthnService {
         self.store_challenge(&request.username, &challenge_bytes)
             .await?;
 
-        Ok(Json(serde_json::to_value(registration_challenge).unwrap()))
+        // Return proper WebAuthn registration options format
+        let registration_options = WebAuthnRegistrationOptions {
+            challenge: challenge_b64,
+            rp: RelyingParty {
+                id: self.relying_party_id.clone(),
+                name: self.relying_party_name.clone(),
+            },
+            user: WebAuthnUser {
+                id: user_id,
+                name: request.username.clone(),
+                display_name: request.display_name.clone(),
+            },
+            pub_key_cred_params: vec![
+                PubKeyCredParam {
+                    alg: -7, // ES256
+                    typ: "public-key".to_string(),
+                },
+                PubKeyCredParam {
+                    alg: -257, // RS256
+                    typ: "public-key".to_string(),
+                },
+                PubKeyCredParam {
+                    alg: -8, // EdDSA
+                    typ: "public-key".to_string(),
+                },
+            ],
+            authenticator_selection: Some(AuthenticatorSelectionCriteria {
+                authenticator_attachment: Some("cross-platform".to_string()),
+                require_resident_key: Some(false),
+                user_verification: Some("preferred".to_string()),
+            }),
+            timeout: Some(60000),
+            exclude_credentials: vec![],
+            attestation: Some("direct".to_string()),
+            extensions: None,
+        };
+
+        Ok(Json(serde_json::to_value(registration_options).unwrap()))
     }
 
     /// Verify WebAuthn registration response
@@ -292,29 +330,69 @@ impl WebAuthnService {
 
     // Database operations
     /// Store WebAuthn challenge for user
-    async fn store_challenge(&self, username: &str, _challenge: &[u8]) -> Result<()> {
+    async fn store_challenge(&self, username: &str, challenge: &[u8]) -> Result<()> {
         use crate::database::operations::users;
 
         // Get user ID from username
-        let _user = users::get_user_by_username(&self.db, username)
+        let user = users::get_user_by_username(&self.db, username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
-        // For now, store challenge in memory or Redis
-        // TODO: Implement challenge storage in database
-        unimplemented!("Challenge storage in database not yet implemented")
+        let client = self.db.get_connection().await?;
+        let challenge_b64 = base64ct::Base64UrlUnpadded::encode_string(challenge);
+        let expires_at = chrono::Utc::now() + chrono::Duration::seconds(300); // 5 minutes
+
+        let query = r#"
+            INSERT INTO webauthn_challenges (user_id, challenge, challenge_type, expires_at)
+            VALUES ($1, $2, $3, $4)
+        "#;
+
+        client.execute(query, &[&user.id, &challenge_b64, &"registration", &expires_at]).await?;
+        Ok(())
     }
 
     /// Get stored WebAuthn challenge for user
-    async fn get_challenge(&self, _username: &str) -> Result<Option<Vec<u8>>> {
-        // TODO: Implement challenge retrieval from database
-        unimplemented!("Challenge retrieval from database not yet implemented")
+    async fn get_challenge(&self, username: &str) -> Result<Option<Vec<u8>>> {
+        use crate::database::operations::users;
+
+        // Get user ID from username
+        let user = users::get_user_by_username(&self.db, username)
+            .await?
+            .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+
+        let client = self.db.get_connection().await?;
+        let query = r#"
+            SELECT challenge FROM webauthn_challenges
+            WHERE user_id = $1 AND challenge_type = $2 AND expires_at > NOW() AND used = false
+            ORDER BY created_at DESC
+            LIMIT 1
+        "#;
+
+        let row = client.query_opt(query, &[&user.id, &"registration"]).await?;
+        Ok(row.map(|r| {
+            let challenge_b64: String = r.get(0);
+            base64ct::Base64UrlUnpadded::decode_vec(&challenge_b64).unwrap_or_default()
+        }))
     }
 
     /// Delete stored WebAuthn challenge for user
-    async fn delete_challenge(&self, _username: &str) -> Result<()> {
-        // TODO: Implement challenge deletion from database
-        unimplemented!("Challenge deletion from database not yet implemented")
+    async fn delete_challenge(&self, username: &str) -> Result<()> {
+        use crate::database::operations::users;
+
+        // Get user ID from username
+        let user = users::get_user_by_username(&self.db, username)
+            .await?
+            .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+
+        let client = self.db.get_connection().await?;
+        let query = r#"
+            UPDATE webauthn_challenges
+            SET used = true
+            WHERE user_id = $1 AND challenge_type = $2 AND used = false
+        "#;
+
+        client.execute(query, &[&user.id, &"registration"]).await?;
+        Ok(())
     }
 
     /// Store WebAuthn credential for user

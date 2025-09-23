@@ -6,10 +6,16 @@ use axum::{
     Router,
 };
 use axum_test::TestServer;
+use authenc::database::Database;
+use authenc::services::anomaly_detector::*;
+use authenc::services::brute_force_protector::*;
+use authenc::config::DatabaseConfig;
+use chrono::Utc;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use urlencoding;
 
 #[derive(Clone)]
 struct SecurityTestState {
@@ -784,4 +790,207 @@ async fn session_monitor_handler(
         "suspicious_sessions": suspicious_activities.clone(),
         "hijacking_attempts": suspicious_activities.len()
     })))
+}
+
+#[tokio::test]
+#[ignore = "Requires PostgreSQL database to be running"]
+async fn test_advanced_security_anomaly_detector() {
+    // Setup test database
+    let database_config = DatabaseConfig {
+        host: "localhost".to_string(),
+        port: 5432,
+        username: "test".to_string(),
+        password: "test".to_string(),
+        database: "test_db".to_string(),
+        max_connections: 10,
+        connection_timeout: 30,
+        audit_log_url: None,
+        connection_timeout_seconds: 30,
+    };
+
+    let database_result = Database::new(&database_config).await;
+    let database = match database_result {
+        Ok(db) => Arc::new(db),
+        Err(_) => {
+            println!("Skipping test due to database connection issues");
+            return;
+        }
+    };
+
+    // Test AnomalyDetector structure
+    let detector = AnomalyDetector::new();
+
+    // Test new IP detection
+    let user_id = "user_123";
+    let known_ip = "192.168.1.100";
+    let new_ip = "10.0.0.50";
+
+    // First IP should be new
+    let is_new = detector.is_new_ip(user_id, known_ip).unwrap();
+    assert!(is_new, "First IP should be detected as new");
+
+    // Same IP should not be new
+    let is_new_again = detector.is_new_ip(user_id, known_ip).unwrap();
+    assert!(!is_new_again, "Same IP should not be detected as new");
+
+    // Different IP should be new
+    let is_new_different = detector.is_new_ip(user_id, new_ip).unwrap();
+    assert!(is_new_different, "Different IP should be detected as new");
+
+    // Test with different user
+    let different_user = "user_456";
+    let is_new_different_user = detector.is_new_ip(different_user, known_ip).unwrap();
+    assert!(is_new_different_user, "Same IP for different user should be detected as new");
+}
+
+#[tokio::test]
+#[ignore = "Requires PostgreSQL database to be running"]
+async fn test_advanced_security_brute_force_protector() {
+    let database_config = DatabaseConfig {
+        host: "localhost".to_string(),
+        port: 5432,
+        username: "test".to_string(),
+        password: "test".to_string(),
+        database: "test_db".to_string(),
+        max_connections: 10,
+        connection_timeout: 30,
+        audit_log_url: None,
+        connection_timeout_seconds: 30,
+    };
+
+    let database_result = Database::new(&database_config).await;
+    let database = match database_result {
+        Ok(db) => Arc::new(db),
+        Err(_) => {
+            println!("Skipping test due to database connection issues");
+            return;
+        }
+    };
+
+    // Test BruteForceProtector structure
+    let protector = BruteForceProtector::new(3, 60); // 3 attempts per 60 seconds
+
+    let test_key = "user_123";
+
+    // First two attempts should be allowed
+    let should_block_1 = protector.register_attempt(test_key).unwrap();
+    assert!(!should_block_1, "First attempt should be allowed");
+
+    let should_block_2 = protector.register_attempt(test_key).unwrap();
+    assert!(!should_block_2, "Second attempt should be allowed");
+
+    let should_block_3 = protector.register_attempt(test_key).unwrap();
+    assert!(!should_block_3, "Third attempt should be allowed (at limit)");
+
+    // Fourth attempt should be blocked
+    let should_block_4 = protector.register_attempt(test_key).unwrap();
+    assert!(should_block_4, "Fourth attempt should be blocked");
+
+    // Test with different key
+    let different_key = "user_456";
+    let should_block_different = protector.register_attempt(different_key).unwrap();
+    assert!(!should_block_different, "Different key should start fresh");
+}
+
+#[tokio::test]
+#[ignore = "Requires PostgreSQL database to be running"]
+async fn test_advanced_security_brute_force_time_window() {
+    let database_config = DatabaseConfig {
+        host: "localhost".to_string(),
+        port: 5432,
+        username: "test".to_string(),
+        password: "test".to_string(),
+        database: "test_db".to_string(),
+        max_connections: 10,
+        connection_timeout: 30,
+        audit_log_url: None,
+        connection_timeout_seconds: 30,
+    };
+
+    let database_result = Database::new(&database_config).await;
+    let database = match database_result {
+        Ok(db) => Arc::new(db),
+        Err(_) => {
+            println!("Skipping test due to database connection issues");
+            return;
+        }
+    };
+
+    // Test BruteForceProtector with short time window
+    let protector = BruteForceProtector::new(2, 1); // 2 attempts per 1 second
+
+    let test_key = "test_user";
+
+    // Register attempts up to the limit
+    let should_block_1 = protector.register_attempt(test_key).unwrap();
+    assert!(!should_block_1);
+
+    let should_block_2 = protector.register_attempt(test_key).unwrap();
+    assert!(!should_block_2);
+
+    // Third attempt should be blocked
+    let should_block_3 = protector.register_attempt(test_key).unwrap();
+    assert!(should_block_3);
+
+    // Wait for the time window to expire (simulate by creating new protector)
+    // In real usage, old attempts would be cleaned up automatically
+    let protector_new = BruteForceProtector::new(2, 1);
+
+    // Fresh protector should allow attempts again
+    let should_block_fresh_1 = protector_new.register_attempt(test_key).unwrap();
+    assert!(!should_block_fresh_1);
+}
+
+#[tokio::test]
+#[ignore = "Requires PostgreSQL database to be running"]
+async fn test_advanced_security_anomaly_detector_multiple_users() {
+    let database_config = DatabaseConfig {
+        host: "localhost".to_string(),
+        port: 5432,
+        username: "test".to_string(),
+        password: "test".to_string(),
+        database: "test_db".to_string(),
+        max_connections: 10,
+        connection_timeout: 30,
+        audit_log_url: None,
+        connection_timeout_seconds: 30,
+    };
+
+    let database_result = Database::new(&database_config).await;
+    let database = match database_result {
+        Ok(db) => Arc::new(db),
+        Err(_) => {
+            println!("Skipping test due to database connection issues");
+            return;
+        }
+    };
+
+    // Test AnomalyDetector with multiple users
+    let detector = AnomalyDetector::new();
+
+    let users = vec!["user_1", "user_2", "user_3"];
+    let ips = vec!["192.168.1.10", "192.168.1.11", "192.168.1.12"];
+
+    // Register IPs for each user
+    for (i, user) in users.iter().enumerate() {
+        for (j, ip) in ips.iter().enumerate() {
+            let is_new = detector.is_new_ip(user, ip).unwrap();
+            if j == 0 {
+                assert!(is_new, "First IP for user {} should be new", user);
+            }
+        }
+    }
+
+    // Verify that each user has their own IP tracking
+    for user in &users {
+        let is_known_ip_new = detector.is_new_ip(user, &ips[0]).unwrap();
+        assert!(!is_known_ip_new, "Known IP should not be new for user {}", user);
+    }
+
+    // Test unknown IP for all users
+    let unknown_ip = "203.0.113.1";
+    for user in &users {
+        let is_unknown_new = detector.is_new_ip(user, unknown_ip).unwrap();
+        assert!(is_unknown_new, "Unknown IP should be new for user {}", user);
+    }
 }

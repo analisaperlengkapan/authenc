@@ -9,7 +9,7 @@ pub struct KafkaAuditLogSink {
     /// Kafka producer for sending messages
     producer: FutureProducer,
     /// Kafka topic to send audit logs to
-    topic: String,
+    pub topic: String,
 }
 
 impl KafkaAuditLogSink {

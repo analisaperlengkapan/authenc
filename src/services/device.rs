@@ -267,7 +267,7 @@ impl DeviceService {
                     os_version: model_device.os_version.unwrap_or_default(),
                     browser: model_device.browser,
                     browser_version: model_device.browser_version,
-                    ip_address: model_device.ip_address.unwrap_or_default(),
+                    ip_address: model_device.ip_address.map(|ip| ip.to_string()).unwrap_or_else(|| "0.0.0.0".to_string()),
                     user_agent: model_device
                         .user_agent
                         .as_ref()
@@ -315,7 +315,7 @@ impl DeviceService {
                 os_version: model_device.os_version.unwrap_or_default(),
                 browser: model_device.browser,
                 browser_version: model_device.browser_version,
-                ip_address: model_device.ip_address.unwrap_or_default(),
+                ip_address: model_device.ip_address.map(|ip| ip.to_string()).unwrap_or_else(|| "0.0.0.0".to_string()),
                 user_agent: model_device
                     .user_agent
                     .as_ref()

@@ -3,6 +3,8 @@
 pub mod audit;
 /// Device management and trust models
 pub mod device;
+/// Event system models for user and admin events
+pub mod events;
 /// Group membership and hierarchy models
 pub mod group;
 /// OAuth 2.0 and OpenID Connect models
@@ -13,10 +15,18 @@ pub mod organization;
 pub mod permission;
 /// Security realm and domain models
 pub mod realm;
+/// Resource management models
+pub mod resource;
+/// Resource server models
+pub mod resource_server;
+/// Permission ticket models
+pub mod permission_ticket;
 /// Role-based access control models
 pub mod role;
 /// SAML authentication models
 pub mod saml;
+/// Scope models for resource permissions
+pub mod scope;
 /// User account and profile models
 pub mod user;
 /// WebAuthn authentication models
@@ -47,8 +57,12 @@ pub use oauth2::*;
 pub use organization::*;
 pub use permission::Permission;
 pub use realm::Realm;
+pub use resource::*;
+pub use resource_server::*;
+pub use permission_ticket::*;
 pub use role::Role;
 pub use saml::*;
+pub use scope::*;
 pub use user::User;
 pub use webauthn::*;
 

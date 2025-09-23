@@ -9,20 +9,13 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::app::AppState;
 use crate::services::oid4vc::{
-    CredentialAuthorizationRequest, CredentialRequest, CredentialTokenRequest, LegacyOid4VcManager,
-    Oid4VcService,
+    CredentialAuthorizationRequest, CredentialRequest, CredentialTokenRequest, Oid4VcService,
 };
 
 /// Create OID4VC router
-pub fn create_oid4vc_router() -> Router<Arc<crate::database::Database>> {
-    // Create OID4VC manager
-    let oid4vc_private_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
-    let oid4vc_manager = Arc::new(crate::services::oid4vc::LegacyOid4VcManager::new(
-        "https://authenc.example.com".to_string(),
-        oid4vc_private_key,
-    ));
-
+pub fn create_oid4vc_router() -> Router<Arc<AppState>> {
     Router::new()
         .route(
             "/.well-known/openid-credential-issuer",
@@ -31,15 +24,14 @@ pub fn create_oid4vc_router() -> Router<Arc<crate::database::Database>> {
         .route("/authorize", get(handle_authorization))
         .route("/token", post(handle_token))
         .route("/credentials", post(issue_credential))
-        .with_state(oid4vc_manager)
 }
 
 /// Get credential issuer metadata
 /// GET /.well-known/openid-credential-issuer
 async fn get_issuer_metadata(
-    State(oid4vc_manager): State<Arc<LegacyOid4VcManager>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    match oid4vc_manager.get_issuer_metadata().await {
+    match state.oid4vc_service.get_issuer_metadata().await {
         Ok(metadata) => Ok(Json(json!(metadata))),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))),
     }
@@ -48,7 +40,7 @@ async fn get_issuer_metadata(
 /// Handle authorization request
 /// GET /authorize
 async fn handle_authorization(
-    State(oid4vc_manager): State<Arc<LegacyOid4VcManager>>,
+    State(state): State<Arc<AppState>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     // Parse authorization request from query parameters
@@ -64,7 +56,7 @@ async fn handle_authorization(
         code_challenge_method: params.get("code_challenge_method").cloned(),
     };
 
-    match oid4vc_manager.handle_authorization_request(request).await {
+    match state.oid4vc_service.handle_authorization_request(request).await {
         Ok(code) => Ok(Json(json!({
             "code": code,
             "state": params.get("state")
@@ -76,10 +68,10 @@ async fn handle_authorization(
 /// Handle token request
 /// POST /token
 async fn handle_token(
-    State(oid4vc_manager): State<Arc<LegacyOid4VcManager>>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<CredentialTokenRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    match oid4vc_manager.handle_token_request(request).await {
+    match state.oid4vc_service.handle_token_request(request).await {
         Ok(token_response) => Ok(Json(serde_json::to_value(token_response).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -93,7 +85,7 @@ async fn handle_token(
 /// Issue credential
 /// POST /credentials
 async fn issue_credential(
-    State(oid4vc_manager): State<Arc<LegacyOid4VcManager>>,
+    State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Json(request): Json<CredentialRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
@@ -109,7 +101,7 @@ async fn issue_credential(
             )
         })?;
 
-    match oid4vc_manager.issue_credential(request, access_token).await {
+    match state.oid4vc_service.issue_credential(request, access_token).await {
         Ok(credential_response) => Ok(Json(json!(credential_response))),
         Err(e) => Err((StatusCode::BAD_REQUEST, Json(json!({"error": e})))),
     }
@@ -118,10 +110,10 @@ async fn issue_credential(
 /// Verify credential endpoint
 /// POST /credentials/verify
 pub async fn verify_credential(
-    State(oid4vc_manager): State<Arc<LegacyOid4VcManager>>,
+    State(state): State<Arc<AppState>>,
     Json(credential): Json<crate::services::oid4vc::VerifiableCredential>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    match oid4vc_manager.verify_credential(&credential).await {
+    match state.oid4vc_service.verify_credential(&credential).await {
         Ok(is_valid) => Ok(Json(json!({
             "valid": is_valid
         }))),
@@ -130,15 +122,7 @@ pub async fn verify_credential(
 }
 
 /// Create verifiable presentation router
-pub fn create_vp_router() -> Router<Arc<crate::database::Database>> {
-    // Create OID4VC manager
-    let oid4vc_private_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
-    let oid4vc_manager = Arc::new(crate::services::oid4vc::LegacyOid4VcManager::new(
-        "https://authenc.example.com".to_string(),
-        oid4vc_private_key,
-    ));
-
+pub fn create_vp_router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/credentials/verify", post(verify_credential))
-        .with_state(oid4vc_manager)
 }

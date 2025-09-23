@@ -8,7 +8,7 @@ use crate::{
 };
 
 /// Database connection pool manager
-#[derive(Clone)] // Derive Clone for easy sharing across handlers
+#[derive(Clone, Debug)] // Derive Clone for easy sharing across handlers
 pub struct Database {
     pool: Pool,
 }
@@ -60,6 +60,11 @@ impl Database {
         })
     }
 
+    /// Get the database connection pool
+    pub fn get_pool(&self) -> deadpool_postgres::Pool {
+        self.pool.clone()
+    }
+
     /// Execute a read-only query and return results
     pub async fn query<T>(
         &self,
@@ -73,7 +78,7 @@ impl Database {
         let client = self.get_connection().await?;
         let rows = client.query(statement, params).await.map_err(|e| {
             error!("Query failed: {}\nStatement: {}", e, statement);
-            AuthencError::database("Database query failed")
+            AuthencError::database(&format!("Database query failed: {}", e))
         })?;
 
         let mut results = Vec::with_capacity(rows.len());
@@ -100,7 +105,7 @@ impl Database {
         let client = self.get_connection().await?;
         let row = client.query_one(statement, params).await.map_err(|e| {
             error!("Query one failed: {}\nStatement: {}", e, statement);
-            AuthencError::database("Database query failed")
+            AuthencError::database(&format!("Database query failed: {}", e))
         })?;
 
         row.try_into().map_err(|e| {
@@ -118,7 +123,7 @@ impl Database {
         let client = self.get_connection().await?;
         client.execute(statement, params).await.map_err(|e| {
             error!("Execute failed: {}\nStatement: {}", e, statement);
-            AuthencError::database("Database execute failed")
+            AuthencError::database(&format!("Database execute failed: {}", e))
         })
     }
 

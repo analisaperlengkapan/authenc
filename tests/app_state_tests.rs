@@ -1,5 +1,6 @@
 use authenc::app::AppState;
 use authenc::AppConfig;
+use authenc::services::stores::user_store::UserStoreTrait;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -10,7 +11,7 @@ async fn app_state_initializes_all_services() {
         .await
         .expect("AppState::new should succeed");
     assert!(Arc::ptr_eq(&state.config, &config));
-    assert!(state.user_store.get_all().is_empty());
+    assert!(state.user_store.get_all().await.unwrap().is_empty());
     // Just check all fields are Some/Arc (not None)
     assert!(Arc::strong_count(&state.user_store) > 0);
     assert!(Arc::strong_count(&state.session_store) > 0);

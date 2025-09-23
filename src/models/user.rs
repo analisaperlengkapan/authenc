@@ -83,6 +83,8 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
     /// Timestamp when the user was soft deleted
     pub deleted_at: Option<DateTime<Utc>>,
+    /// Number of successful logins for this user
+    pub login_count: i32,
 }
 
 /// User credential
@@ -650,6 +652,7 @@ impl User {
             created_at: now,
             updated_at: now,
             deleted_at: None,
+            login_count: 0,
         }
     }
 
@@ -829,6 +832,7 @@ impl TryFrom<tokio_postgres::Row> for User {
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
             deleted_at: row.try_get("deleted_at")?,
+            login_count: row.try_get("login_count")?,
         })
     }
 }

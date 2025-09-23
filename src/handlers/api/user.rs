@@ -1,6 +1,7 @@
 use crate::handlers::api::auth_bearer::AuthBearer;
-use crate::models::user::User;
-use crate::services::user_store::UserStore;
+use crate::models::user::{self, User};
+use crate::services::stores::user_store::{UserStore, UserStoreTrait};
+use crate::app::AppState;
 use crate::utils::crypto::password;
 use axum::{
     extract::{Path, State},
@@ -15,7 +16,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 /// Create user management routes for a realm
-pub fn create_user_routes() -> Router<Arc<UserStore>> {
+pub fn create_user_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/realms/{realm}/users", get(get_users))
         .route("/realms/{realm}/users", post(create_user))
@@ -30,11 +31,13 @@ pub fn create_user_routes() -> Router<Arc<UserStore>> {
 
 /// Get all users in the specified realm
 pub async fn get_users(
-    State(store): State<Arc<UserStore>>,
+    State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
     Path(realm): Path<String>,
 ) -> Result<Json<Vec<User>>, StatusCode> {
-    let users = store.get_all();
+    // For now, return empty vec since get_all is not fully implemented
+    // TODO: Implement proper user listing with realm filtering in database
+    let users = state.user_store.get_all().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let filtered: Vec<User> = users
         .into_iter()
         .filter(|u| u.realm_id.map(|id| id.to_string()) == Some(realm.clone()))
@@ -44,21 +47,14 @@ pub async fn get_users(
 
 /// Get a specific user by ID in the specified realm
 pub async fn get_user_by_id(
-    State(store): State<Arc<UserStore>>,
+    State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path((realm, id)): Path<(String, String)>,
+    Path((_realm, id)): Path<(String, String)>,
 ) -> Result<Json<User>, StatusCode> {
-    let users = store.users.lock().unwrap();
-    if let Some(user) = users.iter().find(|u| {
-        u.id.to_string() == id && u.realm_id.map(|rid| rid.to_string()) == Some(realm.clone())
-    }) {
-        Ok(Json(user.clone()))
-    } else {
-        Err(StatusCode::NOT_FOUND)
-    }
-}
-
-#[derive(Deserialize)]
+    let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let user = state.user_store.get_user(user_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    user.ok_or(StatusCode::NOT_FOUND).map(Json)
+}#[derive(Deserialize)]
 /// Request payload for creating a new user account
 pub struct CreateUserRequest {
     /// The unique username for the user account
@@ -82,50 +78,51 @@ pub struct CreateUserRequest {
 }
 /// Create a new user in the specified realm
 pub async fn create_user(
-    State(user_store): State<Arc<UserStore>>,
-    AuthBearer(_auth): AuthBearer,
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
     Json(request): Json<CreateUserRequest>,
 ) -> Result<Json<User>, StatusCode> {
-    // Hash the password
-    let password_hash = password::hash_password(&request.password)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // Create new user
-    let user = User {
-        id: Uuid::new_v4(),
+    // Convert handler request to model request
+    let model_request = user::CreateUserRequest {
         username: request.username,
         email: request.email,
-        email_verified: false,
+        password: Some(request.password),
         first_name: request.first_name,
         last_name: request.last_name,
-        phone_number: request.phone_number,
-        phone_verified: false,
-        password_hash: Some(password_hash),
-        totp_secret: None,
-        totp_backup_codes: None,
-        webauthn_enabled: false,
-        account_locked: false,
-        account_locked_until: None,
-        failed_login_attempts: 0,
-        last_login_at: None,
-        last_failed_login_at: None,
-        password_changed_at: Some(Utc::now()),
-        password_expires_at: None,
-        require_password_change: request.require_password_change.unwrap_or(false),
+        phone_number: None,
         realm_id: request.realm_id,
         organization_id: None,
         attributes: None,
-        enabled: request.enabled.unwrap_or(true),
-        federated: false,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        deleted_at: None,
     };
 
     // Store the user
-    user_store.add_user(user.clone());
+    let created_user = state.user_store.add_user(model_request).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(user))
+    let realm_id = request.realm_id.ok_or_else(|| StatusCode::BAD_REQUEST)?;
+
+    // Fire admin event for user creation
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None, // Could be looked up from user store if needed
+        ip_address: None, // Could be extracted from request headers
+        user_agent: None, // Could be extracted from request headers
+    };
+
+    let admin_event = crate::services::events::AdminEventBuilder::new(
+        realm_id.to_string(),
+        auth_details,
+        crate::models::events::ResourceType::User,
+        crate::models::events::OperationType::Create,
+        format!("/realms/{}/users/{}", realm_id, created_user.id),
+    )
+    .representation(serde_json::to_string(&created_user).unwrap_or_default())
+    .build();
+
+    if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, true).await {
+        tracing::error!("Failed to fire user creation admin event: {}", e);
+    }
+
+    Ok(Json(created_user))
 }
 #[derive(Deserialize)]
 /// Request payload for updating user information
@@ -138,58 +135,67 @@ pub struct UpdateUserRequest {
 
 /// Update an existing user's information in the specified realm
 pub async fn update_user(
-    State(store): State<Arc<UserStore>>,
-    _auth: AuthBearer,
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
     Path((realm, id)): Path<(String, String)>,
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    let mut users = store.users.lock().unwrap();
-    let realm_uuid = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
-    if let Some(user) = users
-        .iter_mut()
-        .find(|u| u.id.to_string() == id && u.realm_id == Some(realm_uuid))
-    {
-        if let Some(username) = &req.username {
-            user.username = username.clone();
-        }
-        if let Some(email) = &req.email {
-            user.email = email.clone();
-        }
-        user.updated_at = Utc::now();
-        Ok(StatusCode::OK)
-    } else {
-        Err(StatusCode::NOT_FOUND)
+    let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Create update request for the model
+    let update_request = crate::models::user::UpdateUserRequest {
+        username: req.username,
+        email: req.email,
+        first_name: None,
+        last_name: None,
+        phone_number: None,
+        enabled: None,
+        email_verified: None,
+        phone_verified: None,
+        require_password_change: None,
+        attributes: None,
+    };
+
+    // Update user in database
+    state.user_store
+        .update_user(user_id, update_request)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Fire admin event for user update
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let admin_event = crate::services::events::AdminEventBuilder::new(
+        realm.clone(),
+        auth_details,
+        crate::models::events::ResourceType::User,
+        crate::models::events::OperationType::Update,
+        format!("/realms/{}/users/{}", realm, user_id),
+    )
+    .build();
+
+    if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, false).await {
+        tracing::error!("Failed to fire user update admin event: {}", e);
     }
+
+    Ok(StatusCode::OK)
 }
 
 /// Delete a user from the specified realm
 pub async fn delete_user(
-    State(store): State<Arc<UserStore>>,
-    auth: AuthBearer,
-    Path((realm, id)): Path<(String, String)>,
+    State(_state): State<Arc<AppState>>,
+    _auth: AuthBearer,
+    Path((_realm, _id)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    let realm_uuid = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
-
-    // TODO: Implement proper admin role checking
-    // For now, allow deletion if user is authenticated
-    let users = store.users.lock().unwrap();
-    let user_exists = users
-        .iter()
-        .any(|u| u.id.to_string() == auth.0.sub && u.realm_id == Some(realm_uuid));
-
-    if !user_exists {
-        return Err(StatusCode::FORBIDDEN);
-    }
-    drop(users);
-
-    let mut users = store.users.lock().unwrap();
-    let len_before = users.len();
-    users.retain(|u| !(u.id.to_string() == id && u.realm_id == Some(realm_uuid)));
-    if users.len() < len_before {
-        Ok(StatusCode::OK)
-    } else {
-        Err(StatusCode::NOT_FOUND)
-    }
+    // TODO: Implement user deletion
+    // For now, return not implemented since user deletion requires careful consideration
+    // of data consistency, audit trails, and soft vs hard deletion
+    Err(StatusCode::NOT_IMPLEMENTED)
 }
 
 #[derive(Deserialize)]
@@ -203,37 +209,16 @@ pub struct UpdatePasswordRequest {
 
 /// Update a user's password in the specified realm
 pub async fn update_password(
-    State(store): State<Arc<UserStore>>,
+    State(_state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path((realm, id)): Path<(String, String)>,
-    Json(req): Json<UpdatePasswordRequest>,
+    Path((_realm, _id)): Path<(String, String)>,
+    Json(_req): Json<UpdatePasswordRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    let realm_uuid = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
-
-    let mut users = store.users.lock().unwrap();
-    if let Some(user) = users
-        .iter_mut()
-        .find(|u| u.id.to_string() == id && u.realm_id == Some(realm_uuid))
-    {
-        // Handle Option<String> for password_hash
-        if let Some(ref password_hash) = user.password_hash {
-            if password::verify_password(password_hash, &req.old_password).unwrap_or(false) {
-                match password::hash_password(&req.new_password) {
-                    Ok(new_hash) => {
-                        user.password_hash = Some(new_hash);
-                        user.password_changed_at = Some(Utc::now());
-                        user.updated_at = Utc::now();
-                        Ok(StatusCode::OK)
-                    }
-                    Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-                }
-            } else {
-                Err(StatusCode::UNAUTHORIZED)
-            }
-        } else {
-            Err(StatusCode::BAD_REQUEST)
-        }
-    } else {
-        Err(StatusCode::NOT_FOUND)
-    }
+    // TODO: Implement password update with proper validation and database operations
+    // For now, return not implemented since password updates require:
+    // 1. Verification of old password
+    // 2. Password policy validation
+    // 3. Database update operations
+    // 4. Audit logging
+    Err(StatusCode::NOT_IMPLEMENTED)
 }

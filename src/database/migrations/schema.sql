@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS devices (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_name VARCHAR(255),
     device_fingerprint TEXT NOT NULL, -- JSON fingerprint data
-    trust_score DECIMAL(3,2) NOT NULL DEFAULT 0.5 CHECK (trust_score >= 0 AND trust_score <= 1),
+    trust_score DOUBLE PRECISION NOT NULL DEFAULT 0.5 CHECK (trust_score >= 0 AND trust_score <= 1),
     risk_level VARCHAR(20) NOT NULL DEFAULT 'medium' CHECK (risk_level IN ('low', 'medium', 'high', 'critical')),
     os VARCHAR(100),
     os_version VARCHAR(100),
@@ -100,15 +100,18 @@ CREATE TABLE IF NOT EXISTS webauthn_credentials (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     credential_id TEXT NOT NULL UNIQUE,
     public_key TEXT NOT NULL,
-    attestation_type VARCHAR(50) NOT NULL,
+    public_key_algorithm INTEGER NOT NULL,
+    signature_counter BIGINT NOT NULL DEFAULT 0,
+    attestation_object TEXT,
     authenticator_data TEXT,
-    client_data_json TEXT,
     user_handle TEXT,
-    signature_count BIGINT NOT NULL DEFAULT 0,
-    backup_eligible BOOLEAN NOT NULL DEFAULT false,
-    backup_state BOOLEAN NOT NULL DEFAULT false,
+    credential_type VARCHAR(50) NOT NULL DEFAULT 'public-key',
+    transports TEXT[], -- Array of transport types
+    aaguid UUID,
+    attestation_format VARCHAR(50),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_used_at TIMESTAMPTZ,
+    enabled BOOLEAN NOT NULL DEFAULT true,
     UNIQUE(user_id, credential_id)
 );
 

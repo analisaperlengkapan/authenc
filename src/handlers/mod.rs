@@ -48,6 +48,8 @@ pub mod broker;
 pub mod device;
 /// Federated authentication handlers with JIT provisioning
 pub mod federated_auth;
+/// SPI-based federation handlers for LDAP and social providers
+pub mod spi_federation;
              // pub mod oauth2_comprehensive; // Commented out - already declared above
              // pub mod organization;
 /// SAML authentication handlers
@@ -115,7 +117,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .merge(oauth2_router)
         // Advanced Services API routes
         // Temporarily disabled social routes due to Axum migration
-        // .nest("/api/v1/auth/social", social::create_social_routes())
+        .nest("/api/v1/auth/social", social::create_social_routes())
         // Temporarily disabled authorization routes due to Axum migration
         // .nest(
         //     "/api/v1/auth/authorization",
@@ -135,23 +137,32 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/auth/federated",
             federated_auth::create_federated_auth_routes(),
         )
+        // SPI-based federation routes for enterprise providers
+        .nest(
+            "/api/v1/auth/federation",
+            spi_federation::create_federation_routes().with_state(state.clone()),
+        )
         .nest("/api/v1/admin", admin::create_admin_routes())
         // API routes for realms, users, roles, permissions
         .nest(
             "/api/v1/auth",
-            api::realm::create_realm_routes().with_state(state.realm_store.clone()),
+            api::realm::create_realm_routes().with_state(state.clone()),
         )
         .nest(
             "/api/v1/auth",
-            api::user::create_user_routes().with_state(state.user_store.clone()),
+            api::user::create_user_routes().with_state(state.clone()),
         )
         .nest(
             "/api/v1/auth",
-            api::role::create_role_routes().with_state(state.role_store.clone()),
+            api::role::create_role_routes().with_state(state.clone()),
         )
         .nest(
             "/api/v1/auth",
-            api::permission::create_permission_routes().with_state(state.permission_store.clone()),
+            api::permission::create_permission_routes().with_state(state.clone()),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::client::create_client_routes().with_state(state.clone()),
         )
         .nest(
             "/api/v1/auth",
@@ -159,12 +170,43 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .nest(
             "/api/v1/auth",
-            api::auth::create_auth_routes().with_state(state.user_store.clone()),
+            api::auth::create_auth_routes().with_state(state.clone()),
+        )
+        .nest(
+            "/api/v1",
+            api::events::create_event_routes().with_state(state.clone()),
         )
         .nest(
             "/api/v1/auth",
             api::permission_check::create_permission_check_routes()
                 .with_state((state.user_store.clone(), state.role_store.clone())),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::resource::create_resource_routes().with_state((
+                state.resource_store.clone(),
+                state.permission_ticket_store.clone(),
+                state.scope_store.clone(),
+                state.user_store.clone(),
+            )),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::resources::create_resources_routes().with_state((
+                state.resource_store.clone(),
+                state.permission_ticket_store.clone(),
+            )),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::account::create_account_routes().with_state((
+                state.user_store.clone(),
+                state.session_store.clone(),
+            )),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::account_credentials::create_account_credentials_routes().with_state(state.user_store.clone()),
         )
         // Temporarily disabled organization routes due to Axum migration
         // .nest(
@@ -175,8 +217,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // .nest("/api/v1/devices", device::create_device_routes())
         // Temporarily disabled SAML routes due to Axum migration
         // .nest("/saml", saml::create_saml_routes())
-        .nest("/oid4vc", oid4vc::create_oid4vc_router())
-        .nest("/vp", oid4vc::create_vp_router())
+        .nest("/oid4vc", oid4vc::create_oid4vc_router().with_state(state.clone()))
+        .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()))
         .with_state(db_state)
 }
 

@@ -88,6 +88,7 @@ impl FederationProvider for DummyFederationProvider {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
                 deleted_at: None,
+                login_count: 0,
             })
         } else {
             None
