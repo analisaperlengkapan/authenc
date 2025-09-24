@@ -68,6 +68,20 @@ pub mod mtls_simple;
 /// Helps prevent common web vulnerabilities and attacks.
 pub mod security_headers_axum;
 
+/// CSRF protection middleware for Axum
+/// 
+/// Prevents Cross-Site Request Forgery attacks.
+/// Validates CSRF tokens on state-changing requests.
+/// Configurable token generation and validation rules.
+pub mod csrf_protection_axum;
+
+/// Security monitoring and alerting middleware for Axum
+/// 
+/// Monitors requests for suspicious activity and security events.
+/// Logs authentication attempts, authorization failures, and attacks.
+/// Integrates with audit logging for compliance and forensics.
+pub mod security_monitoring_axum;
+
 /// Request timeout middleware for Axum
 /// 
 /// Enforces request timeouts to prevent resource exhaustion.
@@ -85,6 +99,8 @@ pub use compression_axum::{compression_middleware, ContentEncoding};
 pub use cors_axum::{cors_layer, cors_middleware};
 pub use input_validation_axum::{input_validation_middleware, InputValidationConfig};
 pub use security_headers_axum::security_headers_middleware;
+pub use csrf_protection_axum::{csrf_protection_middleware, CsrfConfig, CsrfState, generate_csrf_token_response};
+pub use security_monitoring_axum::{security_monitoring_middleware, SecurityMonitoringConfig, SecurityMonitoringState};
 pub use timeout_axum::{TimeoutLayer, TimeoutMiddleware};
 
 // Re-exports for convenience

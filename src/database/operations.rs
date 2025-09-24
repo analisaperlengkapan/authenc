@@ -318,6 +318,13 @@ pub mod webauthn {
         db.execute(query, &[&credential_id]).await?;
         Ok(())
     }
+
+    /// Delete all WebAuthn credentials for a user
+    pub async fn delete_user_credentials(db: &Database, user_id: Uuid) -> Result<()> {
+        let query = "DELETE FROM webauthn_credentials WHERE user_id = $1";
+        db.execute(query, &[&user_id]).await?;
+        Ok(())
+    }
 }
 
 /// Database operations for OAuth2
@@ -558,6 +565,18 @@ pub mod oauth2 {
 
         let rows_affected = db.execute(query, &[&client_id, &now]).await?;
         Ok(rows_affected > 0)
+    }
+
+    /// Revoke all access tokens for a user
+    pub async fn revoke_user_tokens(db: &Database, user_id: Uuid) -> Result<()> {
+        let now = Utc::now();
+        let query = r#"
+            UPDATE oauth2_access_tokens
+            SET revoked = true, revoked_at = $2
+            WHERE user_id = $1 AND revoked = false
+        "#;
+        db.execute(query, &[&user_id, &now]).await?;
+        Ok(())
     }
 }
 

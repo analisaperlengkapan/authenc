@@ -17,8 +17,14 @@ pub struct InputValidationConfig {
     pub max_query_param_length: usize,
     /// Maximum length for headers
     pub max_header_length: usize,
+    /// Maximum request body size in bytes
+    pub max_request_body_size: usize,
     /// Whether to block suspicious patterns
     pub block_suspicious_patterns: bool,
+    /// Whether to validate content type headers
+    pub validate_content_type: bool,
+    /// Allowed content types for requests with bodies
+    pub allowed_content_types: Vec<String>,
 }
 
 impl Default for InputValidationConfig {
@@ -27,7 +33,15 @@ impl Default for InputValidationConfig {
             enabled: true,
             max_query_param_length: 2048,
             max_header_length: 4096,
+            max_request_body_size: 1024 * 1024, // 1MB
             block_suspicious_patterns: true,
+            validate_content_type: true,
+            allowed_content_types: vec![
+                "application/json".to_string(),
+                "application/x-www-form-urlencoded".to_string(),
+                "multipart/form-data".to_string(),
+                "text/plain".to_string(),
+            ],
         }
     }
 }
@@ -84,6 +98,40 @@ pub async fn input_validation_middleware(
         }
     }
 
+    // Validate content type for requests with bodies
+    if config.validate_content_type && has_request_body(&request) {
+        if let Some(content_type) = request.headers().get("content-type") {
+            if let Ok(content_type_str) = content_type.to_str() {
+                let is_allowed = config.allowed_content_types.iter().any(|allowed| {
+                    content_type_str.starts_with(allowed)
+                });
+
+                if !is_allowed {
+                    warn!("Invalid content type: {}", content_type_str);
+                    return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+                }
+            } else {
+                warn!("Invalid content type header encoding");
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        } else {
+            warn!("Missing content type for request with body");
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+
+    // Check request body size
+    if let Some(content_length) = request.headers().get("content-length") {
+        if let Ok(length_str) = content_length.to_str() {
+            if let Ok(length) = length_str.parse::<usize>() {
+                if length > config.max_request_body_size {
+                    warn!("Request body too large: {} bytes", length);
+                    return Err(StatusCode::PAYLOAD_TOO_LARGE);
+                }
+            }
+        }
+    }
+
     debug!("Input validation passed");
     Ok(next.run(request).await)
 }
@@ -127,6 +175,14 @@ fn contains_suspicious_patterns(input: &str) -> bool {
     }
 
     false
+}
+
+/// Check if the request method typically has a body
+fn has_request_body(request: &Request) -> bool {
+    matches!(
+        request.method(),
+        &axum::http::Method::POST | &axum::http::Method::PUT | &axum::http::Method::PATCH
+    )
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@
 //! This module provides the Axum-specific implementation for running
 //! the Authenc authentication service as an HTTP server.
 
-use axum::Router;
+use axum::{extract::State, Router};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::signal;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
@@ -17,6 +17,7 @@ use crate::{
     middleware::{
         input_validation_axum::{input_validation_middleware, InputValidationConfig},
         security_headers_axum::security_headers_middleware,
+        timeout_axum::timeout_middleware,
     },
 };
 
@@ -42,15 +43,26 @@ impl AxumApp {
                 "/.well-known/".to_string(), // OIDC discovery endpoints
             ],
             enabled: state.config.features.enable_rate_limiting,
+            progressive_delays: true,
+            base_delay_ms: 1000,
+            max_delay_ms: 10000,
         };
 
         // Configure input validation
-        let input_validation_config = Arc::new(InputValidationConfig {
+        let input_validation_config = InputValidationConfig {
             enabled: state.config.features.enable_input_validation,
             max_query_param_length: 2048,
             max_header_length: 4096,
+            max_request_body_size: 1024 * 1024, // 1MB
             block_suspicious_patterns: true,
-        });
+            validate_content_type: true,
+            allowed_content_types: vec![
+                "application/json".to_string(),
+                "application/x-www-form-urlencoded".to_string(),
+                "multipart/form-data".to_string(),
+                "text/plain".to_string(),
+            ],
+        };
 
         // Build the router with middleware and routes
         let router = create_router(state.clone())
@@ -61,8 +73,10 @@ impl AxumApp {
             // Add security middleware layers (order matters!)
             .layer(axum::middleware::from_fn(security_headers_middleware))
             .layer(axum::middleware::from_fn(move |req, next| {
-                input_validation_middleware(input_validation_config.clone(), req, next)
+                input_validation_middleware(Arc::new(input_validation_config.clone()), req, next)
             }))
+            // Add request logging and timeout protection
+            .layer(axum::middleware::from_fn(timeout_middleware))
             // Add utility middleware layers
             .layer(TraceLayer::new_for_http())
             .layer(CorsLayer::permissive())

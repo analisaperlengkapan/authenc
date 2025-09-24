@@ -9,6 +9,8 @@ pub mod anomaly_detector;
 pub mod auth_flow;
 /// Brute force attack prevention and detection
 pub mod brute_force_protector;
+/// OAuth 2.0 Dynamic Client Registration (RFC 7591/7592)
+pub mod client_registration;
 /// Client policy enforcement and validation
 pub mod client_policy;
 /// Service managers for coordinating complex operations
@@ -147,6 +149,7 @@ pub mod vault;
 pub use anomaly_detector::AnomalyDetector;
 pub use auth_flow::AuthenticationManager;
 pub use brute_force_protector::BruteForceProtector;
+pub use client_registration::{ClientRegistrationService, DefaultClientRegistrationService};
 pub use group_store::GroupStore;
 pub use session_store::SessionStore;
 pub use totp_store::TotpStore;

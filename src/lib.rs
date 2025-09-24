@@ -19,7 +19,7 @@
 // Core modules
 /// Application state and initialization
 pub mod app;
-/// Configuration management and validation
+/// Configuration management
 pub mod config;
 /// Cryptographic operations and utilities
 pub mod crypto;
@@ -59,6 +59,12 @@ pub mod vault;
 // SPI architecture
 /// Service Provider Interface framework for extensibility
 pub mod spi;
+
+// Admin Console UI
+/// Web-based admin interface using Leptos
+#[cfg(feature = "admin_console")]
+#[cfg_attr(docsrs, doc(cfg(feature = "admin_console")))]
+pub mod admin_console;
 
 // Re-export commonly used items
 pub use config::AppConfig;

@@ -1,6 +1,8 @@
 // Core data models
 /// Audit logging and compliance models
 pub mod audit;
+/// OAuth 2.0 Dynamic Client Registration models (RFC 7591/7592)
+pub mod client_registration;
 /// Device management and trust models
 pub mod device;
 /// Event system models for user and admin events
@@ -52,6 +54,7 @@ pub mod oidc_client;
 
 // Re-exports for convenience
 pub use audit::*;
+pub use client_registration::*;
 pub use device::*;
 pub use oauth2::*;
 pub use organization::*;

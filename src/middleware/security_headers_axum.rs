@@ -5,52 +5,100 @@ use axum::{
     middleware::Next,
 };
 
-/// Middleware that adds security headers to responses
+/// Middleware that adds comprehensive security headers to responses
 ///
 /// This middleware adds various security headers to HTTP responses to help protect
-/// against common web vulnerabilities such as XSS, clickjacking, and content sniffing.
-/// The headers include:
+/// against common web vulnerabilities such as XSS, clickjacking, content sniffing,
+/// and other modern web security threats. The headers include:
 /// - Strict-Transport-Security: Enforces HTTPS connections
 /// - X-Frame-Options: Prevents clickjacking attacks
 /// - X-Content-Type-Options: Prevents MIME type sniffing
 /// - X-XSS-Protection: Enables XSS filtering in browsers
+/// - Referrer-Policy: Controls referrer information
+/// - Permissions-Policy: Restricts browser features and APIs
+/// - Cross-Origin-Embedder-Policy: Enables cross-origin isolation
+/// - Cross-Origin-Opener-Policy: Protects against certain cross-origin attacks
+/// - Cross-Origin-Resource-Policy: Controls cross-origin resource sharing
 /// - Cache-Control, Pragma, Expires: Prevents caching of sensitive content
 /// - Content-Security-Policy: Restricts resource loading to prevent XSS
 pub async fn security_headers_middleware(request: Request, next: Next) -> Response<Body> {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
 
-    // Security Headers
+    // Transport Security
     headers.insert(
         header::STRICT_TRANSPORT_SECURITY,
-        HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        HeaderValue::from_static("max-age=31536000; includeSubDomains; preload"),
     );
+
+    // Clickjacking Protection
     headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+
+    // MIME Type Sniffing Protection
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
+
+    // XSS Protection
     headers.insert(
         header::X_XSS_PROTECTION,
         HeaderValue::from_static("1; mode=block"),
     );
+
+    // Referrer Policy
+    headers.insert(
+        "Referrer-Policy",
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+
+    // Permissions Policy (formerly Feature Policy)
+    headers.insert(
+        "Permissions-Policy",
+        HeaderValue::from_static(
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), accelerometer=(), gyroscope=(), ambient-light-sensor=(), autoplay=(), encrypted-media=(), fullscreen=(self), picture-in-picture=()"
+        ),
+    );
+
+    // Cross-Origin Policies
+    headers.insert(
+        "Cross-Origin-Embedder-Policy",
+        HeaderValue::from_static("require-corp"),
+    );
+    headers.insert(
+        "Cross-Origin-Opener-Policy",
+        HeaderValue::from_static("same-origin"),
+    );
+    headers.insert(
+        "Cross-Origin-Resource-Policy",
+        HeaderValue::from_static("same-origin"),
+    );
+
+    // Cache Control for Security
     headers.insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store, no-cache, must-revalidate, proxy-revalidate"),
+        HeaderValue::from_static("no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"),
     );
     headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
     headers.insert(header::EXPIRES, HeaderValue::from_static("0"));
 
-    // Content Security Policy
+    // Enhanced Content Security Policy
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
             "default-src 'self'; \
-             script-src 'self'; \
-             style-src 'self'; \
-             img-src 'self' data:; \
+             script-src 'self' 'unsafe-inline'; \
+             style-src 'self' 'unsafe-inline'; \
+             img-src 'self' data: https:; \
              font-src 'self' data:; \
-             connect-src 'self';",
+             connect-src 'self'; \
+             media-src 'none'; \
+             object-src 'none'; \
+             frame-src 'none'; \
+             frame-ancestors 'none'; \
+             form-action 'self'; \
+             upgrade-insecure-requests; \
+             block-all-mixed-content;",
         ),
     );
 

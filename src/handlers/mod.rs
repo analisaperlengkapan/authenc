@@ -1,12 +1,19 @@
 // Re-export axum router for convenience
 use axum::{
     routing::{get, post},
-    Router,
+    Router, response::Html,
 };
 use std::sync::Arc;
 
+use crate::middleware::auth_middleware_axum::auth_layer;
+
 // Database
 use crate::app::AppState;
+
+/// Account Console UI handler
+async fn account_console_handler() -> Html<&'static str> {
+    Html(include_str!("../../static/account.html"))
+}
 
 // Handlers
 /// Health check handlers for Axum web framework
@@ -44,6 +51,8 @@ pub mod api; // Uncommented - contains Axum handlers
              // pub mod authorization;
 /// Identity broker handlers for external authentication providers
 pub mod broker;
+/// OAuth 2.0 Dynamic Client Registration (RFC 7591/7592)
+pub mod client_registration;
 /// Device management handlers
 pub mod device;
 /// Federated authentication handlers with JIT provisioning
@@ -100,7 +109,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .with_state(oauth2_state);
 
-    Router::new()
+    let mut router = Router::new()
         .route("/health", get(health_axum::health))
         .route("/ready", get(health_axum::ready))
         .route("/live", get(health_axum::live))
@@ -115,6 +124,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/oidc/userinfo", get(oidc_ed25519::oidc_userinfo_ed25519))
         // Merge OAuth2 router
         .merge(oauth2_router)
+        // OAuth 2.0 Dynamic Client Registration (RFC 7591/7592)
+        .nest("/oauth2", client_registration::create_client_registration_routes().with_state(state.clone()))
         // Advanced Services API routes
         // Social login routes
         .nest("/api/v1/auth/social", social::create_social_routes().with_state(state.clone()))
@@ -202,11 +213,17 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             api::account::create_account_routes().with_state((
                 state.user_store.clone(),
                 state.session_store.clone(),
+                state.oidc_client_store.clone(),
+                state.totp_store.clone(),
+                state.audit_log_store.clone(),
             )),
         )
         .nest(
             "/api/v1/auth",
-            api::account_credentials::create_account_credentials_routes().with_state(state.user_store.clone()),
+            api::account_credentials::create_account_credentials_routes().with_state(api::account_credentials::AccountCredentialsState {
+                user_store: state.user_store.clone(),
+                totp_store: state.totp_store.clone(),
+            }),
         )
         // Temporarily disabled organization routes due to Axum migration
         // .nest(
@@ -218,8 +235,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Temporarily disabled SAML routes due to Axum migration
         // .nest("/saml", saml::create_saml_routes())
         .nest("/oid4vc", oid4vc::create_oid4vc_router().with_state(state.clone()))
-        .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()))
-        .with_state(db_state)
+        .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()));
+
+    // Static file serving for Account Console UI
+    router = router.nest_service("/static", tower_http::services::ServeDir::new("static"))
+        .route("/account", get(account_console_handler));
+
+    // Admin Console UI routes
+    #[cfg(feature = "admin_console")]
+    {
+        router = router.nest("/admin/console", crate::admin_console::create_admin_console_routes(state.clone(), db_state.clone()));
+    }
+
+    router.with_state(db_state)
 }
 
 #[cfg(test)]

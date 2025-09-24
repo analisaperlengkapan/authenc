@@ -18,6 +18,11 @@ impl UserStore {
     pub fn new(database: Arc<Database>) -> Self {
         Self { database }
     }
+
+    /// Get a reference to the database
+    pub fn database(&self) -> &Arc<Database> {
+        &self.database
+    }
 }
 
 /// Trait for user store operations
@@ -37,6 +42,9 @@ pub trait UserStoreTrait: Send + Sync {
 
     /// Update user
     async fn update_user(&self, user_id: Uuid, request: UpdateUserRequest) -> Result<User, AuthencError>;
+
+    /// Delete user (soft delete)
+    async fn delete_user(&self, user_id: Uuid) -> Result<(), AuthencError>;
 
     /// Get all users
     async fn get_all(&self) -> Result<Vec<User>, AuthencError>;
@@ -63,6 +71,10 @@ impl UserStoreTrait for UserStore {
 
     async fn update_user(&self, user_id: Uuid, request: UpdateUserRequest) -> Result<User, AuthencError> {
         operations::users::update_user(&self.database, user_id, &request).await
+    }
+
+    async fn delete_user(&self, user_id: Uuid) -> Result<(), AuthencError> {
+        operations::users::delete_user(&self.database, user_id).await
     }
 
     async fn get_all(&self) -> Result<Vec<User>, AuthencError> {

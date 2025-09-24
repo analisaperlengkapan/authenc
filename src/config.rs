@@ -122,7 +122,7 @@ pub struct AppConfig {
     pub rate_limit: RateLimitConfig,
 
     /// Security-related configuration
-    pub security: SecurityConfig,
+    pub security: BasicSecurityConfig,
 
     /// Observability configuration (logging, metrics, etc.)
     pub observability: ObservabilityConfig,
@@ -288,9 +288,9 @@ pub struct DatabaseConfig {
 ///
 /// # Example
 /// ```rust
-/// use authenc::config::SecurityConfig;
+/// use authenc::config::BasicSecurityConfig;
 ///
-/// let config = SecurityConfig {
+/// let config = BasicSecurityConfig {
 ///     jwt_secret: "your-secure-jwt-secret".to_string(),
 ///     jwt_expiry: 3600, // 1 hour
 ///     password_min_length: 12,
@@ -298,7 +298,7 @@ pub struct DatabaseConfig {
 /// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SecurityConfig {
+pub struct BasicSecurityConfig {
     /// Secret key for JWT signing and validation
     pub jwt_secret: String,
 
@@ -633,7 +633,7 @@ impl Default for AppConfig {
                 audit_log_url: None,
                 connection_timeout_seconds: 30,
             },
-            security: SecurityConfig {
+            security: BasicSecurityConfig {
                 jwt_secret: env::var("JWT_SECRET")
                     .unwrap_or_else(|_| "default_jwt_secret_change_in_production".to_string()),
                 jwt_expiry: default_jwt_expiry(),
@@ -820,3 +820,128 @@ mod log_level_serde {
         }
     }
 }
+
+// Security Configuration Module
+//
+// This module provides a centralized configuration system for all security-related
+// middleware and features in the Authenc system. It allows for easy configuration
+// and management of security settings across the application.
+
+use std::sync::Arc;
+
+use crate::middleware::*;
+
+/// Comprehensive security configuration for the Authenc system
+#[derive(Clone, Debug)]
+pub struct SecurityMiddlewareConfig {
+    /// Security headers configuration
+    pub headers: SecurityHeadersConfig,
+    /// CSRF protection configuration
+    pub csrf: CsrfConfig,
+    /// Rate limiting configuration
+    pub rate_limit: RateLimitConfig,
+    /// Input validation configuration
+    pub input_validation: InputValidationConfig,
+    /// Security monitoring configuration
+    pub monitoring: SecurityMonitoringConfig,
+}
+
+impl SecurityMiddlewareConfig {
+    /// Create a new security configuration with default secure settings
+    pub fn secure_defaults() -> Self {
+        Self {
+            headers: SecurityHeadersConfig::secure(),
+            csrf: CsrfConfig::default(),
+            rate_limit: RateLimitConfig::default(),
+            input_validation: InputValidationConfig::default(),
+            monitoring: SecurityMonitoringConfig::default(),
+        }
+    }
+
+    /// Create a new security configuration with development-friendly settings
+    pub fn development_defaults() -> Self {
+        Self {
+            headers: SecurityHeadersConfig::development(),
+            csrf: CsrfConfig {
+                enabled: false, // Disable CSRF in development for easier testing
+                ..CsrfConfig::default()
+            },
+            rate_limit: RateLimitConfig::default(),
+            input_validation: InputValidationConfig::default(),
+            monitoring: SecurityMonitoringConfig::default(),
+        }
+    }
+}
+
+impl Default for SecurityMiddlewareConfig {
+    fn default() -> Self {
+        Self::secure_defaults()
+    }
+}
+
+/// Enhanced security headers configuration
+#[derive(Clone, Debug)]
+pub struct SecurityHeadersConfig {
+    /// Whether to enable enhanced security headers
+    pub enabled: bool,
+    /// HSTS max age in seconds
+    pub hsts_max_age: u32,
+    /// Whether to include subdomains in HSTS
+    pub hsts_include_subdomains: bool,
+    /// Whether to enable HSTS preload
+    pub hsts_preload: bool,
+    /// Content Security Policy directives
+    pub csp_directives: Vec<String>,
+}
+
+impl SecurityHeadersConfig {
+    /// Secure defaults for production
+    pub fn secure() -> Self {
+        Self {
+            enabled: true,
+            hsts_max_age: 31536000, // 1 year
+            hsts_include_subdomains: true,
+            hsts_preload: true,
+            csp_directives: vec![
+                "default-src 'self'".to_string(),
+                "script-src 'self' 'unsafe-inline'".to_string(),
+                "style-src 'self' 'unsafe-inline'".to_string(),
+                "img-src 'self' data: https:".to_string(),
+                "font-src 'self' data:".to_string(),
+                "connect-src 'self'".to_string(),
+                "media-src 'none'".to_string(),
+                "object-src 'none'".to_string(),
+                "frame-src 'none'".to_string(),
+                "frame-ancestors 'none'".to_string(),
+                "form-action 'self'".to_string(),
+                "upgrade-insecure-requests".to_string(),
+                "block-all-mixed-content".to_string(),
+            ],
+        }
+    }
+
+    /// Development-friendly settings
+    pub fn development() -> Self {
+        Self {
+            enabled: true,
+            hsts_max_age: 0, // Disable HSTS in development
+            hsts_include_subdomains: false,
+            hsts_preload: false,
+            csp_directives: vec![
+                "default-src 'self' 'unsafe-inline' 'unsafe-eval'".to_string(),
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'".to_string(),
+                "style-src 'self' 'unsafe-inline'".to_string(),
+                "img-src 'self' data: https:".to_string(),
+                "font-src 'self' data:".to_string(),
+                "connect-src 'self' ws: http: https:".to_string(),
+            ],
+        }
+    }
+}
+
+impl Default for SecurityHeadersConfig {
+    fn default() -> Self {
+        Self::secure()
+    }
+}
+

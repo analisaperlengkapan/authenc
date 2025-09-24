@@ -161,6 +161,33 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Delete all sessions for a user
+    ///
+    /// # Arguments
+    /// * `user_id` - The user ID to delete sessions for
+    ///
+    /// # Returns
+    /// * `Result<(), AuthencError>` indicating success or failure
+    pub async fn delete_user_sessions(&self, user_id: Uuid) -> Result<(), AuthencError> {
+        let mut full_sessions = self
+            .full_sessions
+            .write()
+            .map_err(|_| AuthencError::internal("Lock poisoned"))?;
+
+        // Remove all sessions for this user
+        full_sessions.retain(|_, session| session.user_id != user_id);
+
+        // Also clean up the old token-based sessions
+        let mut sessions = self
+            .sessions
+            .write()
+            .map_err(|_| AuthencError::internal("Lock poisoned"))?;
+
+        sessions.retain(|_, uid| uid != &user_id.to_string());
+
+        Ok(())
+    }
+
     /// Store a full session object
     ///
     /// # Arguments

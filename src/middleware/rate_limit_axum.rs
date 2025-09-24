@@ -33,6 +33,12 @@ pub struct RateLimitConfig {
     pub excluded_paths: Vec<String>,
     /// Whether to enable rate limiting (default: true)
     pub enabled: bool,
+    /// Whether to enable progressive delays for rate-limited requests
+    pub progressive_delays: bool,
+    /// Base delay in milliseconds for rate-limited requests
+    pub base_delay_ms: u64,
+    /// Maximum delay in milliseconds for rate-limited requests
+    pub max_delay_ms: u64,
 }
 
 impl Default for RateLimitConfig {
@@ -46,6 +52,9 @@ impl Default for RateLimitConfig {
                 "/metrics".to_string(),
             ],
             enabled: true,
+            progressive_delays: true,
+            base_delay_ms: 1000, // 1 second base delay
+            max_delay_ms: 10000, // 10 seconds max delay
         }
     }
 }
@@ -151,12 +160,37 @@ impl RateLimiterState {
         debug!(%ip, %path, count, "Request within rate limit");
         Ok(())
     }
+
+    /// Calculate progressive delay based on violation history
+    ///
+    /// # Arguments
+    /// * `ip` - The client IP address
+    /// * `path` - The request path
+    ///
+    /// # Returns
+    /// Delay in milliseconds
+    pub fn calculate_progressive_delay(&self, ip: &str, path: &str) -> u64 {
+        let key = format!("{}:{}", ip, path);
+
+        // Get the current violation count (simplified - in production you'd track violations separately)
+        let count = self.counters
+            .get(&key)
+            .map(|entry| entry.0.load(Ordering::Relaxed))
+            .unwrap_or(0);
+
+        // Calculate delay: base_delay * 2^(violations - limit)
+        let violations_over_limit = count.saturating_sub(self.config.requests_per_minute) as u32;
+        let multiplier = 1u64 << violations_over_limit.min(10); // Cap at 2^10 = 1024x
+
+        let delay = self.config.base_delay_ms.saturating_mul(multiplier);
+        delay.min(self.config.max_delay_ms)
+    }
 }
 
-/// Middleware function for rate limiting
+/// Middleware function for rate limiting with progressive delays
 ///
 /// This middleware checks if the request should be rate limited based on the client's IP and request path.
-/// If rate limited, it returns a 429 Too Many Requests response with appropriate headers.
+/// If rate limited, it returns a 429 Too Many Requests response with progressive delays to slow down attackers.
 ///
 /// # Arguments
 /// * `ConnectInfo(addr)` - The client's connection info (contains IP address)
@@ -165,7 +199,7 @@ impl RateLimiterState {
 /// * `next` - The next middleware in the chain
 ///
 /// # Returns
-/// The response from the next middleware, or a 429 response if rate limited
+/// The response from the next middleware, or a 429 response with delay if rate limited
 pub async fn rate_limit_middleware(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<RateLimiterState>>,
@@ -180,7 +214,16 @@ pub async fn rate_limit_middleware(
             let response = next.run(request).await;
             Ok(response)
         }
-        Err(AuthencError::RateLimitExceeded) => Err(StatusCode::TOO_MANY_REQUESTS),
+        Err(AuthencError::RateLimitExceeded) => {
+            // Apply progressive delay if enabled
+            if state.config.progressive_delays {
+                let delay = state.calculate_progressive_delay(&ip, path);
+                debug!(%ip, %path, delay_ms = delay, "Applying progressive delay for rate limited request");
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+            }
+
+            Err(StatusCode::TOO_MANY_REQUESTS)
+        }
         Err(_) => {
             error!(%ip, %path, "Unexpected error in rate limiting");
             Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -299,6 +342,9 @@ mod tests {
             requests_per_minute: 2,
             excluded_paths: vec!["/health".to_string()],
             enabled: true,
+            progressive_delays: false, // Disable for test
+            base_delay_ms: 1000,
+            max_delay_ms: 10000,
         };
 
         let state = RateLimiterState::new(config);
