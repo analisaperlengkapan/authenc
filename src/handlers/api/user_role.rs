@@ -47,13 +47,9 @@ pub async fn assign_role(
     };
 
     // Assign role to user using database operation
-    database::operations::roles::assign_role_to_user(
-        &state.database,
-        &user_uuid,
-        &role.id,
-    )
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    database::operations::roles::assign_role_to_user(&state.database, &user_uuid, &role.id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Fire admin event
     let auth_details = AuthDetails {
@@ -109,13 +105,9 @@ pub async fn unassign_role(
     };
 
     // Remove role from user using database operation
-    database::operations::roles::remove_role_from_user(
-        &state.database,
-        &user_uuid,
-        &role.id,
-    )
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    database::operations::roles::remove_role_from_user(&state.database, &user_uuid, &role.id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Fire admin event
     let auth_details = AuthDetails {

@@ -38,13 +38,10 @@ pub async fn check_user_permission(
     let user_id = Uuid::parse_str(&auth.0.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     // Check if user has the specified permission
-    let has_permission = operations::roles::user_has_permission(
-        &state.database,
-        &user_id,
-        &query.permission,
-    )
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let has_permission =
+        operations::roles::user_has_permission(&state.database, &user_id, &query.permission)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(has_permission))
 }

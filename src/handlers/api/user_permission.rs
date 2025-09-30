@@ -1,7 +1,6 @@
 use crate::app::AppState;
 use crate::database;
 use crate::handlers::api::auth_bearer::AuthBearer;
-use crate::models::permission::Permission;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -85,17 +84,13 @@ pub async fn get_user_permissions(
     let target_user_id = Uuid::parse_str(&user_id).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Get user permissions from database
-    let permissions = database::operations::roles::get_user_permissions(
-        &state.database,
-        &target_user_id,
-    )
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let permissions =
+        database::operations::roles::get_user_permissions(&state.database, &target_user_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Convert permissions to string format (resource:action)
-    let permission_strings: Vec<String> = permissions
-        .into_iter()
-        .collect();
+    let permission_strings: Vec<String> = permissions.into_iter().collect();
 
     Ok(Json(permission_strings))
 }

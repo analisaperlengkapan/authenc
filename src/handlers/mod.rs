@@ -252,8 +252,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .nest(
             "/api/v1/auth",
-            api::permission_check::create_permission_check_routes()
-                .with_state(state.clone()),
+            api::permission_check::create_permission_check_routes().with_state(state.clone()),
         )
         .nest(
             "/api/v1/auth",

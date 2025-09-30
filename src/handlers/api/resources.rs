@@ -200,7 +200,11 @@ pub struct ResourcesResponse {
 }
 
 /// Generate pagination links based on current query parameters
-fn generate_pagination_links(first: Option<i32>, max: Option<i32>, total_count: i64) -> Option<PaginationLinks> {
+fn generate_pagination_links(
+    first: Option<i32>,
+    max: Option<i32>,
+    total_count: i64,
+) -> Option<PaginationLinks> {
     let first = first.unwrap_or(0);
     let max = max.unwrap_or(20);
 

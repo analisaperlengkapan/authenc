@@ -100,13 +100,11 @@ impl ResourceStoreTrait for ResourceStore {
         resource_server_id: Uuid,
         owner: String,
     ) -> Result<Resource, AuthencError> {
-        let resource_value = serde_json::to_value(&request).map_err(|e| AuthencError::validation(format!("Invalid resource data: {}", e)))?;
-        crate::database::operations::resources::create_resource(
-            &self.database,
-            &resource_value,
-        )
-        .await
-        .map_err(|e| AuthencError::database(e.to_string()))?;
+        let resource_value = serde_json::to_value(&request)
+            .map_err(|e| AuthencError::validation(format!("Invalid resource data: {}", e)))?;
+        crate::database::operations::resources::create_resource(&self.database, &resource_value)
+            .await
+            .map_err(|e| AuthencError::database(e.to_string()))?;
 
         // For now, return a dummy resource since this is a stub
         Ok(Resource {

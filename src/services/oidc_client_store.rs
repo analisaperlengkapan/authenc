@@ -1,7 +1,7 @@
 use crate::database::Database;
 use crate::error::Result;
 use crate::models::oidc_client::OidcClient;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 

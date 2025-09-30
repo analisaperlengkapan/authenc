@@ -52,7 +52,8 @@ pub struct AppState {
     /// OIDC client store for OAuth2/OIDC client management
     pub oidc_client_store: Arc<crate::services::oidc_client_store::OidcClientStore>,
     /// Social account store for social login account linking
-    pub social_account_store: Arc<crate::services::stores::social_account_store::SocialAccountStore>,
+    pub social_account_store:
+        Arc<crate::services::stores::social_account_store::SocialAccountStore>,
     /// Identity broker registry for external authentication providers
     pub broker_registry: Arc<crate::services::broker::IdentityBrokerRegistry>,
     /// OID4VC service for verifiable credentials
@@ -146,7 +147,9 @@ impl AppState {
 
         // Initialize social account store
         let social_account_store = Arc::new(
-            crate::services::stores::social_account_store::SocialAccountStore::new(database.clone()),
+            crate::services::stores::social_account_store::SocialAccountStore::new(
+                database.clone(),
+            ),
         );
 
         // Initialize identity broker registry

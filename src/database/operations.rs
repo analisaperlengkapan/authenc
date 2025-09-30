@@ -796,8 +796,8 @@ pub mod organizations {
         if let Some(row) = row {
             // Convert row to Organization
             let attributes_json: serde_json::Value = row.get(10);
-            let attributes: HashMap<String, String> = serde_json::from_value(attributes_json)
-                .unwrap_or_default();
+            let attributes: HashMap<String, String> =
+                serde_json::from_value(attributes_json).unwrap_or_default();
 
             Ok(Some(Organization {
                 id: row.get(0),
@@ -875,10 +875,11 @@ pub mod organizations {
             ORDER BY om.joined_at
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &[organization_id]).await.map_err(|e| {
-            error!("Failed to get organization members: {}", e);
-            AuthencError::database("Failed to get organization members")
-        })?;
+        let rows: Vec<tokio_postgres::Row> =
+            db.query(query, &[organization_id]).await.map_err(|e| {
+                error!("Failed to get organization members: {}", e);
+                AuthencError::database("Failed to get organization members")
+            })?;
 
         let mut members = Vec::new();
         for row in rows {
@@ -886,7 +887,10 @@ pub mod organizations {
                 id: row.get(0),
                 organization_id: row.get(1),
                 user_id: row.get(2),
-                role: OrganizationRole::from_str(&row.get::<_, String>(3)).unwrap_or(OrganizationRole::Member).as_str().to_string(),
+                role: OrganizationRole::from_str(&row.get::<_, String>(3))
+                    .unwrap_or(OrganizationRole::Member)
+                    .as_str()
+                    .to_string(),
                 invited_by: row.get(4),
                 invited_at: row.get(5),
                 joined_at: row.get(6),
@@ -899,7 +903,10 @@ pub mod organizations {
     }
 
     /// Get user organizations
-    pub async fn get_user_organizations(db: &Database, user_id: &Uuid) -> Result<Vec<Organization>> {
+    pub async fn get_user_organizations(
+        db: &Database,
+        user_id: &Uuid,
+    ) -> Result<Vec<Organization>> {
         let query = r#"
             SELECT
                 o.id, o.name, o.display_name, o.description, o.domain, o.logo_url, o.website_url,
@@ -1221,7 +1228,6 @@ pub mod audit {
         db.execute(query, &[]).await
     }
 }
-
 
 /// Database operations for users
 pub mod users {
@@ -1801,7 +1807,10 @@ pub mod social_accounts {
     use uuid::Uuid;
 
     /// Get social account by ID
-    pub async fn get_social_account(db: &Database, account_id: Uuid) -> Result<Option<SocialAccount>> {
+    pub async fn get_social_account(
+        db: &Database,
+        account_id: Uuid,
+    ) -> Result<Option<SocialAccount>> {
         let query = r#"
             SELECT id, user_id, provider, provider_user_id, display_name, email,
                    profile_picture_url, access_token, refresh_token, token_expires_at,
@@ -1814,7 +1823,8 @@ pub mod social_accounts {
         match row {
             Some(row) => {
                 let provider_str: String = row.get(2);
-                let provider = SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
+                let provider =
+                    SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
 
                 Ok(Some(SocialAccount {
                     id: row.get(0),
@@ -1836,7 +1846,10 @@ pub mod social_accounts {
     }
 
     /// Get user's social accounts
-    pub async fn get_user_social_accounts(db: &Database, user_id: Uuid) -> Result<Vec<SocialAccount>> {
+    pub async fn get_user_social_accounts(
+        db: &Database,
+        user_id: Uuid,
+    ) -> Result<Vec<SocialAccount>> {
         let query = r#"
             SELECT id, user_id, provider, provider_user_id, display_name, email,
                    profile_picture_url, access_token, refresh_token, token_expires_at,
@@ -1851,7 +1864,8 @@ pub mod social_accounts {
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 let provider_str: String = row.get(2);
-                let provider = SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
+                let provider =
+                    SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
 
                 SocialAccount {
                     id: row.get(0),
@@ -1887,11 +1901,14 @@ pub mod social_accounts {
             WHERE provider = $1 AND provider_user_id = $2 AND deleted_at IS NULL
         "#;
 
-        let row = db.query_opt(query, &[&provider.as_str(), &provider_user_id]).await?;
+        let row = db
+            .query_opt(query, &[&provider.as_str(), &provider_user_id])
+            .await?;
         match row {
             Some(row) => {
                 let provider_str: String = row.get(2);
-                let provider = SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
+                let provider =
+                    SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
 
                 Ok(Some(SocialAccount {
                     id: row.get(0),
@@ -2055,7 +2072,8 @@ pub mod social_accounts {
             WHERE user_id = $1 AND provider = $2 AND deleted_at IS NULL
         "#;
 
-        db.execute(query, &[&user_id, &provider.as_str(), &now]).await?;
+        db.execute(query, &[&user_id, &provider.as_str(), &now])
+            .await?;
 
         Ok(())
     }
@@ -2250,7 +2268,7 @@ pub mod realms {
     }
 
     /// Helper function to convert database row to Realm
-   
+
     fn row_to_realm(row: tokio_postgres::Row) -> Realm {
         Realm {
             id: row.get(0),
@@ -2991,7 +3009,10 @@ pub mod auth_flows {
     use uuid::Uuid;
 
     /// Create authentication flow
-    pub async fn create_flow(_db: &Database, _flow: &serde_json::Value) -> Result<serde_json::Value> {
+    pub async fn create_flow(
+        _db: &Database,
+        _flow: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
         // TODO: Implement
         Ok(serde_json::json!({}))
     }
@@ -3003,13 +3024,20 @@ pub mod auth_flows {
     }
 
     /// List authentication flows
-    pub async fn list_flows(_db: &Database, _realm_id: Option<Uuid>) -> Result<Vec<serde_json::Value>> {
+    pub async fn list_flows(
+        _db: &Database,
+        _realm_id: Option<Uuid>,
+    ) -> Result<Vec<serde_json::Value>> {
         // TODO: Implement
         Ok(vec![])
     }
 
     /// Update authentication flow
-    pub async fn update_flow(_db: &Database, _flow_id: Uuid, _flow: &serde_json::Value) -> Result<serde_json::Value> {
+    pub async fn update_flow(
+        _db: &Database,
+        _flow_id: Uuid,
+        _flow: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
         // TODO: Implement
         Ok(serde_json::json!({}))
     }
@@ -3021,13 +3049,19 @@ pub mod auth_flows {
     }
 
     /// Create authentication execution
-    pub async fn create_execution(_db: &Database, _execution: &serde_json::Value) -> Result<serde_json::Value> {
+    pub async fn create_execution(
+        _db: &Database,
+        _execution: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
         // TODO: Implement
         Ok(serde_json::json!({}))
     }
 
     /// Create authentication session
-    pub async fn create_session(_db: &Database, _session: &serde_json::Value) -> Result<serde_json::Value> {
+    pub async fn create_session(
+        _db: &Database,
+        _session: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
         // TODO: Implement
         Ok(serde_json::json!({}))
     }
@@ -3040,25 +3074,38 @@ pub mod resources {
     use uuid::Uuid;
 
     /// Create resource
-    pub async fn create_resource(_db: &Database, _resource: &serde_json::Value) -> Result<serde_json::Value> {
+    pub async fn create_resource(
+        _db: &Database,
+        _resource: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
         // TODO: Implement
         Ok(serde_json::json!({}))
     }
 
     /// Get resource by ID
-    pub async fn get_resource(_db: &Database, _resource_id: Uuid) -> Result<Option<serde_json::Value>> {
+    pub async fn get_resource(
+        _db: &Database,
+        _resource_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
         // TODO: Implement
         Ok(None)
     }
 
     /// List resources
-    pub async fn list_resources(_db: &Database, _owner_id: Option<Uuid>) -> Result<Vec<serde_json::Value>> {
+    pub async fn list_resources(
+        _db: &Database,
+        _owner_id: Option<Uuid>,
+    ) -> Result<Vec<serde_json::Value>> {
         // TODO: Implement
         Ok(vec![])
     }
 
     /// Update resource
-    pub async fn update_resource(_db: &Database, _resource_id: Uuid, _resource: &serde_json::Value) -> Result<serde_json::Value> {
+    pub async fn update_resource(
+        _db: &Database,
+        _resource_id: Uuid,
+        _resource: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
         // TODO: Implement
         Ok(serde_json::json!({}))
     }
@@ -3069,26 +3116,26 @@ pub mod resources {
         Ok(())
     }
 }
-    use crate::{
-        database::Database,
-        error::{AuthencError, Result},
-        models::events::{AdminEvent, AuthDetails, Event, EventType, OperationType, ResourceType},
-        spi::events::{AdminEventOperationType, AdminEventQuery, EventQuery},
-    };
-    use chrono::Utc;
-    use log::error;
-    use serde_json;
-    use std::collections::HashMap;
-    use uuid::Uuid;
+use crate::{
+    database::Database,
+    error::{AuthencError, Result},
+    models::events::{AdminEvent, AuthDetails, Event, EventType, OperationType, ResourceType},
+    spi::events::{AdminEventOperationType, AdminEventQuery, EventQuery},
+};
 
-    /// Store a user event in the database
-    pub async fn store_event(db: &Database, event: &Event) -> Result<()> {
-        let details_json = serde_json::to_string(&event.details).map_err(|e| {
-            error!("Failed to serialize event details: {}", e);
-            AuthencError::validation("Failed to serialize event details")
-        })?;
+use log::error;
+use serde_json;
+use std::collections::HashMap;
+use uuid::Uuid;
 
-        let query = r#"
+/// Store a user event in the database
+pub async fn store_event(db: &Database, event: &Event) -> Result<()> {
+    let details_json = serde_json::to_string(&event.details).map_err(|e| {
+        error!("Failed to serialize event details: {}", e);
+        AuthencError::validation("Failed to serialize event details")
+    })?;
+
+    let query = r#"
             INSERT INTO events (
                 id, time, event_type, realm_id, realm_name, client_id,
                 user_id, session_id, ip_address, error, details
@@ -3096,34 +3143,35 @@ pub mod resources {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         "#;
 
-        db.execute(
-            query,
-            &[
-                &Uuid::parse_str(&event.id).map_err(|_| AuthencError::validation("Invalid event ID"))?,
-                &event.time,
-                &event.event_type.as_str(),
-                &event.realm_id,
-                &event.realm_name,
-                &event.client_id,
-                &event.user_id,
-                &event.session_id,
-                &event.ip_address,
-                &event.error,
-                &details_json,
-            ],
-        )
-        .await
-        .map_err(|e| {
-            error!("Failed to store event: {}", e);
-            AuthencError::database("Failed to store event")
-        })?;
+    db.execute(
+        query,
+        &[
+            &Uuid::parse_str(&event.id)
+                .map_err(|_| AuthencError::validation("Invalid event ID"))?,
+            &event.time,
+            &event.event_type.as_str(),
+            &event.realm_id,
+            &event.realm_name,
+            &event.client_id,
+            &event.user_id,
+            &event.session_id,
+            &event.ip_address,
+            &event.error,
+            &details_json,
+        ],
+    )
+    .await
+    .map_err(|e| {
+        error!("Failed to store event: {}", e);
+        AuthencError::database("Failed to store event")
+    })?;
 
-        Ok(())
-    }
+    Ok(())
+}
 
-    /// Store an admin event in the database
-    pub async fn store_admin_event(db: &Database, event: &AdminEvent) -> Result<()> {
-        let query = r#"
+/// Store an admin event in the database
+pub async fn store_admin_event(db: &Database, event: &AdminEvent) -> Result<()> {
+    let query = r#"
             INSERT INTO admin_events (
                 id, time, realm_id, realm_name, auth_user_id, auth_username,
                 auth_ip_address, auth_user_agent, resource_type, operation_type,
@@ -3132,95 +3180,97 @@ pub mod resources {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         "#;
 
-        db.execute(
-            query,
-            &[
-                &Uuid::parse_str(&event.id).map_err(|_| AuthencError::validation("Invalid admin event ID"))?,
-                &event.time,
-                &event.realm_id,
-                &event.realm_name,
-                &Uuid::parse_str(&event.auth_details.user_id).map_err(|_| AuthencError::validation("Invalid auth user ID"))?,
-                &event.auth_details.username,
-                &event.auth_details.ip_address,
-                &event.auth_details.user_agent,
-                &event.resource_type.as_str(),
-                &event.operation_type.as_str(),
-                &event.resource_path,
-                &event.representation,
-                &event.error,
-            ],
-        )
-        .await
-        .map_err(|e| {
-            error!("Failed to store admin event: {}", e);
-            AuthencError::database("Failed to store admin event")
-        })?;
+    db.execute(
+        query,
+        &[
+            &Uuid::parse_str(&event.id)
+                .map_err(|_| AuthencError::validation("Invalid admin event ID"))?,
+            &event.time,
+            &event.realm_id,
+            &event.realm_name,
+            &Uuid::parse_str(&event.auth_details.user_id)
+                .map_err(|_| AuthencError::validation("Invalid auth user ID"))?,
+            &event.auth_details.username,
+            &event.auth_details.ip_address,
+            &event.auth_details.user_agent,
+            &event.resource_type.as_str(),
+            &event.operation_type.as_str(),
+            &event.resource_path,
+            &event.representation,
+            &event.error,
+        ],
+    )
+    .await
+    .map_err(|e| {
+        error!("Failed to store admin event: {}", e);
+        AuthencError::database("Failed to store admin event")
+    })?;
 
-        Ok(())
+    Ok(())
+}
+
+/// Query events based on the provided query parameters
+pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event>> {
+    let mut conditions = Vec::new();
+    let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+    let mut param_index = 1;
+
+    // Build WHERE conditions
+    if let Some(realm_id) = &query.realm_id {
+        conditions.push(format!("realm_id = ${}", param_index));
+        params.push(Box::new(realm_id.clone()));
+        param_index += 1;
     }
 
-    /// Query events based on the provided query parameters
-    pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event>> {
-        let mut conditions = Vec::new();
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
-        let mut param_index = 1;
+    if let Some(user_id) = &query.user_id {
+        conditions.push(format!("user_id = ${}", param_index));
+        params.push(Box::new(user_id.clone()));
+        param_index += 1;
+    }
 
-        // Build WHERE conditions
-        if let Some(realm_id) = &query.realm_id {
-            conditions.push(format!("realm_id = ${}", param_index));
-            params.push(Box::new(realm_id.clone()));
+    if let Some(client_id) = &query.client_id {
+        conditions.push(format!("client_id = ${}", param_index));
+        params.push(Box::new(client_id.clone()));
+        param_index += 1;
+    }
+
+    if let Some(event_types) = &query.event_types {
+        if let Some(event_type) = event_types.first() {
+            conditions.push(format!("event_type = ${}", param_index));
+            params.push(Box::new(event_type.as_str()));
             param_index += 1;
         }
+    }
 
-        if let Some(user_id) = &query.user_id {
-            conditions.push(format!("user_id = ${}", param_index));
-            params.push(Box::new(user_id.clone()));
-            param_index += 1;
-        }
+    if let Some(from_date) = &query.date_from {
+        conditions.push(format!("time >= ${}", param_index));
+        params.push(Box::new(from_date.clone()));
+        param_index += 1;
+    }
 
-        if let Some(client_id) = &query.client_id {
-            conditions.push(format!("client_id = ${}", param_index));
-            params.push(Box::new(client_id.clone()));
-            param_index += 1;
-        }
+    if let Some(to_date) = &query.date_to {
+        conditions.push(format!("time <= ${}", param_index));
+        params.push(Box::new(to_date.clone()));
+        param_index += 1;
+    }
 
-        if let Some(event_types) = &query.event_types {
-            if let Some(event_type) = event_types.first() {
-                conditions.push(format!("event_type = ${}", param_index));
-                params.push(Box::new(event_type.as_str()));
-                param_index += 1;
-            }
-        }
+    if let Some(ip_address) = &query.ip_address {
+        conditions.push(format!("ip_address = ${}", param_index));
+        params.push(Box::new(ip_address.clone()));
+        param_index += 1;
+    }
 
-        if let Some(from_date) = &query.date_from {
-            conditions.push(format!("time >= ${}", param_index));
-            params.push(Box::new(from_date.clone()));
-            param_index += 1;
-        }
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
 
-        if let Some(to_date) = &query.date_to {
-            conditions.push(format!("time <= ${}", param_index));
-            params.push(Box::new(to_date.clone()));
-            param_index += 1;
-        }
+    let limit = query.max_results.unwrap_or(100).min(1000);
+    let offset = query.first_result.unwrap_or(0);
 
-        if let Some(ip_address) = &query.ip_address {
-            conditions.push(format!("ip_address = ${}", param_index));
-            params.push(Box::new(ip_address.clone()));
-            param_index += 1;
-        }
-
-        let where_clause = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", conditions.join(" AND "))
-        };
-
-        let limit = query.max_results.unwrap_or(100).min(1000);
-        let offset = query.first_result.unwrap_or(0);
-
-        let query_sql = format!(
-            r#"
+    let query_sql = format!(
+        r#"
             SELECT
                 id, time, event_type, realm_id, realm_name, client_id,
                 user_id, session_id, ip_address, error, details
@@ -3229,107 +3279,114 @@ pub mod resources {
             ORDER BY time DESC
             LIMIT ${} OFFSET ${}
             "#,
-            where_clause, param_index, param_index + 1
-        );
+        where_clause,
+        param_index,
+        param_index + 1
+    );
 
-        params.push(Box::new(limit as i64));
-        params.push(Box::new(offset as i64));
+    params.push(Box::new(limit as i64));
+    params.push(Box::new(offset as i64));
 
-        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params.iter().map(|p| p.as_ref()).collect();
+    let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+        params.iter().map(|p| p.as_ref()).collect();
 
-        let rows: Vec<tokio_postgres::Row> = db.query(&query_sql, &param_refs).await.map_err(|e| {
-            error!("Failed to query events: {}", e);
-            AuthencError::database("Failed to query events")
-        })?;
+    let rows: Vec<tokio_postgres::Row> = db.query(&query_sql, &param_refs).await.map_err(|e| {
+        error!("Failed to query events: {}", e);
+        AuthencError::database("Failed to query events")
+    })?;
 
-        let mut events = Vec::new();
-        for row in rows {
-            let details_json: String = row.get(10);
-            let details: HashMap<String, String> = serde_json::from_str(&details_json).unwrap_or_default();
+    let mut events = Vec::new();
+    for row in rows {
+        let details_json: String = row.get(10);
+        let details: HashMap<String, String> =
+            serde_json::from_str(&details_json).unwrap_or_default();
 
-            events.push(Event {
-                id: row.get::<_, Uuid>(0).to_string(),
-                time: row.get(1),
-                event_type: EventType::from_str(&row.get::<_, String>(2)).unwrap_or(EventType::Login),
-                realm_id: row.get(3),
-                realm_name: row.get(4),
-                client_id: row.get(5),
-                user_id: row.get(6),
-                session_id: row.get(7),
-                ip_address: row.get(8),
-                error: row.get(9),
-                details,
-            });
-        }
-
-        Ok(events)
+        events.push(Event {
+            id: row.get::<_, Uuid>(0).to_string(),
+            time: row.get(1),
+            event_type: EventType::from_str(&row.get::<_, String>(2)).unwrap_or(EventType::Login),
+            realm_id: row.get(3),
+            realm_name: row.get(4),
+            client_id: row.get(5),
+            user_id: row.get(6),
+            session_id: row.get(7),
+            ip_address: row.get(8),
+            error: row.get(9),
+            details,
+        });
     }
 
-    /// Query admin events based on the provided query parameters
-    pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Result<Vec<AdminEvent>> {
-        let mut conditions = Vec::new();
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
-        let mut param_index = 1;
+    Ok(events)
+}
 
-        // Build WHERE conditions
-        if let Some(realm_id) = &query.realm_id {
-            conditions.push(format!("realm_id = ${}", param_index));
-            params.push(Box::new(realm_id.clone()));
-            param_index += 1;
-        }
+/// Query admin events based on the provided query parameters
+pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Result<Vec<AdminEvent>> {
+    let mut conditions = Vec::new();
+    let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+    let mut param_index = 1;
 
-        if let Some(auth_user_id) = &query.auth_user_id {
-            conditions.push(format!("auth_user_id = ${}", param_index));
-            params.push(Box::new(Uuid::parse_str(auth_user_id).map_err(|_| AuthencError::validation("Invalid auth user ID"))?));
-            param_index += 1;
-        }
+    // Build WHERE conditions
+    if let Some(realm_id) = &query.realm_id {
+        conditions.push(format!("realm_id = ${}", param_index));
+        params.push(Box::new(realm_id.clone()));
+        param_index += 1;
+    }
 
-        if let Some(resource_type) = &query.resource_type {
-            conditions.push(format!("resource_type = ${}", param_index));
-            params.push(Box::new(resource_type.as_str()));
-            param_index += 1;
-        }
+    if let Some(auth_user_id) = &query.auth_user_id {
+        conditions.push(format!("auth_user_id = ${}", param_index));
+        params
+            .push(Box::new(Uuid::parse_str(auth_user_id).map_err(|_| {
+                AuthencError::validation("Invalid auth user ID")
+            })?));
+        param_index += 1;
+    }
 
-        if let Some(operation_type) = &query.operation_type {
-            conditions.push(format!("operation_type = ${}", param_index));
-            params.push(Box::new(match operation_type {
-                AdminEventOperationType::Create => "CREATE",
-                AdminEventOperationType::Update => "UPDATE", 
-                AdminEventOperationType::Delete => "DELETE",
-                AdminEventOperationType::Action => "ACTION",
-            }));
-            param_index += 1;
-        }
+    if let Some(resource_type) = &query.resource_type {
+        conditions.push(format!("resource_type = ${}", param_index));
+        params.push(Box::new(resource_type.as_str()));
+        param_index += 1;
+    }
 
-        if let Some(from_date) = &query.date_from {
-            conditions.push(format!("time >= ${}", param_index));
-            params.push(Box::new(from_date.clone()));
-            param_index += 1;
-        }
+    if let Some(operation_type) = &query.operation_type {
+        conditions.push(format!("operation_type = ${}", param_index));
+        params.push(Box::new(match operation_type {
+            AdminEventOperationType::Create => "CREATE",
+            AdminEventOperationType::Update => "UPDATE",
+            AdminEventOperationType::Delete => "DELETE",
+            AdminEventOperationType::Action => "ACTION",
+        }));
+        param_index += 1;
+    }
 
-        if let Some(to_date) = &query.date_to {
-            conditions.push(format!("time <= ${}", param_index));
-            params.push(Box::new(to_date.clone()));
-            param_index += 1;
-        }
+    if let Some(from_date) = &query.date_from {
+        conditions.push(format!("time >= ${}", param_index));
+        params.push(Box::new(from_date.clone()));
+        param_index += 1;
+    }
 
-        if let Some(resource_path) = &query.resource_type {
-            conditions.push(format!("resource_path LIKE ${}", param_index));
-            params.push(Box::new(format!("%{}%", resource_path)));
-            param_index += 1;
-        }
+    if let Some(to_date) = &query.date_to {
+        conditions.push(format!("time <= ${}", param_index));
+        params.push(Box::new(to_date.clone()));
+        param_index += 1;
+    }
 
-        let where_clause = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", conditions.join(" AND "))
-        };
+    if let Some(resource_path) = &query.resource_type {
+        conditions.push(format!("resource_path LIKE ${}", param_index));
+        params.push(Box::new(format!("%{}%", resource_path)));
+        param_index += 1;
+    }
 
-        let limit = query.max_results.unwrap_or(100).min(1000);
-        let offset = query.first_result.unwrap_or(0);
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
 
-        let query_sql = format!(
-            r#"
+    let limit = query.max_results.unwrap_or(100).min(1000);
+    let offset = query.first_result.unwrap_or(0);
+
+    let query_sql = format!(
+        r#"
             SELECT
                 id, time, realm_id, realm_name, auth_user_id, auth_username,
                 auth_ip_address, auth_user_agent, resource_type, operation_type,
@@ -3339,63 +3396,71 @@ pub mod resources {
             ORDER BY time DESC
             LIMIT ${} OFFSET ${}
             "#,
-            where_clause, param_index, param_index + 1
-        );
+        where_clause,
+        param_index,
+        param_index + 1
+    );
 
-        params.push(Box::new(limit as i64));
-        params.push(Box::new(offset as i64));
+    params.push(Box::new(limit as i64));
+    params.push(Box::new(offset as i64));
 
-        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params.iter().map(|p| p.as_ref()).collect();
+    let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+        params.iter().map(|p| p.as_ref()).collect();
 
-        let rows: Vec<tokio_postgres::Row> = db.query(&query_sql, &param_refs).await.map_err(|e| {
-            error!("Failed to query admin events: {}", e);
-            AuthencError::database("Failed to query admin events")
-        })?;
+    let rows: Vec<tokio_postgres::Row> = db.query(&query_sql, &param_refs).await.map_err(|e| {
+        error!("Failed to query admin events: {}", e);
+        AuthencError::database("Failed to query admin events")
+    })?;
 
-        let mut events = Vec::new();
-        for row in rows {
-            events.push(AdminEvent {
-                id: row.get::<_, Uuid>(0).to_string(),
-                time: row.get(1),
-                realm_id: row.get(2),
-                realm_name: row.get(3),
-                auth_details: AuthDetails {
-                    user_id: row.get::<_, Option<Uuid>>(4).map(|id| id.to_string()).unwrap_or_default(),
-                    username: row.get(5),
-                    ip_address: row.get(6),
-                    user_agent: row.get(7),
-                },
-                resource_type: ResourceType::from_str(&row.get::<_, String>(8)).unwrap_or(ResourceType::User),
-                operation_type: OperationType::from_str(&row.get::<_, String>(9)).unwrap_or(OperationType::Create),
-                resource_path: row.get(10),
-                representation: row.get(11),
-                error: row.get(12),
-            });
-        }
-
-        Ok(events)
+    let mut events = Vec::new();
+    for row in rows {
+        events.push(AdminEvent {
+            id: row.get::<_, Uuid>(0).to_string(),
+            time: row.get(1),
+            realm_id: row.get(2),
+            realm_name: row.get(3),
+            auth_details: AuthDetails {
+                user_id: row
+                    .get::<_, Option<Uuid>>(4)
+                    .map(|id| id.to_string())
+                    .unwrap_or_default(),
+                username: row.get(5),
+                ip_address: row.get(6),
+                user_agent: row.get(7),
+            },
+            resource_type: ResourceType::from_str(&row.get::<_, String>(8))
+                .unwrap_or(ResourceType::User),
+            operation_type: OperationType::from_str(&row.get::<_, String>(9))
+                .unwrap_or(OperationType::Create),
+            resource_path: row.get(10),
+            representation: row.get(11),
+            error: row.get(12),
+        });
     }
 
-    /// Clear old events based on retention policy
-    pub async fn clear_old_events(db: &Database, retention_days: i32) -> Result<i64> {
-        let query = "DELETE FROM events WHERE time < NOW() - INTERVAL '1 day' * $1";
+    Ok(events)
+}
 
-        let deleted = db.execute(query, &[&retention_days]).await.map_err(|e| {
-            error!("Failed to clear old events: {}", e);
-            AuthencError::database("Failed to clear old events")
-        })?;
+/// Clear old events based on retention policy
+pub async fn clear_old_events(db: &Database, retention_days: i32) -> Result<i64> {
+    let query = "DELETE FROM events WHERE time < NOW() - INTERVAL '1 day' * $1";
 
-        Ok(deleted as i64)
-    }
+    let deleted = db.execute(query, &[&retention_days]).await.map_err(|e| {
+        error!("Failed to clear old events: {}", e);
+        AuthencError::database("Failed to clear old events")
+    })?;
 
-    /// Clear old admin events based on retention policy
-    pub async fn clear_old_admin_events(db: &Database, retention_days: i32) -> Result<i64> {
-        let query = "DELETE FROM admin_events WHERE time < NOW() - INTERVAL '1 day' * $1";
+    Ok(deleted as i64)
+}
 
-        let deleted = db.execute(query, &[&retention_days]).await.map_err(|e| {
-            error!("Failed to clear old admin events: {}", e);
-            AuthencError::database("Failed to clear old admin events")
-        })?;
+/// Clear old admin events based on retention policy
+pub async fn clear_old_admin_events(db: &Database, retention_days: i32) -> Result<i64> {
+    let query = "DELETE FROM admin_events WHERE time < NOW() - INTERVAL '1 day' * $1";
 
-        Ok(deleted as i64)
-    }
+    let deleted = db.execute(query, &[&retention_days]).await.map_err(|e| {
+        error!("Failed to clear old admin events: {}", e);
+        AuthencError::database("Failed to clear old admin events")
+    })?;
+
+    Ok(deleted as i64)
+}

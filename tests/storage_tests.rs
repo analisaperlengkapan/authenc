@@ -112,7 +112,11 @@ impl UserStoreTrait for MockUserStore {
 
     async fn get_users_by_realm(&self, realm_id: Uuid) -> Result<Vec<User>, AuthencError> {
         let users = self.users.lock().unwrap();
-        Ok(users.iter().filter(|u| u.realm_id == Some(realm_id)).cloned().collect())
+        Ok(users
+            .iter()
+            .filter(|u| u.realm_id == Some(realm_id))
+            .cloned()
+            .collect())
     }
 }
 

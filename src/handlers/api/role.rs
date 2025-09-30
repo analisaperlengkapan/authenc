@@ -1,5 +1,4 @@
 use crate::app::AppState;
-use crate::database;
 use crate::handlers::api::auth_bearer::AuthBearer;
 use crate::models::events::{OperationType, ResourceType};
 use crate::models::role::Role;
@@ -233,7 +232,10 @@ pub async fn assign_permission_to_role(
         user_agent: None,
     };
 
-    let resource_path = format!("/realms/{}/roles/{}/permissions/{}", realm, role_name, permission);
+    let resource_path = format!(
+        "/realms/{}/roles/{}/permissions/{}",
+        realm, role_name, permission
+    );
 
     let admin_event = AdminEventBuilder::new(
         realm_obj.id.to_string(),
@@ -251,7 +253,10 @@ pub async fn assign_permission_to_role(
         .fire_admin_event(admin_event, true)
         .await
     {
-        tracing::error!("Failed to fire admin event for permission assignment: {}", e);
+        tracing::error!(
+            "Failed to fire admin event for permission assignment: {}",
+            e
+        );
     }
 
     Ok(StatusCode::NO_CONTENT)
@@ -298,7 +303,10 @@ pub async fn unassign_permission_from_role(
         user_agent: None,
     };
 
-    let resource_path = format!("/realms/{}/roles/{}/permissions/{}", realm, role_name, permission);
+    let resource_path = format!(
+        "/realms/{}/roles/{}/permissions/{}",
+        realm, role_name, permission
+    );
 
     let admin_event = AdminEventBuilder::new(
         realm_obj.id.to_string(),
@@ -316,7 +324,10 @@ pub async fn unassign_permission_from_role(
         .fire_admin_event(admin_event, true)
         .await
     {
-        tracing::error!("Failed to fire admin event for permission unassignment: {}", e);
+        tracing::error!(
+            "Failed to fire admin event for permission unassignment: {}",
+            e
+        );
     }
 
     Ok(StatusCode::NO_CONTENT)

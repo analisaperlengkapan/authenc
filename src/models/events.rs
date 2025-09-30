@@ -258,7 +258,9 @@ impl EventType {
             "REMOVE_FEDERATED_IDENTITY" => Some(EventType::RemoveFederatedIdentity),
             "REMOVE_FEDERATED_IDENTITY_ERROR" => Some(EventType::RemoveFederatedIdentityError),
             "FEDERATED_IDENTITY_OVERRIDE_LINK" => Some(EventType::FederatedIdentityOverrideLink),
-            "FEDERATED_IDENTITY_OVERRIDE_LINK_ERROR" => Some(EventType::FederatedIdentityOverrideLinkError),
+            "FEDERATED_IDENTITY_OVERRIDE_LINK_ERROR" => {
+                Some(EventType::FederatedIdentityOverrideLinkError)
+            }
             "GRANT_CONSENT" => Some(EventType::GrantConsent),
             "GRANT_CONSENT_ERROR" => Some(EventType::GrantConsentError),
             "UPDATE_CONSENT" => Some(EventType::UpdateConsent),
@@ -268,9 +270,13 @@ impl EventType {
             "OAUTH2_EXTENSION_GRANT" => Some(EventType::Oauth2ExtensionGrant),
             "OAUTH2_EXTENSION_GRANT_ERROR" => Some(EventType::Oauth2ExtensionGrantError),
             "USER_DISABLED_BY_PERMANENT_LOCKOUT" => Some(EventType::UserDisabledByPermanentLockout),
-            "USER_DISABLED_BY_PERMANENT_LOCKOUT_ERROR" => Some(EventType::UserDisabledByPermanentLockoutError),
+            "USER_DISABLED_BY_PERMANENT_LOCKOUT_ERROR" => {
+                Some(EventType::UserDisabledByPermanentLockoutError)
+            }
             "USER_DISABLED_BY_TEMPORARY_LOCKOUT" => Some(EventType::UserDisabledByTemporaryLockout),
-            "USER_DISABLED_BY_TEMPORARY_LOCKOUT_ERROR" => Some(EventType::UserDisabledByTemporaryLockoutError),
+            "USER_DISABLED_BY_TEMPORARY_LOCKOUT_ERROR" => {
+                Some(EventType::UserDisabledByTemporaryLockoutError)
+            }
             "INVITE_ORG" => Some(EventType::InviteOrg),
             "INVITE_ORG_ERROR" => Some(EventType::InviteOrgError),
             _ => None,

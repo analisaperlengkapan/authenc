@@ -183,16 +183,21 @@ impl OrganizationService {
 
     /// Get organization by ID
     pub async fn get_organization(&self, organization_id: &Uuid) -> Result<Option<Organization>> {
-        crate::database::operations::organizations::get_organization_by_id(&self.db, *organization_id)
-            .await
-            .map_err(|e| AuthencError::database(format!("Failed to get organization: {}", e)))
+        crate::database::operations::organizations::get_organization_by_id(
+            &self.db,
+            *organization_id,
+        )
+        .await
+        .map_err(|e| AuthencError::database(format!("Failed to get organization: {}", e)))
     }
 
     /// Get organization by domain
     pub async fn get_organization_by_domain(&self, domain: &str) -> Result<Option<Organization>> {
         crate::database::operations::organizations::get_organization_by_domain(&self.db, domain)
             .await
-            .map_err(|e| AuthencError::database(format!("Failed to get organization by domain: {}", e)))
+            .map_err(|e| {
+                AuthencError::database(format!("Failed to get organization by domain: {}", e))
+            })
     }
 
     /// Update organization
@@ -239,9 +244,13 @@ impl OrganizationService {
 
     /// Remove member from organization
     pub async fn remove_member(&self, organization_id: &Uuid, user_id: &Uuid) -> Result<()> {
-        crate::database::operations::organizations::remove_organization_member(&self.db, organization_id, user_id)
-            .await
-            .map_err(|e| AuthencError::database(format!("Failed to remove member: {}", e)))
+        crate::database::operations::organizations::remove_organization_member(
+            &self.db,
+            organization_id,
+            user_id,
+        )
+        .await
+        .map_err(|e| AuthencError::database(format!("Failed to remove member: {}", e)))
     }
 
     /// Update member role
@@ -257,9 +266,12 @@ impl OrganizationService {
 
     /// Get organization members
     pub async fn get_members(&self, organization_id: &Uuid) -> Result<Vec<OrganizationMember>> {
-        crate::database::operations::organizations::get_organization_members(&self.db, organization_id)
-            .await
-            .map_err(|e| AuthencError::database(format!("Failed to get members: {}", e)))
+        crate::database::operations::organizations::get_organization_members(
+            &self.db,
+            organization_id,
+        )
+        .await
+        .map_err(|e| AuthencError::database(format!("Failed to get members: {}", e)))
     }
 
     /// Check if user is member of organization

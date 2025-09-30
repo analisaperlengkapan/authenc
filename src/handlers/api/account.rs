@@ -7,15 +7,15 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sha2::{Digest, Sha256};
+use sha2::Digest;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::error::AuthencError;
 use crate::models::session::SessionResponse;
-use crate::models::user::{UpdateUserRequest, UserResponse};
 use crate::models::social_account::SocialAccountResponse;
+use crate::models::user::{UpdateUserRequest, UserResponse};
 use crate::services::oidc_client_store::OidcClientStore;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::session_store::SessionStore;
@@ -269,9 +269,7 @@ pub async fn revoke_application_access(
     ));
 
     // Revoke consent for the client
-    consent_store
-        .revoke_consent(user_id, &client_id)
-        .await?;
+    consent_store.revoke_consent(user_id, &client_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -349,14 +347,16 @@ pub async fn export_account_data(
 
 /// Delete current user's account
 pub async fn delete_account(
-    State((user_store, _session_store, _oidc_client_store, totp_store, audit_log_store, _)): State<(
-        Arc<UserStore>,
-        Arc<SessionStore>,
-        Arc<OidcClientStore>,
-        Arc<TotpStore>,
-        Arc<PgAuditLogStore>,
-        Arc<SocialAccountStore>,
-    )>,
+    State((user_store, _session_store, _oidc_client_store, totp_store, audit_log_store, _)): State<
+        (
+            Arc<UserStore>,
+            Arc<SessionStore>,
+            Arc<OidcClientStore>,
+            Arc<TotpStore>,
+            Arc<PgAuditLogStore>,
+            Arc<SocialAccountStore>,
+        ),
+    >,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -510,7 +510,9 @@ pub async fn get_totp_status(
     let configured_at = if has_secret {
         totp_store
             .get_configured_at(&user_id.to_string())
-            .map_err(|e| AuthencError::internal(format!("Failed to get TOTP configured time: {}", e)))?
+            .map_err(|e| {
+                AuthencError::internal(format!("Failed to get TOTP configured time: {}", e))
+            })?
     } else {
         None
     };

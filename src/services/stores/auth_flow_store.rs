@@ -86,7 +86,8 @@ impl AuthFlowStore {
 #[async_trait]
 impl AuthFlowStoreTrait for AuthFlowStore {
     async fn create_flow(&self, flow: &AuthenticationFlowModel) -> Result<AuthenticationFlowModel> {
-        let flow_value = serde_json::to_value(flow).map_err(|e| AuthencError::validation(format!("Invalid flow data: {}", e)))?;
+        let flow_value = serde_json::to_value(flow)
+            .map_err(|e| AuthencError::validation(format!("Invalid flow data: {}", e)))?;
         db_ops::create_flow(&self.database, &flow_value).await?;
         Ok(flow.clone())
     }
@@ -119,7 +120,8 @@ impl AuthFlowStoreTrait for AuthFlowStore {
         &self,
         execution: &AuthenticationExecutionModel,
     ) -> Result<AuthenticationExecutionModel> {
-        let execution_value = serde_json::to_value(execution).map_err(|e| AuthencError::validation(format!("Invalid execution data: {}", e)))?;
+        let execution_value = serde_json::to_value(execution)
+            .map_err(|e| AuthencError::validation(format!("Invalid execution data: {}", e)))?;
         db_ops::create_execution(&self.database, &execution_value).await?;
         Ok(execution.clone())
     }
@@ -128,7 +130,8 @@ impl AuthFlowStoreTrait for AuthFlowStore {
         &self,
         session: &AuthenticationSessionModel,
     ) -> Result<AuthenticationSessionModel> {
-        let session_value = serde_json::to_value(session).map_err(|e| AuthencError::validation(format!("Invalid session data: {}", e)))?;
+        let session_value = serde_json::to_value(session)
+            .map_err(|e| AuthencError::validation(format!("Invalid session data: {}", e)))?;
         db_ops::create_session(&self.database, &session_value).await?;
         Ok(session.clone())
     }

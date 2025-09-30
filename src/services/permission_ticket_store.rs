@@ -173,12 +173,18 @@ impl PermissionTicketStoreTrait for PermissionTicketStore {
 
     async fn grant_ticket(&self, id: Uuid) -> Result<PermissionTicket, AuthencError> {
         // Stub implementation
-        Err(AuthencError::resource_not_found(format!("Permission ticket {} not found", id)))
+        Err(AuthencError::resource_not_found(format!(
+            "Permission ticket {} not found",
+            id
+        )))
     }
 
     async fn revoke_ticket(&self, id: Uuid) -> Result<PermissionTicket, AuthencError> {
         // Stub implementation
-        Err(AuthencError::resource_not_found(format!("Permission ticket {} not found", id)))
+        Err(AuthencError::resource_not_found(format!(
+            "Permission ticket {} not found",
+            id
+        )))
     }
 
     async fn delete_ticket(&self, id: Uuid) -> Result<(), AuthencError> {

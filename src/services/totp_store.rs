@@ -4,7 +4,7 @@ impl Default for TotpStore {
     }
 }
 use chrono::{DateTime, Utc};
-use sha2::{Digest, Sha256};
+use sha2::Digest;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 

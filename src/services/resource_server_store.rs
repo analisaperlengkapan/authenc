@@ -88,7 +88,8 @@ impl ResourceServerStoreTrait for ResourceServerStore {
             description: request.description,
             enabled: true,
             realm_id,
-            policy_enforcement_mode: crate::models::resource_server::PolicyEnforcementMode::Enforcing,
+            policy_enforcement_mode:
+                crate::models::resource_server::PolicyEnforcementMode::Enforcing,
             decision_strategy: crate::models::resource_server::DecisionStrategy::Unanimous,
             allow_remote_resource_management: false,
             created_at: chrono::Utc::now(),
@@ -126,7 +127,9 @@ impl ResourceServerStoreTrait for ResourceServerStore {
         _request: UpdateResourceServerRequest,
     ) -> Result<ResourceServer, AuthencError> {
         // Stub implementation
-        Err(AuthencError::resource_not_found("Resource server not found".to_string()))
+        Err(AuthencError::resource_not_found(
+            "Resource server not found".to_string(),
+        ))
     }
 
     async fn delete_resource_server(&self, _id: Uuid) -> Result<(), AuthencError> {

@@ -141,7 +141,9 @@ impl ScopeStoreTrait for ScopeStore {
         _request: UpdateScopeRequest,
     ) -> Result<Scope, AuthencError> {
         // Stub implementation
-        Err(AuthencError::resource_not_found("Scope not found".to_string()))
+        Err(AuthencError::resource_not_found(
+            "Scope not found".to_string(),
+        ))
     }
 
     async fn delete_scope(&self, _id: Uuid) -> Result<(), AuthencError> {
