@@ -32,6 +32,9 @@ pub struct HealthCheckResult {
 /// Health check trait
 #[async_trait]
 pub trait HealthCheck: Send + Sync {
+    /// Get the name of this health check
+    fn name(&self) -> &str;
+
     /// Perform a health check and return the result
     async fn check(&self) -> HealthCheckResult;
 }
@@ -63,6 +66,10 @@ impl DatabaseHealthCheck {
 
 #[async_trait]
 impl HealthCheck for DatabaseHealthCheck {
+    fn name(&self) -> &str {
+        "database"
+    }
+
     async fn check(&self) -> HealthCheckResult {
         let start = Instant::now();
         let status = if self.active_connections < self.pool_size {
@@ -111,6 +118,10 @@ impl CacheHealthCheck {
 
 #[async_trait]
 impl HealthCheck for CacheHealthCheck {
+    fn name(&self) -> &str {
+        "cache"
+    }
+
     async fn check(&self) -> HealthCheckResult {
         let start = Instant::now();
         let total_requests = self.cache_hits + self.cache_misses;
@@ -161,6 +172,10 @@ impl AuthServiceHealthCheck {
 
 #[async_trait]
 impl HealthCheck for AuthServiceHealthCheck {
+    fn name(&self) -> &str {
+        "auth_service"
+    }
+
     async fn check(&self) -> HealthCheckResult {
         let start = Instant::now();
         let status = if self.failed_attempts < 100 {
@@ -215,6 +230,18 @@ impl HealthCheckRegistry {
     /// # Note
     /// If a health check with the same name already exists, it will be replaced.
     pub fn register(&mut self, name: &str, check: Box<dyn HealthCheck>) {
+        self.checks.insert(name.to_string(), check);
+    }
+
+    /// Registers a new health check using its name.
+    ///
+    /// # Arguments
+    /// * `check` - The health check implementation to register
+    ///
+    /// # Note
+    /// If a health check with the same name already exists, it will be replaced.
+    pub fn register_check(&mut self, check: Box<dyn HealthCheck>) {
+        let name = check.name();
         self.checks.insert(name.to_string(), check);
     }
 
@@ -491,110 +518,6 @@ impl TracingService {
     }
 }
 
-/// Observability service - main service
-pub struct ObservabilityService {
-    /// Registry for health checks
-    health_registry: HealthCheckRegistry,
-    /// Registry for metrics collectors
-    metrics_registry: MetricsRegistry,
-    /// Tracing service instance
-    tracing_service: TracingService,
-    /// Name of the service
-    service_name: String,
-    /// Version of the service
-    service_version: String,
-}
-
-impl ObservabilityService {
-    /// Creates a new observability service with the specified service name and version.
-    ///
-    /// # Arguments
-    /// * `service_name` - The name of the service for metrics and tracing identification
-    /// * `service_version` - The version of the service for metrics and tracing identification
-    ///
-    /// # Returns
-    /// A new `ObservabilityService` instance with initialized health check registry,
-    /// metrics registry, and tracing service.
-    pub fn new(service_name: String, service_version: String) -> Self {
-        Self {
-            health_registry: HealthCheckRegistry::new(),
-            metrics_registry: MetricsRegistry::new(),
-            tracing_service: TracingService::new(),
-            service_name,
-            service_version,
-        }
-    }
-
-    /// Register health check
-    pub fn register_health_check(&mut self, name: &str, check: Box<dyn HealthCheck>) {
-        self.health_registry.register(name, check);
-    }
-
-    /// Register metrics collector
-    pub fn register_metrics_collector(&mut self, collector: Box<dyn MetricsCollector>) {
-        self.metrics_registry.register(collector);
-    }
-
-    /// Run all health checks
-    pub async fn run_health_checks(&self) -> Vec<HealthCheckResult> {
-        self.health_registry.run_all_checks().await
-    }
-
-    /// Run specific health check
-    pub async fn run_health_check(&self, name: &str) -> Option<HealthCheckResult> {
-        self.health_registry.run_check(name).await
-    }
-
-    /// Get overall health status
-    pub async fn get_overall_health(&self) -> HealthStatus {
-        let results = self.run_health_checks().await;
-        if results.iter().all(|r| matches!(r.status, HealthStatus::Up)) {
-            HealthStatus::Up
-        } else if results
-            .iter()
-            .any(|r| matches!(r.status, HealthStatus::Down))
-        {
-            HealthStatus::Down
-        } else {
-            HealthStatus::Unknown
-        }
-    }
-
-    /// Collect all metrics
-    pub async fn collect_metrics(&self) -> Vec<MetricValue> {
-        self.metrics_registry.collect_all().await
-    }
-
-    /// Start tracing span
-    pub fn start_span(&mut self, trace_id: &str, span_id: &str, name: &str) -> String {
-        self.tracing_service.start_span(trace_id, span_id, name)
-    }
-
-    /// End tracing span
-    pub fn end_span(&mut self, span_id: &str) {
-        self.tracing_service.end_span(span_id);
-    }
-
-    /// Add span attribute
-    pub fn add_span_attribute(&mut self, span_id: &str, key: &str, value: &str) {
-        self.tracing_service.add_attribute(span_id, key, value);
-    }
-
-    /// Add span event
-    pub fn add_span_event(&mut self, span_id: &str, event: TraceEvent) {
-        self.tracing_service.add_event(span_id, event);
-    }
-
-    /// Get service information
-    pub fn get_service_info(&self) -> HashMap<String, String> {
-        let mut info = HashMap::new();
-        info.insert("service_name".to_string(), self.service_name.clone());
-        info.insert("service_version".to_string(), self.service_version.clone());
-        info.insert("timestamp".to_string(), chrono::Utc::now().to_rfc3339());
-        info
-    }
-}
-
 /// Observability configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservabilityConfig {
@@ -802,5 +725,66 @@ impl PerformanceMonitor {
     /// A reference to the current `PerformanceMetrics`.
     pub fn get_metrics(&self) -> &PerformanceMetrics {
         &self.metrics
+    }
+}
+
+/// Main observability service that combines health checks, metrics, and monitoring
+pub struct ObservabilityService {
+    /// Health check registry
+    health_registry: HealthCheckRegistry,
+    /// Metrics registry
+    metrics_registry: MetricsRegistry,
+    /// Performance monitor
+    performance_monitor: PerformanceMonitor,
+}
+
+impl Default for ObservabilityService {
+    fn default() -> Self {
+        Self {
+            health_registry: HealthCheckRegistry::new(),
+            metrics_registry: MetricsRegistry::new(),
+            performance_monitor: PerformanceMonitor::new(),
+        }
+    }
+}
+
+impl ObservabilityService {
+    /// Create a new observability service
+    pub fn new() -> Self {
+        Self {
+            health_registry: HealthCheckRegistry::new(),
+            metrics_registry: MetricsRegistry::new(),
+            performance_monitor: PerformanceMonitor::new(),
+        }
+    }
+
+    /// Register a health check
+    pub fn register_health_check(&mut self, check: Box<dyn HealthCheck>) {
+        self.health_registry.register_check(check);
+    }
+
+    /// Register a metrics collector
+    pub fn register_metrics_collector(&mut self, collector: Box<dyn MetricsCollector>) {
+        self.metrics_registry.register(collector);
+    }
+
+    /// Perform all health checks
+    pub async fn perform_health_checks(&self) -> Vec<HealthCheckResult> {
+        self.health_registry.run_all_checks().await
+    }
+
+    /// Collect all metrics
+    pub async fn collect_metrics(&self) -> Vec<MetricValue> {
+        self.metrics_registry.collect_all().await
+    }
+
+    /// Get performance metrics
+    pub fn get_performance_metrics(&self) -> &PerformanceMetrics {
+        self.performance_monitor.get_metrics()
+    }
+
+    /// Update performance metrics
+    pub fn update_performance_metrics(&mut self, metrics: PerformanceMetrics) {
+        self.performance_monitor.update_metrics(metrics);
     }
 }

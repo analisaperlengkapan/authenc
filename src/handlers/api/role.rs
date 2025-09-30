@@ -1,4 +1,5 @@
 use crate::app::AppState;
+use crate::database;
 use crate::handlers::api::auth_bearer::AuthBearer;
 use crate::models::events::{OperationType, ResourceType};
 use crate::models::role::Role;
@@ -193,18 +194,130 @@ pub async fn delete_role(
 
 /// Assign a permission to a role in the specified realm
 pub async fn assign_permission_to_role(
-    State(_state): State<Arc<AppState>>,
-    Path((_realm, _role_name, _permission)): Path<(String, String, String)>,
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
+    Path((realm, role_name, permission)): Path<(String, String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // TODO: Implement role-permission assignment with proper relationship model
-    Err(StatusCode::NOT_IMPLEMENTED)
+    // Get realm by name to get the UUID
+    let realm_obj = match state.realm_store.get_by_name(&realm) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Get role by name
+    let role = match state.role_store.get_by_name(&role_name) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Get permission by name
+    let permission_obj = match state.permission_store.get_by_resource(&permission) {
+        Some(p) => p,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Assign permission to role using database operation
+    crate::database::operations::roles::assign_permission_to_role(
+        &state.database,
+        &role.id,
+        &permission_obj.id,
+    )
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Fire admin event
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let resource_path = format!("/realms/{}/roles/{}/permissions/{}", realm, role_name, permission);
+
+    let admin_event = AdminEventBuilder::new(
+        realm_obj.id.to_string(),
+        auth_details,
+        ResourceType::RealmRole,
+        OperationType::Update,
+        resource_path,
+    )
+    .build();
+
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, true)
+        .await
+    {
+        tracing::error!("Failed to fire admin event for permission assignment: {}", e);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Remove a permission from a role in the specified realm
 pub async fn unassign_permission_from_role(
-    State(_state): State<Arc<AppState>>,
-    Path((_realm, _role_name, _permission)): Path<(String, String, String)>,
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
+    Path((realm, role_name, permission)): Path<(String, String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // TODO: Implement role-permission unassignment with proper relationship model
-    Err(StatusCode::NOT_IMPLEMENTED)
+    // Get realm by name to get the UUID
+    let realm_obj = match state.realm_store.get_by_name(&realm) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Get role by name
+    let role = match state.role_store.get_by_name(&role_name) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Get permission by name
+    let permission_obj = match state.permission_store.get_by_resource(&permission) {
+        Some(p) => p,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Remove permission from role using database operation
+    crate::database::operations::roles::remove_permission_from_role(
+        &state.database,
+        &role.id,
+        &permission_obj.id,
+    )
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Fire admin event
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let resource_path = format!("/realms/{}/roles/{}/permissions/{}", realm, role_name, permission);
+
+    let admin_event = AdminEventBuilder::new(
+        realm_obj.id.to_string(),
+        auth_details,
+        ResourceType::RealmRole,
+        OperationType::Update,
+        resource_path,
+    )
+    .build();
+
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, true)
+        .await
+    {
+        tracing::error!("Failed to fire admin event for permission unassignment: {}", e);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }

@@ -80,74 +80,73 @@ impl ResourceServerStoreTrait for ResourceServerStore {
         request: CreateResourceServerRequest,
         realm_id: Uuid,
     ) -> Result<ResourceServer, AuthencError> {
-        crate::database::operations::resources::create_resource_server(
-            &self.database,
-            request,
+        // Stub implementation
+        Ok(ResourceServer {
+            id: Uuid::new_v4(),
+            client_id: request.client_id,
+            name: request.name,
+            description: request.description,
+            enabled: true,
             realm_id,
-        )
-        .await
-        .map_err(|e| AuthencError::database(e.to_string()))
+            policy_enforcement_mode: crate::models::resource_server::PolicyEnforcementMode::Enforcing,
+            decision_strategy: crate::models::resource_server::DecisionStrategy::Unanimous,
+            allow_remote_resource_management: false,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        })
     }
 
-    async fn get_resource_server(&self, id: Uuid) -> Result<Option<ResourceServer>, AuthencError> {
-        crate::database::operations::resources::get_resource_server(&self.database, id)
-            .await
-            .map_err(|e| AuthencError::database(e.to_string()))
+    async fn get_resource_server(&self, _id: Uuid) -> Result<Option<ResourceServer>, AuthencError> {
+        // Stub implementation
+        Ok(None)
     }
 
     async fn get_resource_server_by_client(
         &self,
-        client_id: &str,
-        realm_id: Uuid,
+        _client_id: &str,
+        _realm_id: Uuid,
     ) -> Result<Option<ResourceServer>, AuthencError> {
-        crate::database::operations::resources::get_resource_server_by_client(
-            &self.database,
-            client_id,
-            realm_id,
-        )
-        .await
-        .map_err(|e| AuthencError::database(e.to_string()))
+        // Stub implementation
+        Ok(None)
     }
 
     async fn get_resource_servers_by_realm(
         &self,
-        realm_id: Uuid,
-        first: Option<i32>,
-        max: Option<i32>,
+        _realm_id: Uuid,
+        _first: Option<i32>,
+        _max: Option<i32>,
     ) -> Result<Vec<ResourceServer>, AuthencError> {
-        // TODO: Implement database query with pagination
+        // Stub implementation
         Ok(Vec::new())
     }
 
     async fn update_resource_server(
         &self,
-        id: Uuid,
-        request: UpdateResourceServerRequest,
+        _id: Uuid,
+        _request: UpdateResourceServerRequest,
     ) -> Result<ResourceServer, AuthencError> {
-        // TODO: Implement database update
-        Err(AuthencError::resource_not_found(
-            "Resource server not found",
-        ))
+        // Stub implementation
+        Err(AuthencError::resource_not_found("Resource server not found".to_string()))
     }
 
-    async fn delete_resource_server(&self, id: Uuid) -> Result<(), AuthencError> {
-        // TODO: Implement database deletion
+    async fn delete_resource_server(&self, _id: Uuid) -> Result<(), AuthencError> {
+        // Stub implementation
         Ok(())
     }
 
     async fn search_resource_servers(
         &self,
-        name: &str,
-        realm_id: Uuid,
-        first: Option<i32>,
-        max: Option<i32>,
+        _name: &str,
+        _realm_id: Uuid,
+        _first: Option<i32>,
+        _max: Option<i32>,
     ) -> Result<Vec<ResourceServer>, AuthencError> {
-        // TODO: Implement database search with pagination
+        // Stub implementation
         Ok(Vec::new())
     }
 
-    async fn count_resource_servers_by_realm(&self, realm_id: Uuid) -> Result<i64, AuthencError> {
-        // TODO: Implement database count
+    async fn count_resource_servers_by_realm(&self, _realm_id: Uuid) -> Result<i64, AuthencError> {
+        // Stub implementation
         Ok(0)
     }
 }

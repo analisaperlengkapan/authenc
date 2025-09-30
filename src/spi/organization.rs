@@ -79,6 +79,27 @@ pub enum OrganizationRole {
     Member,
 }
 
+impl OrganizationRole {
+    /// Convert the role to its string representation
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OrganizationRole::Owner => "OWNER",
+            OrganizationRole::Admin => "ADMIN",
+            OrganizationRole::Member => "MEMBER",
+        }
+    }
+
+    /// Convert string to OrganizationRole
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "OWNER" => Some(OrganizationRole::Owner),
+            "ADMIN" => Some(OrganizationRole::Admin),
+            "MEMBER" => Some(OrganizationRole::Member),
+            _ => None,
+        }
+    }
+}
+
 /// Organization provider trait
 #[async_trait]
 pub trait OrganizationProvider: Provider + Send + Sync {

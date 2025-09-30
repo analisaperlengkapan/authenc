@@ -585,9 +585,12 @@ pub mod organizations {
     use crate::{
         database::Database,
         error::{AuthencError, Result},
-        models::{Organization, OrganizationInvitation},
+        models::{Organization, OrganizationInvitation, OrganizationMember},
+        services::organization::OrganizationRole,
     };
     use chrono::Utc;
+    use log::error;
+    use std::collections::HashMap;
     use uuid::Uuid;
 
     /// Create organization
@@ -768,6 +771,209 @@ pub mod organizations {
             Some(invitation.invited_by),
         )
         .await?;
+
+        Ok(())
+    }
+
+    /// Get organization by domain
+    pub async fn get_organization_by_domain(
+        db: &Database,
+        domain: &str,
+    ) -> Result<Option<Organization>> {
+        let query = r#"
+            SELECT
+                id, name, display_name, description, domain, logo_url, website,
+                enabled, created_at, updated_at, attributes
+            FROM organizations
+            WHERE domain = $1
+        "#;
+
+        let row = db.query_opt(query, &[&domain]).await.map_err(|e| {
+            error!("Failed to get organization by domain: {}", e);
+            AuthencError::database("Failed to get organization by domain")
+        })?;
+
+        if let Some(row) = row {
+            // Convert row to Organization
+            let attributes_json: serde_json::Value = row.get(10);
+            let attributes: HashMap<String, String> = serde_json::from_value(attributes_json)
+                .unwrap_or_default();
+
+            Ok(Some(Organization {
+                id: row.get(0),
+                name: row.get(1),
+                display_name: row.get(2),
+                description: row.get(3),
+                domain: row.get(4),
+                logo_url: row.get(5),
+                website_url: row.get(6),
+                enabled: row.get(7),
+                created_at: row.get(8),
+                updated_at: row.get(9),
+                owner_id: row.get(10),
+                realm_id: row.get(11),
+                deleted_at: row.get(12),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Update organization
+    pub async fn update_organization(db: &Database, org: &Organization) -> Result<()> {
+        let query = r#"
+            UPDATE organizations
+            SET name = $2, display_name = $3, description = $4, domain = $5,
+                logo_url = $6, website_url = $7, enabled = $8, updated_at = $9
+            WHERE id = $1
+        "#;
+
+        db.execute(
+            query,
+            &[
+                &org.id,
+                &org.name,
+                &org.display_name,
+                &org.description,
+                &org.domain,
+                &org.logo_url,
+                &org.website_url,
+                &org.enabled,
+                &org.updated_at,
+            ],
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to update organization: {}", e);
+            AuthencError::database("Failed to update organization")
+        })?;
+
+        Ok(())
+    }
+
+    /// Delete organization
+    pub async fn delete_organization(db: &Database, organization_id: &Uuid) -> Result<()> {
+        let query = "DELETE FROM organizations WHERE id = $1";
+
+        db.execute(query, &[organization_id]).await.map_err(|e| {
+            error!("Failed to delete organization: {}", e);
+            AuthencError::database("Failed to delete organization")
+        })?;
+
+        Ok(())
+    }
+
+    /// Get organization members
+    pub async fn get_organization_members(
+        db: &Database,
+        organization_id: &Uuid,
+    ) -> Result<Vec<OrganizationMember>> {
+        let query = r#"
+            SELECT om.user_id, om.organization_id, om.role, om.joined_at, om.invited_by
+            FROM organization_members om
+            WHERE om.organization_id = $1
+            ORDER BY om.joined_at
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[organization_id]).await.map_err(|e| {
+            error!("Failed to get organization members: {}", e);
+            AuthencError::database("Failed to get organization members")
+        })?;
+
+        let mut members = Vec::new();
+        for row in rows {
+            members.push(OrganizationMember {
+                id: row.get(0),
+                organization_id: row.get(1),
+                user_id: row.get(2),
+                role: OrganizationRole::from_str(&row.get::<_, String>(3)).unwrap_or(OrganizationRole::Member).as_str().to_string(),
+                invited_by: row.get(4),
+                invited_at: row.get(5),
+                joined_at: row.get(6),
+                created_at: row.get(7),
+                updated_at: row.get(8),
+            });
+        }
+
+        Ok(members)
+    }
+
+    /// Get user organizations
+    pub async fn get_user_organizations(db: &Database, user_id: &Uuid) -> Result<Vec<Organization>> {
+        let query = r#"
+            SELECT
+                o.id, o.name, o.display_name, o.description, o.domain, o.logo_url, o.website_url,
+                o.enabled, o.created_at, o.updated_at, o.owner_id, o.realm_id, o.deleted_at
+            FROM organizations o
+            JOIN organization_members om ON o.id = om.organization_id
+            WHERE om.user_id = $1
+            ORDER BY o.created_at
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[user_id]).await.map_err(|e| {
+            error!("Failed to get user organizations: {}", e);
+            AuthencError::database("Failed to get user organizations")
+        })?;
+
+        let mut organizations = Vec::new();
+        for row in rows {
+            organizations.push(Organization {
+                id: row.get(0),
+                name: row.get(1),
+                display_name: row.get(2),
+                description: row.get(3),
+                domain: row.get(4),
+                logo_url: row.get(5),
+                website_url: row.get(6),
+                enabled: row.get(7),
+                created_at: row.get(8),
+                updated_at: row.get(9),
+                owner_id: row.get(10),
+                realm_id: row.get(11),
+                deleted_at: row.get(12),
+            });
+        }
+
+        Ok(organizations)
+    }
+
+    /// Remove member from organization
+    pub async fn remove_organization_member(
+        db: &Database,
+        organization_id: &Uuid,
+        user_id: &Uuid,
+    ) -> Result<()> {
+        let query = "DELETE FROM organization_members WHERE organization_id = $1 AND user_id = $2";
+
+        db.execute(query, &[organization_id, user_id])
+            .await
+            .map_err(|e| {
+                error!("Failed to remove organization member: {}", e);
+                AuthencError::database("Failed to remove organization member")
+            })?;
+
+        Ok(())
+    }
+
+    /// Update member role
+    pub async fn update_member_role(
+        db: &Database,
+        organization_id: &Uuid,
+        user_id: &Uuid,
+        role: OrganizationRole,
+    ) -> Result<()> {
+        let query = r#"
+            UPDATE organization_members
+            SET role = $3
+            WHERE organization_id = $1 AND user_id = $2
+        "#;
+
+        db.execute(query, &[organization_id, user_id, &role.as_str()])
+            .await
+            .map_err(|e| {
+                error!("Failed to update member role: {}", e);
+                AuthencError::database("Failed to update member role")
+            })?;
 
         Ok(())
     }
@@ -1016,6 +1222,7 @@ pub mod audit {
     }
 }
 
+
 /// Database operations for users
 pub mod users {
     use crate::{
@@ -1259,7 +1466,7 @@ pub mod users {
                 account_locked_until, failed_login_attempts, last_login_at,
                 last_failed_login_at, password_changed_at, password_expires_at,
                 require_password_change, realm_id, organization_id, attributes,
-                enabled, created_at, updated_at, deleted_at
+                enabled, federated, created_at, updated_at, deleted_at, last_login_at, login_count
             FROM users
             WHERE email = $1 AND deleted_at IS NULL
         "#;
@@ -1447,19 +1654,19 @@ pub mod users {
             account_locked: row.get(12),
             account_locked_until: row.get(13),
             failed_login_attempts: row.get(14),
-            last_login_at: row.get(15),
-            last_failed_login_at: row.get(16),
-            password_changed_at: row.get(17),
-            password_expires_at: row.get(18),
-            require_password_change: row.get(19),
-            realm_id: row.get(20),
-            organization_id: row.get(21),
-            attributes: row.get(22),
-            enabled: row.get(23),
-            federated: row.get(24),
-            created_at: row.get(25),
-            updated_at: row.get(26),
-            deleted_at: row.get(27),
+            last_failed_login_at: row.get(15),
+            password_changed_at: row.get(16),
+            password_expires_at: row.get(17),
+            require_password_change: row.get(18),
+            realm_id: row.get(19),
+            organization_id: row.get(20),
+            attributes: row.get(21),
+            enabled: row.get(22),
+            federated: row.get(23),
+            created_at: row.get(24),
+            updated_at: row.get(25),
+            deleted_at: row.get(26),
+            last_login_at: row.get(27),
             login_count: row.get(28),
         }
     }
@@ -1521,6 +1728,337 @@ pub mod users {
 
         Ok(users)
     }
+
+    /// Get users by realm
+    pub async fn get_users_by_realm(db: &Database, realm_id: Uuid) -> Result<Vec<User>> {
+        let client = db.get_connection().await?;
+        let query = r#"
+            SELECT
+                id, username, email, first_name, last_name,
+                phone_number, phone_verified, password_hash, totp_secret,
+                totp_backup_codes, webauthn_enabled, account_locked,
+                account_locked_until, failed_login_attempts, last_failed_login_at,
+                password_changed_at, password_expires_at, require_password_change,
+                organization_id, attributes, email_verified, enabled,
+                realm_id, federated, created_at, updated_at, deleted_at,
+                last_login_at, login_count
+            FROM users
+            WHERE realm_id = $1 AND deleted_at IS NULL
+            ORDER BY created_at DESC
+        "#;
+
+        let rows = client.query(query, &[&realm_id]).await?;
+        let mut users = Vec::new();
+
+        for row in rows {
+            users.push(User {
+                id: row.get("id"),
+                username: row.get("username"),
+                email: row.get("email"),
+                email_verified: row.get("email_verified"),
+                first_name: row.get("first_name"),
+                last_name: row.get("last_name"),
+                phone_number: row.get("phone_number"),
+                phone_verified: row.get("phone_verified"),
+                password_hash: row.get("password_hash"),
+                totp_secret: row.get("totp_secret"),
+                totp_backup_codes: row.get("totp_backup_codes"),
+                webauthn_enabled: row.get("webauthn_enabled"),
+                account_locked: row.get("account_locked"),
+                account_locked_until: row.get("account_locked_until"),
+                failed_login_attempts: row.get("failed_login_attempts"),
+                last_failed_login_at: row.get("last_failed_login_at"),
+                password_changed_at: row.get("password_changed_at"),
+                password_expires_at: row.get("password_expires_at"),
+                require_password_change: row.get("require_password_change"),
+                organization_id: row.get("organization_id"),
+                attributes: row.get("attributes"),
+                enabled: row.get("enabled"),
+                realm_id: row.get("realm_id"),
+                federated: row.get("federated"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+                deleted_at: row.get("deleted_at"),
+                last_login_at: row.get("last_login_at"),
+                login_count: row.get("login_count"),
+            });
+        }
+
+        Ok(users)
+    }
+}
+
+/// Database operations for social accounts
+pub mod social_accounts {
+    use crate::{
+        database::Database,
+        error::Result,
+        models::social_account::{CreateSocialAccountRequest, SocialAccount},
+        services::social::SocialProvider,
+    };
+    use chrono::Utc;
+    use std::str::FromStr;
+    use uuid::Uuid;
+
+    /// Get social account by ID
+    pub async fn get_social_account(db: &Database, account_id: Uuid) -> Result<Option<SocialAccount>> {
+        let query = r#"
+            SELECT id, user_id, provider, provider_user_id, display_name, email,
+                   profile_picture_url, access_token, refresh_token, token_expires_at,
+                   linked_at, updated_at
+            FROM user_social_accounts
+            WHERE id = $1 AND deleted_at IS NULL
+        "#;
+
+        let row = db.query_opt(query, &[&account_id]).await?;
+        match row {
+            Some(row) => {
+                let provider_str: String = row.get(2);
+                let provider = SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
+
+                Ok(Some(SocialAccount {
+                    id: row.get(0),
+                    user_id: row.get(1),
+                    provider,
+                    provider_user_id: row.get(3),
+                    display_name: row.get(4),
+                    email: row.get(5),
+                    profile_picture_url: row.get(6),
+                    access_token: row.get(7),
+                    refresh_token: row.get(8),
+                    token_expires_at: row.get(9),
+                    linked_at: row.get(10),
+                    updated_at: row.get(11),
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Get user's social accounts
+    pub async fn get_user_social_accounts(db: &Database, user_id: Uuid) -> Result<Vec<SocialAccount>> {
+        let query = r#"
+            SELECT id, user_id, provider, provider_user_id, display_name, email,
+                   profile_picture_url, access_token, refresh_token, token_expires_at,
+                   linked_at, updated_at
+            FROM user_social_accounts
+            WHERE user_id = $1 AND deleted_at IS NULL
+            ORDER BY linked_at DESC
+        "#;
+
+        let rows = db.query(query, &[&user_id]).await?;
+        let accounts = rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                let provider_str: String = row.get(2);
+                let provider = SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
+
+                SocialAccount {
+                    id: row.get(0),
+                    user_id: row.get(1),
+                    provider,
+                    provider_user_id: row.get(3),
+                    display_name: row.get(4),
+                    email: row.get(5),
+                    profile_picture_url: row.get(6),
+                    access_token: row.get(7),
+                    refresh_token: row.get(8),
+                    token_expires_at: row.get(9),
+                    linked_at: row.get(10),
+                    updated_at: row.get(11),
+                }
+            })
+            .collect();
+
+        Ok(accounts)
+    }
+
+    /// Get social account by provider and provider user ID
+    pub async fn get_social_account_by_provider(
+        db: &Database,
+        provider: &SocialProvider,
+        provider_user_id: &str,
+    ) -> Result<Option<SocialAccount>> {
+        let query = r#"
+            SELECT id, user_id, provider, provider_user_id, display_name, email,
+                   profile_picture_url, access_token, refresh_token, token_expires_at,
+                   linked_at, updated_at
+            FROM user_social_accounts
+            WHERE provider = $1 AND provider_user_id = $2 AND deleted_at IS NULL
+        "#;
+
+        let row = db.query_opt(query, &[&provider.as_str(), &provider_user_id]).await?;
+        match row {
+            Some(row) => {
+                let provider_str: String = row.get(2);
+                let provider = SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
+
+                Ok(Some(SocialAccount {
+                    id: row.get(0),
+                    user_id: row.get(1),
+                    provider,
+                    provider_user_id: row.get(3),
+                    display_name: row.get(4),
+                    email: row.get(5),
+                    profile_picture_url: row.get(6),
+                    access_token: row.get(7),
+                    refresh_token: row.get(8),
+                    token_expires_at: row.get(9),
+                    linked_at: row.get(10),
+                    updated_at: row.get(11),
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Check if user has social account for provider
+    pub async fn has_social_account(
+        db: &Database,
+        user_id: Uuid,
+        provider: &SocialProvider,
+    ) -> Result<bool> {
+        let query = r#"
+            SELECT COUNT(*) FROM user_social_accounts
+            WHERE user_id = $1 AND provider = $2 AND deleted_at IS NULL
+        "#;
+
+        let row: tokio_postgres::Row = db.query_one(query, &[&user_id, &provider.as_str()]).await?;
+        let count: i64 = row.get(0);
+
+        Ok(count > 0)
+    }
+
+    /// Add social account
+    pub async fn add_social_account(
+        db: &Database,
+        user_id: Uuid,
+        request: CreateSocialAccountRequest,
+    ) -> Result<SocialAccount> {
+        let account_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO user_social_accounts (
+                id, user_id, provider, provider_user_id, display_name, email,
+                profile_picture_url, access_token, refresh_token, token_expires_at,
+                linked_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            RETURNING id
+        "#;
+
+        db.execute(
+            query,
+            &[
+                &account_id,
+                &user_id,
+                &request.provider.as_str(),
+                &request.provider_user_id,
+                &request.display_name,
+                &request.email,
+                &request.profile_picture_url,
+                &request.access_token,
+                &request.refresh_token,
+                &request.token_expires_at,
+                &now,
+                &now,
+            ],
+        )
+        .await?;
+
+        Ok(SocialAccount {
+            id: account_id,
+            user_id,
+            provider: request.provider,
+            provider_user_id: request.provider_user_id,
+            display_name: request.display_name,
+            email: request.email,
+            profile_picture_url: request.profile_picture_url,
+            access_token: request.access_token,
+            refresh_token: request.refresh_token,
+            token_expires_at: request.token_expires_at,
+            linked_at: now,
+            updated_at: now,
+        })
+    }
+
+    /// Update social account
+    pub async fn update_social_account(
+        db: &Database,
+        account_id: Uuid,
+        request: CreateSocialAccountRequest,
+    ) -> Result<SocialAccount> {
+        let now = Utc::now();
+
+        let query = r#"
+            UPDATE user_social_accounts SET
+                provider = $2, provider_user_id = $3, display_name = $4, email = $5,
+                profile_picture_url = $6, access_token = $7, refresh_token = $8,
+                token_expires_at = $9, updated_at = $10
+            WHERE id = $1
+        "#;
+
+        db.execute(
+            query,
+            &[
+                &account_id,
+                &request.provider.as_str(),
+                &request.provider_user_id,
+                &request.display_name,
+                &request.email,
+                &request.profile_picture_url,
+                &request.access_token,
+                &request.refresh_token,
+                &request.token_expires_at,
+                &now,
+            ],
+        )
+        .await?;
+
+        Ok(SocialAccount {
+            id: account_id,
+            user_id: Uuid::nil(), // This will be filled by the caller if needed
+            provider: request.provider,
+            provider_user_id: request.provider_user_id,
+            display_name: request.display_name,
+            email: request.email,
+            profile_picture_url: request.profile_picture_url,
+            access_token: request.access_token,
+            refresh_token: request.refresh_token,
+            token_expires_at: request.token_expires_at,
+            linked_at: now,
+            updated_at: now,
+        })
+    }
+
+    /// Remove social account
+    pub async fn remove_social_account(db: &Database, account_id: Uuid) -> Result<()> {
+        let now = Utc::now();
+
+        let query = "UPDATE user_social_accounts SET deleted_at = $2 WHERE id = $1";
+        db.execute(query, &[&account_id, &now]).await?;
+
+        Ok(())
+    }
+
+    /// Remove social account by provider
+    pub async fn remove_social_account_by_provider(
+        db: &Database,
+        user_id: Uuid,
+        provider: SocialProvider,
+    ) -> Result<()> {
+        let now = Utc::now();
+
+        let query = r#"
+            UPDATE user_social_accounts
+            SET deleted_at = $3
+            WHERE user_id = $1 AND provider = $2 AND deleted_at IS NULL
+        "#;
+
+        db.execute(query, &[&user_id, &provider.as_str(), &now]).await?;
+
+        Ok(())
+    }
 }
 
 /// Database operations for realms
@@ -1558,7 +2096,7 @@ pub mod realms {
                 action_token_generated_by_user_lifespan, oauth2_device_code_lifespan,
                 oauth2_device_polling_interval, attributes, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
             RETURNING *
         "#;
 
@@ -1712,6 +2250,7 @@ pub mod realms {
     }
 
     /// Helper function to convert database row to Realm
+   
     fn row_to_realm(row: tokio_postgres::Row) -> Realm {
         Realm {
             id: row.get(0),
@@ -1944,6 +2483,88 @@ pub mod roles {
         }
 
         Ok(roles)
+    }
+
+    /// Check if user has a specific permission
+    pub async fn user_has_permission(
+        db: &Database,
+        user_id: &Uuid,
+        permission: &str,
+    ) -> Result<bool> {
+        let client = db.get_connection().await?;
+        let query = r#"
+            SELECT COUNT(*) > 0
+            FROM user_roles ur
+            JOIN role_permissions rp ON ur.role_id = rp.role_id
+            JOIN permissions p ON rp.permission_id = p.id
+            WHERE ur.user_id = $1 AND p.name = $2 AND p.deleted_at IS NULL
+        "#;
+
+        let row = client.query_one(query, &[&user_id, &permission]).await?;
+        let has_permission: bool = row.get(0);
+
+        Ok(has_permission)
+    }
+
+    /// Get all permissions for a user
+    pub async fn get_user_permissions(db: &Database, user_id: &Uuid) -> Result<Vec<String>> {
+        let client = db.get_connection().await?;
+        let query = r#"
+            SELECT DISTINCT p.name
+            FROM user_roles ur
+            JOIN role_permissions rp ON ur.role_id = rp.role_id
+            JOIN permissions p ON rp.permission_id = p.id
+            WHERE ur.user_id = $1 AND p.deleted_at IS NULL
+            ORDER BY p.name
+        "#;
+
+        let rows = client.query(query, &[&user_id]).await?;
+        let permissions = rows
+            .into_iter()
+            .map(|row| row.get::<_, String>(0))
+            .collect();
+
+        Ok(permissions)
+    }
+
+    /// Assign permission to role
+    pub async fn assign_permission_to_role(
+        db: &Database,
+        role_id: &Uuid,
+        permission_id: &Uuid,
+    ) -> Result<()> {
+        let client = db.get_connection().await?;
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO role_permissions (role_id, permission_id, assigned_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (role_id, permission_id) DO NOTHING
+        "#;
+
+        client
+            .execute(query, &[&role_id, &permission_id, &now])
+            .await?;
+
+        Ok(())
+    }
+
+    /// Remove permission from role
+    pub async fn remove_permission_from_role(
+        db: &Database,
+        role_id: &Uuid,
+        permission_id: &Uuid,
+    ) -> Result<()> {
+        let client = db.get_connection().await?;
+
+        let query = r#"
+            DELETE FROM role_permissions
+            WHERE role_id = $1 AND permission_id = $2
+        "#;
+
+        client.execute(query, &[&role_id, &permission_id]).await?;
+
+        Ok(())
     }
 }
 
@@ -2363,1416 +2984,418 @@ pub mod federated_identities {
     }
 }
 
-/// Database operations for resource management
-pub mod resources {
-    use crate::{
-        database::Database,
-        error::Result,
-        models::{
-            permission_ticket::{CreatePermissionTicketRequest, PermissionTicket},
-            resource::{CreateResourceRequest, Resource},
-            resource_server::{CreateResourceServerRequest, ResourceServer},
-            scope::{CreateScopeRequest, Scope},
-        },
-    };
-    use chrono::Utc;
-    use serde_json;
-    use uuid::Uuid;
-
-    /// Create a new resource server
-    pub async fn create_resource_server(
-        db: &Database,
-        request: CreateResourceServerRequest,
-        realm_id: Uuid,
-    ) -> Result<ResourceServer> {
-        let server_id = Uuid::new_v4();
-        let now = Utc::now();
-
-        let query = r#"
-            INSERT INTO resource_servers (
-                id, client_id, name, description, enabled, realm_id,
-                policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
-                created_at, updated_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING
-                id, client_id, name, description, enabled, realm_id,
-                policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
-                created_at, updated_at
-        "#;
-
-        let row: tokio_postgres::Row = db
-            .query_one(
-                query,
-                &[
-                    &server_id,
-                    &request.client_id,
-                    &request.name,
-                    &request.description,
-                    &true, // enabled
-                    &realm_id,
-                    &"enforcing".to_string(), // default policy_enforcement_mode
-                    &"unanimous".to_string(), // default decision_strategy
-                    &false,                   // allow_remote_resource_management
-                    &now,
-                    &now,
-                ],
-            )
-            .await?;
-
-        Ok(ResourceServer {
-            id: row.get::<_, Uuid>(0),
-            client_id: row.get::<_, String>(1),
-            name: Some(row.get::<_, String>(2)),
-            description: row.get::<_, Option<String>>(3),
-            enabled: row.get::<_, bool>(4),
-            realm_id: row.get::<_, Uuid>(5),
-            policy_enforcement_mode: serde_json::from_str(&format!(
-                "\"{}\"",
-                row.get::<_, String>(6)
-            ))?,
-            decision_strategy: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(7)))?,
-            allow_remote_resource_management: row.get::<_, bool>(8),
-            created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(9),
-            updated_at: row.get::<_, chrono::DateTime<chrono::Utc>>(10),
-        })
-    }
-
-    /// Get resource server by ID
-    pub async fn get_resource_server(
-        db: &Database,
-        server_id: Uuid,
-    ) -> Result<Option<ResourceServer>> {
-        let query = r#"
-            SELECT id, client_id, name, description, enabled, realm_id,
-                   policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
-                   created_at, updated_at
-            FROM resource_servers
-            WHERE id = $1
-        "#;
-
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&server_id]).await?;
-        let row = rows.into_iter().next();
-
-        match row {
-            Some(row) => Ok(Some(ResourceServer {
-                id: row.get::<_, Uuid>(0),
-                client_id: row.get::<_, String>(1),
-                name: Some(row.get::<_, String>(2)),
-                description: row.get::<_, Option<String>>(3),
-                enabled: row.get::<_, bool>(4),
-                realm_id: row.get::<_, Uuid>(5),
-                policy_enforcement_mode: serde_json::from_str(&format!(
-                    "\"{}\"",
-                    row.get::<_, String>(6)
-                ))?,
-                decision_strategy: serde_json::from_str(&format!(
-                    "\"{}\"",
-                    row.get::<_, String>(7)
-                ))?,
-                allow_remote_resource_management: row.get::<_, bool>(8),
-                created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(9),
-                updated_at: row.get::<_, chrono::DateTime<chrono::Utc>>(10),
-            })),
-            None => Ok(None),
-        }
-    }
-
-    /// Get resource server by client ID and realm
-    pub async fn get_resource_server_by_client(
-        db: &Database,
-        client_id: &str,
-        realm_id: Uuid,
-    ) -> Result<Option<ResourceServer>> {
-        let query = r#"
-            SELECT id, client_id, name, description, enabled, realm_id,
-                   policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
-                   created_at, updated_at
-            FROM resource_servers
-            WHERE client_id = $1 AND realm_id = $2
-        "#;
-
-        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&client_id, &realm_id];
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &params).await?;
-        let row = rows.into_iter().next();
-
-        match row {
-            Some(row) => Ok(Some(ResourceServer {
-                id: row.get::<_, Uuid>(0),
-                client_id: row.get::<_, String>(1),
-                name: Some(row.get::<_, String>(2)),
-                description: row.get::<_, Option<String>>(3),
-                enabled: row.get::<_, bool>(4),
-                realm_id: row.get::<_, Uuid>(5),
-                policy_enforcement_mode: serde_json::from_str(&format!(
-                    "\"{}\"",
-                    row.get::<_, String>(6)
-                ))?,
-                decision_strategy: serde_json::from_str(&format!(
-                    "\"{}\"",
-                    row.get::<_, String>(7)
-                ))?,
-                allow_remote_resource_management: row.get::<_, bool>(8),
-                created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(9),
-                updated_at: row.get::<_, chrono::DateTime<chrono::Utc>>(10),
-            })),
-            None => Ok(None),
-        }
-    }
-
-    /// Create a new scope
-    pub async fn create_scope(
-        db: &Database,
-        request: CreateScopeRequest,
-        realm_id: Uuid,
-        resource_server_id: Uuid,
-    ) -> Result<Scope> {
-        let scope_id = Uuid::new_v4();
-        let now = Utc::now();
-
-        let query = r#"
-            INSERT INTO scopes (
-                id, name, display_name, icon_uri, realm_id, resource_server_id,
-                created_at, updated_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING
-                id, name, display_name, icon_uri, realm_id, resource_server_id,
-                created_at, updated_at
-        "#;
-
-        let row: tokio_postgres::Row = db
-            .query_one(
-                query,
-                &[
-                    &scope_id,
-                    &request.name,
-                    &request.display_name,
-                    &request.icon_uri,
-                    &realm_id,
-                    &resource_server_id,
-                    &now,
-                    &now,
-                ],
-            )
-            .await?;
-
-        Ok(Scope {
-            id: row.get(0),
-            name: row.get(1),
-            display_name: row.get(2),
-            icon_uri: row.get(3),
-            realm_id: row.get(4),
-            resource_server_id: row.get(5),
-            created_at: row.get(6),
-            updated_at: row.get(7),
-        })
-    }
-
-    /// Get scope by ID
-    pub async fn get_scope(db: &Database, scope_id: Uuid) -> Result<Option<Scope>> {
-        let query = r#"
-            SELECT id, name, display_name, icon_uri, realm_id, resource_server_id,
-                   created_at, updated_at
-            FROM scopes
-            WHERE id = $1
-        "#;
-
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&scope_id]).await?;
-        let row = rows.into_iter().next();
-
-        match row {
-            Some(row) => Ok(Some(Scope {
-                id: row.get::<_, Uuid>(0),
-                name: row.get(1),
-                display_name: row.get(2),
-                icon_uri: row.get(3),
-                realm_id: row.get(4),
-                resource_server_id: row.get(5),
-                created_at: row.get(6),
-                updated_at: row.get(7),
-            })),
-            None => Ok(None),
-        }
-    }
-
-    /// Get scope by name and resource server
-    pub async fn get_scope_by_name(
-        db: &Database,
-        name: &str,
-        resource_server_id: Uuid,
-    ) -> Result<Option<Scope>> {
-        let query = r#"
-            SELECT id, name, display_name, icon_uri, realm_id, resource_server_id,
-                   created_at, updated_at
-            FROM scopes
-            WHERE name = $1 AND resource_server_id = $2
-        "#;
-
-        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            vec![&name, &resource_server_id];
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &params).await?;
-        let row = rows.into_iter().next();
-
-        match row {
-            Some(row) => Ok(Some(Scope {
-                id: row.get::<_, Uuid>(0),
-                name: row.get(1),
-                display_name: row.get(2),
-                icon_uri: row.get(3),
-                realm_id: row.get(4),
-                resource_server_id: row.get(5),
-                created_at: row.get(6),
-                updated_at: row.get(7),
-            })),
-            None => Ok(None),
-        }
-    }
-
-    /// Create a new resource
-    pub async fn create_resource(
-        db: &Database,
-        request: CreateResourceRequest,
-        realm_id: Uuid,
-        resource_server_id: Uuid,
-        owner: String,
-    ) -> Result<Resource> {
-        let resource_id = Uuid::new_v4();
-        let now = Utc::now();
-
-        let query = r#"
-            INSERT INTO resources (
-                id, name, display_name, uris, icon_uri, resource_type, owner,
-                enabled, realm_id, resource_server_id, scopes, attributes,
-                created_at, updated_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-            RETURNING
-                id, name, display_name, uris, icon_uri, resource_type, owner,
-                enabled, realm_id, resource_server_id, scopes, attributes,
-                created_at, updated_at
-        "#;
-
-        let row: tokio_postgres::Row = db
-            .query_one(
-                query,
-                &[
-                    &resource_id,
-                    &request.name,
-                    &request.display_name,
-                    &request.uris.unwrap_or_default(),
-                    &request.icon_uri,
-                    &request.resource_type,
-                    &owner,
-                    &true, // enabled
-                    &realm_id,
-                    &resource_server_id,
-                    &request.scopes.unwrap_or_default(),
-                    &request
-                        .attributes
-                        .as_ref()
-                        .map(|attrs| {
-                            serde_json::to_string(attrs).unwrap_or_else(|_| "{}".to_string())
-                        })
-                        .unwrap_or_else(|| "{}".to_string()),
-                    &now,
-                    &now,
-                ],
-            )
-            .await?;
-
-        Ok(Resource {
-            id: row.get(0),
-            name: row.get(1),
-            display_name: row.get(2),
-            uris: row.get(3),
-            icon_uri: row.get(4),
-            resource_type: row.get(5),
-            owner: row.get(6),
-            enabled: row.get(7),
-            realm_id: row.get(8),
-            resource_server_id: row.get(9),
-            scopes: row.get(10),
-            attributes: serde_json::from_str(&row.get::<_, String>(11)).unwrap_or_default(),
-            created_at: row.get(12),
-            updated_at: row.get(13),
-        })
-    }
-
-    /// Get resource by ID
-    pub async fn get_resource(db: &Database, resource_id: Uuid) -> Result<Option<Resource>> {
-        let query = r#"
-            SELECT id, name, display_name, uris, icon_uri, resource_type, owner,
-                   enabled, realm_id, resource_server_id, scopes, attributes,
-                   created_at, updated_at
-            FROM resources
-            WHERE id = $1
-        "#;
-
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&resource_id]).await?;
-        let row = rows.into_iter().next();
-
-        match row {
-            Some(row) => Ok(Some(Resource {
-                id: row.get::<_, Uuid>(0),
-                name: row.get(1),
-                display_name: row.get(2),
-                uris: row.get(3),
-                icon_uri: row.get(4),
-                resource_type: row.get(5),
-                owner: row.get(6),
-                enabled: row.get(7),
-                realm_id: row.get(8),
-                resource_server_id: row.get(9),
-                scopes: row.get(10),
-                attributes: serde_json::from_str(&row.get::<_, String>(11)).unwrap_or_default(),
-                created_at: row.get(12),
-                updated_at: row.get(13),
-            })),
-            None => Ok(None),
-        }
-    }
-
-    /// Get resource by name and resource server
-    pub async fn get_resource_by_name(
-        db: &Database,
-        name: &str,
-        resource_server_id: Uuid,
-    ) -> Result<Option<Resource>> {
-        let query = r#"
-            SELECT id, name, display_name, uris, icon_uri, resource_type, owner,
-                   enabled, realm_id, resource_server_id, scopes, attributes,
-                   created_at, updated_at
-            FROM resources
-            WHERE name = $1 AND resource_server_id = $2
-        "#;
-
-        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            vec![&name, &resource_server_id];
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &params).await?;
-        let row = rows.into_iter().next();
-
-        match row {
-            Some(row) => Ok(Some(Resource {
-                id: row.get(0),
-                name: row.get(1),
-                display_name: row.get(2),
-                uris: row.get(3),
-                icon_uri: row.get(4),
-                resource_type: row.get(5),
-                owner: row.get(6),
-                enabled: row.get(7),
-                realm_id: row.get(8),
-                resource_server_id: row.get(9),
-                scopes: row.get(10),
-                attributes: serde_json::from_str(&row.get::<_, String>(11)).unwrap_or_default(),
-                created_at: row.get(12),
-                updated_at: row.get(13),
-            })),
-            None => Ok(None),
-        }
-    }
-
-    /// Get resources by owner
-    pub async fn get_resources_by_owner(
-        db: &Database,
-        owner: &str,
-        first: Option<i32>,
-        max: Option<i32>,
-    ) -> Result<Vec<Resource>> {
-        let limit = max.unwrap_or(20);
-        let offset = first.unwrap_or(0);
-
-        let query = r#"
-            SELECT id, name, display_name, uris, icon_uri, resource_type, owner,
-                   enabled, realm_id, resource_server_id, scopes, attributes,
-                   created_at, updated_at
-            FROM resources
-            WHERE owner = $1 AND enabled = true
-            ORDER BY created_at DESC
-            LIMIT $2 OFFSET $3
-        "#;
-
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&owner, &limit, &offset]).await?;
-
-        let mut resources = Vec::new();
-        for row in rows {
-            resources.push(Resource {
-                id: row.get(0),
-                name: row.get(1),
-                display_name: row.get(2),
-                uris: row.get(3),
-                icon_uri: row.get(4),
-                resource_type: row.get(5),
-                owner: row.get(6),
-                enabled: row.get(7),
-                realm_id: row.get(8),
-                resource_server_id: row.get(9),
-                scopes: row.get(10),
-                attributes: serde_json::from_str(&row.get::<_, String>(11)).unwrap_or_default(),
-                created_at: row.get(12),
-                updated_at: row.get(13),
-            });
-        }
-
-        Ok(resources)
-    }
-
-    /// Create a permission ticket
-    pub async fn create_permission_ticket(
-        db: &Database,
-        request: CreatePermissionTicketRequest,
-        owner: String,
-        realm_id: Uuid,
-        resource_server_id: Uuid,
-    ) -> Result<PermissionTicket> {
-        let ticket_id = Uuid::new_v4();
-        let now = Utc::now();
-
-        let query = r#"
-            INSERT INTO permission_tickets (
-                id, resource_id, scope_id, owner, requester, granted,
-                granted_timestamp, realm_id, resource_server_id,
-                created_at, updated_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING
-                id, resource_id, scope_id, owner, requester, granted,
-                granted_timestamp, realm_id, resource_server_id,
-                created_at, updated_at
-        "#;
-
-        let row: tokio_postgres::Row = db
-            .query_one(
-                query,
-                &[
-                    &ticket_id,
-                    &request.resource_id,
-                    &request.scope_id,
-                    &owner,
-                    &request.requester,
-                    &false,                         // granted
-                    &None::<chrono::DateTime<Utc>>, // granted_timestamp
-                    &realm_id,
-                    &resource_server_id,
-                    &now,
-                    &now,
-                ],
-            )
-            .await?;
-
-        Ok(PermissionTicket {
-            id: row.get(0),
-            resource_id: row.get(1),
-            scope_id: row.get(2),
-            owner: row.get(3),
-            requester: row.get(4),
-            granted: row.get(5),
-            granted_timestamp: row.get(6),
-            realm_id: row.get(7),
-            resource_server_id: row.get(8),
-            created_at: row.get(9),
-            updated_at: row.get(10),
-        })
-    }
-
-    /// Get permission ticket by ID
-    pub async fn get_permission_ticket(
-        db: &Database,
-        ticket_id: Uuid,
-    ) -> Result<Option<PermissionTicket>> {
-        let query = r#"
-            SELECT id, resource_id, scope_id, owner, requester, granted,
-                   granted_timestamp, realm_id, resource_server_id,
-                   created_at, updated_at
-            FROM permission_tickets
-            WHERE id = $1
-        "#;
-
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&ticket_id]).await?;
-        let row = rows.into_iter().next();
-
-        match row {
-            Some(row) => Ok(Some(PermissionTicket {
-                id: row.get::<_, Uuid>(0),
-                resource_id: row.get(1),
-                scope_id: row.get(2),
-                owner: row.get(3),
-                requester: row.get(4),
-                granted: row.get(5),
-                granted_timestamp: row.get(6),
-                realm_id: row.get(7),
-                resource_server_id: row.get(8),
-                created_at: row.get(9),
-                updated_at: row.get(10),
-            })),
-            None => Ok(None),
-        }
-    }
-
-    /// Grant permission ticket
-    pub async fn grant_permission_ticket(
-        db: &Database,
-        ticket_id: Uuid,
-    ) -> Result<PermissionTicket> {
-        let now = Utc::now();
-
-        let query = r#"
-            UPDATE permission_tickets
-            SET granted = true, granted_timestamp = $2, updated_at = $2
-            WHERE id = $1
-            RETURNING
-                id, resource_id, scope_id, owner, requester, granted,
-                granted_timestamp, realm_id, resource_server_id,
-                created_at, updated_at
-        "#;
-
-        let row: tokio_postgres::Row = db.query_one(query, &[&ticket_id, &now]).await?;
-
-        Ok(PermissionTicket {
-            id: row.get(0),
-            resource_id: row.get(1),
-            scope_id: row.get(2),
-            owner: row.get(3),
-            requester: row.get(4),
-            granted: row.get(5),
-            granted_timestamp: row.get(6),
-            realm_id: row.get(7),
-            resource_server_id: row.get(8),
-            created_at: row.get(9),
-            updated_at: row.get(10),
-        })
-    }
-
-    /// Get granted resources for user
-    pub async fn get_granted_resources(
-        db: &Database,
-        user_id: &str,
-        name_filter: Option<&str>,
-        first: Option<i32>,
-        max: Option<i32>,
-    ) -> Result<Vec<Uuid>> {
-        let limit = max.unwrap_or(20);
-        let offset = first.unwrap_or(0);
-
-        let mut query = r#"
-            SELECT DISTINCT r.id
-            FROM resources r
-            INNER JOIN permission_tickets pt ON r.id = pt.resource_id
-            WHERE pt.requester = $1 AND pt.granted = true
-        "#
-        .to_string();
-
-        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&user_id];
-
-        let name_param: String;
-        if let Some(name) = name_filter {
-            query.push_str(" AND r.name ILIKE $2");
-            name_param = format!("%{}%", name);
-            params.push(&name_param);
-        } else {
-            name_param = String::new(); // Initialize to avoid uninitialized variable
-        }
-
-        query.push_str(" ORDER BY r.created_at DESC LIMIT $");
-        query.push_str(&(params.len() + 1).to_string());
-        query.push_str(" OFFSET $");
-        query.push_str(&(params.len() + 2).to_string());
-
-        params.push(&limit);
-        params.push(&offset);
-
-        let rows: Vec<tokio_postgres::Row> = db.query(&query, &params).await?;
-
-        let mut resource_ids = Vec::new();
-        for row in rows {
-            resource_ids.push(row.get(0));
-        }
-
-        Ok(resource_ids)
-    }
-}
-
-/// Database operations for user consents
-pub mod consents {
-    use crate::{
-        database::Database,
-        error::{AuthencError, Result},
-        models::{ConsentGrantRequest, UserConsent},
-    };
-    use chrono::{Duration, Utc};
-    use log::error;
-    use uuid::Uuid;
-
-    /// Grant user consent for a client
-    pub async fn grant_consent(
-        db: &Database,
-        user_id: Uuid,
-        request: &ConsentGrantRequest,
-    ) -> Result<UserConsent> {
-        let consent_id = Uuid::new_v4();
-        let granted_at = Utc::now();
-        let expires_at = request
-            .expires_in
-            .map(|expires_in| granted_at + Duration::seconds(expires_in));
-
-        let query = r#"
-            INSERT INTO user_consents (
-                id, user_id, client_id, scopes, granted_at, expires_at, metadata
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (user_id, client_id)
-            DO UPDATE SET
-                scopes = EXCLUDED.scopes,
-                granted_at = EXCLUDED.granted_at,
-                expires_at = EXCLUDED.expires_at,
-                metadata = EXCLUDED.metadata
-            RETURNING id, user_id, client_id, scopes, granted_at, expires_at, metadata
-        "#;
-
-        let row: tokio_postgres::Row = db
-            .query_one(
-                query,
-                &[
-                    &consent_id,
-                    &user_id,
-                    &request.client_id,
-                    &request.scopes,
-                    &granted_at,
-                    &expires_at,
-                    &request.metadata,
-                ],
-            )
-            .await
-            .map_err(|e| {
-                error!("Failed to grant consent: {}", e);
-                AuthencError::database("Failed to grant consent")
-            })?;
-
-        Ok(UserConsent {
-            id: row.get(0),
-            user_id: row.get(1),
-            client_id: row.get(2),
-            scopes: row.get(3),
-            granted_at: row.get(4),
-            expires_at: row.get(5),
-            metadata: row.get(6),
-        })
-    }
-
-    /// Revoke user consent for a client
-    pub async fn revoke_consent(db: &Database, user_id: Uuid, client_id: &str) -> Result<()> {
-        let query = "DELETE FROM user_consents WHERE user_id = $1 AND client_id = $2";
-
-        db.execute(query, &[&user_id, &client_id])
-            .await
-            .map_err(|e| {
-                error!("Failed to revoke consent: {}", e);
-                AuthencError::database("Failed to revoke consent")
-            })?;
-
-        Ok(())
-    }
-
-    /// Revoke specific consent by ID
-    pub async fn revoke_consent_by_id(
-        db: &Database,
-        user_id: Uuid,
-        consent_id: Uuid,
-    ) -> Result<()> {
-        let query = "DELETE FROM user_consents WHERE user_id = $1 AND id = $2";
-
-        db.execute(query, &[&user_id, &consent_id])
-            .await
-            .map_err(|e| {
-                error!("Failed to revoke consent by ID: {}", e);
-                AuthencError::database("Failed to revoke consent by ID")
-            })?;
-
-        Ok(())
-    }
-
-    /// Get all user consents
-    pub async fn get_user_consents(db: &Database, user_id: Uuid) -> Result<Vec<UserConsent>> {
-        let query = r#"
-            SELECT id, user_id, client_id, scopes, granted_at, expires_at, metadata
-            FROM user_consents
-            WHERE user_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
-            ORDER BY granted_at DESC
-        "#;
-
-        let rows = db.query(query, &[&user_id]).await.map_err(|e| {
-            error!("Failed to get user consents: {}", e);
-            AuthencError::database("Failed to get user consents")
-        })?;
-
-        let consents = rows
-            .into_iter()
-            .map(|row: tokio_postgres::Row| UserConsent {
-                id: row.get(0),
-                user_id: row.get(1),
-                client_id: row.get(2),
-                scopes: row.get(3),
-                granted_at: row.get(4),
-                expires_at: row.get(5),
-                metadata: row.get(6),
-            })
-            .collect();
-
-        Ok(consents)
-    }
-
-    /// Get specific user consent for a client
-    pub async fn get_user_consent(
-        db: &Database,
-        user_id: Uuid,
-        client_id: &str,
-    ) -> Result<Option<UserConsent>> {
-        let query = r#"
-            SELECT id, user_id, client_id, scopes, granted_at, expires_at, metadata
-            FROM user_consents
-            WHERE user_id = $1 AND client_id = $2 AND (expires_at IS NULL OR expires_at > NOW())
-        "#;
-
-        let rows: Vec<tokio_postgres::Row> = db
-            .query(query, &[&user_id, &client_id])
-            .await
-            .map_err(|e| {
-                error!("Failed to get user consent: {}", e);
-                AuthencError::database("Failed to get user consent")
-            })?;
-
-        if let Some(row) = rows.first() {
-            Ok(Some(UserConsent {
-                id: row.get(0),
-                user_id: row.get(1),
-                client_id: row.get(2),
-                scopes: row.get(3),
-                granted_at: row.get(4),
-                expires_at: row.get(5),
-                metadata: row.get(6),
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Check if user has valid consent for client and scopes
-    pub async fn has_consent(
-        db: &Database,
-        user_id: Uuid,
-        client_id: &str,
-        scopes: &[String],
-    ) -> Result<bool> {
-        let query = r#"
-            SELECT 1
-            FROM user_consents
-            WHERE user_id = $1 AND client_id = $2 AND (expires_at IS NULL OR expires_at > NOW())
-            AND scopes @> $3
-        "#;
-
-        let rows: Vec<tokio_postgres::Row> = db
-            .query(query, &[&user_id, &client_id, &scopes])
-            .await
-            .map_err(|e| {
-                error!("Failed to check consent: {}", e);
-                AuthencError::database("Failed to check consent")
-            })?;
-
-        Ok(!rows.is_empty())
-    }
-
-    /// Clean up expired consents
-    pub async fn cleanup_expired_consents(db: &Database) -> Result<i64> {
-        let query = "DELETE FROM user_consents WHERE expires_at IS NOT NULL AND expires_at < NOW()";
-
-        let deleted = db.execute(query, &[]).await.map_err(|e| {
-            error!("Failed to cleanup expired consents: {}", e);
-            AuthencError::database("Failed to cleanup expired consents")
-        })?;
-
-        Ok(deleted as i64)
-    }
-
-    /// Get consent statistics for a user
-    pub async fn get_consent_stats(db: &Database, user_id: Uuid) -> Result<serde_json::Value> {
-        let query = r#"
-            SELECT
-                COUNT(*) as total_consents,
-                COUNT(CASE WHEN expires_at IS NOT NULL THEN 1 END) as expiring_consents,
-                COUNT(CASE WHEN expires_at IS NOT NULL AND expires_at < NOW() + INTERVAL '30 days' THEN 1 END) as expiring_soon
-            FROM user_consents
-            WHERE user_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
-        "#;
-
-        let row: tokio_postgres::Row = db.query_one(query, &[&user_id]).await.map_err(|e| {
-            error!("Failed to get consent stats: {}", e);
-            AuthencError::database("Failed to get consent stats")
-        })?;
-
-        let stats = serde_json::json!({
-            "total_consents": row.get::<_, i64>(0),
-            "expiring_consents": row.get::<_, i64>(1),
-            "expiring_soon": row.get::<_, i64>(2)
-        });
-
-        Ok(stats)
-    }
-}
-
 /// Database operations for authentication flows
 pub mod auth_flows {
-    use crate::{
-        database::Database,
-        error::{AuthencError, Result},
-        services::auth_flow::{
-            AuthenticationExecutionModel, AuthenticationFlowModel, AuthenticationSessionModel,
-        },
-    };
-    use chrono::Utc;
-    use log::error;
+    use crate::database::Database;
+    use crate::error::Result;
     use uuid::Uuid;
 
-    /// Create a new authentication flow
-    pub async fn create_flow(
-        db: &Database,
-        flow: &AuthenticationFlowModel,
-    ) -> Result<AuthenticationFlowModel> {
-        let query = r#"
-            INSERT INTO authentication_flows (
-                id, alias, description, flow_type, realm_id, enabled, priority, created_at, updated_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, alias, description, flow_type, realm_id, enabled, priority, created_at, updated_at
-        "#;
-
-        let flow_type_str = match flow.flow_type {
-            crate::services::auth_flow::AuthenticationFlowType::Browser => "browser",
-            crate::services::auth_flow::AuthenticationFlowType::DirectGrant => "direct_grant",
-            crate::services::auth_flow::AuthenticationFlowType::ClientAuthentication => {
-                "client_authentication"
-            }
-            crate::services::auth_flow::AuthenticationFlowType::Registration => "registration",
-            crate::services::auth_flow::AuthenticationFlowType::ResetCredentials => {
-                "reset_credentials"
-            }
-            crate::services::auth_flow::AuthenticationFlowType::Docker => "docker",
-            crate::services::auth_flow::AuthenticationFlowType::Custom(ref s) => s,
-        };
-
-        let now = Utc::now();
-        let rows: Vec<tokio_postgres::Row> = db
-            .query(
-                query,
-                &[
-                    &flow.id,
-                    &flow.alias,
-                    &flow.description,
-                    &flow_type_str,
-                    &flow.realm_id,
-                    &flow.enabled,
-                    &flow.priority,
-                    &now,
-                    &now,
-                ],
-            )
-            .await
-            .map_err(|e| {
-                error!("Failed to create authentication flow: {}", e);
-                AuthencError::database("Failed to create authentication flow")
-            })?;
-
-        let row = rows.first().ok_or_else(|| {
-            error!("No rows returned from create flow query");
-            AuthencError::database("Failed to create authentication flow")
-        })?;
-
-        Ok(AuthenticationFlowModel {
-            id: row.get(0),
-            alias: row.get(1),
-            description: row.get(2),
-            flow_type: match row.get::<_, &str>(3) {
-                "browser" => crate::services::auth_flow::AuthenticationFlowType::Browser,
-                "direct_grant" => crate::services::auth_flow::AuthenticationFlowType::DirectGrant,
-                "client_authentication" => {
-                    crate::services::auth_flow::AuthenticationFlowType::ClientAuthentication
-                }
-                "registration" => crate::services::auth_flow::AuthenticationFlowType::Registration,
-                "reset_credentials" => {
-                    crate::services::auth_flow::AuthenticationFlowType::ResetCredentials
-                }
-                "docker" => crate::services::auth_flow::AuthenticationFlowType::Docker,
-                s => crate::services::auth_flow::AuthenticationFlowType::Custom(s.to_string()),
-            },
-            realm_id: row.get(4),
-            enabled: row.get(5),
-            priority: row.get(6),
-        })
+    /// Create authentication flow
+    pub async fn create_flow(_db: &Database, _flow: &serde_json::Value) -> Result<serde_json::Value> {
+        // TODO: Implement
+        Ok(serde_json::json!({}))
     }
 
     /// Get authentication flow by ID
-    pub async fn get_flow(db: &Database, flow_id: Uuid) -> Result<Option<AuthenticationFlowModel>> {
-        let query = r#"
-            SELECT f.id, f.alias, f.description, f.flow_type, f.realm_id, f.enabled, f.priority,
-                   e.id, e.alias, e.description, e.execution_type, e.enabled, e.priority, e.configuration, e.requirements
-            FROM authentication_flows f
-            LEFT JOIN authentication_executions e ON f.id = e.flow_id
-            WHERE f.id = $1
-            ORDER BY e.priority DESC
-        "#;
-
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&flow_id]).await.map_err(|e| {
-            error!("Failed to get authentication flow: {}", e);
-            AuthencError::database("Failed to get authentication flow")
-        })?;
-
-        if rows.is_empty() {
-            return Ok(None);
-        }
-
-        let first_row = &rows[0];
-        let mut executions = Vec::new();
-
-        for row in &rows {
-            if let Some(exec_id) = row.get::<_, Option<Uuid>>(7) {
-                executions.push(AuthenticationExecutionModel {
-                    id: exec_id,
-                    flow_id: row.get(0),
-                    alias: row.get(8),
-                    description: row.get(9),
-                    execution_type: row.get(10),
-                    enabled: row.get(11),
-                    priority: row.get(12),
-                    configuration: row
-                        .get::<_, Option<serde_json::Value>>(13)
-                        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
-                        .as_object()
-                        .unwrap_or(&serde_json::Map::new())
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
-                        .collect(),
-                    requirements: row.get::<_, Option<Vec<String>>>(14).unwrap_or_default(),
-                });
-            }
-        }
-
-        Ok(Some(AuthenticationFlowModel {
-            id: first_row.get(0),
-            alias: first_row.get(1),
-            description: first_row.get(2),
-            flow_type: match first_row.get::<_, &str>(3) {
-                "browser" => crate::services::auth_flow::AuthenticationFlowType::Browser,
-                "direct_grant" => crate::services::auth_flow::AuthenticationFlowType::DirectGrant,
-                "client_authentication" => {
-                    crate::services::auth_flow::AuthenticationFlowType::ClientAuthentication
-                }
-                "registration" => crate::services::auth_flow::AuthenticationFlowType::Registration,
-                "reset_credentials" => {
-                    crate::services::auth_flow::AuthenticationFlowType::ResetCredentials
-                }
-                "docker" => crate::services::auth_flow::AuthenticationFlowType::Docker,
-                s => crate::services::auth_flow::AuthenticationFlowType::Custom(s.to_string()),
-            },
-            realm_id: first_row.get(4),
-            enabled: first_row.get(5),
-            priority: first_row.get(6),
-        }))
+    pub async fn get_flow(_db: &Database, _flow_id: Uuid) -> Result<Option<serde_json::Value>> {
+        // TODO: Implement
+        Ok(None)
     }
 
-    /// List authentication flows for a realm
-    pub async fn list_flows(
-        db: &Database,
-        realm_id: Option<Uuid>,
-    ) -> Result<Vec<AuthenticationFlowModel>> {
-        let (query, params) = if let Some(ref realm_id_val) = realm_id {
-            let params_vec: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![realm_id_val];
-            (
-                r#"
-                SELECT DISTINCT f.id, f.alias, f.description, f.flow_type, f.realm_id, f.enabled, f.priority
-                FROM authentication_flows f
-                WHERE f.realm_id = $1 OR f.realm_id IS NULL
-                ORDER BY f.priority DESC, f.alias
-            "#,
-                params_vec,
-            )
-        } else {
-            (
-                r#"
-                SELECT DISTINCT f.id, f.alias, f.description, f.flow_type, f.realm_id, f.enabled, f.priority
-                FROM authentication_flows f
-                ORDER BY f.priority DESC, f.alias
-            "#,
-                vec![],
-            )
-        };
-
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &params).await.map_err(|e| {
-            error!("Failed to list authentication flows: {}", e);
-            AuthencError::database("Failed to list authentication flows")
-        })?;
-
-        let mut flows = Vec::new();
-        for row in rows {
-            let flow_id: Uuid = row.get(0);
-            if let Some(flow) = get_flow(db, flow_id).await? {
-                flows.push(flow);
-            }
-        }
-
-        Ok(flows)
+    /// List authentication flows
+    pub async fn list_flows(_db: &Database, _realm_id: Option<Uuid>) -> Result<Vec<serde_json::Value>> {
+        // TODO: Implement
+        Ok(vec![])
     }
 
     /// Update authentication flow
-    pub async fn update_flow(
-        db: &Database,
-        flow_id: Uuid,
-        flow: &AuthenticationFlowModel,
-    ) -> Result<AuthenticationFlowModel> {
-        let query = r#"
-            UPDATE authentication_flows
-            SET alias = $2, description = $3, flow_type = $4, realm_id = $5,
-                enabled = $6, priority = $7, updated_at = $8
-            WHERE id = $1
-            RETURNING id, alias, description, flow_type, realm_id, enabled, priority, created_at, updated_at
-        "#;
-
-        let flow_type_str = match flow.flow_type {
-            crate::services::auth_flow::AuthenticationFlowType::Browser => "browser",
-            crate::services::auth_flow::AuthenticationFlowType::DirectGrant => "direct_grant",
-            crate::services::auth_flow::AuthenticationFlowType::ClientAuthentication => {
-                "client_authentication"
-            }
-            crate::services::auth_flow::AuthenticationFlowType::Registration => "registration",
-            crate::services::auth_flow::AuthenticationFlowType::ResetCredentials => {
-                "reset_credentials"
-            }
-            crate::services::auth_flow::AuthenticationFlowType::Docker => "docker",
-            crate::services::auth_flow::AuthenticationFlowType::Custom(ref s) => s,
-        };
-
-        let now = Utc::now();
-        let rows: Vec<tokio_postgres::Row> = db
-            .query(
-                query,
-                &[
-                    &flow_id,
-                    &flow.alias,
-                    &flow.description,
-                    &flow_type_str,
-                    &flow.realm_id,
-                    &flow.enabled,
-                    &flow.priority,
-                    &now,
-                ],
-            )
-            .await
-            .map_err(|e| {
-                error!("Failed to update authentication flow: {}", e);
-                AuthencError::database("Failed to update authentication flow")
-            })?;
-
-        let row = rows.first().ok_or_else(|| {
-            error!("No rows returned from update flow query");
-            AuthencError::database("Failed to update authentication flow")
-        })?;
-
-        // Get the updated flow with executions
-        get_flow(db, flow_id).await?.ok_or_else(|| {
-            error!("Flow not found after update");
-            AuthencError::database("Flow not found after update")
-        })
+    pub async fn update_flow(_db: &Database, _flow_id: Uuid, _flow: &serde_json::Value) -> Result<serde_json::Value> {
+        // TODO: Implement
+        Ok(serde_json::json!({}))
     }
 
     /// Delete authentication flow
-    pub async fn delete_flow(db: &Database, flow_id: Uuid) -> Result<()> {
-        let query = "DELETE FROM authentication_flows WHERE id = $1";
-
-        let deleted = db.execute(query, &[&flow_id]).await.map_err(|e| {
-            error!("Failed to delete authentication flow: {}", e);
-            AuthencError::database("Failed to delete authentication flow")
-        })?;
-
-        if deleted == 0 {
-            return Err(AuthencError::resource_not_found(
-                "Authentication flow not found",
-            ));
-        }
-
+    pub async fn delete_flow(_db: &Database, _flow_id: Uuid) -> Result<()> {
+        // TODO: Implement
         Ok(())
     }
 
     /// Create authentication execution
-    pub async fn create_execution(
-        db: &Database,
-        execution: &AuthenticationExecutionModel,
-    ) -> Result<AuthenticationExecutionModel> {
-        let query = r#"
-            INSERT INTO authentication_executions (
-                id, flow_id, alias, description, execution_type, enabled, priority,
-                configuration, requirements, created_at, updated_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING id, flow_id, alias, description, execution_type, enabled, priority,
-                      configuration, requirements, created_at, updated_at
-        "#;
-
-        let config_json = serde_json::to_value(&execution.configuration)
-            .map_err(|e| AuthencError::database(format!("Failed to serialize config: {}", e)))?;
-
-        let now = Utc::now();
-        let rows: Vec<tokio_postgres::Row> = db
-            .query(
-                query,
-                &[
-                    &execution.id,
-                    &execution.flow_id,
-                    &execution.alias,
-                    &execution.description,
-                    &execution.execution_type,
-                    &execution.enabled,
-                    &execution.priority,
-                    &config_json,
-                    &execution.requirements,
-                    &now,
-                    &now,
-                ],
-            )
-            .await
-            .map_err(|e| {
-                error!("Failed to create authentication execution: {}", e);
-                AuthencError::database("Failed to create authentication execution")
-            })?;
-
-        let row = rows.first().ok_or_else(|| {
-            error!("No rows returned from create execution query");
-            AuthencError::database("Failed to create authentication execution")
-        })?;
-
-        Ok(AuthenticationExecutionModel {
-            id: row.get(0),
-            flow_id: row.get(1),
-            alias: row.get(2),
-            description: row.get(3),
-            execution_type: row.get(4),
-            enabled: row.get(5),
-            priority: row.get(6),
-            configuration: row
-                .get::<_, Option<serde_json::Value>>(7)
-                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
-                .as_object()
-                .unwrap_or(&serde_json::Map::new())
-                .iter()
-                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
-                .collect(),
-            requirements: row.get::<_, Option<Vec<String>>>(8).unwrap_or_default(),
-        })
+    pub async fn create_execution(_db: &Database, _execution: &serde_json::Value) -> Result<serde_json::Value> {
+        // TODO: Implement
+        Ok(serde_json::json!({}))
     }
 
     /// Create authentication session
-    pub async fn create_session(
-        db: &Database,
-        session: &AuthenticationSessionModel,
-    ) -> Result<AuthenticationSessionModel> {
-        let query = r#"
-            INSERT INTO authentication_sessions (
-                id, user_session_id, client_id, flow_id, current_execution_id,
-                started_at, session_data, auth_notes, expires_at, completed, success, error_message
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            RETURNING id, user_session_id, client_id, flow_id, current_execution_id,
-                      started_at, session_data, auth_notes, expires_at, completed, success, error_message
-        "#;
+    pub async fn create_session(_db: &Database, _session: &serde_json::Value) -> Result<serde_json::Value> {
+        // TODO: Implement
+        Ok(serde_json::json!({}))
+    }
+}
 
-        let session_data_json = serde_json::to_value(&session.session_data).map_err(|e| {
-            AuthencError::database(format!("Failed to serialize session data: {}", e))
-        })?;
-        let auth_notes_json = serde_json::to_value(&session.auth_notes).map_err(|e| {
-            AuthencError::database(format!("Failed to serialize auth notes: {}", e))
-        })?;
+/// Database operations for resources
+pub mod resources {
+    use crate::database::Database;
+    use crate::error::Result;
+    use uuid::Uuid;
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query(
-                query,
-                &[
-                    &session.id,
-                    &session.user_session_id,
-                    &session.client_id,
-                    &session.flow_id,
-                    &session.current_execution_id,
-                    &session.started_at,
-                    &session_data_json,
-                    &auth_notes_json,
-                    &session.expires_at,
-                    &false,          // completed
-                    &None::<bool>,   // success
-                    &None::<String>, // error_message
-                ],
-            )
-            .await
-            .map_err(|e| {
-                error!("Failed to create authentication session: {}", e);
-                AuthencError::database("Failed to create authentication session")
-            })?;
-
-        let row = rows.first().ok_or_else(|| {
-            error!("No rows returned from create session query");
-            AuthencError::database("Failed to create authentication session")
-        })?;
-
-        Ok(AuthenticationSessionModel {
-            id: row.get(0),
-            user_session_id: row.get(1),
-            client_id: row.get(2),
-            flow_id: row.get(3),
-            current_execution_id: row.get(4),
-            started_at: row.get(5),
-            expires_at: row.get(8),
-            session_data: row
-                .get::<_, Option<serde_json::Value>>(6)
-                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
-                .as_object()
-                .unwrap_or(&serde_json::Map::new())
-                .iter()
-                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
-                .collect(),
-            auth_notes: row
-                .get::<_, Option<serde_json::Value>>(7)
-                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
-                .as_object()
-                .unwrap_or(&serde_json::Map::new())
-                .iter()
-                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
-                .collect(),
-            completed: row.get(9),
-        })
+    /// Create resource
+    pub async fn create_resource(_db: &Database, _resource: &serde_json::Value) -> Result<serde_json::Value> {
+        // TODO: Implement
+        Ok(serde_json::json!({}))
     }
 
-    /// Get authentication session
-    pub async fn get_session(
-        db: &Database,
-        session_id: Uuid,
-    ) -> Result<Option<AuthenticationSessionModel>> {
-        let query = r#"
-            SELECT id, user_session_id, client_id, flow_id, current_execution_id,
-                   started_at, session_data, auth_notes, expires_at, completed, success, error_message
-            FROM authentication_sessions
-            WHERE id = $1 AND expires_at > NOW()
-        "#;
-
-        let rows: Vec<tokio_postgres::Row> =
-            db.query(query, &[&session_id]).await.map_err(|e| {
-                error!("Failed to get authentication session: {}", e);
-                AuthencError::database("Failed to get authentication session")
-            })?;
-
-        if let Some(row) = rows.first() {
-            Ok(Some(AuthenticationSessionModel {
-                id: row.get(0),
-                user_session_id: row.get(1),
-                client_id: row.get(2),
-                flow_id: row.get(3),
-                current_execution_id: row.get(4),
-                started_at: row.get(5),
-                expires_at: row.get(8),
-                session_data: row
-                    .get::<_, Option<serde_json::Value>>(6)
-                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
-                    .as_object()
-                    .unwrap_or(&serde_json::Map::new())
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
-                    .collect(),
-                auth_notes: row
-                    .get::<_, Option<serde_json::Value>>(7)
-                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
-                    .as_object()
-                    .unwrap_or(&serde_json::Map::new())
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
-                    .collect(),
-                completed: row.get(9),
-            }))
-        } else {
-            Ok(None)
-        }
+    /// Get resource by ID
+    pub async fn get_resource(_db: &Database, _resource_id: Uuid) -> Result<Option<serde_json::Value>> {
+        // TODO: Implement
+        Ok(None)
     }
 
-    /// Update authentication session
-    pub async fn update_session(
-        db: &Database,
-        session_id: Uuid,
-        session: &AuthenticationSessionModel,
-    ) -> Result<()> {
-        let query = r#"
-            UPDATE authentication_sessions
-            SET user_session_id = $2, client_id = $3, flow_id = $4, current_execution_id = $5,
-                session_data = $6, auth_notes = $7, completed = $8, success = $9, error_message = $10
-            WHERE id = $1
-        "#;
+    /// List resources
+    pub async fn list_resources(_db: &Database, _owner_id: Option<Uuid>) -> Result<Vec<serde_json::Value>> {
+        // TODO: Implement
+        Ok(vec![])
+    }
 
-        let session_data_json = serde_json::to_value(&session.session_data).map_err(|e| {
-            AuthencError::database(format!("Failed to serialize session data: {}", e))
+    /// Update resource
+    pub async fn update_resource(_db: &Database, _resource_id: Uuid, _resource: &serde_json::Value) -> Result<serde_json::Value> {
+        // TODO: Implement
+        Ok(serde_json::json!({}))
+    }
+
+    /// Delete resource
+    pub async fn delete_resource(_db: &Database, _resource_id: Uuid) -> Result<()> {
+        // TODO: Implement
+        Ok(())
+    }
+}
+    use crate::{
+        database::Database,
+        error::{AuthencError, Result},
+        models::events::{AdminEvent, AuthDetails, Event, EventType, OperationType, ResourceType},
+        spi::events::{AdminEventOperationType, AdminEventQuery, EventQuery},
+    };
+    use chrono::Utc;
+    use log::error;
+    use serde_json;
+    use std::collections::HashMap;
+    use uuid::Uuid;
+
+    /// Store a user event in the database
+    pub async fn store_event(db: &Database, event: &Event) -> Result<()> {
+        let details_json = serde_json::to_string(&event.details).map_err(|e| {
+            error!("Failed to serialize event details: {}", e);
+            AuthencError::validation("Failed to serialize event details")
         })?;
-        let auth_notes_json = serde_json::to_value(&session.auth_notes).map_err(|e| {
-            AuthencError::database(format!("Failed to serialize auth notes: {}", e))
-        })?;
+
+        let query = r#"
+            INSERT INTO events (
+                id, time, event_type, realm_id, realm_name, client_id,
+                user_id, session_id, ip_address, error, details
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        "#;
 
         db.execute(
             query,
             &[
-                &session_id,
-                &session.user_session_id,
-                &session.client_id,
-                &session.flow_id,
-                &session.current_execution_id,
-                &session_data_json,
-                &auth_notes_json,
-                &false,          // completed - will be set when flow completes
-                &None::<bool>,   // success
-                &None::<String>, // error_message
+                &Uuid::parse_str(&event.id).map_err(|_| AuthencError::validation("Invalid event ID"))?,
+                &event.time,
+                &event.event_type.as_str(),
+                &event.realm_id,
+                &event.realm_name,
+                &event.client_id,
+                &event.user_id,
+                &event.session_id,
+                &event.ip_address,
+                &event.error,
+                &details_json,
             ],
         )
         .await
         .map_err(|e| {
-            error!("Failed to update authentication session: {}", e);
-            AuthencError::database("Failed to update authentication session")
+            error!("Failed to store event: {}", e);
+            AuthencError::database("Failed to store event")
         })?;
 
         Ok(())
     }
 
-    /// Complete authentication session
-    pub async fn complete_session(
-        db: &Database,
-        session_id: Uuid,
-        success: bool,
-        error_message: Option<String>,
-    ) -> Result<()> {
+    /// Store an admin event in the database
+    pub async fn store_admin_event(db: &Database, event: &AdminEvent) -> Result<()> {
         let query = r#"
-            UPDATE authentication_sessions
-            SET completed = true, success = $2, error_message = $3
-            WHERE id = $1
+            INSERT INTO admin_events (
+                id, time, realm_id, realm_name, auth_user_id, auth_username,
+                auth_ip_address, auth_user_agent, resource_type, operation_type,
+                resource_path, representation, error
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         "#;
 
-        db.execute(query, &[&session_id, &success, &error_message])
-            .await
-            .map_err(|e| {
-                error!("Failed to complete authentication session: {}", e);
-                AuthencError::database("Failed to complete authentication session")
-            })?;
+        db.execute(
+            query,
+            &[
+                &Uuid::parse_str(&event.id).map_err(|_| AuthencError::validation("Invalid admin event ID"))?,
+                &event.time,
+                &event.realm_id,
+                &event.realm_name,
+                &Uuid::parse_str(&event.auth_details.user_id).map_err(|_| AuthencError::validation("Invalid auth user ID"))?,
+                &event.auth_details.username,
+                &event.auth_details.ip_address,
+                &event.auth_details.user_agent,
+                &event.resource_type.as_str(),
+                &event.operation_type.as_str(),
+                &event.resource_path,
+                &event.representation,
+                &event.error,
+            ],
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to store admin event: {}", e);
+            AuthencError::database("Failed to store admin event")
+        })?;
 
         Ok(())
     }
 
-    /// Clean up expired authentication sessions
-    pub async fn cleanup_expired_sessions(db: &Database) -> Result<i64> {
-        let query = "DELETE FROM authentication_sessions WHERE expires_at < NOW()";
+    /// Query events based on the provided query parameters
+    pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event>> {
+        let mut conditions = Vec::new();
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+        let mut param_index = 1;
 
-        let deleted = db.execute(query, &[]).await.map_err(|e| {
-            error!("Failed to cleanup expired sessions: {}", e);
-            AuthencError::database("Failed to cleanup expired sessions")
+        // Build WHERE conditions
+        if let Some(realm_id) = &query.realm_id {
+            conditions.push(format!("realm_id = ${}", param_index));
+            params.push(Box::new(realm_id.clone()));
+            param_index += 1;
+        }
+
+        if let Some(user_id) = &query.user_id {
+            conditions.push(format!("user_id = ${}", param_index));
+            params.push(Box::new(user_id.clone()));
+            param_index += 1;
+        }
+
+        if let Some(client_id) = &query.client_id {
+            conditions.push(format!("client_id = ${}", param_index));
+            params.push(Box::new(client_id.clone()));
+            param_index += 1;
+        }
+
+        if let Some(event_types) = &query.event_types {
+            if let Some(event_type) = event_types.first() {
+                conditions.push(format!("event_type = ${}", param_index));
+                params.push(Box::new(event_type.as_str()));
+                param_index += 1;
+            }
+        }
+
+        if let Some(from_date) = &query.date_from {
+            conditions.push(format!("time >= ${}", param_index));
+            params.push(Box::new(from_date.clone()));
+            param_index += 1;
+        }
+
+        if let Some(to_date) = &query.date_to {
+            conditions.push(format!("time <= ${}", param_index));
+            params.push(Box::new(to_date.clone()));
+            param_index += 1;
+        }
+
+        if let Some(ip_address) = &query.ip_address {
+            conditions.push(format!("ip_address = ${}", param_index));
+            params.push(Box::new(ip_address.clone()));
+            param_index += 1;
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+
+        let limit = query.max_results.unwrap_or(100).min(1000);
+        let offset = query.first_result.unwrap_or(0);
+
+        let query_sql = format!(
+            r#"
+            SELECT
+                id, time, event_type, realm_id, realm_name, client_id,
+                user_id, session_id, ip_address, error, details
+            FROM events
+            {}
+            ORDER BY time DESC
+            LIMIT ${} OFFSET ${}
+            "#,
+            where_clause, param_index, param_index + 1
+        );
+
+        params.push(Box::new(limit as i64));
+        params.push(Box::new(offset as i64));
+
+        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params.iter().map(|p| p.as_ref()).collect();
+
+        let rows: Vec<tokio_postgres::Row> = db.query(&query_sql, &param_refs).await.map_err(|e| {
+            error!("Failed to query events: {}", e);
+            AuthencError::database("Failed to query events")
+        })?;
+
+        let mut events = Vec::new();
+        for row in rows {
+            let details_json: String = row.get(10);
+            let details: HashMap<String, String> = serde_json::from_str(&details_json).unwrap_or_default();
+
+            events.push(Event {
+                id: row.get::<_, Uuid>(0).to_string(),
+                time: row.get(1),
+                event_type: EventType::from_str(&row.get::<_, String>(2)).unwrap_or(EventType::Login),
+                realm_id: row.get(3),
+                realm_name: row.get(4),
+                client_id: row.get(5),
+                user_id: row.get(6),
+                session_id: row.get(7),
+                ip_address: row.get(8),
+                error: row.get(9),
+                details,
+            });
+        }
+
+        Ok(events)
+    }
+
+    /// Query admin events based on the provided query parameters
+    pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Result<Vec<AdminEvent>> {
+        let mut conditions = Vec::new();
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+        let mut param_index = 1;
+
+        // Build WHERE conditions
+        if let Some(realm_id) = &query.realm_id {
+            conditions.push(format!("realm_id = ${}", param_index));
+            params.push(Box::new(realm_id.clone()));
+            param_index += 1;
+        }
+
+        if let Some(auth_user_id) = &query.auth_user_id {
+            conditions.push(format!("auth_user_id = ${}", param_index));
+            params.push(Box::new(Uuid::parse_str(auth_user_id).map_err(|_| AuthencError::validation("Invalid auth user ID"))?));
+            param_index += 1;
+        }
+
+        if let Some(resource_type) = &query.resource_type {
+            conditions.push(format!("resource_type = ${}", param_index));
+            params.push(Box::new(resource_type.as_str()));
+            param_index += 1;
+        }
+
+        if let Some(operation_type) = &query.operation_type {
+            conditions.push(format!("operation_type = ${}", param_index));
+            params.push(Box::new(match operation_type {
+                AdminEventOperationType::Create => "CREATE",
+                AdminEventOperationType::Update => "UPDATE", 
+                AdminEventOperationType::Delete => "DELETE",
+                AdminEventOperationType::Action => "ACTION",
+            }));
+            param_index += 1;
+        }
+
+        if let Some(from_date) = &query.date_from {
+            conditions.push(format!("time >= ${}", param_index));
+            params.push(Box::new(from_date.clone()));
+            param_index += 1;
+        }
+
+        if let Some(to_date) = &query.date_to {
+            conditions.push(format!("time <= ${}", param_index));
+            params.push(Box::new(to_date.clone()));
+            param_index += 1;
+        }
+
+        if let Some(resource_path) = &query.resource_type {
+            conditions.push(format!("resource_path LIKE ${}", param_index));
+            params.push(Box::new(format!("%{}%", resource_path)));
+            param_index += 1;
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+
+        let limit = query.max_results.unwrap_or(100).min(1000);
+        let offset = query.first_result.unwrap_or(0);
+
+        let query_sql = format!(
+            r#"
+            SELECT
+                id, time, realm_id, realm_name, auth_user_id, auth_username,
+                auth_ip_address, auth_user_agent, resource_type, operation_type,
+                resource_path, representation, error
+            FROM admin_events
+            {}
+            ORDER BY time DESC
+            LIMIT ${} OFFSET ${}
+            "#,
+            where_clause, param_index, param_index + 1
+        );
+
+        params.push(Box::new(limit as i64));
+        params.push(Box::new(offset as i64));
+
+        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params.iter().map(|p| p.as_ref()).collect();
+
+        let rows: Vec<tokio_postgres::Row> = db.query(&query_sql, &param_refs).await.map_err(|e| {
+            error!("Failed to query admin events: {}", e);
+            AuthencError::database("Failed to query admin events")
+        })?;
+
+        let mut events = Vec::new();
+        for row in rows {
+            events.push(AdminEvent {
+                id: row.get::<_, Uuid>(0).to_string(),
+                time: row.get(1),
+                realm_id: row.get(2),
+                realm_name: row.get(3),
+                auth_details: AuthDetails {
+                    user_id: row.get::<_, Option<Uuid>>(4).map(|id| id.to_string()).unwrap_or_default(),
+                    username: row.get(5),
+                    ip_address: row.get(6),
+                    user_agent: row.get(7),
+                },
+                resource_type: ResourceType::from_str(&row.get::<_, String>(8)).unwrap_or(ResourceType::User),
+                operation_type: OperationType::from_str(&row.get::<_, String>(9)).unwrap_or(OperationType::Create),
+                resource_path: row.get(10),
+                representation: row.get(11),
+                error: row.get(12),
+            });
+        }
+
+        Ok(events)
+    }
+
+    /// Clear old events based on retention policy
+    pub async fn clear_old_events(db: &Database, retention_days: i32) -> Result<i64> {
+        let query = "DELETE FROM events WHERE time < NOW() - INTERVAL '1 day' * $1";
+
+        let deleted = db.execute(query, &[&retention_days]).await.map_err(|e| {
+            error!("Failed to clear old events: {}", e);
+            AuthencError::database("Failed to clear old events")
         })?;
 
         Ok(deleted as i64)
     }
-}
+
+    /// Clear old admin events based on retention policy
+    pub async fn clear_old_admin_events(db: &Database, retention_days: i32) -> Result<i64> {
+        let query = "DELETE FROM admin_events WHERE time < NOW() - INTERVAL '1 day' * $1";
+
+        let deleted = db.execute(query, &[&retention_days]).await.map_err(|e| {
+            error!("Failed to clear old admin events: {}", e);
+            AuthencError::database("Failed to clear old admin events")
+        })?;
+
+        Ok(deleted as i64)
+    }

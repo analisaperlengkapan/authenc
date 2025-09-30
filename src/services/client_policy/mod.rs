@@ -1368,6 +1368,8 @@ impl Default for ClientPolicyManager {
 mod tests {
     use super::*;
     use crate::models::oauth2::OAuth2Client;
+    use chrono::Utc;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_pkce_enforcement() {

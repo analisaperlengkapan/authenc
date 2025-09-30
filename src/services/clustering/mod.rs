@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::time;
 
 /// Cluster node status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -91,45 +93,80 @@ pub trait ClusterCommunication: Send + Sync {
     async fn receive_message(&self) -> Result<(String, Vec<u8>)>;
 }
 
-/// Infinispan-based cluster communication
-pub struct InfinispanClusterCommunication {
-    /// Infinispan cache manager identifier
-    #[allow(dead_code)]
-    cache_manager: Option<String>,
+/// In-memory cluster communication for development/testing
+pub struct InMemoryClusterCommunication {
+    /// Node ID of this instance
+    node_id: String,
+    /// Shared broadcast channel for all nodes
+    broadcast_tx: broadcast::Sender<(String, Vec<u8>)>,
+    /// Receiver for broadcast messages
+    broadcast_rx: RwLock<Option<broadcast::Receiver<(String, Vec<u8>)>>>,
+    /// Individual message channels for direct messaging
+    message_channels: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<(String, Vec<u8>)>>>>,
 }
 
-impl Default for InfinispanClusterCommunication {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl InfinispanClusterCommunication {
-    /// Create a new Infinispan cluster communication instance
-    pub fn new() -> Self {
+impl InMemoryClusterCommunication {
+    /// Create a new in-memory cluster communication instance
+    pub fn new(node_id: String, broadcast_tx: broadcast::Sender<(String, Vec<u8>)>) -> Self {
+        let broadcast_rx = broadcast_tx.subscribe();
         Self {
-            cache_manager: None,
+            node_id,
+            broadcast_tx,
+            broadcast_rx: RwLock::new(Some(broadcast_rx)),
+            message_channels: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Register this node with the cluster
+    pub async fn register_node(&self) -> Result<()> {
+        let mut channels = self.message_channels.write().await;
+        let (tx, _rx) = mpsc::unbounded_channel();
+        channels.insert(self.node_id.clone(), tx);
+        Ok(())
     }
 }
 
 #[async_trait]
-impl ClusterCommunication for InfinispanClusterCommunication {
+impl ClusterCommunication for InMemoryClusterCommunication {
     async fn send_message(&self, node_id: &str, message: &[u8]) -> Result<()> {
-        // TODO: Implement Infinispan-based messaging
-        println!("Sending message to {}: {:?}", node_id, message);
-        Ok(())
+        let channels = self.message_channels.read().await;
+        if let Some(tx) = channels.get(node_id) {
+            let _ = tx.send((self.node_id.clone(), message.to_vec()));
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Node {} not found in cluster", node_id))
+        }
     }
 
     async fn broadcast_message(&self, message: &[u8]) -> Result<()> {
-        // TODO: Implement Infinispan-based broadcasting
-        println!("Broadcasting message: {:?}", message);
+        let _ = self
+            .broadcast_tx
+            .send((self.node_id.clone(), message.to_vec()));
         Ok(())
     }
 
     async fn receive_message(&self) -> Result<(String, Vec<u8>)> {
-        // TODO: Implement Infinispan-based message receiving
-        Ok(("node1".to_string(), vec![]))
+        // Try broadcast messages first
+        if let Some(rx) = self.broadcast_rx.write().await.as_mut() {
+            match rx.try_recv() {
+                Ok((sender, message)) => return Ok((sender, message)),
+                Err(broadcast::error::TryRecvError::Empty) => {}
+                Err(broadcast::error::TryRecvError::Closed) => {
+                    // Re-subscribe if closed
+                    let new_rx = self.broadcast_tx.subscribe();
+                    *self.broadcast_rx.write().await = Some(new_rx);
+                }
+                Err(broadcast::error::TryRecvError::Lagged(_)) => {
+                    // Re-subscribe on lag
+                    let new_rx = self.broadcast_tx.subscribe();
+                    *self.broadcast_rx.write().await = Some(new_rx);
+                }
+            }
+        }
+
+        // For simplicity, just return a dummy message for now
+        // In a real implementation, we'd have individual message queues
+        Err(anyhow::anyhow!("No messages available"))
     }
 }
 
@@ -182,6 +219,79 @@ pub trait ClusterMembership: Send + Sync {
     async fn elect_leader(&self) -> Result<String>;
 }
 
+/// In-memory cluster membership for development/testing
+pub struct InMemoryClusterMembership {
+    /// Cluster topology
+    topology: Arc<RwLock<ClusterTopology>>,
+}
+
+impl InMemoryClusterMembership {
+    /// Create a new in-memory cluster membership instance
+    pub fn new(cluster_name: String) -> Self {
+        let topology = ClusterTopology {
+            cluster_name,
+            nodes: HashMap::new(),
+            leader: None,
+            term: 0,
+            last_updated: chrono::Utc::now(),
+        };
+        Self {
+            topology: Arc::new(RwLock::new(topology)),
+        }
+    }
+}
+
+#[async_trait]
+impl ClusterMembership for InMemoryClusterMembership {
+    async fn join_cluster(&self, node: ClusterNode) -> Result<()> {
+        let mut topology = self.topology.write().await;
+        topology.nodes.insert(node.node_id.clone(), node);
+        topology.last_updated = chrono::Utc::now();
+
+        // Elect leader if none exists
+        if topology.leader.is_none() && !topology.nodes.is_empty() {
+            topology.leader = topology.nodes.keys().next().cloned();
+        }
+
+        Ok(())
+    }
+
+    async fn leave_cluster(&self, node_id: &str) -> Result<()> {
+        let mut topology = self.topology.write().await;
+        topology.nodes.remove(node_id);
+        topology.last_updated = chrono::Utc::now();
+
+        // Re-elect leader if the leader left
+        if topology.leader.as_ref() == Some(&node_id.to_string()) {
+            topology.leader = topology.nodes.keys().next().cloned();
+            topology.term += 1;
+        }
+
+        Ok(())
+    }
+
+    async fn get_topology(&self) -> Result<ClusterTopology> {
+        let topology = self.topology.read().await;
+        Ok(topology.clone())
+    }
+
+    async fn is_leader(&self, node_id: &str) -> Result<bool> {
+        let topology = self.topology.read().await;
+        Ok(topology.leader.as_ref() == Some(&node_id.to_string()))
+    }
+
+    async fn elect_leader(&self) -> Result<String> {
+        let mut topology = self.topology.write().await;
+        if let Some(leader) = topology.nodes.keys().next().cloned() {
+            topology.leader = Some(leader.clone());
+            topology.term += 1;
+            Ok(leader)
+        } else {
+            Err(anyhow::anyhow!("No nodes available for leader election"))
+        }
+    }
+}
+
 /// Distributed consensus service
 #[async_trait]
 pub trait DistributedConsensus: Send + Sync {
@@ -198,33 +308,152 @@ pub struct RaftConsensus {
     /// Unique identifier for this node
     node_id: String,
     /// List of peer node IDs
-    #[allow(dead_code)]
     peers: Vec<String>,
+    /// Current term
+    current_term: Arc<RwLock<u64>>,
+    /// Voted for in current term
+    voted_for: Arc<RwLock<Option<String>>>,
+    /// Log entries
+    log: Arc<RwLock<Vec<RaftLogEntry>>>,
+    /// Commit index
+    commit_index: Arc<RwLock<u64>>,
+    /// Last applied index
+    last_applied: Arc<RwLock<u64>>,
+    /// Current state
+    state: Arc<RwLock<RaftState>>,
+    /// Election timeout
+    election_timeout: Duration,
+    /// Heartbeat interval
+    heartbeat_interval: Duration,
+}
+
+#[derive(Debug, Clone)]
+struct RaftLogEntry {
+    term: u64,
+    command: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum RaftState {
+    Follower,
+    Candidate,
+    Leader,
 }
 
 impl RaftConsensus {
     /// Create a new Raft consensus instance
     pub fn new(node_id: String, peers: Vec<String>) -> Self {
-        Self { node_id, peers }
+        Self {
+            node_id,
+            peers,
+            current_term: Arc::new(RwLock::new(0)),
+            voted_for: Arc::new(RwLock::new(None)),
+            log: Arc::new(RwLock::new(vec![RaftLogEntry {
+                term: 0,
+                command: vec![],
+            }])),
+            commit_index: Arc::new(RwLock::new(0)),
+            last_applied: Arc::new(RwLock::new(0)),
+            state: Arc::new(RwLock::new(RaftState::Follower)),
+            election_timeout: Duration::from_millis(150 + rand::random::<u64>() % 150),
+            heartbeat_interval: Duration::from_millis(50),
+        }
+    }
+
+    /// Start the Raft consensus algorithm
+    pub async fn start(&self) {
+        let mut election_timer = time::interval(self.election_timeout);
+        let mut heartbeat_timer = time::interval(self.heartbeat_interval);
+
+        loop {
+            tokio::select! {
+                _ = election_timer.tick() => {
+                    self.handle_election_timeout().await;
+                }
+                _ = heartbeat_timer.tick() => {
+                    self.send_heartbeats().await;
+                }
+            }
+        }
+    }
+
+    async fn handle_election_timeout(&self) {
+        let mut state = self.state.write().await;
+        if *state == RaftState::Follower {
+            *state = RaftState::Candidate;
+            self.start_election().await;
+        }
+    }
+
+    async fn start_election(&self) {
+        let mut current_term = self.current_term.write().await;
+        *current_term += 1;
+        let term = *current_term;
+
+        let mut voted_for = self.voted_for.write().await;
+        *voted_for = Some(self.node_id.clone());
+
+        // Request votes from peers
+        let votes_needed = (self.peers.len() + 1) / 2 + 1;
+        let votes = 1; // Vote for self
+
+        // In a real implementation, we'd send vote requests to peers
+        // For now, simulate getting majority
+        if votes >= votes_needed {
+            let mut state = self.state.write().await;
+            *state = RaftState::Leader;
+        }
+    }
+
+    async fn send_heartbeats(&self) {
+        let state = self.state.read().await;
+        if *state == RaftState::Leader {
+            // Send heartbeats to followers
+            // In a real implementation, this would send AppendEntries RPCs
+        }
     }
 }
 
 #[async_trait]
 impl DistributedConsensus for RaftConsensus {
     async fn propose(&self, key: &str, value: &[u8]) -> Result<bool> {
-        // TODO: Implement Raft consensus protocol
-        println!("Raft: Proposing {} = {:?}", key, value);
+        let state = self.state.read().await;
+        if *state != RaftState::Leader {
+            return Ok(false);
+        }
+
+        let current_term = *self.current_term.read().await;
+        let mut log = self.log.write().await;
+        log.push(RaftLogEntry {
+            term: current_term,
+            command: value.to_vec(),
+        });
+
+        // In a real implementation, we'd replicate to followers
         Ok(true)
     }
 
-    async fn get_consensus_value(&self, _key: &str) -> Result<Option<Vec<u8>>> {
-        // TODO: Implement Raft consensus value retrieval
-        Ok(Some(vec![]))
+    async fn get_consensus_value(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        let log = self.log.read().await;
+        if log.len() > 1 {
+            Ok(Some(log.last().unwrap().command.clone()))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn get_leader(&self) -> Result<String> {
-        // TODO: Implement Raft leader election
-        Ok(self.node_id.clone())
+        let state = self.state.read().await;
+        if *state == RaftState::Leader {
+            Ok(self.node_id.clone())
+        } else {
+            // In a real implementation, we'd track the current leader
+            Ok(self
+                .peers
+                .first()
+                .cloned()
+                .unwrap_or_else(|| self.node_id.clone()))
+        }
     }
 }
 
@@ -273,6 +502,25 @@ impl ClusterManager {
             topology,
             event_listeners: Vec::new(),
         }
+    }
+
+    /// Create a cluster manager with in-memory components for development/testing
+    pub fn new_in_memory(
+        node_id: String,
+        cluster_name: String,
+    ) -> (Self, broadcast::Sender<(String, Vec<u8>)>) {
+        let (broadcast_tx, _broadcast_rx) = broadcast::channel(100);
+
+        let communication = Box::new(InMemoryClusterCommunication::new(
+            node_id.clone(),
+            broadcast_tx.clone(),
+        ));
+
+        let membership = Box::new(InMemoryClusterMembership::new(cluster_name.clone()));
+        let consensus = Box::new(RaftConsensus::new(node_id.clone(), vec![]));
+
+        let manager = Self::new(node_id, cluster_name, communication, membership, consensus);
+        (manager, broadcast_tx)
     }
 
     /// Start cluster manager
@@ -503,6 +751,12 @@ pub enum ClusterCommunicationType {
     Custom,
 }
 
+impl Default for ClusterCommunicationType {
+    fn default() -> Self {
+        Self::Infinispan
+    }
+}
+
 /// Cluster membership types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ClusterMembershipType {
@@ -516,6 +770,12 @@ pub enum ClusterMembershipType {
     Custom,
 }
 
+impl Default for ClusterMembershipType {
+    fn default() -> Self {
+        Self::Kubernetes
+    }
+}
+
 /// Cluster consensus types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ClusterConsensusType {
@@ -527,6 +787,12 @@ pub enum ClusterConsensusType {
     Infinispan,
     /// Custom consensus implementation
     Custom,
+}
+
+impl Default for ClusterConsensusType {
+    fn default() -> Self {
+        Self::Raft
+    }
 }
 
 /// Multi-cluster federation service

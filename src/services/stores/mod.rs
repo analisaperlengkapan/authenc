@@ -6,3 +6,4 @@ pub mod permission_store;
 pub mod audit_log_store;
 pub mod consent_store;
 pub mod auth_flow_store;
+pub mod social_account_store;

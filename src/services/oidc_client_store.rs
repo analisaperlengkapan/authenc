@@ -1,7 +1,7 @@
 use crate::database::Database;
 use crate::error::Result;
 use crate::models::oidc_client::OidcClient;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -72,6 +72,8 @@ impl OidcClientStore {
                     redirect_uris: oauth_client.redirect_uris.clone(),
                     name: oauth_client.client_name.clone(),
                     enabled: oauth_client.enabled,
+                    created_at: oauth_client.created_at,
+                    updated_at: oauth_client.updated_at,
                 };
                 Ok(Some(oidc_client))
             }
@@ -94,6 +96,8 @@ impl OidcClientStore {
                 redirect_uris: oauth_client.redirect_uris.clone(),
                 name: oauth_client.client_name.clone(),
                 enabled: oauth_client.enabled,
+                created_at: oauth_client.created_at,
+                updated_at: oauth_client.updated_at,
             };
             oidc_clients.push(oidc_client);
         }

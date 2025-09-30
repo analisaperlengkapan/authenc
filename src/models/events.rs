@@ -217,6 +217,65 @@ impl EventType {
             EventType::InviteOrgError => "INVITE_ORG_ERROR",
         }
     }
+
+    /// Convert string to EventType
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "LOGIN" => Some(EventType::Login),
+            "LOGIN_ERROR" => Some(EventType::LoginError),
+            "LOGOUT" => Some(EventType::Logout),
+            "LOGOUT_ERROR" => Some(EventType::LogoutError),
+            "CODE_TO_TOKEN" => Some(EventType::CodeToToken),
+            "CODE_TO_TOKEN_ERROR" => Some(EventType::CodeToTokenError),
+            "CLIENT_LOGIN" => Some(EventType::ClientLogin),
+            "CLIENT_LOGIN_ERROR" => Some(EventType::ClientLoginError),
+            "REFRESH_TOKEN" => Some(EventType::RefreshToken),
+            "REFRESH_TOKEN_ERROR" => Some(EventType::RefreshTokenError),
+            "INTROSPECT_TOKEN" => Some(EventType::IntrospectToken),
+            "INTROSPECT_TOKEN_ERROR" => Some(EventType::IntrospectTokenError),
+            "REGISTER" => Some(EventType::Register),
+            "REGISTER_ERROR" => Some(EventType::RegisterError),
+            "UPDATE_PROFILE" => Some(EventType::UpdateProfile),
+            "UPDATE_PROFILE_ERROR" => Some(EventType::UpdateProfileError),
+            "UPDATE_EMAIL" => Some(EventType::UpdateEmail),
+            "UPDATE_EMAIL_ERROR" => Some(EventType::UpdateEmailError),
+            "VERIFY_EMAIL" => Some(EventType::VerifyEmail),
+            "VERIFY_EMAIL_ERROR" => Some(EventType::VerifyEmailError),
+            "VERIFY_PROFILE" => Some(EventType::VerifyProfile),
+            "VERIFY_PROFILE_ERROR" => Some(EventType::VerifyProfileError),
+            "SEND_VERIFY_EMAIL" => Some(EventType::SendVerifyEmail),
+            "SEND_VERIFY_EMAIL_ERROR" => Some(EventType::SendVerifyEmailError),
+            "SEND_RESET_PASSWORD" => Some(EventType::SendResetPassword),
+            "SEND_RESET_PASSWORD_ERROR" => Some(EventType::SendResetPasswordError),
+            "RESET_PASSWORD" => Some(EventType::ResetPassword),
+            "RESET_PASSWORD_ERROR" => Some(EventType::ResetPasswordError),
+            "UPDATE_CREDENTIAL" => Some(EventType::UpdateCredential),
+            "UPDATE_CREDENTIAL_ERROR" => Some(EventType::UpdateCredentialError),
+            "REMOVE_CREDENTIAL" => Some(EventType::RemoveCredential),
+            "REMOVE_CREDENTIAL_ERROR" => Some(EventType::RemoveCredentialError),
+            "FEDERATED_IDENTITY_LINK" => Some(EventType::FederatedIdentityLink),
+            "FEDERATED_IDENTITY_LINK_ERROR" => Some(EventType::FederatedIdentityLinkError),
+            "REMOVE_FEDERATED_IDENTITY" => Some(EventType::RemoveFederatedIdentity),
+            "REMOVE_FEDERATED_IDENTITY_ERROR" => Some(EventType::RemoveFederatedIdentityError),
+            "FEDERATED_IDENTITY_OVERRIDE_LINK" => Some(EventType::FederatedIdentityOverrideLink),
+            "FEDERATED_IDENTITY_OVERRIDE_LINK_ERROR" => Some(EventType::FederatedIdentityOverrideLinkError),
+            "GRANT_CONSENT" => Some(EventType::GrantConsent),
+            "GRANT_CONSENT_ERROR" => Some(EventType::GrantConsentError),
+            "UPDATE_CONSENT" => Some(EventType::UpdateConsent),
+            "UPDATE_CONSENT_ERROR" => Some(EventType::UpdateConsentError),
+            "REVOKE_GRANT" => Some(EventType::RevokeGrant),
+            "REVOKE_GRANT_ERROR" => Some(EventType::RevokeGrantError),
+            "OAUTH2_EXTENSION_GRANT" => Some(EventType::Oauth2ExtensionGrant),
+            "OAUTH2_EXTENSION_GRANT_ERROR" => Some(EventType::Oauth2ExtensionGrantError),
+            "USER_DISABLED_BY_PERMANENT_LOCKOUT" => Some(EventType::UserDisabledByPermanentLockout),
+            "USER_DISABLED_BY_PERMANENT_LOCKOUT_ERROR" => Some(EventType::UserDisabledByPermanentLockoutError),
+            "USER_DISABLED_BY_TEMPORARY_LOCKOUT" => Some(EventType::UserDisabledByTemporaryLockout),
+            "USER_DISABLED_BY_TEMPORARY_LOCKOUT_ERROR" => Some(EventType::UserDisabledByTemporaryLockoutError),
+            "INVITE_ORG" => Some(EventType::InviteOrg),
+            "INVITE_ORG_ERROR" => Some(EventType::InviteOrgError),
+            _ => None,
+        }
+    }
 }
 
 /// User event model
@@ -334,6 +393,17 @@ impl OperationType {
             OperationType::Update => "UPDATE",
             OperationType::Delete => "DELETE",
             OperationType::Action => "ACTION",
+        }
+    }
+
+    /// Convert string to OperationType
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "CREATE" => Some(OperationType::Create),
+            "UPDATE" => Some(OperationType::Update),
+            "DELETE" => Some(OperationType::Delete),
+            "ACTION" => Some(OperationType::Action),
+            _ => None,
         }
     }
 }
@@ -455,6 +525,49 @@ impl ResourceType {
             ResourceType::UserProfile => "USER_PROFILE",
             ResourceType::Organization => "ORGANIZATION",
             ResourceType::OrganizationMembership => "ORGANIZATION_MEMBERSHIP",
+        }
+    }
+
+    /// Convert string to ResourceType
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "REALM" => Some(ResourceType::Realm),
+            "REALM_ROLE" => Some(ResourceType::RealmRole),
+            "REALM_ROLE_MAPPING" => Some(ResourceType::RealmRoleMapping),
+            "REALM_SCOPE_MAPPING" => Some(ResourceType::RealmScopeMapping),
+            "AUTH_FLOW" => Some(ResourceType::AuthFlow),
+            "AUTH_EXECUTION_FLOW" => Some(ResourceType::AuthExecutionFlow),
+            "AUTH_EXECUTION" => Some(ResourceType::AuthExecution),
+            "AUTHENTICATOR_CONFIG" => Some(ResourceType::AuthenticatorConfig),
+            "REQUIRED_ACTION_CONFIG" => Some(ResourceType::RequiredActionConfig),
+            "REQUIRED_ACTION" => Some(ResourceType::RequiredAction),
+            "IDENTITY_PROVIDER" => Some(ResourceType::IdentityProvider),
+            "IDENTITY_PROVIDER_MAPPER" => Some(ResourceType::IdentityProviderMapper),
+            "PROTOCOL_MAPPER" => Some(ResourceType::ProtocolMapper),
+            "USER" => Some(ResourceType::User),
+            "USER_LOGIN_FAILURE" => Some(ResourceType::UserLoginFailure),
+            "USER_SESSION" => Some(ResourceType::UserSession),
+            "USER_FEDERATION_MAPPER" => Some(ResourceType::UserFederationMapper),
+            "USER_FEDERATION_PROVIDER" => Some(ResourceType::UserFederationProvider),
+            "GROUP" => Some(ResourceType::Group),
+            "GROUP_MEMBERSHIP" => Some(ResourceType::GroupMembership),
+            "CLIENT" => Some(ResourceType::Client),
+            "CLIENT_SCOPE" => Some(ResourceType::ClientScope),
+            "CLIENT_SCOPE_MAPPING" => Some(ResourceType::ClientScopeMapping),
+            "CLIENT_SCOPE_CLIENT_MAPPING" => Some(ResourceType::ClientScopeClientMapping),
+            "CLIENT_TEMPLATE" => Some(ResourceType::ClientTemplate),
+            "CLIENT_TEMPLATE_MAPPING" => Some(ResourceType::ClientTemplateMapping),
+            "CLUSTER_NODE" => Some(ResourceType::ClusterNode),
+            "COMPONENT" => Some(ResourceType::Component),
+            "AUTHORIZATION_RESOURCE_SERVER" => Some(ResourceType::AuthorizationResourceServer),
+            "AUTHORIZATION_RESOURCE" => Some(ResourceType::AuthorizationResource),
+            "AUTHORIZATION_SCOPE" => Some(ResourceType::AuthorizationScope),
+            "AUTHORIZATION_POLICY" => Some(ResourceType::AuthorizationPolicy),
+            "CUSTOM" => Some(ResourceType::Custom),
+            "USER_PROFILE" => Some(ResourceType::UserProfile),
+            "ORGANIZATION" => Some(ResourceType::Organization),
+            "ORGANIZATION_MEMBERSHIP" => Some(ResourceType::OrganizationMembership),
+            _ => None,
         }
     }
 }

@@ -216,6 +216,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .nest(
             "/api/v1/auth",
+            api::user_role::create_user_role_routes().with_state(state.clone()),
+        )
+        .nest(
+            "/api/v1/auth",
+            api::user_permission::create_user_permission_routes().with_state(state.clone()),
+        )
+        .nest(
+            "/api/v1/auth",
             api::role::create_role_routes().with_state(state.clone()),
         )
         .nest(
@@ -234,10 +242,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/auth",
             api::auth::create_auth_routes().with_state(state.clone()),
         )
-        // .nest(
-        //     "/api/v1/auth",
-        //     api::auth_flow::create_auth_flow_routes().with_state(state.clone()),
-        // )
+        .nest(
+            "/api/v1/auth",
+            api::auth_flow::create_auth_flow_routes().with_state(state.clone()),
+        )
         .nest(
             "/api/v1",
             api::events::create_event_routes().with_state(state.clone()),
@@ -245,7 +253,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .nest(
             "/api/v1/auth",
             api::permission_check::create_permission_check_routes()
-                .with_state((state.user_store.clone(), state.role_store.clone())),
+                .with_state(state.clone()),
         )
         .nest(
             "/api/v1/auth",
@@ -271,6 +279,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 state.oidc_client_store.clone(),
                 state.totp_store.clone(),
                 state.audit_log_store.clone(),
+                state.social_account_store.clone(),
             )),
         )
         .nest(

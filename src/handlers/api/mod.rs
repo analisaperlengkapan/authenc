@@ -12,8 +12,8 @@ pub mod user_permission;
 pub use user_permission::get_user_permissions;
 // API endpoints (REST/gRPC) will be implemented here
 /// Authentication flow management API handlers
-// pub mod auth_flow;
-// pub use auth_flow::create_auth_flow_routes;
+pub mod auth_flow;
+pub use auth_flow::create_auth_flow_routes;
 /// User management API handlers for CRUD operations
 pub mod user;
 pub use user::create_user_routes;

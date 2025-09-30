@@ -179,6 +179,8 @@ impl DefaultClientRegistrationService {
                 .clone()
                 .unwrap_or_else(|| "Dynamic Client".to_string()),
             enabled: true,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
         }
     }
 

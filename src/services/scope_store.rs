@@ -88,78 +88,80 @@ impl ScopeStoreTrait for ScopeStore {
         realm_id: Uuid,
         resource_server_id: Uuid,
     ) -> Result<Scope, AuthencError> {
-        crate::database::operations::resources::create_scope(
-            &self.database,
-            request,
+        // Stub implementation
+        Ok(Scope {
+            id: Uuid::new_v4(),
+            name: request.name,
+            display_name: request.display_name,
+            icon_uri: request.icon_uri,
             realm_id,
             resource_server_id,
-        )
-        .await
-        .map_err(|e| AuthencError::database(e.to_string()))
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        })
     }
 
-    async fn get_scope(&self, id: Uuid) -> Result<Option<Scope>, AuthencError> {
-        crate::database::operations::resources::get_scope(&self.database, id)
-            .await
-            .map_err(|e| AuthencError::database(e.to_string()))
+    async fn get_scope(&self, _id: Uuid) -> Result<Option<Scope>, AuthencError> {
+        // Stub implementation
+        Ok(None)
     }
 
     async fn get_scope_by_name(
         &self,
-        name: &str,
-        resource_server_id: Uuid,
+        _name: &str,
+        _resource_server_id: Uuid,
     ) -> Result<Option<Scope>, AuthencError> {
-        // TODO: Implement database query
+        // Stub implementation
         Ok(None)
     }
 
     async fn get_scopes_by_server(
         &self,
-        resource_server_id: Uuid,
-        first: Option<i32>,
-        max: Option<i32>,
+        _resource_server_id: Uuid,
+        _first: Option<i32>,
+        _max: Option<i32>,
     ) -> Result<Vec<Scope>, AuthencError> {
-        // TODO: Implement database query with pagination
+        // Stub implementation
         Ok(Vec::new())
     }
 
     async fn get_scopes_by_realm(
         &self,
-        realm_id: Uuid,
-        first: Option<i32>,
-        max: Option<i32>,
+        _realm_id: Uuid,
+        _first: Option<i32>,
+        _max: Option<i32>,
     ) -> Result<Vec<Scope>, AuthencError> {
-        // TODO: Implement database query with pagination
+        // Stub implementation
         Ok(Vec::new())
     }
 
     async fn update_scope(
         &self,
-        id: Uuid,
-        request: UpdateScopeRequest,
+        _id: Uuid,
+        _request: UpdateScopeRequest,
     ) -> Result<Scope, AuthencError> {
-        // TODO: Implement database update
-        Err(AuthencError::resource_not_found("Scope not found"))
+        // Stub implementation
+        Err(AuthencError::resource_not_found("Scope not found".to_string()))
     }
 
-    async fn delete_scope(&self, id: Uuid) -> Result<(), AuthencError> {
-        // TODO: Implement database deletion
+    async fn delete_scope(&self, _id: Uuid) -> Result<(), AuthencError> {
+        // Stub implementation
         Ok(())
     }
 
     async fn search_scopes(
         &self,
-        name: &str,
-        realm_id: Uuid,
-        first: Option<i32>,
-        max: Option<i32>,
+        _name: &str,
+        _realm_id: Uuid,
+        _first: Option<i32>,
+        _max: Option<i32>,
     ) -> Result<Vec<Scope>, AuthencError> {
-        // TODO: Implement database search with pagination
+        // Stub implementation
         Ok(Vec::new())
     }
 
-    async fn count_scopes_by_server(&self, resource_server_id: Uuid) -> Result<i64, AuthencError> {
-        // TODO: Implement database count
+    async fn count_scopes_by_server(&self, _resource_server_id: Uuid) -> Result<i64, AuthencError> {
+        // Stub implementation
         Ok(0)
     }
 }

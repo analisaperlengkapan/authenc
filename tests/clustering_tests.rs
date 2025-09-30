@@ -154,7 +154,6 @@ async fn test_cluster_config() {
 }
 
 #[tokio::test]
-#[ignore = "Requires PostgreSQL database to be running"]
 async fn test_node_status_transitions() {
     // Test NodeStatus enum values
     let statuses = vec![

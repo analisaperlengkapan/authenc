@@ -48,6 +48,8 @@ pub mod totp_store;
 pub mod stores {
     /// Audit log storage service
     pub mod audit_log_store;
+    /// Authentication flow storage service
+    pub mod auth_flow_store;
     /// Consent storage service for GDPR compliance
     pub mod consent_store;
     /// Permission storage service
@@ -56,6 +58,8 @@ pub mod stores {
     pub mod realm_store;
     /// Role storage service
     pub mod role_store;
+    /// Social account storage service
+    pub mod social_account_store;
     /// User storage service
     pub mod user_store;
 }
@@ -108,6 +112,8 @@ pub mod social;
 // Admin services
 /// Administrative operations and management
 pub mod admin;
+/// Delegated administration for realm-specific admin access
+pub mod delegated_admin;
 
 // WebAuthn services
 /// WebAuthn/FIDO2 authentication services
@@ -140,10 +146,14 @@ pub mod device;
 // Enterprise-grade services
 /// Clustering and high availability
 pub mod clustering;
-/// Compliance and regulatory services
+/// Compliance checking and validation services
 pub mod compliance;
+/// Compliance mode management for different regulatory frameworks
+pub mod compliance_mode;
 /// FIPS compliance and cryptographic modules
 pub mod fips;
+/// Forever unknown secrets service (never persisted, auto-rotating)
+pub mod forever_unknown_secrets;
 /// Observability and monitoring
 pub mod observability;
 /// Secret management and vault integration

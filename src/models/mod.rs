@@ -31,6 +31,8 @@ pub mod role;
 pub mod saml;
 /// Scope models for resource permissions
 pub mod scope;
+/// Social account linking models
+pub mod social_account;
 /// User account and profile models
 pub mod user;
 /// WebAuthn authentication models
@@ -69,6 +71,7 @@ pub use resource_server::*;
 pub use role::Role;
 pub use saml::*;
 pub use scope::*;
+pub use social_account::*;
 pub use user::User;
 pub use webauthn::*;
 

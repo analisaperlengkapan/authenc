@@ -5,7 +5,6 @@
 
 use crate::config::AppConfig;
 use crate::error::{AuthencError, Result};
-// use crate::services::stores::auth_flow_store::AuthFlowStore;
 use std::sync::Arc;
 
 /// Comprehensive application state with all services
@@ -31,8 +30,8 @@ pub struct AppState {
     pub audit_log_store: Arc<crate::services::pg_audit_log_store::PgAuditLogStore>,
     /// User consent management store for GDPR compliance
     pub consent_store: Arc<crate::services::stores::consent_store::ConsentStore>,
-    // /// Authentication flow management store
-    // pub auth_flow_store: Arc<crate::services::stores::auth_flow_store::AuthFlowStore>,
+    /// Authentication flow store for pluggable authentication flows
+    pub auth_flow_store: Arc<crate::services::stores::auth_flow_store::AuthFlowStore>,
     /// Realm configuration store
     pub realm_store: Arc<crate::services::stores::realm_store::RealmStore>,
     /// Realm management service
@@ -52,6 +51,8 @@ pub struct AppState {
     pub scope_store: Arc<crate::services::scope_store::ScopeStore>,
     /// OIDC client store for OAuth2/OIDC client management
     pub oidc_client_store: Arc<crate::services::oidc_client_store::OidcClientStore>,
+    /// Social account store for social login account linking
+    pub social_account_store: Arc<crate::services::stores::social_account_store::SocialAccountStore>,
     /// Identity broker registry for external authentication providers
     pub broker_registry: Arc<crate::services::broker::IdentityBrokerRegistry>,
     /// OID4VC service for verifiable credentials
@@ -64,6 +65,10 @@ pub struct AppState {
     pub audit_log_sink: Arc<dyn crate::services::audit_log_sink::AuditLogSink>,
     /// SPI manager for pluggable enterprise components
     pub spi_manager: Arc<crate::spi::SpiManager>,
+    /// Cluster manager for high availability
+    pub cluster_manager: Option<Arc<crate::services::clustering::ClusterManager>>,
+    /// Observability service for monitoring and metrics
+    pub observability_service: Arc<crate::services::observability::ObservabilityService>,
 }
 
 impl AppState {
@@ -95,7 +100,9 @@ impl AppState {
         ));
 
         // Initialize authentication flow store
-        // let auth_flow_store = Arc::new(crate::services::stores::auth_flow_store::AuthFlowStore::new(database.clone()));
+        let auth_flow_store = Arc::new(
+            crate::services::stores::auth_flow_store::AuthFlowStore::new(database.clone()),
+        );
 
         // Initialize other services
         let user_store = Arc::new(crate::services::stores::user_store::UserStore::new(
@@ -135,6 +142,11 @@ impl AppState {
         ));
         let oidc_client_store = Arc::new(
             crate::services::oidc_client_store::OidcClientStore::with_database(database.clone()),
+        );
+
+        // Initialize social account store
+        let social_account_store = Arc::new(
+            crate::services::stores::social_account_store::SocialAccountStore::new(database.clone()),
         );
 
         // Initialize identity broker registry
@@ -348,6 +360,39 @@ impl AppState {
         );
         let spi_manager = Arc::new(spi_manager);
 
+        // Initialize cluster manager if clustering is enabled
+        let cluster_manager = if config.clustering.enabled {
+            let node_id = config
+                .clustering
+                .node_id
+                .clone()
+                .unwrap_or_else(|| format!("node-{}", uuid::Uuid::new_v4().simple()));
+            let (manager, _broadcast_tx) =
+                crate::services::clustering::ClusterManager::new_in_memory(
+                    node_id,
+                    config.clustering.cluster_name.clone(),
+                );
+            Some(Arc::new(manager))
+        } else {
+            None
+        };
+
+        // Initialize observability service
+        let mut observability_service =
+            crate::services::observability::ObservabilityService::default();
+
+        // Register default health checks
+        observability_service.register_health_check(Box::new(
+            crate::services::observability::DatabaseHealthCheck::new(10, 5), // TODO: Get from config
+        ));
+
+        // Register default metrics collectors
+        observability_service.register_metrics_collector(Box::new(
+            crate::services::observability::PrometheusMetricsCollector::new(),
+        ));
+
+        let observability_service = Arc::new(observability_service);
+
         Ok(Self {
             config,
             database,
@@ -359,7 +404,7 @@ impl AppState {
             federation_registry,
             audit_log_store,
             consent_store,
-            // auth_flow_store,
+            auth_flow_store,
             realm_store,
             realm_service,
             role_store,
@@ -369,12 +414,15 @@ impl AppState {
             permission_ticket_store,
             scope_store,
             oidc_client_store,
+            social_account_store,
             broker_registry,
             oid4vc_service,
             event_manager,
             event_retention_service,
             audit_log_sink,
             spi_manager,
+            cluster_manager,
+            observability_service,
         })
     }
 

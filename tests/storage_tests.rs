@@ -109,6 +109,11 @@ impl UserStoreTrait for MockUserStore {
         let users = self.users.lock().unwrap();
         Ok(users.clone())
     }
+
+    async fn get_users_by_realm(&self, realm_id: Uuid) -> Result<Vec<User>, AuthencError> {
+        let users = self.users.lock().unwrap();
+        Ok(users.iter().filter(|u| u.realm_id == Some(realm_id)).cloned().collect())
+    }
 }
 
 // Mock OIDC client store for testing

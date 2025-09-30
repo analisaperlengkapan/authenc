@@ -1,4 +1,8 @@
-use crate::services::user_store::UserStore;
+use crate::app::AppState;
+use crate::database;
+use crate::handlers::api::auth_bearer::AuthBearer;
+use crate::models::events::{AuthDetails, OperationType, ResourceType};
+use crate::services::events::AdminEventBuilder;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -6,9 +10,10 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Create user-role assignment routes for a realm
-pub fn create_user_role_routes() -> Router<Arc<UserStore>> {
+pub fn create_user_role_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route(
             "/realms/{realm}/users/{user_id}/roles/{role}",
@@ -22,20 +27,124 @@ pub fn create_user_role_routes() -> Router<Arc<UserStore>> {
 
 /// Assign a role to a user in the specified realm
 pub async fn assign_role(
-    State(_store): State<Arc<UserStore>>,
-    Path((_realm, _user_id, _role)): Path<(String, String, String)>,
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
+    Path((realm, user_id, role_name)): Path<(String, String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // TODO: Implement proper role assignment with UserRole table
-    // For now, return Not Implemented
-    Err(StatusCode::NOT_IMPLEMENTED)
+    // Parse user ID
+    let user_uuid = Uuid::parse_str(&user_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Get realm by name
+    let realm_obj = match state.realm_store.get_by_name(&realm) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Get role by name
+    let role = match state.role_store.get_by_name(&role_name) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Assign role to user using database operation
+    database::operations::roles::assign_role_to_user(
+        &state.database,
+        &user_uuid,
+        &role.id,
+    )
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Fire admin event
+    let auth_details = AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let resource_path = format!("/realms/{}/users/{}/roles/{}", realm, user_id, role_name);
+
+    let admin_event = AdminEventBuilder::new(
+        realm_obj.id.to_string(),
+        auth_details,
+        ResourceType::User,
+        OperationType::Update,
+        resource_path,
+    )
+    .build();
+
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, true)
+        .await
+    {
+        tracing::error!("Failed to fire admin event for role assignment: {}", e);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Remove a role from a user in the specified realm
 pub async fn unassign_role(
-    State(_store): State<Arc<UserStore>>,
-    Path((_realm, _user_id, _role)): Path<(String, String, String)>,
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
+    Path((realm, user_id, role_name)): Path<(String, String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // TODO: Implement proper role unassignment with UserRole table
-    // For now, return Not Implemented
-    Err(StatusCode::NOT_IMPLEMENTED)
+    // Parse user ID
+    let user_uuid = Uuid::parse_str(&user_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Get realm by name
+    let realm_obj = match state.realm_store.get_by_name(&realm) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Get role by name
+    let role = match state.role_store.get_by_name(&role_name) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Remove role from user using database operation
+    database::operations::roles::remove_role_from_user(
+        &state.database,
+        &user_uuid,
+        &role.id,
+    )
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Fire admin event
+    let auth_details = AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let resource_path = format!("/realms/{}/users/{}/roles/{}", realm, user_id, role_name);
+
+    let admin_event = AdminEventBuilder::new(
+        realm_obj.id.to_string(),
+        auth_details,
+        ResourceType::User,
+        OperationType::Update,
+        resource_path,
+    )
+    .build();
+
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, true)
+        .await
+    {
+        tracing::error!("Failed to fire admin event for role unassignment: {}", e);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }

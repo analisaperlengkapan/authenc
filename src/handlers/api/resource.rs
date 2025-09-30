@@ -61,7 +61,7 @@ pub async fn get_resource(
 
 /// Get permissions for a specific resource
 pub async fn get_resource_permissions(
-    State((resource_store, ticket_store, _, _)): State<(
+    State((resource_store, ticket_store, scope_store, _)): State<(
         Arc<ResourceStore>,
         Arc<PermissionTicketStore>,
         Arc<ScopeStore>,
@@ -80,14 +80,21 @@ pub async fn get_resource_permissions(
         .get_tickets_for_resource(resource_id, Some(true))
         .await?;
 
-    // Convert to permission responses
-    let permissions = tickets
-        .into_iter()
-        .map(|ticket| PermissionResponse {
+    // Convert to permission responses with scope names
+    let mut permissions = Vec::new();
+    for ticket in tickets {
+        // Get scope name from scope store
+        let scope_name = if let Some(scope) = scope_store.get_scope(ticket.scope_id).await? {
+            scope.name
+        } else {
+            continue; // Skip if scope not found
+        };
+
+        permissions.push(PermissionResponse {
             username: ticket.requester.clone(),
-            scopes: vec![], // TODO: Get scope names from scope store
-        })
-        .collect();
+            scopes: vec![scope_name],
+        });
+    }
 
     Ok(Json(permissions))
 }
@@ -150,7 +157,7 @@ pub async fn update_resource_permissions(
                 requester: user.id.to_string(),
             };
 
-            let _ticket = ticket_store
+            let ticket = ticket_store
                 .create_ticket(
                     ticket_request,
                     resource.owner.clone(),
@@ -160,7 +167,7 @@ pub async fn update_resource_permissions(
                 .await?;
 
             // Grant the ticket
-            // TODO: Implement ticket granting
+            ticket_store.grant_ticket(ticket.id).await?;
         }
     }
 
@@ -169,7 +176,7 @@ pub async fn update_resource_permissions(
 
 /// Get permission requests for a specific resource
 pub async fn get_permission_requests(
-    State((resource_store, ticket_store, _, _)): State<(
+    State((resource_store, ticket_store, scope_store, _)): State<(
         Arc<ResourceStore>,
         Arc<PermissionTicketStore>,
         Arc<ScopeStore>,
@@ -188,14 +195,21 @@ pub async fn get_permission_requests(
         .get_tickets_for_resource(resource_id, Some(false))
         .await?;
 
-    // Convert to permission responses
-    let permissions = tickets
-        .into_iter()
-        .map(|ticket| PermissionResponse {
+    // Convert to permission responses with scope names
+    let mut permissions = Vec::new();
+    for ticket in tickets {
+        // Get scope name from scope store
+        let scope_name = if let Some(scope) = scope_store.get_scope(ticket.scope_id).await? {
+            scope.name
+        } else {
+            continue; // Skip if scope not found
+        };
+
+        permissions.push(PermissionResponse {
             username: ticket.requester.clone(),
-            scopes: vec![], // TODO: Get scope names from scope store
-        })
-        .collect();
+            scopes: vec![scope_name],
+        });
+    }
 
     Ok(Json(permissions))
 }

@@ -10,17 +10,22 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    error::AuthencError,
-    services::auth_flow::{AuthenticationFlowModel, AuthenticationExecutionModel, AuthenticationFlowType},
-    // services::stores::auth_flow_store::AuthFlowStoreTrait,
     app::AppState,
+    error::AuthencError,
+    services::auth_flow::{
+        AuthenticationExecutionModel, AuthenticationFlowModel, AuthenticationFlowType,
+    },
+    services::stores::auth_flow_store::AuthFlowStoreTrait,
 };
 
 /// Create authentication flow routes
 pub fn create_auth_flow_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/flows", get(list_flows).post(create_flow))
-        .route("/flows/{flow_id}", get(get_flow).put(update_flow).delete(delete_flow))
+        .route(
+            "/flows/{flow_id}",
+            get(get_flow).put(update_flow).delete(delete_flow),
+        )
         .route("/flows/{flow_id}/executions", post(create_execution))
 }
 
@@ -37,14 +42,20 @@ pub async fn list_flows(
     Query(query): Query<ListFlowsQuery>,
 ) -> Result<Json<Vec<AuthenticationFlowResponse>>, AuthencError> {
     let realm_id = if let Some(realm_id_str) = query.realm_id {
-        Some(Uuid::parse_str(&realm_id_str).map_err(|_| AuthencError::validation("Invalid realm ID"))?)
+        Some(
+            Uuid::parse_str(&realm_id_str)
+                .map_err(|_| AuthencError::validation("Invalid realm ID"))?,
+        )
     } else {
         None
     };
 
     let flows = state.auth_flow_store.list_flows(realm_id).await?;
 
-    let responses = flows.into_iter().map(AuthenticationFlowResponse::from).collect();
+    let responses = flows
+        .into_iter()
+        .map(AuthenticationFlowResponse::from)
+        .collect();
 
     Ok(Json(responses))
 }
@@ -84,9 +95,13 @@ pub async fn get_flow(
     State(state): State<Arc<AppState>>,
     Path(flow_id): Path<String>,
 ) -> Result<Json<AuthenticationFlowResponse>, AuthencError> {
-    let flow_id = Uuid::parse_str(&flow_id).map_err(|_| AuthencError::validation("Invalid flow ID"))?;
+    let flow_id =
+        Uuid::parse_str(&flow_id).map_err(|_| AuthencError::validation("Invalid flow ID"))?;
 
-    let flow = state.auth_flow_store.get_flow(flow_id).await?
+    let flow = state
+        .auth_flow_store
+        .get_flow(flow_id)
+        .await?
         .ok_or_else(|| AuthencError::resource_not_found("Authentication flow not found"))?;
 
     Ok(Json(AuthenticationFlowResponse::from(flow)))
@@ -98,10 +113,14 @@ pub async fn update_flow(
     Path(flow_id): Path<String>,
     Json(request): Json<UpdateFlowRequest>,
 ) -> Result<Json<AuthenticationFlowResponse>, AuthencError> {
-    let flow_id = Uuid::parse_str(&flow_id).map_err(|_| AuthencError::validation("Invalid flow ID"))?;
+    let flow_id =
+        Uuid::parse_str(&flow_id).map_err(|_| AuthencError::validation("Invalid flow ID"))?;
 
     // Get existing flow
-    let mut existing_flow = state.auth_flow_store.get_flow(flow_id).await?
+    let mut existing_flow = state
+        .auth_flow_store
+        .get_flow(flow_id)
+        .await?
         .ok_or_else(|| AuthencError::resource_not_found("Authentication flow not found"))?;
 
     // Update fields
@@ -118,7 +137,10 @@ pub async fn update_flow(
         existing_flow.priority = priority;
     }
 
-    let updated_flow = state.auth_flow_store.update_flow(flow_id, &existing_flow).await?;
+    let updated_flow = state
+        .auth_flow_store
+        .update_flow(flow_id, &existing_flow)
+        .await?;
 
     Ok(Json(AuthenticationFlowResponse::from(updated_flow)))
 }
@@ -128,7 +150,8 @@ pub async fn delete_flow(
     State(state): State<Arc<AppState>>,
     Path(flow_id): Path<String>,
 ) -> Result<StatusCode, AuthencError> {
-    let flow_id = Uuid::parse_str(&flow_id).map_err(|_| AuthencError::validation("Invalid flow ID"))?;
+    let flow_id =
+        Uuid::parse_str(&flow_id).map_err(|_| AuthencError::validation("Invalid flow ID"))?;
 
     state.auth_flow_store.delete_flow(flow_id).await?;
 
@@ -141,7 +164,8 @@ pub async fn create_execution(
     Path(flow_id): Path<String>,
     Json(request): Json<CreateExecutionRequest>,
 ) -> Result<Json<AuthenticationExecutionResponse>, AuthencError> {
-    let flow_id = Uuid::parse_str(&flow_id).map_err(|_| AuthencError::validation("Invalid flow ID"))?;
+    let flow_id =
+        Uuid::parse_str(&flow_id).map_err(|_| AuthencError::validation("Invalid flow ID"))?;
 
     let execution = AuthenticationExecutionModel {
         id: Uuid::new_v4(),
@@ -157,7 +181,9 @@ pub async fn create_execution(
 
     let created_execution = state.auth_flow_store.create_execution(&execution).await?;
 
-    Ok(Json(AuthenticationExecutionResponse::from(created_execution)))
+    Ok(Json(AuthenticationExecutionResponse::from(
+        created_execution,
+    )))
 }
 
 // Request/Response structures

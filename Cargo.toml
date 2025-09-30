@@ -37,6 +37,9 @@ db = ["dep:tokio-postgres", "dep:deadpool-postgres"]
 # Monitoring features
 metrics = ["dep:metrics", "dep:metrics-exporter-prometheus"]
 
+# Hardware Security features
+tpm = ["dep:tss-esapi"]
+
 # Development features (enables all features)
 dev = [
     "axum",
@@ -104,6 +107,7 @@ env_logger = "0.10"
 
 # Authentication & Security
 rand = "0.8"
+rand_chacha = "0.3"
 getrandom = "0.2"
 aes-gcm = "0.10"
 base64ct = "1.8"
@@ -161,6 +165,7 @@ webpki-roots = "0.26"
 ring = "0.17"
 flate2 = { version = "1.0", features = ["zlib"], optional = true }
 regex = "1.0"
+tss-esapi = { version = "7.4", optional = true }
 
 # Metrics
 metrics = { version = "0.21", optional = true }

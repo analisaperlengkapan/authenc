@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::str::FromStr;
 
 /// Social login provider types
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, Hash, PartialEq)]
@@ -31,6 +32,49 @@ pub enum SocialProvider {
     Auth0,
     /// Custom OAuth provider with name
     Custom(String),
+}
+
+impl SocialProvider {
+    /// Convert the provider to a string representation
+    pub fn as_str(&self) -> &str {
+        match self {
+            SocialProvider::Google => "google",
+            SocialProvider::Facebook => "facebook",
+            SocialProvider::Twitter => "twitter",
+            SocialProvider::GitHub => "github",
+            SocialProvider::LinkedIn => "linkedin",
+            SocialProvider::Microsoft => "microsoft",
+            SocialProvider::Apple => "apple",
+            SocialProvider::Amazon => "amazon",
+            SocialProvider::Discord => "discord",
+            SocialProvider::Slack => "slack",
+            SocialProvider::Okta => "okta",
+            SocialProvider::Auth0 => "auth0",
+            SocialProvider::Custom(name) => name,
+        }
+    }
+}
+
+impl std::str::FromStr for SocialProvider {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "google" => Ok(SocialProvider::Google),
+            "facebook" => Ok(SocialProvider::Facebook),
+            "twitter" => Ok(SocialProvider::Twitter),
+            "github" => Ok(SocialProvider::GitHub),
+            "linkedin" => Ok(SocialProvider::LinkedIn),
+            "microsoft" => Ok(SocialProvider::Microsoft),
+            "apple" => Ok(SocialProvider::Apple),
+            "amazon" => Ok(SocialProvider::Amazon),
+            "discord" => Ok(SocialProvider::Discord),
+            "slack" => Ok(SocialProvider::Slack),
+            "okta" => Ok(SocialProvider::Okta),
+            "auth0" => Ok(SocialProvider::Auth0),
+            custom => Ok(SocialProvider::Custom(custom.to_string())),
+        }
+    }
 }
 
 /// OAuth 2.0 configuration for social providers

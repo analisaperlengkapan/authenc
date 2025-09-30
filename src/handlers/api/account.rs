@@ -7,6 +7,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -14,11 +15,13 @@ use crate::app::AppState;
 use crate::error::AuthencError;
 use crate::models::session::SessionResponse;
 use crate::models::user::{UpdateUserRequest, UserResponse};
+use crate::models::social_account::SocialAccountResponse;
 use crate::services::oidc_client_store::OidcClientStore;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::session_store::SessionStore;
 use crate::services::social::SocialProvider;
 use crate::services::stores::consent_store::ConsentStoreTrait;
+use crate::services::stores::social_account_store::{SocialAccountStore, SocialAccountStoreTrait};
 use crate::services::stores::user_store::UserStore;
 use crate::services::stores::user_store::UserStoreTrait;
 use crate::services::totp_store::TotpStore;
@@ -47,20 +50,7 @@ pub struct TotpStatusResponse {
     /// Whether TOTP is enabled
     pub enabled: bool,
     /// When TOTP was configured (if enabled)
-    pub configured_at: Option<String>,
-}
-
-/// Response for social account information
-#[derive(Debug, Deserialize, Serialize)]
-pub struct SocialAccountResponse {
-    /// Social provider (google, github, etc.)
-    pub provider: String,
-    /// User ID on the social provider
-    pub provider_user_id: String,
-    /// Display name from social provider
-    pub display_name: Option<String>,
-    /// When the account was linked
-    pub linked_at: String,
+    pub configured_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Response for user consent information
@@ -85,6 +75,7 @@ pub fn create_account_routes() -> Router<(
     Arc<OidcClientStore>,
     Arc<TotpStore>,
     Arc<PgAuditLogStore>,
+    Arc<SocialAccountStore>,
 )> {
     Router::new()
         .route("/account", get(get_account_profile))
@@ -117,12 +108,13 @@ pub fn create_consent_routes() -> Router<Arc<AppState>> {
 
 /// Get current user's account profile
 pub async fn get_account_profile(
-    State((user_store, _, _, _, _)): State<(
+    State((user_store, _, _, _, _, _)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
 ) -> Result<Json<UserResponse>, AuthencError> {
@@ -139,12 +131,13 @@ pub async fn get_account_profile(
 
 /// Update current user's account profile
 pub async fn update_account_profile(
-    State((user_store, _, _, _, _)): State<(
+    State((user_store, _, _, _, _, _)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
     Json(update_request): Json<UpdateUserRequest>,
@@ -159,12 +152,13 @@ pub async fn update_account_profile(
 
 /// Get current user's active sessions
 pub async fn get_account_sessions(
-    State((_, session_store, _, _, _)): State<(
+    State((_, session_store, _, _, _, _)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
 ) -> Result<Json<Vec<SessionResponse>>, AuthencError> {
@@ -180,12 +174,13 @@ pub async fn get_account_sessions(
 
 /// Revoke a specific session
 pub async fn revoke_account_session(
-    State((_, session_store, _, _, _)): State<(
+    State((_, session_store, _, _, _, _)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
     Path(session_id): Path<Uuid>,
@@ -225,12 +220,13 @@ pub struct ApplicationResponse {
 
 /// Get current user's authorized applications
 pub async fn get_account_applications(
-    State((_, _, oidc_client_store, _, _)): State<(
+    State((_, _, oidc_client_store, _, _, _)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(_auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
 ) -> Result<Json<Vec<ApplicationResponse>>, AuthencError> {
@@ -243,8 +239,8 @@ pub async fn get_account_applications(
         .map(|client| ApplicationResponse {
             client_id: client.client_id,
             name: client.name,
-            created_at: chrono::Utc::now(), // TODO: Add created_at to OidcClient model
-            last_access: None,              // TODO: Track last access time
+            created_at: client.created_at,
+            last_access: Some(client.updated_at),
         })
         .collect();
 
@@ -253,34 +249,42 @@ pub async fn get_account_applications(
 
 /// Revoke access to a specific application
 pub async fn revoke_application_access(
-    State((_, _, _oidc_client_store, _, _)): State<(
+    State((user_store, _, _, _, _, _)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
-    Extension(_auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
-    Path(_client_id): Path<String>,
+    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Path(client_id): Path<String>,
 ) -> Result<StatusCode, AuthencError> {
-    // TODO: Implement proper consent revocation
-    // For now, this is a placeholder - in production, this should revoke all tokens for the client
-    // and remove any stored consents
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    // Note: We don't actually delete the client, just revoke the user's access to it
-    // The client remains registered for other users
+    // Create consent store from the same database
+    let consent_store = Arc::new(crate::services::stores::consent_store::ConsentStore::new(
+        user_store.database().clone(),
+    ));
+
+    // Revoke consent for the client
+    consent_store
+        .revoke_consent(user_id, &client_id)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// Export current user's account data
 pub async fn export_account_data(
-    State((user_store, session_store, oidc_client_store, _, audit_log_store)): State<(
+    State((user_store, session_store, oidc_client_store, _, audit_log_store, _)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
 ) -> Result<Response<String>, AuthencError> {
@@ -345,12 +349,13 @@ pub async fn export_account_data(
 
 /// Delete current user's account
 pub async fn delete_account(
-    State((user_store, _session_store, _oidc_client_store, totp_store, audit_log_store)): State<(
+    State((user_store, _session_store, _oidc_client_store, totp_store, audit_log_store, _)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
 ) -> Result<StatusCode, AuthencError> {
@@ -405,12 +410,13 @@ pub async fn delete_account(
 /// Setup TOTP for current user
 #[axum::debug_handler]
 pub async fn setup_totp(
-    State((_, _, _, totp_store, audit_log_store)): State<(
+    State((_, _, _, totp_store, audit_log_store, _)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
     Json(_request): Json<TotpSetupRequest>,
@@ -446,11 +452,19 @@ pub async fn setup_totp(
         })
         .collect();
 
-    // Store backup codes (in production, these should be hashed and stored securely)
-    // For now, we'll just log them - in production you'd store hashed versions
-    for code in &backup_codes {
-        // TODO: Store hashed backup codes
-    }
+    // Hash backup codes for storage
+    let hashed_codes: Vec<String> = backup_codes
+        .iter()
+        .map(|code| {
+            use sha2::{Digest, Sha256};
+            format!("{:x}", Sha256::digest(code.as_bytes()))
+        })
+        .collect();
+
+    // Store hashed backup codes
+    totp_store
+        .set_backup_codes(&user_id.to_string(), hashed_codes)
+        .map_err(|e| AuthencError::internal(format!("Failed to store backup codes: {}", e)))?;
 
     // Log TOTP setup
     let audit_log = crate::models::audit_log::AuditLog {
@@ -475,12 +489,13 @@ pub async fn setup_totp(
 
 /// Get TOTP status for current user
 pub async fn get_totp_status(
-    State((_, _, _, totp_store, _)): State<(
+    State((_, _, _, totp_store, _, _)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
 ) -> Result<Json<TotpStatusResponse>, AuthencError> {
@@ -492,20 +507,29 @@ pub async fn get_totp_status(
         .map_err(|e| AuthencError::internal(format!("Failed to check TOTP status: {}", e)))?
         .is_some();
 
+    let configured_at = if has_secret {
+        totp_store
+            .get_configured_at(&user_id.to_string())
+            .map_err(|e| AuthencError::internal(format!("Failed to get TOTP configured time: {}", e)))?
+    } else {
+        None
+    };
+
     Ok(Json(TotpStatusResponse {
         enabled: has_secret,
-        configured_at: None, // TODO: Track when TOTP was configured
+        configured_at,
     }))
 }
 
 /// Disable TOTP for current user
 pub async fn disable_totp(
-    State((_, _, _, totp_store, audit_log_store)): State<(
+    State((_, _, _, totp_store, audit_log_store, _)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
 ) -> Result<StatusCode, AuthencError> {
@@ -515,6 +539,11 @@ pub async fn disable_totp(
     totp_store
         .remove_secret(&user_id.to_string())
         .map_err(|e| AuthencError::internal(format!("Failed to disable TOTP: {}", e)))?;
+
+    // Also remove backup codes
+    totp_store
+        .remove_backup_codes(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to remove backup codes: {}", e)))?;
 
     // Log TOTP disable
     let audit_log = crate::models::audit_log::AuditLog {
@@ -535,12 +564,13 @@ pub async fn disable_totp(
 
 /// Get linked social accounts for current user
 pub async fn get_linked_social_accounts(
-    State((user_store, _, _, _, _)): State<(
+    State((user_store, _, _, _, _, social_account_store)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
 ) -> Result<Json<Vec<SocialAccountResponse>>, AuthencError> {
@@ -553,21 +583,29 @@ pub async fn get_linked_social_accounts(
         .await?
         .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
-    // TODO: Implement proper social account linking storage
-    // For now, return empty list - in production this would query a social_accounts table
-    let social_accounts: Vec<SocialAccountResponse> = vec![];
+    // Get social accounts for the user
+    let social_accounts = social_account_store
+        .get_user_social_accounts(user_id)
+        .await?;
 
-    Ok(Json(social_accounts))
+    // Convert to response format
+    let responses: Vec<SocialAccountResponse> = social_accounts
+        .into_iter()
+        .map(|account| account.into())
+        .collect();
+
+    Ok(Json(responses))
 }
 
 /// Unlink a social account
 pub async fn unlink_social_account(
-    State((user_store, _, _, _, audit_log_store)): State<(
+    State((user_store, _, _, _, audit_log_store, social_account_store)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,
         Arc<TotpStore>,
         Arc<PgAuditLogStore>,
+        Arc<SocialAccountStore>,
     )>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
     Path(provider): Path<String>,
@@ -586,8 +624,10 @@ pub async fn unlink_social_account(
         _ => return Err(AuthencError::validation("Invalid social provider")),
     };
 
-    // TODO: Implement actual social account unlinking
-    // This would remove the link between the user and the social provider
+    // Remove the social account link
+    social_account_store
+        .remove_social_account_by_provider(user_id, &provider)
+        .await?;
 
     // Log social account unlink
     let audit_log = crate::models::audit_log::AuditLog {

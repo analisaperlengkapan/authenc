@@ -1,51 +1,54 @@
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
+use crate::models::organization::{Organization, OrganizationMember};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-/// Organization represents a tenant/organization in the system
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Organization {
-    /// Unique identifier for the organization
-    pub id: Uuid,
-    /// Internal name of the organization (used for identification)
-    pub name: String,
-    /// Display name of the organization (shown to users)
-    pub display_name: String,
-    /// Optional description of the organization
-    pub description: Option<String>,
-    /// Domain associated with the organization
-    pub domain: Option<String>,
-    /// URL to the organization's logo
-    pub logo_url: Option<String>,
-    /// Website URL of the organization
-    pub website: Option<String>,
-    /// Whether the organization is enabled/active
-    pub enabled: bool,
-    /// Timestamp when the organization was created
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    /// Timestamp when the organization was last updated
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-    /// Additional attributes for the organization
-    pub attributes: HashMap<String, String>,
-}
+// Organization represents a tenant/organization in the system
+// Using the model Organization for now
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct Organization {
+//     /// Unique identifier for the organization
+//     pub id: Uuid,
+//     /// Internal name of the organization (used for identification)
+//     pub name: String,
+//     /// Display name of the organization (shown to users)
+//     pub display_name: String,
+//     /// Optional description of the organization
+//     pub description: Option<String>,
+//     /// Domain associated with the organization
+//     pub domain: Option<String>,
+//     /// URL to the organization's logo
+//     pub logo_url: Option<String>,
+//     /// Website URL of the organization
+//     pub website: Option<String>,
+//     /// Whether the organization is enabled/active
+//     pub enabled: bool,
+//     /// Timestamp when the organization was created
+//     pub created_at: chrono::DateTime<chrono::Utc>,
+//     /// Timestamp when the organization was last updated
+//     pub updated_at: chrono::DateTime<chrono::Utc>,
+//     /// Additional attributes for the organization
+//     pub attributes: HashMap<String, String>,
+// }
 
 /// Organization member with role
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OrganizationMember {
-    /// ID of the user who is a member
-    pub user_id: Uuid,
-    /// ID of the organization
-    pub organization_id: Uuid,
-    /// Role of the member in the organization
-    pub role: OrganizationRole,
-    /// Timestamp when the user joined the organization
-    pub joined_at: chrono::DateTime<chrono::Utc>,
-    /// ID of the user who invited this member
-    pub invited_by: Option<Uuid>,
-}
+// Using the model OrganizationMember for now
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct OrganizationMember {
+//     /// ID of the user who is a member
+//     pub user_id: Uuid,
+//     /// ID of the organization
+//     pub organization_id: Uuid,
+//     /// Role of the member in the organization
+//     pub role: OrganizationRole,
+//     /// Timestamp when the user joined the organization
+//     pub joined_at: chrono::DateTime<chrono::Utc>,
+//     /// ID of the user who invited this member
+//     pub invited_by: Option<Uuid>,
+// }
 
 /// Organization roles
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +61,29 @@ pub enum OrganizationRole {
     Member,
     /// Guest with limited access
     Guest,
+}
+
+impl OrganizationRole {
+    /// Convert the role to its string representation
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OrganizationRole::Owner => "OWNER",
+            OrganizationRole::Admin => "ADMIN",
+            OrganizationRole::Member => "MEMBER",
+            OrganizationRole::Guest => "GUEST",
+        }
+    }
+
+    /// Parse a string into an OrganizationRole
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_uppercase().as_str() {
+            "OWNER" => Some(OrganizationRole::Owner),
+            "ADMIN" => Some(OrganizationRole::Admin),
+            "MEMBER" => Some(OrganizationRole::Member),
+            "GUEST" => Some(OrganizationRole::Guest),
+            _ => None,
+        }
+    }
 }
 
 /// Organization invitation
@@ -127,15 +153,17 @@ impl OrganizationService {
         let organization = Organization {
             id: Uuid::new_v4(),
             name: name.to_string(),
-            display_name: display_name.to_string(),
+            display_name: Some(display_name.to_string()),
             description: description.map(|s| s.to_string()),
             domain: None,
             logo_url: None,
-            website: None,
+            website_url: None,
+            owner_id: created_by,
+            realm_id: None,
             enabled: true,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
-            attributes: HashMap::new(),
+            deleted_at: None,
         };
 
         // Store organization in database
@@ -154,15 +182,17 @@ impl OrganizationService {
     }
 
     /// Get organization by ID
-    pub async fn get_organization(&self, _organization_id: &Uuid) -> Result<Option<Organization>> {
-        // In production, retrieve from database
-        Ok(None)
+    pub async fn get_organization(&self, organization_id: &Uuid) -> Result<Option<Organization>> {
+        crate::database::operations::organizations::get_organization_by_id(&self.db, *organization_id)
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to get organization: {}", e)))
     }
 
     /// Get organization by domain
-    pub async fn get_organization_by_domain(&self, _domain: &str) -> Result<Option<Organization>> {
-        // In production, retrieve from database
-        Ok(None)
+    pub async fn get_organization_by_domain(&self, domain: &str) -> Result<Option<Organization>> {
+        crate::database::operations::organizations::get_organization_by_domain(&self.db, domain)
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to get organization by domain: {}", e)))
     }
 
     /// Update organization
@@ -176,9 +206,10 @@ impl OrganizationService {
     }
 
     /// Delete organization
-    pub async fn delete_organization(&self, _organization_id: &Uuid) -> Result<()> {
-        // In production, delete from database
-        Ok(())
+    pub async fn delete_organization(&self, organization_id: &Uuid) -> Result<()> {
+        crate::database::operations::organizations::delete_organization(&self.db, organization_id)
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to delete organization: {}", e)))
     }
 
     /// Add member to organization
@@ -190,11 +221,15 @@ impl OrganizationService {
         invited_by: Option<Uuid>,
     ) -> Result<()> {
         let member = OrganizationMember {
+            id: Uuid::new_v4(),
             user_id: *user_id,
             organization_id: *organization_id,
-            role,
-            joined_at: chrono::Utc::now(),
+            role: role.as_str().to_string(),
             invited_by,
+            invited_at: None,
+            joined_at: Some(chrono::Utc::now()),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
         };
 
         // Store member in database
@@ -203,9 +238,10 @@ impl OrganizationService {
     }
 
     /// Remove member from organization
-    pub async fn remove_member(&self, _organization_id: &Uuid, _user_id: &Uuid) -> Result<()> {
-        // In production, remove from database
-        Ok(())
+    pub async fn remove_member(&self, organization_id: &Uuid, user_id: &Uuid) -> Result<()> {
+        crate::database::operations::organizations::remove_organization_member(&self.db, organization_id, user_id)
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to remove member: {}", e)))
     }
 
     /// Update member role
@@ -220,9 +256,10 @@ impl OrganizationService {
     }
 
     /// Get organization members
-    pub async fn get_members(&self, _organization_id: &Uuid) -> Result<Vec<OrganizationMember>> {
-        // In production, retrieve from database
-        Ok(vec![])
+    pub async fn get_members(&self, organization_id: &Uuid) -> Result<Vec<OrganizationMember>> {
+        crate::database::operations::organizations::get_organization_members(&self.db, organization_id)
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to get members: {}", e)))
     }
 
     /// Check if user is member of organization
@@ -328,9 +365,10 @@ impl OrganizationService {
     }
 
     /// Get user's organizations
-    pub async fn get_user_organizations(&self, _user_id: &Uuid) -> Result<Vec<Organization>> {
-        // In production, retrieve from database
-        Ok(vec![])
+    pub async fn get_user_organizations(&self, user_id: &Uuid) -> Result<Vec<Organization>> {
+        crate::database::operations::organizations::get_user_organizations(&self.db, user_id)
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to get user organizations: {}", e)))
     }
 
     /// Transfer organization ownership
@@ -367,14 +405,16 @@ impl OrganizationService {
         token
     }
 
-    // Database operations (simplified - would need proper implementation)
-    async fn store_organization(&self, _organization: &Organization) -> Result<()> {
-        // In production, store in database
+    // Database operations
+    async fn store_organization(&self, organization: &Organization) -> Result<()> {
+        crate::database::operations::organizations::create_organization(&self.db, organization)
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to store organization: {}", e)))?;
         Ok(())
     }
 
     async fn store_member(&self, _member: &OrganizationMember) -> Result<()> {
-        // In production, store in database
+        // Stub implementation - in production, store in database
         Ok(())
     }
 

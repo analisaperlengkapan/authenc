@@ -127,6 +127,19 @@ impl Database {
         })
     }
 
+    /// Execute a query that returns an optional single row
+    pub async fn query_opt(
+        &self,
+        statement: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Option<tokio_postgres::Row>> {
+        let client = self.get_connection().await?;
+        client.query_opt(statement, params).await.map_err(|e| {
+            error!("Query opt failed: {}\nStatement: {}", e, statement);
+            AuthencError::database(format!("Database query failed: {}", e))
+        })
+    }
+
     /// Execute a statement that doesn't return any rows
     pub async fn execute(
         &self,

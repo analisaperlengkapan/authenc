@@ -1,5 +1,6 @@
+use crate::app::AppState;
+use crate::database::operations;
 use crate::handlers::api::auth_bearer::AuthBearer;
-use crate::services::{role_store::RoleStore, user_store::UserStore};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -9,9 +10,10 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Create permission checking routes for a realm
-pub fn create_permission_check_routes() -> Router<(Arc<UserStore>, Arc<RoleStore>)> {
+pub fn create_permission_check_routes() -> Router<Arc<AppState>> {
     Router::new().route(
         "/realms/{realm}/permissions/check",
         get(check_user_permission),
@@ -27,12 +29,22 @@ pub struct PermissionCheckQuery {
 
 /// Check if the authenticated user has a specific permission in the realm
 pub async fn check_user_permission(
-    State((_user_store, _role_store)): State<(Arc<UserStore>, Arc<RoleStore>)>,
-    Path(_realm): Path<String>,
-    Query(_query): Query<PermissionCheckQuery>,
-    _auth: AuthBearer,
+    State(state): State<Arc<AppState>>,
+    Path(realm): Path<String>,
+    Query(query): Query<PermissionCheckQuery>,
+    auth: AuthBearer,
 ) -> Result<Json<bool>, StatusCode> {
-    // TODO: Implement proper permission checking with UserRole and RolePermission tables
-    // For now, return false (no permissions)
-    Ok(Json(false))
+    // Extract user ID from authentication
+    let user_id = Uuid::parse_str(&auth.0.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    // Check if user has the specified permission
+    let has_permission = operations::roles::user_has_permission(
+        &state.database,
+        &user_id,
+        &query.permission,
+    )
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(has_permission))
 }

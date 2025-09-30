@@ -1,4 +1,7 @@
-use crate::services::stores::{role_store::RoleStore, user_store::UserStore};
+use crate::app::AppState;
+use crate::database;
+use crate::handlers::api::auth_bearer::AuthBearer;
+use crate::models::permission::Permission;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -7,6 +10,7 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Create Axum router for user permission API endpoints
 ///
@@ -21,36 +25,23 @@ use std::sync::Arc;
 /// - `GET /realms/{realm}/users/{user_id}/permissions` - Get user permissions
 ///
 /// # Dependencies
-/// Requires `UserStore` and `RoleStore` to be available in the application state
+/// Requires `AppState` to be available in the application state
 ///
 /// # Example
 /// ```rust
 /// use authenc::handlers::api::user_permission::create_user_permission_routes;
-/// use authenc::services::stores::{user_store::UserStore, role_store::RoleStore};
-/// use authenc::database::Database;
-/// use authenc::config::DatabaseConfig;
+/// use authenc::app::AppState;
+/// use authenc::config::AppConfig;
 /// use std::sync::Arc;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let config = DatabaseConfig {
-///     host: "localhost".to_string(),
-///     port: 5432,
-///     username: "postgres".to_string(),
-///     password: "password".to_string(),
-///     database: "authenc".to_string(),
-///     max_connections: 10,
-///     connection_timeout: 30,
-///     audit_log_url: None,
-///     connection_timeout_seconds: 30,
-/// };
-/// let db = Arc::new(Database::new(&config).await?);
-/// let user_store = Arc::new(UserStore::new(db.clone()));
-/// let role_store = Arc::new(RoleStore::new());
+/// let config = AppConfig::default();
+/// let state = Arc::new(AppState::new(config).await?);
 /// let router = create_user_permission_routes();
 /// # Ok(())
 /// # }
 /// ```
-pub fn create_user_permission_routes() -> Router<(Arc<UserStore>, Arc<RoleStore>)> {
+pub fn create_user_permission_routes() -> Router<Arc<AppState>> {
     Router::new().route(
         "/realms/{realm}/users/{user_id}/permissions",
         get(get_user_permissions),
@@ -64,8 +55,9 @@ pub fn create_user_permission_routes() -> Router<(Arc<UserStore>, Arc<RoleStore>
 /// set of permissions the user has.
 ///
 /// # Arguments
-/// * `State((_user_store, _role_store))` - Application state containing user and role stores
-/// * `Path((_realm, _user_id))` - URL path parameters for realm and user ID
+/// * `State(state)` - Application state
+/// * `Path((realm, user_id))` - URL path parameters for realm and user ID
+/// * `auth` - Authentication bearer token
 ///
 /// # Returns
 /// A `Result` containing a JSON array of permission strings on success,
@@ -76,9 +68,8 @@ pub fn create_user_permission_routes() -> Router<(Arc<UserStore>, Arc<RoleStore>
 /// - Should implement proper authorization checks
 /// - Rate limiting should be applied to prevent abuse
 ///
-/// # Current Implementation
-/// Currently returns an empty permissions list as a placeholder.
-/// TODO: Implement proper permission retrieval using UserRole and RolePermission tables.
+/// # Implementation
+/// Retrieves user permissions through UserRole and RolePermission tables.
 ///
 /// # Example
 /// ```http
@@ -86,10 +77,25 @@ pub fn create_user_permission_routes() -> Router<(Arc<UserStore>, Arc<RoleStore>
 /// ```
 /// Response: `["read:users", "write:profile", "admin:realm"]`
 pub async fn get_user_permissions(
-    State((_user_store, _role_store)): State<(Arc<UserStore>, Arc<RoleStore>)>,
-    Path((_realm, _user_id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    Path((realm, user_id)): Path<(String, String)>,
+    auth: AuthBearer,
 ) -> Result<Json<Vec<String>>, StatusCode> {
-    // TODO: Implement proper user permission retrieval with UserRole and RolePermission tables
-    // For now, return empty permissions list
-    Ok(Json(vec![]))
+    // Parse user ID
+    let target_user_id = Uuid::parse_str(&user_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Get user permissions from database
+    let permissions = database::operations::roles::get_user_permissions(
+        &state.database,
+        &target_user_id,
+    )
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Convert permissions to string format (resource:action)
+    let permission_strings: Vec<String> = permissions
+        .into_iter()
+        .collect();
+
+    Ok(Json(permission_strings))
 }

@@ -105,6 +105,8 @@ pub async fn create_client(
         redirect_uris: req.redirect_uris.clone(),
         name: req.name.clone(),
         enabled: req.enabled.unwrap_or(true),
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
     };
 
     if let Err(_) = state.oidc_client_store.add(client.clone()).await {

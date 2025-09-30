@@ -52,6 +52,9 @@ pub trait UserStoreTrait: Send + Sync {
 
     /// Get all users
     async fn get_all(&self) -> Result<Vec<User>, AuthencError>;
+
+    /// Get users by realm
+    async fn get_users_by_realm(&self, realm_id: Uuid) -> Result<Vec<User>, AuthencError>;
 }
 
 /// Implementation of UserStoreTrait for UserStore
@@ -87,5 +90,9 @@ impl UserStoreTrait for UserStore {
 
     async fn get_all(&self) -> Result<Vec<User>, AuthencError> {
         operations::users::get_all_users(&self.database).await
+    }
+
+    async fn get_users_by_realm(&self, realm_id: Uuid) -> Result<Vec<User>, AuthencError> {
+        operations::users::get_users_by_realm(&self.database, realm_id).await
     }
 }

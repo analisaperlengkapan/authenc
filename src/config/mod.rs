@@ -165,6 +165,57 @@ use tracing::Level;
 use crate::error::{AuthencError, Result};
 use crate::middleware::rate_limit_axum::RateLimitConfig;
 
+/// Cluster configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClusterConfig {
+    /// Whether clustering is enabled
+    #[serde(default)]
+    pub enabled: bool,
+    /// Name of the cluster
+    #[serde(default = "default_cluster_name")]
+    pub cluster_name: String,
+    /// Unique identifier for this node
+    pub node_id: Option<String>,
+    /// Type of cluster communication to use
+    #[serde(default)]
+    pub communication_type: crate::services::clustering::ClusterCommunicationType,
+    /// Type of cluster membership management
+    #[serde(default)]
+    pub membership_type: crate::services::clustering::ClusterMembershipType,
+    /// Type of distributed consensus algorithm
+    #[serde(default)]
+    pub consensus_type: crate::services::clustering::ClusterConsensusType,
+    /// Addresses for service discovery
+    #[serde(default)]
+    pub discovery_addresses: Vec<String>,
+    /// Whether session replication is enabled
+    #[serde(default = "default_true")]
+    pub session_replication_enabled: bool,
+    /// Whether cache replication is enabled
+    #[serde(default = "default_true")]
+    pub cache_replication_enabled: bool,
+}
+
+impl Default for ClusterConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cluster_name: default_cluster_name(),
+            node_id: None,
+            communication_type: crate::services::clustering::ClusterCommunicationType::Infinispan,
+            membership_type: crate::services::clustering::ClusterMembershipType::Kubernetes,
+            consensus_type: crate::services::clustering::ClusterConsensusType::Raft,
+            discovery_addresses: vec![],
+            session_replication_enabled: true,
+            cache_replication_enabled: true,
+        }
+    }
+}
+
+fn default_cluster_name() -> String {
+    "authenc-cluster".to_string()
+}
+
 /// Main application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -213,6 +264,10 @@ pub struct AppConfig {
     /// SPI configuration for enterprise features
     #[serde(default)]
     pub spi: SpiConfig,
+
+    /// Clustering configuration for high availability
+    #[serde(default)]
+    pub clustering: ClusterConfig,
 }
 
 /// Server configuration options
@@ -756,6 +811,7 @@ impl Default for AppConfig {
             kafka: None,
             events: EventsConfig::default(),
             spi: SpiConfig::default(),
+            clustering: ClusterConfig::default(),
         }
     }
 }

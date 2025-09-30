@@ -1,4 +1,5 @@
 use crate::app::AppState;
+use crate::database::operations;
 use crate::handlers::api::auth_bearer::AuthBearer;
 use crate::models::user::{self, User};
 use crate::services::stores::user_store::UserStoreTrait;
@@ -33,18 +34,13 @@ pub async fn get_users(
     _auth: AuthBearer,
     Path(realm): Path<String>,
 ) -> Result<Json<Vec<User>>, StatusCode> {
-    // For now, return empty vec since get_all is not fully implemented
-    // TODO: Implement proper user listing with realm filtering in database
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
     let users = state
         .user_store
-        .get_all()
+        .get_users_by_realm(realm_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let filtered: Vec<User> = users
-        .into_iter()
-        .filter(|u| u.realm_id.map(|id| id.to_string()) == Some(realm.clone()))
-        .collect();
-    Ok(Json(filtered))
+    Ok(Json(users))
 }
 
 /// Get a specific user by ID in the specified realm
@@ -212,14 +208,61 @@ pub async fn update_user(
 
 /// Delete a user from the specified realm
 pub async fn delete_user(
-    State(_state): State<Arc<AppState>>,
-    _auth: AuthBearer,
-    Path((_realm, _id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
+    Path((realm, id)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // TODO: Implement user deletion
-    // For now, return not implemented since user deletion requires careful consideration
-    // of data consistency, audit trails, and soft vs hard deletion
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Check if user exists and belongs to the realm
+    let user = state
+        .user_store
+        .get_user(user_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    if user.realm_id != Some(realm_id) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    // Delete the user
+    state
+        .user_store
+        .delete_user(user_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Fire admin event for user deletion
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let admin_event = crate::services::events::AdminEventBuilder::new(
+        realm.clone(),
+        auth_details,
+        crate::models::events::ResourceType::User,
+        crate::models::events::OperationType::Delete,
+        format!("/realms/{}/users/{}", realm, user_id),
+    )
+    .representation(serde_json::to_string(&user).unwrap_or_default())
+    .build();
+
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, true)
+        .await
+    {
+        tracing::error!("Failed to fire user deletion admin event: {}", e);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -233,16 +276,74 @@ pub struct UpdatePasswordRequest {
 
 /// Update a user's password in the specified realm
 pub async fn update_password(
-    State(_state): State<Arc<AppState>>,
-    _auth: AuthBearer,
-    Path((_realm, _id)): Path<(String, String)>,
-    Json(_req): Json<UpdatePasswordRequest>,
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
+    Path((realm, id)): Path<(String, String)>,
+    Json(req): Json<UpdatePasswordRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    // TODO: Implement password update with proper validation and database operations
-    // For now, return not implemented since password updates require:
-    // 1. Verification of old password
-    // 2. Password policy validation
-    // 3. Database update operations
-    // 4. Audit logging
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Get the user
+    let user = state
+        .user_store
+        .get_user(user_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Check if user belongs to the realm
+    if user.realm_id != Some(realm_id) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    // Verify old password if user has a password hash
+    if let Some(password_hash) = &user.password_hash {
+        let is_valid = crate::utils::crypto::verify_password(password_hash, &req.old_password)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if !is_valid {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    } else {
+        // User doesn't have a password set, which shouldn't happen for regular users
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Hash the new password
+    let new_password_hash = crate::utils::crypto::hash_password(&req.new_password)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Update password in database
+    operations::users::update_password(&state.database, user_id, &new_password_hash)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Fire admin event for password change
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let admin_event = crate::services::events::AdminEventBuilder::new(
+        realm.clone(),
+        auth_details,
+        crate::models::events::ResourceType::User,
+        crate::models::events::OperationType::Update,
+        format!("/realms/{}/users/{}/password", realm, user_id),
+    )
+    .build();
+
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, false)
+        .await
+    {
+        tracing::error!("Failed to fire password change admin event: {}", e);
+    }
+
+    Ok(StatusCode::OK)
 }

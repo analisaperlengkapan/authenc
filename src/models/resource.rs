@@ -36,7 +36,7 @@ pub struct Resource {
 }
 
 /// Resource creation request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateResourceRequest {
     /// Name of the resource
     pub name: String,

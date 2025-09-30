@@ -33,4 +33,8 @@ pub struct OidcClient {
     pub name: String,
     /// Flag indicating whether the client is enabled for authentication
     pub enabled: bool,
+    /// Timestamp when the client was created
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Timestamp when the client was last accessed (updated)
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }

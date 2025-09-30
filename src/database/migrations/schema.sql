@@ -9,7 +9,20 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================================================
 
 -- Realms (multi-tenancy support)
-CREATE TABLE IF NOT EXISTS realms (
+CREA-- Admin events table (admin actions)
+CREATE TABLE IF NOT EXISTS admin_events (
+    id VARCHAR(36) PRIMARY KEY,
+    time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    realm_id VARCHAR(36) NOT NULL,
+    auth_user_id VARCHAR(36),
+    auth_ip_address INET,
+    auth_user_agent TEXT,
+    resource_type VARCHAR(50) NOT NULL,
+    operation_type VARCHAR(50) NOT NULL,
+    resource_path TEXT,
+    representation TEXT,
+    error TEXT
+);ISTS realms (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL UNIQUE,
     display_name VARCHAR(255),
@@ -237,6 +250,29 @@ CREATE TABLE IF NOT EXISTS user_consents (
 );
 
 -- ============================================================================
+-- SOCIAL ACCOUNT TABLES
+-- ============================================================================
+
+-- Social account links for identity brokering
+CREATE TABLE IF NOT EXISTS social_accounts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider VARCHAR(50) NOT NULL, -- Social provider (google, github, etc.)
+    provider_user_id VARCHAR(255) NOT NULL, -- User ID on the social provider
+    display_name VARCHAR(255), -- Display name from social provider
+    email VARCHAR(255), -- Email from social provider
+    profile_picture_url TEXT, -- Profile picture URL from social provider
+    access_token TEXT, -- Encrypted access token
+    refresh_token TEXT, -- Encrypted refresh token
+    token_expires_at TIMESTAMPTZ, -- When the access token expires
+    linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), -- When the account was linked
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ,
+    UNIQUE(user_id, provider), -- One social account per provider per user
+    UNIQUE(provider, provider_user_id) -- One user per social provider account
+);
+
+-- ============================================================================
 -- SAML TABLES
 -- ============================================================================
 
@@ -338,6 +374,100 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     correlation_id VARCHAR(100)
 );
 
+-- User events table (login, logout, registration, etc.)
+CREATE TABLE IF NOT EXISTS events (
+    id VARCHAR(36) PRIMARY KEY,
+    time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    event_type VARCHAR(100) NOT NULL,
+    realm_id VARCHAR(36) NOT NULL,
+    realm_name VARCHAR(255),
+    client_id VARCHAR(36),
+    user_id VARCHAR(36),
+    session_id VARCHAR(36),
+    ip_address INET,
+    error TEXT,
+    details JSONB
+);
+
+-- Admin events table (admin actions)
+CREATE TABLE IF NOT EXISTS admin_events (
+    id VARCHAR(36) PRIMARY KEY,
+    time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    realm_id VARCHAR(36) NOT NULL,
+    realm_name VARCHAR(255),
+    auth_user_id VARCHAR(36),
+    auth_username VARCHAR(255),
+    auth_realm VARCHAR(255),
+    auth_client VARCHAR(255),
+    auth_ip_address INET,
+    auth_user_agent TEXT,
+    resource_type VARCHAR(50) NOT NULL,
+    operation_type VARCHAR(50) NOT NULL,
+    resource_path TEXT NOT NULL,
+    representation TEXT,
+    error TEXT
+);
+
+-- Resource servers table (for fine-grained authorization)
+CREATE TABLE IF NOT EXISTS resource_servers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id VARCHAR(255) NOT NULL,
+    name VARCHAR(255),
+    description TEXT,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    realm_id UUID REFERENCES realms(id) ON DELETE CASCADE,
+    policy_enforcement_mode VARCHAR(50) NOT NULL DEFAULT 'enforcing',
+    decision_strategy VARCHAR(50) NOT NULL DEFAULT 'unanimous',
+    allow_remote_resource_management BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Scopes table (for resource permissions)
+CREATE TABLE IF NOT EXISTS scopes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
+    icon_uri VARCHAR(1000),
+    realm_id UUID REFERENCES realms(id) ON DELETE CASCADE,
+    resource_server_id UUID REFERENCES resource_servers(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Resources table (for fine-grained authorization)
+CREATE TABLE IF NOT EXISTS resources (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
+    uris TEXT[] NOT NULL DEFAULT '{}',
+    icon_uri VARCHAR(1000),
+    resource_type VARCHAR(255),
+    owner VARCHAR(255) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    realm_id UUID REFERENCES realms(id) ON DELETE CASCADE,
+    resource_server_id UUID REFERENCES resource_servers(id) ON DELETE CASCADE,
+    scopes TEXT[] NOT NULL DEFAULT '{}',
+    attributes JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Permission tickets table (for resource sharing)
+CREATE TABLE IF NOT EXISTS permission_tickets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    resource_id UUID REFERENCES resources(id) ON DELETE CASCADE,
+    scope_id UUID REFERENCES scopes(id) ON DELETE CASCADE,
+    owner VARCHAR(255) NOT NULL,
+    requester VARCHAR(255) NOT NULL,
+    granted BOOLEAN NOT NULL DEFAULT false,
+    granted_timestamp TIMESTAMPTZ,
+    realm_id UUID REFERENCES realms(id) ON DELETE CASCADE,
+    resource_server_id UUID REFERENCES resource_servers(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ============================================================================
 -- INDEXES FOR PERFORMANCE
 -- ============================================================================
@@ -401,6 +531,43 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type ON audit_logs(event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_status ON audit_logs(status);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_request_id ON audit_logs(request_id);
 
+-- Event indexes
+CREATE INDEX IF NOT EXISTS idx_events_time ON events(time DESC);
+CREATE INDEX IF NOT EXISTS idx_events_realm_id ON events(realm_id);
+CREATE INDEX IF NOT EXISTS idx_events_user_id ON events(user_id);
+CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type);
+CREATE INDEX IF NOT EXISTS idx_events_client_id ON events(client_id);
+
+-- Admin event indexes
+CREATE INDEX IF NOT EXISTS idx_admin_events_time ON admin_events(time DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_events_realm_id ON admin_events(realm_id);
+CREATE INDEX IF NOT EXISTS idx_admin_events_auth_user_id ON admin_events(auth_user_id);
+CREATE INDEX IF NOT EXISTS idx_admin_events_resource_type ON admin_events(resource_type);
+CREATE INDEX IF NOT EXISTS idx_admin_events_operation_type ON admin_events(operation_type);
+
+-- Resource server indexes
+CREATE INDEX IF NOT EXISTS idx_resource_servers_client_id ON resource_servers(client_id);
+CREATE INDEX IF NOT EXISTS idx_resource_servers_realm_id ON resource_servers(realm_id);
+
+-- Scope indexes
+CREATE INDEX IF NOT EXISTS idx_scopes_name ON scopes(name);
+CREATE INDEX IF NOT EXISTS idx_scopes_realm_id ON scopes(realm_id);
+CREATE INDEX IF NOT EXISTS idx_scopes_resource_server_id ON scopes(resource_server_id);
+
+-- Resource indexes
+CREATE INDEX IF NOT EXISTS idx_resources_name ON resources(name);
+CREATE INDEX IF NOT EXISTS idx_resources_owner ON resources(owner);
+CREATE INDEX IF NOT EXISTS idx_resources_realm_id ON resources(realm_id);
+CREATE INDEX IF NOT EXISTS idx_resources_resource_server_id ON resources(resource_server_id);
+
+-- Permission ticket indexes
+CREATE INDEX IF NOT EXISTS idx_permission_tickets_resource_id ON permission_tickets(resource_id);
+CREATE INDEX IF NOT EXISTS idx_permission_tickets_scope_id ON permission_tickets(scope_id);
+CREATE INDEX IF NOT EXISTS idx_permission_tickets_owner ON permission_tickets(owner);
+CREATE INDEX IF NOT EXISTS idx_permission_tickets_requester ON permission_tickets(requester);
+CREATE INDEX IF NOT EXISTS idx_permission_tickets_realm_id ON permission_tickets(realm_id);
+CREATE INDEX IF NOT EXISTS idx_permission_tickets_resource_server_id ON permission_tickets(resource_server_id);
+
 -- ============================================================================
 -- FUNCTIONS AND TRIGGERS
 -- ============================================================================
@@ -461,6 +628,12 @@ CREATE TABLE IF NOT EXISTS identity_provider_mappers (
 CREATE TRIGGER update_identity_providers_updated_at BEFORE UPDATE ON identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_identity_provider_mappers_updated_at BEFORE UPDATE ON identity_provider_mappers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_federated_identities_updated_at BEFORE UPDATE ON federated_identities FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Update triggers for resource management
+CREATE TRIGGER update_resource_servers_updated_at BEFORE UPDATE ON resource_servers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_scopes_updated_at BEFORE UPDATE ON scopes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_resources_updated_at BEFORE UPDATE ON resources FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_permission_tickets_updated_at BEFORE UPDATE ON permission_tickets FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Function to clean up expired tokens and sessions
 CREATE OR REPLACE FUNCTION cleanup_expired_data()

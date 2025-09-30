@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use uuid::Uuid;
 
 /// Resource server entity for managing resources and scopes
@@ -41,6 +42,30 @@ pub enum PolicyEnforcementMode {
     Disabled,
 }
 
+impl PolicyEnforcementMode {
+    /// Convert to string representation
+    pub fn as_str(&self) -> &str {
+        match self {
+            PolicyEnforcementMode::Enforcing => "enforcing",
+            PolicyEnforcementMode::Permissive => "permissive",
+            PolicyEnforcementMode::Disabled => "disabled",
+        }
+    }
+}
+
+impl std::str::FromStr for PolicyEnforcementMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "enforcing" => Ok(PolicyEnforcementMode::Enforcing),
+            "permissive" => Ok(PolicyEnforcementMode::Permissive),
+            "disabled" => Ok(PolicyEnforcementMode::Disabled),
+            _ => Err(format!("Unknown policy enforcement mode: {}", s)),
+        }
+    }
+}
+
 /// Decision strategies for policy evaluation
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum DecisionStrategy {
@@ -51,6 +76,30 @@ pub enum DecisionStrategy {
     Affirmative,
     /// Consensus decision (majority of policies must permit)
     Consensus,
+}
+
+impl DecisionStrategy {
+    /// Convert to string representation
+    pub fn as_str(&self) -> &str {
+        match self {
+            DecisionStrategy::Unanimous => "unanimous",
+            DecisionStrategy::Affirmative => "affirmative",
+            DecisionStrategy::Consensus => "consensus",
+        }
+    }
+}
+
+impl std::str::FromStr for DecisionStrategy {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "unanimous" => Ok(DecisionStrategy::Unanimous),
+            "affirmative" => Ok(DecisionStrategy::Affirmative),
+            "consensus" => Ok(DecisionStrategy::Consensus),
+            _ => Err(format!("Unknown decision strategy: {}", s)),
+        }
+    }
 }
 
 /// Resource server creation request

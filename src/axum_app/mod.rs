@@ -3,7 +3,7 @@
 //! This module provides the Axum-specific implementation for running
 //! the Authenc authentication service as an HTTP server.
 
-use axum::Router;
+use axum::{extract::State, Router};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::signal;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
@@ -15,6 +15,7 @@ use crate::{
     handlers::create_router,
     middleware::rate_limit_axum::{RateLimitConfig, RateLimitLayer, RateLimiterState},
     middleware::{
+        csrf_protection_axum::{csrf_protection_middleware, CsrfConfig, CsrfState},
         input_validation_axum::{input_validation_middleware, InputValidationConfig},
         security_headers_axum::security_headers_middleware,
         timeout_axum::timeout_middleware,
@@ -64,6 +65,23 @@ impl AxumApp {
             ],
         };
 
+        // Configure CSRF protection
+        let csrf_config = CsrfConfig {
+            enabled: true, // Enable CSRF protection by default
+            header_name: "X-CSRF-Token".to_string(),
+            cookie_name: "csrf_token".to_string(),
+            token_length: 32,
+            excluded_paths: vec![
+                "/health".to_string(),
+                "/health/ready".to_string(),
+                "/health/live".to_string(),
+                "/metrics".to_string(),
+                "/.well-known/".to_string(), // OIDC discovery endpoints
+                "/api/v1/csrf/token".to_string(), // CSRF token endpoint
+            ],
+        };
+        let csrf_state = Arc::new(CsrfState::new(csrf_config));
+
         // Build the router with middleware and routes
         let router = create_router(state.clone())
             // Add rate limiting first (early rejection)
@@ -72,6 +90,10 @@ impl AxumApp {
             )))
             // Add security middleware layers (order matters!)
             .layer(axum::middleware::from_fn(security_headers_middleware))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                let csrf_state = csrf_state.clone();
+                async move { csrf_protection_middleware(State(csrf_state), req, next).await }
+            }))
             .layer(axum::middleware::from_fn(move |req, next| {
                 input_validation_middleware(Arc::new(input_validation_config.clone()), req, next)
             }))
