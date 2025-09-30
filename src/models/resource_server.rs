@@ -31,8 +31,10 @@ pub struct ResourceServer {
 
 /// Policy enforcement modes
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum PolicyEnforcementMode {
     /// Enforce policies
+    #[default]
     Enforcing,
     /// Permit all requests
     Permissive,
@@ -42,8 +44,10 @@ pub enum PolicyEnforcementMode {
 
 /// Decision strategies for policy evaluation
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum DecisionStrategy {
     /// Unanimous decision (all policies must permit)
+    #[default]
     Unanimous,
     /// Affirmative decision (at least one policy must permit)
     Affirmative,
@@ -128,17 +132,7 @@ impl From<ResourceServer> for ResourceServerResponse {
     }
 }
 
-impl Default for PolicyEnforcementMode {
-    fn default() -> Self {
-        PolicyEnforcementMode::Enforcing
-    }
-}
 
-impl Default for DecisionStrategy {
-    fn default() -> Self {
-        DecisionStrategy::Unanimous
-    }
-}
 
 impl ResourceServer {
     /// Create a new resource server

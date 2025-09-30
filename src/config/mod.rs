@@ -71,7 +71,7 @@ pub struct KafkaConfig {
 }
 
 /// Event retention and lifecycle configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventsConfig {
     /// Whether event retention is enabled
     pub enabled: bool,
@@ -93,10 +93,69 @@ pub struct EventsConfig {
     pub archive_directory: Option<String>,
 }
 
-fn default_user_event_retention_days() -> u32 { 90 }
-fn default_admin_event_retention_days() -> u32 { 365 }
-fn default_max_cleanup_batch_size() -> u32 { 10000 }
-fn default_cleanup_interval_hours() -> u32 { 24 }
+impl Default for EventsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            user_event_retention_days: default_user_event_retention_days(),
+            admin_event_retention_days: default_admin_event_retention_days(),
+            max_cleanup_batch_size: default_max_cleanup_batch_size(),
+            cleanup_interval_hours: default_cleanup_interval_hours(),
+            archive_before_delete: false,
+            archive_directory: None,
+        }
+    }
+}
+
+fn default_user_event_retention_days() -> u32 {
+    90
+}
+fn default_admin_event_retention_days() -> u32 {
+    365
+}
+fn default_max_cleanup_batch_size() -> u32 {
+    10000
+}
+fn default_cleanup_interval_hours() -> u32 {
+    24
+}
+
+/// SPI provider configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpiProviderConfig {
+    /// Provider ID
+    pub id: String,
+    /// Whether the provider is enabled
+    #[serde(default = "default_provider_enabled")]
+    pub enabled: bool,
+    /// Provider priority (higher values = higher priority)
+    #[serde(default)]
+    pub priority: i64,
+    /// Provider-specific configuration
+    #[serde(default)]
+    pub config: serde_json::Value,
+}
+
+fn default_provider_enabled() -> bool {
+    true
+}
+
+/// SPI configuration for enterprise features
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SpiConfig {
+    /// Organization SPI providers
+    #[serde(default)]
+    pub organization: Vec<SpiProviderConfig>,
+    /// Rich Authorization SPI providers
+    #[serde(default)]
+    pub rich_authorization: Vec<SpiProviderConfig>,
+    /// Migration SPI providers
+    #[serde(default)]
+    pub migration: Vec<SpiProviderConfig>,
+    /// Hostname SPI providers
+    #[serde(default)]
+    pub hostname: Vec<SpiProviderConfig>,
+}
 
 use std::{env, net::SocketAddr, path::PathBuf, time::Duration};
 
@@ -150,6 +209,10 @@ pub struct AppConfig {
 
     /// Event retention and lifecycle configuration
     pub events: EventsConfig,
+
+    /// SPI configuration for enterprise features
+    #[serde(default)]
+    pub spi: SpiConfig,
 }
 
 /// Server configuration options
@@ -333,6 +396,22 @@ pub struct BasicSecurityConfig {
     /// Number of salt rounds for password hashing
     #[serde(default = "default_password_salt_rounds")]
     pub password_salt_rounds: u32,
+}
+
+impl Default for BasicSecurityConfig {
+    fn default() -> Self {
+        Self {
+            jwt_secret: "default_jwt_secret_change_in_production".to_string(),
+            jwt_expiry: default_jwt_expiry(),
+            password_min_length: default_password_min_length(),
+            rate_limit_requests: default_rate_limit_requests(),
+            rate_limit_window: default_rate_limit_window(),
+            brute_force_max_attempts: default_brute_force_max_attempts(),
+            brute_force_window_seconds: default_brute_force_window(),
+            rate_limit_requests_per_minute: default_rate_limit_per_minute(),
+            password_salt_rounds: default_password_salt_rounds(),
+        }
+    }
 }
 
 /// Observability configuration options
@@ -676,6 +755,7 @@ impl Default for AppConfig {
             secreton: None,
             kafka: None,
             events: EventsConfig::default(),
+            spi: SpiConfig::default(),
         }
     }
 }
@@ -827,8 +907,6 @@ mod log_level_serde {
 // middleware and features in the Authenc system. It allows for easy configuration
 // and management of security settings across the application.
 
-use std::sync::Arc;
-
 use crate::middleware::*;
 
 /// Comprehensive security configuration for the Authenc system
@@ -944,4 +1022,3 @@ impl Default for SecurityHeadersConfig {
         Self::secure()
     }
 }
-

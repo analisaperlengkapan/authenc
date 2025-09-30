@@ -3,11 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
-use uuid::Uuid;
 
-use crate::error::{Result, AuthencError as Error};
+use crate::error::Result;
 use crate::models::user::User;
-use crate::spi::{Provider, ProviderFactory, Spi, ProviderConfig, SpiError};
+use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
 
 /// Authenticator types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -123,12 +122,12 @@ pub struct UsernamePasswordAuthenticator {
 }
 
 impl UsernamePasswordAuthenticator {
+    /// Creates a new username/password authenticator with the given configuration
     pub fn new(config: AuthenticatorConfig) -> Self {
         Self { config }
     }
 }
 
-#[async_trait]
 impl Provider for UsernamePasswordAuthenticator {
     fn as_any(&self) -> &dyn Any {
         self
@@ -186,12 +185,12 @@ pub struct OTPAuthenticator {
 }
 
 impl OTPAuthenticator {
+    /// Creates a new OTP authenticator with the given configuration
     pub fn new(config: AuthenticatorConfig) -> Self {
         Self { config }
     }
 }
 
-#[async_trait]
 impl Provider for OTPAuthenticator {
     fn as_any(&self) -> &dyn Any {
         self
@@ -251,10 +250,16 @@ pub trait AuthenticatorProvider: Provider + Send + Sync {
     async fn get_authenticators(&self) -> Result<Vec<Box<dyn Authenticator + Send + Sync>>>;
 
     /// Get authenticator by ID
-    async fn get_authenticator(&self, authenticator_id: &str) -> Result<Option<Box<dyn Authenticator + Send + Sync>>>;
+    async fn get_authenticator(
+        &self,
+        authenticator_id: &str,
+    ) -> Result<Option<Box<dyn Authenticator + Send + Sync>>>;
 
     /// Get authenticators for a specific flow type
-    async fn get_authenticators_for_flow(&self, flow_type: AuthenticationFlowType) -> Result<Vec<Box<dyn Authenticator + Send + Sync>>>;
+    async fn get_authenticators_for_flow(
+        &self,
+        flow_type: AuthenticationFlowType,
+    ) -> Result<Vec<Box<dyn Authenticator + Send + Sync>>>;
 
     /// Create authentication context
     fn create_authentication_context(
@@ -279,13 +284,19 @@ pub trait AuthenticatorProvider: Provider + Send + Sync {
 /// Default authenticator provider
 pub struct DefaultAuthenticatorProvider;
 
+impl Default for DefaultAuthenticatorProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultAuthenticatorProvider {
+    /// Creates a new default authenticator provider
     pub fn new() -> Self {
         Self
     }
 }
 
-#[async_trait]
 impl Provider for DefaultAuthenticatorProvider {
     fn as_any(&self) -> &dyn Any {
         self
@@ -311,7 +322,9 @@ impl AuthenticatorProvider for DefaultAuthenticatorProvider {
             enabled: true,
             config: HashMap::new(),
         };
-        authenticators.push(Box::new(UsernamePasswordAuthenticator::new(username_password_config)));
+        authenticators.push(Box::new(UsernamePasswordAuthenticator::new(
+            username_password_config,
+        )));
 
         // Add default OTP authenticator
         let otp_config = AuthenticatorConfig {
@@ -328,12 +341,20 @@ impl AuthenticatorProvider for DefaultAuthenticatorProvider {
         Ok(authenticators)
     }
 
-    async fn get_authenticator(&self, authenticator_id: &str) -> Result<Option<Box<dyn Authenticator + Send + Sync>>> {
+    async fn get_authenticator(
+        &self,
+        authenticator_id: &str,
+    ) -> Result<Option<Box<dyn Authenticator + Send + Sync>>> {
         let authenticators = self.get_authenticators().await?;
-        Ok(authenticators.into_iter().find(|a| a.get_config().id == authenticator_id))
+        Ok(authenticators
+            .into_iter()
+            .find(|a| a.get_config().id == authenticator_id))
     }
 
-    async fn get_authenticators_for_flow(&self, flow_type: AuthenticationFlowType) -> Result<Vec<Box<dyn Authenticator + Send + Sync>>> {
+    async fn get_authenticators_for_flow(
+        &self,
+        flow_type: AuthenticationFlowType,
+    ) -> Result<Vec<Box<dyn Authenticator + Send + Sync>>> {
         let all_authenticators = self.get_authenticators().await?;
         // For now, return all authenticators for all flows
         // In a real implementation, this would filter based on flow requirements
@@ -344,19 +365,28 @@ impl AuthenticatorProvider for DefaultAuthenticatorProvider {
 /// Authenticator provider factory
 pub struct DefaultAuthenticatorProviderFactory;
 
+impl Default for DefaultAuthenticatorProviderFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultAuthenticatorProviderFactory {
+    /// Create a new default authenticator provider factory
     pub fn new() -> Self {
         Self
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn AuthenticatorProvider> for DefaultAuthenticatorProviderFactory {
-    async fn create(&self, _config: &ProviderConfig) -> std::result::Result<Box<dyn AuthenticatorProvider>, SpiError> {
+    fn create(
+        &self,
+        _config: &ProviderConfig,
+    ) -> std::result::Result<Box<dyn AuthenticatorProvider>, SpiError> {
         Ok(Box::new(DefaultAuthenticatorProvider::new()))
     }
 
-    async fn init(&mut self, _config: &ProviderConfig) -> std::result::Result<(), SpiError> {
+    fn init(&mut self, _config: &ProviderConfig) -> std::result::Result<(), SpiError> {
         Ok(())
     }
 

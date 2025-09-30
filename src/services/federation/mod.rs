@@ -138,12 +138,15 @@ pub mod jit_provisioning {
     use crate::{
         database::Database,
         error::Result,
-        models::user::{User, FederatedIdentity, JITUserProvisioningRequest, JITUserProvisioningResponse, CreateFederatedIdentityRequest},
+        models::user::{
+            CreateFederatedIdentityRequest, FederatedIdentity, JITUserProvisioningRequest,
+            JITUserProvisioningResponse, User,
+        },
         services::admin::AdminService,
     };
     use async_trait::async_trait;
-    use uuid::Uuid;
     use std::sync::Arc;
+    use uuid::Uuid;
 
     /// JIT Provisioning Service trait
     #[async_trait]
@@ -164,11 +167,7 @@ pub mod jit_provisioning {
         ) -> Result<FederatedIdentity>;
 
         /// Unlink user from external identity provider
-        async fn unlink_user(
-            &self,
-            user_id: Uuid,
-            identity_provider_id: Uuid,
-        ) -> Result<()>;
+        async fn unlink_user(&self, user_id: Uuid, identity_provider_id: Uuid) -> Result<()>;
     }
 
     /// Default implementation of JIT Provisioning Service
@@ -180,7 +179,10 @@ pub mod jit_provisioning {
     impl DefaultJITProvisioningService {
         /// Create a new JIT provisioning service
         pub fn new(db: Arc<Database>, admin_service: Arc<dyn AdminService>) -> Self {
-            Self { db, _admin_service: admin_service }
+            Self {
+                db,
+                _admin_service: admin_service,
+            }
         }
     }
 
@@ -190,17 +192,21 @@ pub mod jit_provisioning {
             &self,
             request: JITUserProvisioningRequest,
         ) -> Result<JITUserProvisioningResponse> {
-            use crate::database::operations::{users, federated_identities};
+            use crate::database::operations::{federated_identities, users};
 
             // First, check if a federated identity already exists
-            if let Some(existing_federated) = federated_identities::get_federated_identity_by_external_id(
-                &self.db,
-                request.identity_provider_id,
-                &request.external_id,
-            ).await? {
+            if let Some(existing_federated) =
+                federated_identities::get_federated_identity_by_external_id(
+                    &self.db,
+                    request.identity_provider_id,
+                    &request.external_id,
+                )
+                .await?
+            {
                 // User already exists, get the user details
-                let user = users::get_user_by_id(&self.db, existing_federated.user_id).await?
-                    .ok_or_else(|| crate::error::AuthencError::AuthenticationFailed)?;
+                let user = users::get_user_by_id(&self.db, existing_federated.user_id)
+                    .await?
+                    .ok_or(crate::error::AuthencError::AuthenticationFailed)?;
 
                 // Update last login time
                 federated_identities::update_last_login(&self.db, existing_federated.id).await?;
@@ -251,7 +257,9 @@ pub mod jit_provisioning {
                 &self.db,
                 identity_provider_id,
                 &external_id,
-            ).await? {
+            )
+            .await?
+            {
                 return Ok(existing);
             }
 
@@ -268,15 +276,12 @@ pub mod jit_provisioning {
             federated_identities::create_federated_identity(&self.db, &request).await
         }
 
-        async fn unlink_user(
-            &self,
-            user_id: Uuid,
-            identity_provider_id: Uuid,
-        ) -> Result<()> {
+        async fn unlink_user(&self, user_id: Uuid, identity_provider_id: Uuid) -> Result<()> {
             use crate::database::operations::federated_identities;
 
             // Find the federated identity
-            let identities = federated_identities::get_federated_identities_by_user(&self.db, user_id).await?;
+            let identities =
+                federated_identities::get_federated_identities_by_user(&self.db, user_id).await?;
             for identity in identities {
                 if identity.identity_provider_id == identity_provider_id {
                     federated_identities::delete_federated_identity(&self.db, identity.id).await?;
@@ -298,12 +303,14 @@ pub mod jit_provisioning {
             use crate::models::user::CreateUserRequest;
 
             // Generate username from external data
-            let username = self.generate_username(&request).await?;
+            let username = self.generate_username(request).await?;
 
             // Create user request
             let create_request = CreateUserRequest {
                 username: username.clone(),
-                email: request.external_email.clone()
+                email: request
+                    .external_email
+                    .clone()
                     .unwrap_or_else(|| format!("{}@federated.local", username)),
                 password: None, // No password for federated users
                 first_name: request.first_name.clone(),
@@ -338,15 +345,15 @@ pub mod jit_provisioning {
         }
 
         /// Generate a unique username for federated user
-        async fn generate_username(
-            &self,
-            request: &JITUserProvisioningRequest,
-        ) -> Result<String> {
+        async fn generate_username(&self, request: &JITUserProvisioningRequest) -> Result<String> {
             use crate::database::operations::users;
 
             // Try external username first
             if let Some(username) = &request.external_username {
-                if users::get_user_by_username(&self.db, username).await?.is_none() {
+                if users::get_user_by_username(&self.db, username)
+                    .await?
+                    .is_none()
+                {
                     return Ok(username.clone());
                 }
             }
@@ -357,7 +364,10 @@ pub mod jit_provisioning {
                 let mut candidate = email_prefix.to_string();
                 let mut counter = 1;
 
-                while users::get_user_by_username(&self.db, &candidate).await?.is_some() {
+                while users::get_user_by_username(&self.db, &candidate)
+                    .await?
+                    .is_some()
+                {
                     candidate = format!("{}{}", email_prefix, counter);
                     counter += 1;
                 }
@@ -366,11 +376,21 @@ pub mod jit_provisioning {
             }
 
             // Fallback to external ID
-            let mut candidate = format!("fed_{}", &request.external_id[..8.min(request.external_id.len())]);
+            let mut candidate = format!(
+                "fed_{}",
+                &request.external_id[..8.min(request.external_id.len())]
+            );
             let mut counter = 1;
 
-            while users::get_user_by_username(&self.db, &candidate).await?.is_some() {
-                candidate = format!("fed_{}_{}", &request.external_id[..8.min(request.external_id.len())], counter);
+            while users::get_user_by_username(&self.db, &candidate)
+                .await?
+                .is_some()
+            {
+                candidate = format!(
+                    "fed_{}_{}",
+                    &request.external_id[..8.min(request.external_id.len())],
+                    counter
+                );
                 counter += 1;
             }
 

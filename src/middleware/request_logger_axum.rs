@@ -228,4 +228,209 @@ mod tests {
         let response = app.oneshot(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
     }
+
+    #[tokio::test]
+    async fn test_request_logger_with_different_methods() {
+        let app = Router::new()
+            .route("/test", get(|| async { "GET response" }))
+            .route("/test", axum::routing::post(|| async { "POST response" }))
+            .route("/test", axum::routing::put(|| async { "PUT response" }))
+            .route("/test", axum::routing::delete(|| async { "DELETE response" }))
+            .layer(RequestLogger);
+
+        // Test GET request
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Test POST request
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Test PUT request
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Test DELETE request
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_request_logger_with_error_responses() {
+        let app = Router::new()
+            .route(
+                "/error",
+                get(|| async {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Internal Server Error",
+                    )
+                }),
+            )
+            .route(
+                "/not-found",
+                get(|| async { (StatusCode::NOT_FOUND, "Not Found") }),
+            )
+            .layer(RequestLogger);
+
+        // Test 500 error
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/error")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        // Test 404 error
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/not-found")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_request_logger_with_headers() {
+        let app = Router::new()
+            .route("/", get(|| async { "Hello, world!" }))
+            .layer(RequestLogger);
+
+        let req = Request::builder()
+            .uri("/")
+            .header("user-agent", "TestAgent/1.0")
+            .header("x-forwarded-for", "192.168.1.1")
+            .header("accept", "application/json")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_request_logger_with_query_params() {
+        let app = Router::new()
+            .route("/", get(|| async { "Hello, world!" }))
+            .layer(RequestLogger);
+
+        let req = Request::builder()
+            .uri("/?param1=value1&param2=value2")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_request_logger_response_body_wrapper() {
+        let app = Router::new()
+            .route("/", get(|| async { "Hello, world!" }))
+            .layer(RequestLogger);
+
+        let req = Request::builder().uri("/").body(Body::empty()).unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Check that the response body is wrapped correctly
+        let body = response.into_body();
+        assert!(!body.is_end_stream());
+    }
+
+    #[tokio::test]
+    async fn test_request_logger_debug_format() {
+        let logger = RequestLogger;
+        let debug_str = format!("{:?}", logger);
+        assert!(debug_str.contains("RequestLogger"));
+    }
+
+    #[tokio::test]
+    async fn test_request_logger_middleware_debug_format() {
+        let app = Router::new().route("/", get(|| async { "test" }));
+        let middleware = RequestLogger.layer(app);
+        let debug_str = format!("{:?}", middleware);
+        assert!(debug_str.contains("RequestLoggerMiddleware"));
+    }
+
+    #[tokio::test]
+    async fn test_request_logger_with_remote_addr_extension() {
+        let app = Router::new()
+            .route("/", get(|| async { "Hello, world!" }))
+            .layer(RequestLogger);
+
+        let mut req = Request::builder().uri("/").body(Body::empty()).unwrap();
+        req.extensions_mut()
+            .insert(std::net::SocketAddr::from(([127, 0, 0, 1], 8080)));
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_request_logger_large_response() {
+        let app = Router::new()
+            .route(
+                "/",
+                get(|| async {
+                    // Return a large response
+                    "x".repeat(10000)
+                }),
+            )
+            .layer(RequestLogger);
+
+        let req = Request::builder().uri("/").body(Body::empty()).unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
 }

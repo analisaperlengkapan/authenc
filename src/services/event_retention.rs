@@ -1,12 +1,10 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tokio::time::{interval, Duration as TokioDuration};
 
 use crate::config::EventsConfig;
 use crate::database::Database;
-use crate::error::{Result, AuthencError as Error};
+use crate::error::{AuthencError as Error, Result};
 use crate::services::events::EventStoreProvider;
 
 /// Event retention policy service
@@ -37,7 +35,8 @@ impl EventRetentionService {
             return;
         }
 
-        let cleanup_interval = TokioDuration::from_secs(self.config.cleanup_interval_hours as u64 * 3600);
+        let cleanup_interval =
+            TokioDuration::from_secs(self.config.cleanup_interval_hours as u64 * 3600);
         let self_clone = Arc::clone(&self);
 
         tokio::spawn(async move {
@@ -105,7 +104,8 @@ impl EventRetentionService {
         // For now, we'll use the same cutoff for admin events
         // In the future, we could implement separate logic for admin events
         let query = "DELETE FROM admin_events WHERE time < $1";
-        let result = self.database
+        let result = self
+            .database
             .execute(query, &[&cutoff_date])
             .await
             .map_err(|e| Error::database(e.to_string()))?;
@@ -126,7 +126,9 @@ impl EventRetentionService {
         let admin_cutoff = now - Duration::days(self.config.admin_event_retention_days as i64);
 
         let expired_user_events = self.count_expired_events("events", user_cutoff).await?;
-        let expired_admin_events = self.count_expired_events("admin_events", admin_cutoff).await?;
+        let expired_admin_events = self
+            .count_expired_events("admin_events", admin_cutoff)
+            .await?;
 
         Ok(RetentionStats {
             total_user_events,
@@ -143,7 +145,8 @@ impl EventRetentionService {
     /// Count rows in a table
     async fn count_table_rows(&self, table_name: &str) -> Result<i64> {
         let query = format!("SELECT COUNT(*) FROM {}", table_name);
-        let row: tokio_postgres::Row = self.database
+        let row: tokio_postgres::Row = self
+            .database
             .query_one(&query, &[])
             .await
             .map_err(|e| Error::database(e.to_string()))?;
@@ -153,9 +156,14 @@ impl EventRetentionService {
     }
 
     /// Count expired events in a table
-    async fn count_expired_events(&self, table_name: &str, cutoff_date: DateTime<Utc>) -> Result<i64> {
+    async fn count_expired_events(
+        &self,
+        table_name: &str,
+        cutoff_date: DateTime<Utc>,
+    ) -> Result<i64> {
         let query = format!("SELECT COUNT(*) FROM {} WHERE time < $1", table_name);
-        let row: tokio_postgres::Row = self.database
+        let row: tokio_postgres::Row = self
+            .database
             .query_one(&query, &[&cutoff_date])
             .await
             .map_err(|e| Error::database(e.to_string()))?;

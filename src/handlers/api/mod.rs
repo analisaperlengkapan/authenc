@@ -1,6 +1,9 @@
 /// Audit logging API handlers for security monitoring and compliance
 pub mod audit;
 pub use audit::{add_audit_log, create_audit_routes, get_audit_logs};
+/// Authentication API handlers for login/logout
+pub mod auth;
+pub use auth::create_auth_routes;
 /// Permission checking handlers for authorization decisions
 pub mod permission_check;
 pub use permission_check::{check_user_permission, create_permission_check_routes};
@@ -8,9 +11,9 @@ pub use permission_check::{check_user_permission, create_permission_check_routes
 pub mod user_permission;
 pub use user_permission::get_user_permissions;
 // API endpoints (REST/gRPC) will be implemented here
-/// Authentication handlers for login, logout, and session management
-pub mod auth;
-pub use auth::{create_auth_routes, login};
+/// Authentication flow management API handlers
+// pub mod auth_flow;
+// pub use auth_flow::create_auth_flow_routes;
 /// User management API handlers for CRUD operations
 pub mod user;
 pub use user::create_user_routes;

@@ -40,7 +40,7 @@ impl KmsVault {
     ///
     /// # Example
     /// ```rust
-    /// use authenc::vault::KmsVault;
+    /// use authenc::vault::kms_vault::KmsVault;
     ///
     /// let vault = KmsVault::new();
     /// // Vault is ready for cloud KMS operations

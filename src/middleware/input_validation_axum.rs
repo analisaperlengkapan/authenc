@@ -102,9 +102,10 @@ pub async fn input_validation_middleware(
     if config.validate_content_type && has_request_body(&request) {
         if let Some(content_type) = request.headers().get("content-type") {
             if let Ok(content_type_str) = content_type.to_str() {
-                let is_allowed = config.allowed_content_types.iter().any(|allowed| {
-                    content_type_str.starts_with(allowed)
-                });
+                let is_allowed = config
+                    .allowed_content_types
+                    .iter()
+                    .any(|allowed| content_type_str.starts_with(allowed));
 
                 if !is_allowed {
                     warn!("Invalid content type: {}", content_type_str);
@@ -249,5 +250,361 @@ mod tests {
         ));
         assert!(contains_suspicious_patterns("../../../etc/passwd"));
         assert!(!contains_suspicious_patterns("normal text"));
+    }
+
+    #[tokio::test]
+    async fn test_input_validation_disabled() {
+        let config = Arc::new(InputValidationConfig {
+            enabled: false,
+            ..Default::default()
+        });
+
+        let app = Router::new()
+            .route("/", get(|| async { "Hello, world!" }))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                input_validation_middleware(config.clone(), req, next)
+            }));
+
+        // Even suspicious requests should pass when disabled
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/?param=1%27%20UNION%20SELECT%20%2A%20FROM%20users--")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_query_param_length_limit() {
+        let config = Arc::new(InputValidationConfig {
+            max_query_param_length: 10,
+            ..Default::default()
+        });
+
+        let app = Router::new()
+            .route("/", get(|| async { "Hello, world!" }))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                input_validation_middleware(config.clone(), req, next)
+            }));
+
+        // Query string exceeding limit should be rejected
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/?param=verylongparameterthatshouldfail")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_header_length_limit() {
+        let config = Arc::new(InputValidationConfig {
+            max_header_length: 10,
+            ..Default::default()
+        });
+
+        let app = Router::new()
+            .route("/", get(|| async { "Hello, world!" }))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                input_validation_middleware(config.clone(), req, next)
+            }));
+
+        // Header exceeding limit should be rejected
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header("user-agent", "verylonguseragentstringthatshouldfail")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_content_type_validation() {
+        let config = Arc::new(InputValidationConfig::default());
+
+        let app = Router::new()
+            .route("/", axum::routing::post(|| async { "Hello, world!" }))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                input_validation_middleware(config.clone(), req, next)
+            }));
+
+        // Missing content type should be rejected
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        // Invalid content type should be rejected
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/")
+                    .header("content-type", "text/html")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+        // Valid content type should be accepted
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/")
+                    .header("content-type", "application/json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_request_body_size_limit() {
+        let config = Arc::new(InputValidationConfig {
+            max_request_body_size: 100,
+            ..Default::default()
+        });
+
+        let app = Router::new()
+            .route("/", axum::routing::post(|| async { "Hello, world!" }))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                input_validation_middleware(config.clone(), req, next)
+            }));
+
+        // Request body exceeding limit should be rejected
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/")
+                    .header("content-type", "application/json")
+                    .header("content-length", "200")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn test_suspicious_patterns_in_headers() {
+        let config = Arc::new(InputValidationConfig::default());
+
+        let app = Router::new()
+            .route("/", get(|| async { "Hello, world!" }))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                input_validation_middleware(config.clone(), req, next)
+            }));
+
+        // Suspicious pattern in User-Agent should be rejected
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header("user-agent", "malicious<script>alert('xss')</script>")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        // Suspicious pattern in Referer should be rejected
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header("referer", "http://evil.com'; DROP TABLE users--")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_content_type_validation_disabled() {
+        let config = Arc::new(InputValidationConfig {
+            validate_content_type: false,
+            ..Default::default()
+        });
+
+        let app = Router::new()
+            .route("/", axum::routing::post(|| async { "Hello, world!" }))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                input_validation_middleware(config.clone(), req, next)
+            }));
+
+        // Request without content type should be accepted when validation disabled
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_suspicious_patterns_disabled() {
+        let config = Arc::new(InputValidationConfig {
+            block_suspicious_patterns: false,
+            ..Default::default()
+        });
+
+        let app = Router::new()
+            .route("/", get(|| async { "Hello, world!" }))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                input_validation_middleware(config.clone(), req, next)
+            }));
+
+        // Suspicious patterns should be allowed when blocking disabled
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/?param=1%27%20UNION%20SELECT%20%2A%20FROM%20users--")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn test_has_request_body() {
+        let get_request = Request::builder()
+            .method("GET")
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        assert!(!has_request_body(&get_request));
+
+        let post_request = Request::builder()
+            .method("POST")
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        assert!(has_request_body(&post_request));
+
+        let put_request = Request::builder()
+            .method("PUT")
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        assert!(has_request_body(&put_request));
+
+        let patch_request = Request::builder()
+            .method("PATCH")
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        assert!(has_request_body(&patch_request));
+
+        let delete_request = Request::builder()
+            .method("DELETE")
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        assert!(!has_request_body(&delete_request));
+    }
+
+    #[test]
+    fn test_input_validation_config_defaults() {
+        let config = InputValidationConfig::default();
+
+        assert!(config.enabled);
+        assert_eq!(config.max_query_param_length, 2048);
+        assert_eq!(config.max_header_length, 4096);
+        assert_eq!(config.max_request_body_size, 1024 * 1024);
+        assert!(config.block_suspicious_patterns);
+        assert!(config.validate_content_type);
+        assert!(config
+            .allowed_content_types
+            .contains(&"application/json".to_string()));
+        assert!(config
+            .allowed_content_types
+            .contains(&"text/plain".to_string()));
+    }
+
+    #[test]
+    fn test_suspicious_patterns_comprehensive() {
+        // SQL injection patterns
+        assert!(contains_suspicious_patterns(
+            "UNION SELECT password FROM users"
+        ));
+        assert!(contains_suspicious_patterns("DROP TABLE users"));
+        assert!(contains_suspicious_patterns(
+            "SELECT * FROM admin; DROP TABLE users"
+        ));
+        assert!(contains_suspicious_patterns("SELECT * FROM users--"));
+        assert!(contains_suspicious_patterns("SELECT * FROM users #"));
+
+        // XSS patterns
+        assert!(contains_suspicious_patterns(
+            "<script src='evil.js'></script>"
+        ));
+        assert!(contains_suspicious_patterns("javascript:alert('xss')"));
+        assert!(contains_suspicious_patterns("vbscript:msgbox('xss')"));
+        assert!(contains_suspicious_patterns("<img onload=alert('xss')>"));
+        assert!(contains_suspicious_patterns("<img onerror=alert('xss')>"));
+        assert!(contains_suspicious_patterns(
+            "<iframe src='evil.com'></iframe>"
+        ));
+        assert!(contains_suspicious_patterns(
+            "<object data='evil.swf'></object>"
+        ));
+
+        // Path traversal patterns
+        assert!(contains_suspicious_patterns("../../../etc/passwd"));
+        assert!(contains_suspicious_patterns(
+            "..\\..\\..\\windows\\system32"
+        ));
+        assert!(contains_suspicious_patterns(
+            "%2e%2e%2f%2e%2e%2fetc%2fpasswd"
+        ));
+        assert!(contains_suspicious_patterns(
+            "%2e%2e%5c%2e%2e%5cwindows%5csystem32"
+        ));
+
+        // Safe patterns
+        assert!(!contains_suspicious_patterns("normal query parameter"));
+        assert!(!contains_suspicious_patterns("user input with spaces"));
+        assert!(!contains_suspicious_patterns("email@domain.com"));
+        assert!(!contains_suspicious_patterns("https://example.com/path"));
     }
 }

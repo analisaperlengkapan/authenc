@@ -10,7 +10,6 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AuthencError;
-use crate::models::permission_ticket::PermissionTicketResponse;
 use crate::models::resource::ResourceResponse;
 use crate::models::user::UserResponse;
 use crate::services::permission_ticket_store::{PermissionTicketStore, PermissionTicketStoreTrait};
@@ -27,9 +26,18 @@ pub fn create_resource_routes() -> Router<(
 )> {
     Router::new()
         .route("/resources/{resource_id}", get(get_resource))
-        .route("/resources/{resource_id}/permissions", get(get_resource_permissions))
-        .route("/resources/{resource_id}/permissions", put(update_resource_permissions))
-        .route("/resources/{resource_id}/permissions/requests", get(get_permission_requests))
+        .route(
+            "/resources/{resource_id}/permissions",
+            get(get_resource_permissions),
+        )
+        .route(
+            "/resources/{resource_id}/permissions",
+            put(update_resource_permissions),
+        )
+        .route(
+            "/resources/{resource_id}/permissions/requests",
+            get(get_permission_requests),
+        )
         .route("/resources/{resource_id}/user", get(get_user_info))
 }
 
@@ -87,15 +95,20 @@ pub async fn get_resource_permissions(
 /// Update permissions for a specific resource
 #[derive(Deserialize)]
 pub struct UpdatePermissionsRequest {
+    /// List of permission updates to apply
     pub permissions: Vec<PermissionUpdate>,
 }
 
 #[derive(Deserialize)]
+/// Permission update for a user on a resource
 pub struct PermissionUpdate {
+    /// Username of the user to update permissions for
     pub username: String,
+    /// Scopes/permissions to grant to the user
     pub scopes: Vec<String>,
 }
 
+/// Update permissions for a specific resource
 pub async fn update_resource_permissions(
     State((resource_store, ticket_store, scope_store, user_store)): State<(
         Arc<ResourceStore>,
@@ -126,7 +139,9 @@ pub async fn update_resource_permissions(
             let scope = scope_store
                 .get_scope_by_name(scope_name, resource.resource_server_id)
                 .await?
-                .ok_or_else(|| AuthencError::resource_not_found(format!("Scope '{}' not found", scope_name)))?;
+                .ok_or_else(|| {
+                    AuthencError::resource_not_found(format!("Scope '{}' not found", scope_name))
+                })?;
 
             // Create or update permission ticket
             let ticket_request = crate::models::permission_ticket::CreatePermissionTicketRequest {
@@ -188,9 +203,11 @@ pub async fn get_permission_requests(
 /// Get user information for permission display
 #[derive(Deserialize)]
 pub struct UserQuery {
+    /// Search value for finding users
     pub value: String,
 }
 
+/// Get user information by username or email for permission management
 pub async fn get_user_info(
     State((_, _, _, user_store)): State<(
         Arc<ResourceStore>,
@@ -206,7 +223,9 @@ pub async fn get_user_info(
     } else if let Some(user) = user_store.get_user_by_email(&query.value).await? {
         user
     } else {
-        return Err(AuthencError::resource_not_found("User not found".to_string()));
+        return Err(AuthencError::resource_not_found(
+            "User not found".to_string(),
+        ));
     };
 
     Ok(Json(user.into()))
@@ -215,6 +234,8 @@ pub async fn get_user_info(
 /// Permission response structure
 #[derive(serde::Serialize)]
 pub struct PermissionResponse {
+    /// The username of the user with permissions
     pub username: String,
+    /// The scopes/permissions granted to the user
     pub scopes: Vec<String>,
 }

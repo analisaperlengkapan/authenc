@@ -41,7 +41,7 @@ pub static RSA_KEYPAIR: Lazy<()> =
 /// # Migration
 /// Use Ed25519 public key functions from `crypto/ed25519_keys.rs` instead:
 /// ```rust
-/// use authenc::crypto::ed25519_keys::get_public_key_pem;
+/// use authenc::crypto::ed25519_keys::get_ed25519_public_pem;
 /// ```
 pub fn get_public_pem() -> String {
     panic!("Legacy RSA PEM disabled - use Ed25519 implementation")
@@ -59,9 +59,9 @@ pub fn get_public_pem() -> String {
 /// - This function will panic to prevent accidental use
 ///
 /// # Migration
-/// Use Ed25519 private key functions from `crypto/ed25519_keys.rs` instead:
+/// Use Ed25519 signing functions from `crypto/ed25519_keys.rs` instead:
 /// ```rust
-/// use authenc::crypto::ed25519_keys::get_private_key_pem;
+/// use authenc::crypto::ed25519_keys::sign_ed25519;
 /// ```
 pub fn get_private_pem() -> String {
     panic!("Legacy RSA private PEM disabled - use Ed25519 implementation")

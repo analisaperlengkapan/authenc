@@ -28,6 +28,9 @@
             <button class="tab-btn" data-tab="security">
                 <i class="fas fa-shield-alt"></i> Security
             </button>
+            <button class="tab-btn" data-tab="social">
+                <i class="fas fa-link"></i> Social Accounts
+            </button>
             <button class="tab-btn" data-tab="sessions">
                 <i class="fas fa-desktop"></i> Sessions
             </button>
@@ -115,6 +118,40 @@
                 </div>
             </div>
 
+            <!-- Social Accounts Tab -->
+            <div id="social-tab" class="tab-content">
+                <div class="card">
+                    <h2>Linked Social Accounts</h2>
+                    <p>Manage your social media accounts linked to this profile.</p>
+                    <div id="social-accounts-list">
+                        <p><i class="fas fa-spinner fa-spin"></i> Loading social accounts...</p>
+                    </div>
+                    <div class="social-providers">
+                        <h3>Available Providers</h3>
+                        <div class="provider-buttons">
+                            <button class="provider-btn google-btn" data-provider="google">
+                                <i class="fab fa-google"></i> Link Google Account
+                            </button>
+                            <button class="provider-btn github-btn" data-provider="github">
+                                <i class="fab fa-github"></i> Link GitHub Account
+                            </button>
+                            <button class="provider-btn microsoft-btn" data-provider="microsoft">
+                                <i class="fab fa-microsoft"></i> Link Microsoft Account
+                            </button>
+                            <button class="provider-btn facebook-btn" data-provider="facebook">
+                                <i class="fab fa-facebook"></i> Link Facebook Account
+                            </button>
+                            <button class="provider-btn twitter-btn" data-provider="twitter">
+                                <i class="fab fa-twitter"></i> Link Twitter Account
+                            </button>
+                            <button class="provider-btn linkedin-btn" data-provider="linkedin">
+                                <i class="fab fa-linkedin"></i> Link LinkedIn Account
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Sessions Tab -->
             <div id="sessions-tab" class="tab-content">
                 <div class="card">
@@ -131,6 +168,14 @@
                     <h2>Authorized Applications</h2>
                     <div id="applications-list">
                         <p><i class="fas fa-spinner fa-spin"></i> Loading applications...</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Application Permissions</h2>
+                    <p>Manage permissions granted to applications.</p>
+                    <div id="consents-list">
+                        <p><i class="fas fa-spinner fa-spin"></i> Loading consents...</p>
                     </div>
                 </div>
             </div>

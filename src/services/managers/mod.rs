@@ -7,5 +7,9 @@ pub mod authentication;
 pub mod user_session;
 
 // Re-export commonly used managers
-pub use authentication::{AuthenticationManager, DefaultAuthenticationManager, AuthenticationSessionState};
-pub use user_session::{UserSessionManager, DefaultUserSessionManager, UserSessionState, ClientSessionState};
+pub use authentication::{
+    AuthenticationManager, AuthenticationSessionState, DefaultAuthenticationManager,
+};
+pub use user_session::{
+    ClientSessionState, DefaultUserSessionManager, UserSessionManager, UserSessionState,
+};

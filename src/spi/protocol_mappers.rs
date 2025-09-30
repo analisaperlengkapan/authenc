@@ -3,11 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
-use uuid::Uuid;
 
-use crate::error::{Result, AuthencError as Error};
-use crate::spi::{Provider, ProviderFactory, Spi, ProviderConfig, SpiError};
+use crate::error::{AuthencError as Error, Result};
 use crate::models::user::User;
+use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
 
 /// Protocol mapper types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,7 +82,10 @@ pub trait ProtocolMapper: Provider + Send + Sync {
     fn get_config(&self) -> &ProtocolMapperConfig;
 
     /// Evaluate the mapper and return claims to add to the token
-    async fn evaluate(&self, context: &ProtocolMapperContext) -> Result<HashMap<String, serde_json::Value>>;
+    async fn evaluate(
+        &self,
+        context: &ProtocolMapperContext,
+    ) -> Result<HashMap<String, serde_json::Value>>;
 
     /// Get the mapper type
     fn get_mapper_type(&self) -> ProtocolMapperType;
@@ -102,19 +104,32 @@ pub trait ProtocolMapperProvider: Provider + Send + Sync {
     async fn get_protocol_mappers(&self) -> Result<Vec<Box<dyn ProtocolMapper + Send + Sync>>>;
 
     /// Get protocol mapper by ID
-    async fn get_protocol_mapper(&self, mapper_id: &str) -> Result<Option<Box<dyn ProtocolMapper + Send + Sync>>>;
+    async fn get_protocol_mapper(
+        &self,
+        mapper_id: &str,
+    ) -> Result<Option<Box<dyn ProtocolMapper + Send + Sync>>>;
 
     /// Create a new protocol mapper
-    async fn create_protocol_mapper(&self, config: ProtocolMapperConfig) -> Result<Box<dyn ProtocolMapper + Send + Sync>>;
+    async fn create_protocol_mapper(
+        &self,
+        config: ProtocolMapperConfig,
+    ) -> Result<Box<dyn ProtocolMapper + Send + Sync>>;
 
     /// Update an existing protocol mapper
-    async fn update_protocol_mapper(&self, mapper_id: &str, config: ProtocolMapperConfig) -> Result<Box<dyn ProtocolMapper + Send + Sync>>;
+    async fn update_protocol_mapper(
+        &self,
+        mapper_id: &str,
+        config: ProtocolMapperConfig,
+    ) -> Result<Box<dyn ProtocolMapper + Send + Sync>>;
 
     /// Delete a protocol mapper
     async fn delete_protocol_mapper(&self, mapper_id: &str) -> Result<()>;
 
     /// Get protocol mappers for a specific protocol
-    async fn get_protocol_mappers_by_protocol(&self, protocol: &str) -> Result<Vec<Box<dyn ProtocolMapper + Send + Sync>>>;
+    async fn get_protocol_mappers_by_protocol(
+        &self,
+        protocol: &str,
+    ) -> Result<Vec<Box<dyn ProtocolMapper + Send + Sync>>>;
 }
 
 /// Default user property protocol mapper
@@ -123,12 +138,12 @@ pub struct UserPropertyProtocolMapper {
 }
 
 impl UserPropertyProtocolMapper {
+    /// Create a new user property protocol mapper with the given configuration
     pub fn new(config: ProtocolMapperConfig) -> Self {
         Self { config }
     }
 }
 
-#[async_trait]
 impl Provider for UserPropertyProtocolMapper {
     fn as_any(&self) -> &dyn Any {
         self
@@ -145,7 +160,10 @@ impl ProtocolMapper for UserPropertyProtocolMapper {
         &self.config
     }
 
-    async fn evaluate(&self, context: &ProtocolMapperContext) -> Result<HashMap<String, serde_json::Value>> {
+    async fn evaluate(
+        &self,
+        context: &ProtocolMapperContext,
+    ) -> Result<HashMap<String, serde_json::Value>> {
         let mut claims = HashMap::new();
 
         // Map user properties based on configuration
@@ -183,7 +201,9 @@ impl ProtocolMapper for UserPropertyProtocolMapper {
                     "{} {}",
                     context.user.first_name.as_deref().unwrap_or(""),
                     context.user.last_name.as_deref().unwrap_or("")
-                ).trim().to_string();
+                )
+                .trim()
+                .to_string();
                 if !full_name.is_empty() {
                     claims.insert(
                         self.config.claim_name.clone(),
@@ -220,12 +240,12 @@ pub struct UserRoleProtocolMapper {
 }
 
 impl UserRoleProtocolMapper {
+    /// Create a new user role protocol mapper with the given configuration
     pub fn new(config: ProtocolMapperConfig) -> Self {
         Self { config }
     }
 }
 
-#[async_trait]
 impl Provider for UserRoleProtocolMapper {
     fn as_any(&self) -> &dyn Any {
         self
@@ -242,17 +262,17 @@ impl ProtocolMapper for UserRoleProtocolMapper {
         &self.config
     }
 
-    async fn evaluate(&self, context: &ProtocolMapperContext) -> Result<HashMap<String, serde_json::Value>> {
+    async fn evaluate(
+        &self,
+        context: &ProtocolMapperContext,
+    ) -> Result<HashMap<String, serde_json::Value>> {
         let mut claims = HashMap::new();
 
         // For now, we'll add a placeholder role claim
         // In a real implementation, this would fetch user roles from the role store
         let roles = vec!["user"]; // Placeholder
 
-        claims.insert(
-            self.config.claim_name.clone(),
-            serde_json::json!(roles),
-        );
+        claims.insert(self.config.claim_name.clone(), serde_json::json!(roles));
 
         Ok(claims)
     }
@@ -273,13 +293,19 @@ impl ProtocolMapper for UserRoleProtocolMapper {
 /// Default protocol mapper provider
 pub struct DefaultProtocolMapperProvider;
 
+impl Default for DefaultProtocolMapperProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultProtocolMapperProvider {
+    /// Create a new default protocol mapper provider
     pub fn new() -> Self {
         Self
     }
 }
 
-#[async_trait]
 impl Provider for DefaultProtocolMapperProvider {
     fn as_any(&self) -> &dyn Any {
         self
@@ -335,20 +361,32 @@ impl ProtocolMapperProvider for DefaultProtocolMapperProvider {
         Ok(mappers)
     }
 
-    async fn get_protocol_mapper(&self, mapper_id: &str) -> Result<Option<Box<dyn ProtocolMapper + Send + Sync>>> {
+    async fn get_protocol_mapper(
+        &self,
+        mapper_id: &str,
+    ) -> Result<Option<Box<dyn ProtocolMapper + Send + Sync>>> {
         let mappers = self.get_protocol_mappers().await?;
         Ok(mappers.into_iter().find(|m| m.get_config().id == mapper_id))
     }
 
-    async fn create_protocol_mapper(&self, config: ProtocolMapperConfig) -> Result<Box<dyn ProtocolMapper + Send + Sync>> {
+    async fn create_protocol_mapper(
+        &self,
+        config: ProtocolMapperConfig,
+    ) -> Result<Box<dyn ProtocolMapper + Send + Sync>> {
         match config.mapper_type {
-            ProtocolMapperType::UserProperty => Ok(Box::new(UserPropertyProtocolMapper::new(config))),
+            ProtocolMapperType::UserProperty => {
+                Ok(Box::new(UserPropertyProtocolMapper::new(config)))
+            }
             ProtocolMapperType::UserRole => Ok(Box::new(UserRoleProtocolMapper::new(config))),
             _ => Err(Error::internal("Unsupported protocol mapper type")),
         }
     }
 
-    async fn update_protocol_mapper(&self, _mapper_id: &str, config: ProtocolMapperConfig) -> Result<Box<dyn ProtocolMapper + Send + Sync>> {
+    async fn update_protocol_mapper(
+        &self,
+        _mapper_id: &str,
+        config: ProtocolMapperConfig,
+    ) -> Result<Box<dyn ProtocolMapper + Send + Sync>> {
         // For now, just create a new mapper with updated config
         self.create_protocol_mapper(config).await
     }
@@ -358,9 +396,13 @@ impl ProtocolMapperProvider for DefaultProtocolMapperProvider {
         Ok(())
     }
 
-    async fn get_protocol_mappers_by_protocol(&self, protocol: &str) -> Result<Vec<Box<dyn ProtocolMapper + Send + Sync>>> {
+    async fn get_protocol_mappers_by_protocol(
+        &self,
+        protocol: &str,
+    ) -> Result<Vec<Box<dyn ProtocolMapper + Send + Sync>>> {
         let all_mappers = self.get_protocol_mappers().await?;
-        Ok(all_mappers.into_iter()
+        Ok(all_mappers
+            .into_iter()
             .filter(|m| m.get_protocol() == protocol)
             .collect())
     }
@@ -369,19 +411,28 @@ impl ProtocolMapperProvider for DefaultProtocolMapperProvider {
 /// Protocol mapper provider factory
 pub struct DefaultProtocolMapperProviderFactory;
 
+impl Default for DefaultProtocolMapperProviderFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultProtocolMapperProviderFactory {
+    /// Create a new default protocol mapper provider factory
     pub fn new() -> Self {
         Self
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn ProtocolMapperProvider> for DefaultProtocolMapperProviderFactory {
-    async fn create(&self, _config: &ProviderConfig) -> std::result::Result<Box<dyn ProtocolMapperProvider>, SpiError> {
+    fn create(
+        &self,
+        _config: &ProviderConfig,
+    ) -> std::result::Result<Box<dyn ProtocolMapperProvider>, SpiError> {
         Ok(Box::new(DefaultProtocolMapperProvider::new()))
     }
 
-    async fn init(&mut self, _config: &ProviderConfig) -> std::result::Result<(), SpiError> {
+    fn init(&mut self, _config: &ProviderConfig) -> std::result::Result<(), SpiError> {
         Ok(())
     }
 

@@ -72,8 +72,14 @@ mod tests {
         };
 
         assert_eq!(compliance_check.check_name, "AES Encryption Validation");
-        assert!(matches!(compliance_check.status, FipsComplianceStatus::Compliant));
-        assert_eq!(compliance_check.details, "AES-256-GCM encryption validated successfully");
+        assert!(matches!(
+            compliance_check.status,
+            FipsComplianceStatus::Compliant
+        ));
+        assert_eq!(
+            compliance_check.details,
+            "AES-256-GCM encryption validated successfully"
+        );
         assert!(compliance_check.recommendations.is_empty());
     }
 
@@ -113,7 +119,10 @@ mod tests {
         assert_eq!(compliance_event.event_type, "key_generation");
         assert_eq!(compliance_event.algorithm, Some("AES-256-GCM".to_string()));
         assert!(compliance_event.compliant);
-        assert_eq!(compliance_event.details, "AES-256 key generated successfully");
+        assert_eq!(
+            compliance_event.details,
+            "AES-256 key generated successfully"
+        );
     }
 
     #[tokio::test]
@@ -161,7 +170,9 @@ mod tests {
 
         assert_eq!(security_profile.name, "FIPS-140-3-Compliant");
         assert_eq!(security_profile.fips_level, FipsLevel::Level3);
-        assert!(security_profile.approved_algorithms.contains(&"AES-256-GCM".to_string()));
+        assert!(security_profile
+            .approved_algorithms
+            .contains(&"AES-256-GCM".to_string()));
         assert_eq!(security_profile.security_strength, 256);
         assert!(security_profile.requirements.len() > 0);
     }
@@ -195,11 +206,19 @@ mod tests {
         let invalid_key_sizes = vec![64, 96, 160, 224];
 
         for size in valid_key_sizes {
-            assert!(size >= 128 && size % 64 == 0, "Valid FIPS key size: {}", size);
+            assert!(
+                size >= 128 && size % 64 == 0,
+                "Valid FIPS key size: {}",
+                size
+            );
         }
 
         for size in invalid_key_sizes {
-            assert!(!(size >= 128 && size % 64 == 0), "Invalid FIPS key size: {}", size);
+            assert!(
+                !(size >= 128 && size % 64 == 0),
+                "Invalid FIPS key size: {}",
+                size
+            );
         }
     }
 
@@ -243,22 +262,22 @@ mod tests {
             "HMAC-SHA-512",
         ];
 
-        let unapproved_algorithms = vec![
-            "DES",
-            "3DES",
-            "RC4",
-            "MD5",
-            "SHA-1",
-        ];
+        let unapproved_algorithms = vec!["DES", "3DES", "RC4", "MD5", "SHA-1"];
 
         for algo in approved_algorithms {
-            assert!(algo.contains("AES") || algo.contains("SHA") || algo.contains("HMAC"),
-                   "Approved FIPS algorithm: {}", algo);
+            assert!(
+                algo.contains("AES") || algo.contains("SHA") || algo.contains("HMAC"),
+                "Approved FIPS algorithm: {}",
+                algo
+            );
         }
 
         for algo in unapproved_algorithms {
-            assert!(!algo.contains("AES") || !algo.contains("SHA") || !algo.contains("HMAC"),
-                   "Unapproved algorithm: {}", algo);
+            assert!(
+                !algo.contains("AES") || !algo.contains("SHA") || !algo.contains("HMAC"),
+                "Unapproved algorithm: {}",
+                algo
+            );
         }
     }
 }

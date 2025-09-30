@@ -1,8 +1,6 @@
 use base64ct::{Base64UrlUnpadded, Encoding};
 use once_cell::sync::Lazy;
-use p521::{
-    ecdsa::{signature::Signer, signature::Verifier, SigningKey, VerifyingKey},
-};
+use p521::ecdsa::{signature::Signer, signature::Verifier, SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 

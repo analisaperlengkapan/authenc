@@ -1,10 +1,12 @@
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 
 use authenc::spi::userprofile::{
-    UserProfileProvider, UserProfileProviderFactory, DefaultUserProfileProvider,
-    DefaultUserProfileProviderFactory, UserProfileAttribute, AttributeType,
-    AttributeValidation, UserProfileContext, UserProfileValidationResult,
-    UserProfileMetadata, UserProfileGroup, UserProfileError,
+    AttributeType, AttributeValidation, DefaultUserProfileProvider,
+    DefaultUserProfileProviderFactory, UserProfileAttribute, UserProfileContext, UserProfileError,
+    UserProfileGroup, UserProfileMetadata, UserProfileProvider, UserProfileProviderFactory,
+    UserProfileValidationResult,
 };
 use authenc::spi::ProviderFactory;
 
@@ -42,60 +44,72 @@ impl MockUserProfileProvider {
     }
 }
 
-#[async_trait::async_trait]
 impl UserProfileProvider for MockUserProfileProvider {
-    async fn get_profile_attributes(
+    fn get_profile_attributes(
         &self,
         _context: UserProfileContext,
-    ) -> Result<Vec<UserProfileAttribute>, UserProfileError> {
-        Ok(self.attributes.clone())
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<UserProfileAttribute>, UserProfileError>> + Send + '_>> {
+        let attributes = self.attributes.clone();
+        Box::pin(async move { Ok(attributes) })
     }
 
-    async fn validate_user_profile(
+    fn validate_user_profile(
         &self,
         _context: UserProfileContext,
         attributes: &HashMap<String, Vec<String>>,
-    ) -> Result<UserProfileValidationResult, UserProfileError> {
+    ) -> Pin<Box<dyn Future<Output = Result<UserProfileValidationResult, UserProfileError>> + Send + '_>> {
         let mut errors = HashMap::new();
+        let self_attributes = self.attributes.clone();
 
-        for attr in &self.attributes {
+        for attr in &self_attributes {
             if attr.required {
                 if let Some(values) = attributes.get(&attr.name) {
                     if values.is_empty() || values.iter().all(|v| v.trim().is_empty()) {
                         errors.insert(
                             attr.name.clone(),
-                            vec![format!("{} is required", attr.display_name.as_ref().unwrap_or(&attr.name))],
+                            vec![format!(
+                                "{} is required",
+                                attr.display_name.as_ref().unwrap_or(&attr.name)
+                            )],
                         );
                     }
                 } else {
                     errors.insert(
                         attr.name.clone(),
-                        vec![format!("{} is required", attr.display_name.as_ref().unwrap_or(&attr.name))],
+                        vec![format!(
+                            "{} is required",
+                            attr.display_name.as_ref().unwrap_or(&attr.name)
+                        )],
                     );
                 }
             }
         }
 
-        Ok(UserProfileValidationResult {
-            is_valid: errors.is_empty(),
-            errors,
+        Box::pin(async move {
+            Ok(UserProfileValidationResult {
+                is_valid: errors.is_empty(),
+                errors,
+            })
         })
     }
 
-    async fn create_user_profile_metadata(
+    fn create_user_profile_metadata(
         &self,
         _context: UserProfileContext,
-    ) -> Result<UserProfileMetadata, UserProfileError> {
-        let groups = vec![UserProfileGroup {
-            name: "custom".to_string(),
-            display_name: Some("Custom Fields".to_string()),
-            display_order: Some(1),
-            annotations: HashMap::new(),
-        }];
+    ) -> Pin<Box<dyn Future<Output = Result<UserProfileMetadata, UserProfileError>> + Send + '_>> {
+        let attributes = self.attributes.clone();
+        Box::pin(async move {
+            let groups = vec![UserProfileGroup {
+                name: "custom".to_string(),
+                display_name: Some("Custom Fields".to_string()),
+                display_order: Some(1),
+                annotations: HashMap::new(),
+            }];
 
-        Ok(UserProfileMetadata {
-            attributes: self.attributes.clone(),
-            groups,
+            Ok(UserProfileMetadata {
+                attributes,
+                groups,
+            })
         })
     }
 }
@@ -145,7 +159,10 @@ mod tests {
         assert!(registration_attrs.iter().any(|a| a.name == "lastName"));
 
         // Verify username attribute properties
-        let username_attr = registration_attrs.iter().find(|a| a.name == "username").unwrap();
+        let username_attr = registration_attrs
+            .iter()
+            .find(|a| a.name == "username")
+            .unwrap();
         assert_eq!(username_attr.attribute_type, AttributeType::Text);
         assert!(username_attr.required);
         assert!(!username_attr.read_only);
@@ -153,7 +170,10 @@ mod tests {
         assert_eq!(username_attr.display_order, Some(1));
 
         // Verify email attribute properties
-        let email_attr = registration_attrs.iter().find(|a| a.name == "email").unwrap();
+        let email_attr = registration_attrs
+            .iter()
+            .find(|a| a.name == "email")
+            .unwrap();
         assert_eq!(email_attr.attribute_type, AttributeType::Email);
         assert!(email_attr.required);
         assert!(!email_attr.read_only);
@@ -217,7 +237,9 @@ mod tests {
 
         assert!(!result.is_valid);
         assert!(result.errors.contains_key("username"));
-        assert!(result.errors["username"].iter().any(|e| e.contains("Minimum length")));
+        assert!(result.errors["username"]
+            .iter()
+            .any(|e| e.contains("Minimum length")));
 
         // Test valid length
         invalid_attributes.insert("username".to_string(), vec!["abc".to_string()]); // Exactly min 3
@@ -246,7 +268,9 @@ mod tests {
 
         assert!(!result.is_valid);
         assert!(result.errors.contains_key("email"));
-        assert!(result.errors["email"].iter().any(|e| e.contains("Invalid email format")));
+        assert!(result.errors["email"]
+            .iter()
+            .any(|e| e.contains("Invalid email format")));
 
         // Test valid email
         invalid_attributes.insert("email".to_string(), vec!["valid@example.com".to_string()]);
@@ -278,11 +302,21 @@ mod tests {
 
         // Verify group properties
         let basic_group = metadata.groups.iter().find(|g| g.name == "basic").unwrap();
-        assert_eq!(basic_group.display_name, Some("Basic Information".to_string()));
+        assert_eq!(
+            basic_group.display_name,
+            Some("Basic Information".to_string())
+        );
         assert_eq!(basic_group.display_order, Some(1));
 
-        let personal_group = metadata.groups.iter().find(|g| g.name == "personal").unwrap();
-        assert_eq!(personal_group.display_name, Some("Personal Information".to_string()));
+        let personal_group = metadata
+            .groups
+            .iter()
+            .find(|g| g.name == "personal")
+            .unwrap();
+        assert_eq!(
+            personal_group.display_name,
+            Some("Personal Information".to_string())
+        );
         assert_eq!(personal_group.display_order, Some(2));
     }
 
@@ -334,7 +368,7 @@ mod tests {
             global_config: None,
         };
 
-        let provider = factory.create(&config).await.unwrap();
+        let provider = factory.create(&config).unwrap();
 
         // Test that the provider works
         let attributes = provider
@@ -379,7 +413,13 @@ mod tests {
         // Test validation with multiple values for an attribute
         let mut attributes = HashMap::new();
         attributes.insert("username".to_string(), vec!["testuser".to_string()]);
-        attributes.insert("email".to_string(), vec!["test@example.com".to_string(), "another@example.com".to_string()]);
+        attributes.insert(
+            "email".to_string(),
+            vec![
+                "test@example.com".to_string(),
+                "another@example.com".to_string(),
+            ],
+        );
 
         let result = provider
             .validate_user_profile(UserProfileContext::Registration, &attributes)
@@ -403,16 +443,23 @@ mod tests {
         let username_attr = attributes.iter().find(|a| a.name == "username").unwrap();
         assert!(!username_attr.validations.is_empty());
 
-        let length_validation = username_attr.validations.iter()
+        let length_validation = username_attr
+            .validations
+            .iter()
             .find(|v| v.validator == "length")
             .unwrap();
 
         assert_eq!(length_validation.config.get("min"), Some(&"3".to_string()));
-        assert_eq!(length_validation.config.get("max"), Some(&"255".to_string()));
+        assert_eq!(
+            length_validation.config.get("max"),
+            Some(&"255".to_string())
+        );
 
         // Check email validation config
         let email_attr = attributes.iter().find(|a| a.name == "email").unwrap();
-        let email_validation = email_attr.validations.iter()
+        let email_validation = email_attr
+            .validations
+            .iter()
             .find(|v| v.validator == "email")
             .unwrap();
 

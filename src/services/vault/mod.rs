@@ -504,6 +504,8 @@ impl CustomKeyResolver {
     ///
     /// # Example
     /// ```
+    /// use authenc::services::vault::CustomKeyResolver;
+    ///
     /// let resolver = CustomKeyResolver::new("realm/{realm}/secrets/{secret}".to_string());
     /// ```
     pub fn new(pattern: String) -> Self {

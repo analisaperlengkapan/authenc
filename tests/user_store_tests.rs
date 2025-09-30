@@ -1,11 +1,12 @@
-use authenc::models::user::{User, CreateUserRequest};
-use authenc::services::stores::user_store::{UserStore, UserStoreTrait};
-use authenc::database::Database;
 use authenc::config::DatabaseConfig;
+use authenc::database::Database;
+use authenc::models::user::{CreateUserRequest, User};
+use authenc::services::stores::user_store::{UserStore, UserStoreTrait};
 use std::sync::Arc;
 use uuid::Uuid;
 
 #[tokio::test]
+#[ignore = "Requires PostgreSQL database to be running"]
 async fn user_store_basic_flow() {
     // Create a test database configuration
     let database_config = DatabaseConfig {

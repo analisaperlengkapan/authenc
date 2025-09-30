@@ -81,11 +81,7 @@ impl From<Scope> for ScopeResponse {
 
 impl Scope {
     /// Create a new scope
-    pub fn new(
-        name: String,
-        realm_id: Uuid,
-        resource_server_id: Uuid,
-    ) -> Self {
+    pub fn new(name: String, realm_id: Uuid, resource_server_id: Uuid) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),

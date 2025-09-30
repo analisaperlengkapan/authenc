@@ -1,8 +1,8 @@
 use authenc::config::DatabaseConfig;
 use authenc::database::Database;
 use authenc::services::observability::{
-    HealthStatus, HealthCheckResult, MetricValue,
-    ServiceLevelIndicator, SliStatus, PerformanceMetrics
+    HealthCheckResult, HealthStatus, MetricValue, PerformanceMetrics, ServiceLevelIndicator,
+    SliStatus,
 };
 use chrono::Utc;
 use std::collections::HashMap;
@@ -120,9 +120,9 @@ mod tests {
         // Test ServiceLevelIndicator structure
         let sli = ServiceLevelIndicator {
             name: "api_availability".to_string(),
-            objective: 0.995, // 99.5% availability
+            objective: 0.995,                             // 99.5% availability
             window: std::time::Duration::from_secs(3600), // 1 hour
-            current_value: 0.998, // 99.8% current
+            current_value: 0.998,                         // 99.8% current
             status: SliStatus::Good,
         };
 
@@ -164,8 +164,12 @@ mod tests {
 
         // Verify performance metrics
         assert!(perf_metrics.response_time_p50.as_millis() > 0);
-        assert!(perf_metrics.response_time_p95.as_millis() > perf_metrics.response_time_p50.as_millis());
-        assert!(perf_metrics.response_time_p99.as_millis() > perf_metrics.response_time_p95.as_millis());
+        assert!(
+            perf_metrics.response_time_p95.as_millis() > perf_metrics.response_time_p50.as_millis()
+        );
+        assert!(
+            perf_metrics.response_time_p99.as_millis() > perf_metrics.response_time_p95.as_millis()
+        );
         assert!(perf_metrics.throughput > 0.0);
         assert!(perf_metrics.error_rate >= 0.0 && perf_metrics.error_rate <= 1.0);
         assert!(perf_metrics.cpu_usage >= 0.0 && perf_metrics.cpu_usage <= 100.0);

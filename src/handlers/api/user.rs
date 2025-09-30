@@ -1,8 +1,7 @@
+use crate::app::AppState;
 use crate::handlers::api::auth_bearer::AuthBearer;
 use crate::models::user::{self, User};
-use crate::services::stores::user_store::{UserStore, UserStoreTrait};
-use crate::app::AppState;
-use crate::utils::crypto::password;
+use crate::services::stores::user_store::UserStoreTrait;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -10,7 +9,6 @@ use axum::{
     routing::{delete, get, patch, post, put},
     Router,
 };
-use chrono::Utc;
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -37,7 +35,11 @@ pub async fn get_users(
 ) -> Result<Json<Vec<User>>, StatusCode> {
     // For now, return empty vec since get_all is not fully implemented
     // TODO: Implement proper user listing with realm filtering in database
-    let users = state.user_store.get_all().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let users = state
+        .user_store
+        .get_all()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let filtered: Vec<User> = users
         .into_iter()
         .filter(|u| u.realm_id.map(|id| id.to_string()) == Some(realm.clone()))
@@ -52,9 +54,14 @@ pub async fn get_user_by_id(
     Path((_realm, id)): Path<(String, String)>,
 ) -> Result<Json<User>, StatusCode> {
     let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let user = state.user_store.get_user(user_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let user = state
+        .user_store
+        .get_user(user_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     user.ok_or(StatusCode::NOT_FOUND).map(Json)
-}#[derive(Deserialize)]
+}
+#[derive(Deserialize)]
 /// Request payload for creating a new user account
 pub struct CreateUserRequest {
     /// The unique username for the user account
@@ -96,14 +103,18 @@ pub async fn create_user(
     };
 
     // Store the user
-    let created_user = state.user_store.add_user(model_request).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let created_user = state
+        .user_store
+        .add_user(model_request)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let realm_id = request.realm_id.ok_or_else(|| StatusCode::BAD_REQUEST)?;
+    let realm_id = request.realm_id.ok_or(StatusCode::BAD_REQUEST)?;
 
     // Fire admin event for user creation
     let auth_details = crate::models::events::AuthDetails {
         user_id: auth.sub.clone(),
-        username: None, // Could be looked up from user store if needed
+        username: None,   // Could be looked up from user store if needed
         ip_address: None, // Could be extracted from request headers
         user_agent: None, // Could be extracted from request headers
     };
@@ -118,7 +129,13 @@ pub async fn create_user(
     .representation(serde_json::to_string(&created_user).unwrap_or_default())
     .build();
 
-    if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, true).await {
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, true)
+        .await
+    {
         tracing::error!("Failed to fire user creation admin event: {}", e);
     }
 
@@ -157,7 +174,8 @@ pub async fn update_user(
     };
 
     // Update user in database
-    state.user_store
+    state
+        .user_store
         .update_user(user_id, update_request)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -179,7 +197,13 @@ pub async fn update_user(
     )
     .build();
 
-    if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, false).await {
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, false)
+        .await
+    {
         tracing::error!("Failed to fire user update admin event: {}", e);
     }
 

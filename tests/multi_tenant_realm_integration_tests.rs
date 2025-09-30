@@ -1,13 +1,13 @@
-use crate::database::Database;
-use crate::models::realm::CreateRealmRequest;
-use crate::services::realm::{PostgresRealmService, RealmService};
+use authenc::database::Database;
+use authenc::models::realm::CreateRealmRequest;
+use authenc::services::realm::{PostgresRealmService, RealmService};
 use std::sync::Arc;
 
 /// Integration test for multi-tenant realm functionality
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::DatabaseConfig;
+    use authenc::config::DatabaseConfig;
 
     async fn setup_test_db() -> Database {
         let config = DatabaseConfig {
@@ -17,13 +17,18 @@ mod tests {
             password: "test".to_string(),
             database: "test_authenc".to_string(),
             max_connections: 5,
-            ssl_mode: "disable".to_string(),
+            connection_timeout: 30,
+            audit_log_url: None,
+            connection_timeout_seconds: 30,
         };
 
-        Database::new(&config).await.expect("Failed to connect to test database")
+        Database::new(&config)
+            .await
+            .expect("Failed to connect to test database")
     }
 
     #[tokio::test]
+    #[ignore = "Requires PostgreSQL database to be running"]
     async fn test_multi_tenant_realm_operations() {
         let db = setup_test_db().await;
         let service = PostgresRealmService::new(Arc::new(db));
@@ -45,8 +50,14 @@ mod tests {
             attributes: Some(serde_json::json!({"tenant_id": "tenant2", "plan": "professional"})),
         };
 
-        let tenant1_realm = service.create_realm(tenant1_request).await.expect("Failed to create tenant1 realm");
-        let tenant2_realm = service.create_realm(tenant2_request).await.expect("Failed to create tenant2 realm");
+        let tenant1_realm = service
+            .create_realm(tenant1_request)
+            .await
+            .expect("Failed to create tenant1 realm");
+        let tenant2_realm = service
+            .create_realm(tenant2_request)
+            .await
+            .expect("Failed to create tenant2 realm");
 
         assert_eq!(tenant1_realm.name, "tenant1-realm");
         assert_eq!(tenant2_realm.name, "tenant2-realm");
@@ -56,18 +67,28 @@ mod tests {
         let all_realms = service.list_realms().await.expect("Failed to list realms");
         assert!(all_realms.len() >= 2);
 
-        let tenant1_found = all_realms.iter().find(|r| r.id == tenant1_realm.id).expect("Tenant1 realm not found");
-        let tenant2_found = all_realms.iter().find(|r| r.id == tenant2_realm.id).expect("Tenant2 realm not found");
+        let tenant1_found = all_realms
+            .iter()
+            .find(|r| r.id == tenant1_realm.id)
+            .expect("Tenant1 realm not found");
+        let tenant2_found = all_realms
+            .iter()
+            .find(|r| r.id == tenant2_realm.id)
+            .expect("Tenant2 realm not found");
 
         assert_eq!(tenant1_found.name, "tenant1-realm");
         assert_eq!(tenant2_found.name, "tenant2-realm");
 
         // Test 3: Get realm by name (multi-tenant isolation)
-        let retrieved_tenant1 = service.get_realm_by_name("tenant1-realm").await
+        let retrieved_tenant1 = service
+            .get_realm_by_name("tenant1-realm")
+            .await
             .expect("Failed to get tenant1 realm")
             .expect("Tenant1 realm not found");
 
-        let retrieved_tenant2 = service.get_realm_by_name("tenant2-realm").await
+        let retrieved_tenant2 = service
+            .get_realm_by_name("tenant2-realm")
+            .await
             .expect("Failed to get tenant2 realm")
             .expect("Tenant2 realm not found");
 
@@ -78,31 +99,46 @@ mod tests {
         // This would be tested in higher-level integration tests with users/roles
 
         // Test 5: Disable a realm (tenant suspension)
-        service.set_realm_enabled(&tenant2_realm.id, false).await
+        service
+            .set_realm_enabled(&tenant2_realm.id, false)
+            .await
             .expect("Failed to disable tenant2 realm");
 
-        let updated_tenant2 = service.get_realm_by_id(&tenant2_realm.id).await
+        let updated_tenant2 = service
+            .get_realm_by_id(&tenant2_realm.id)
+            .await
             .expect("Failed to get updated tenant2 realm")
             .expect("Tenant2 realm not found");
 
         assert!(!updated_tenant2.enabled);
 
         // Test 6: Re-enable realm
-        service.set_realm_enabled(&tenant2_realm.id, true).await
+        service
+            .set_realm_enabled(&tenant2_realm.id, true)
+            .await
             .expect("Failed to re-enable tenant2 realm");
 
-        let reenabled_tenant2 = service.get_realm_by_id(&tenant2_realm.id).await
+        let reenabled_tenant2 = service
+            .get_realm_by_id(&tenant2_realm.id)
+            .await
             .expect("Failed to get re-enabled tenant2 realm")
             .expect("Tenant2 realm not found");
 
         assert!(reenabled_tenant2.enabled);
 
         // Clean up
-        service.delete_realm(&tenant1_realm.id).await.expect("Failed to delete tenant1 realm");
-        service.delete_realm(&tenant2_realm.id).await.expect("Failed to delete tenant2 realm");
+        service
+            .delete_realm(&tenant1_realm.id)
+            .await
+            .expect("Failed to delete tenant1 realm");
+        service
+            .delete_realm(&tenant2_realm.id)
+            .await
+            .expect("Failed to delete tenant2 realm");
     }
 
     #[tokio::test]
+    #[ignore = "Requires PostgreSQL database to be running"]
     async fn test_realm_not_found_scenarios() {
         let db = setup_test_db().await;
         let service = PostgresRealmService::new(Arc::new(db));
@@ -125,6 +161,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "Requires PostgreSQL database to be running"]
     async fn test_realm_tenant_attributes() {
         let db = setup_test_db().await;
         let service = PostgresRealmService::new(Arc::new(db));
@@ -145,10 +182,15 @@ mod tests {
             })),
         };
 
-        let created_realm = service.create_realm(request).await.expect("Failed to create realm with attributes");
+        let created_realm = service
+            .create_realm(request)
+            .await
+            .expect("Failed to create realm with attributes");
 
         // Verify realm was created with attributes
-        let retrieved_realm = service.get_realm_by_id(&created_realm.id).await
+        let retrieved_realm = service
+            .get_realm_by_id(&created_realm.id)
+            .await
             .expect("Failed to retrieve realm")
             .expect("Realm not found");
 
@@ -156,6 +198,9 @@ mod tests {
         // This test verifies the structure is in place
 
         // Clean up
-        service.delete_realm(&created_realm.id).await.expect("Failed to delete realm");
+        service
+            .delete_realm(&created_realm.id)
+            .await
+            .expect("Failed to delete realm");
     }
 }

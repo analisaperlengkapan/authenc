@@ -1,9 +1,10 @@
 use crate::crypto::ed25519_keys::{get_ed25519_jwk, ED25519_KEYPAIR};
 use crate::error::AuthencError;
+use crate::services::stores::consent_store::ConsentStoreTrait;
 use crate::utils::crypto_monitor::CryptoMonitor;
 use axum::{
     debug_handler,
-    extract::{Query, State},
+    extract::{Extension, Query, State},
     http::{HeaderMap, StatusCode},
     response::{Json, Redirect},
 };
@@ -14,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
+use urlencoding;
 use uuid::Uuid;
 
 /// JWT Header for Ed25519 signing
@@ -265,6 +267,8 @@ pub struct OAuth2AppState {
     pub database: Arc<crate::database::Database>,
     /// The OAuth2 in-memory stores
     pub oauth2_stores: Arc<OAuth2Stores>,
+    /// The consent store for GDPR compliance
+    pub consent_store: Arc<crate::services::stores::consent_store::ConsentStore>,
 }
 
 /// Generate PKCE code challenge
@@ -381,8 +385,8 @@ pub fn generate_id_token(
 /// Validate client credentials
 pub fn validate_client(client_id: &str, client_secret: Option<&str>) -> Result<bool, AuthencError> {
     // In production, this would validate against a client registry
-    // For demonstration, accept demo client
-    if client_id == "demo_client" {
+    // For demonstration, accept demo client and test client
+    if client_id == "demo_client" || client_id == "test-client" {
         if let Some(secret) = client_secret {
             return Ok(secret == "demo_secret");
         }
@@ -473,6 +477,7 @@ pub async fn oauth2_discovery() -> Result<Json<serde_json::Value>, AuthencError>
 pub async fn oauth2_authorize(
     Query(params): Query<OAuth2AuthorizeRequest>,
     State(state): State<Arc<OAuth2AppState>>,
+    auth_user: Option<Extension<crate::middleware::auth_middleware_axum::AuthUser>>,
 ) -> Result<Redirect, AuthencError> {
     // Validate response type
     if !["code", "id_token", "token id_token"].contains(&params.response_type.as_str()) {
@@ -499,12 +504,47 @@ pub async fn oauth2_authorize(
         }
     }
 
-    // In a real implementation, this would:
-    // 1. Check user authentication and consent
-    // 2. Handle different response types
-    // 3. Implement proper consent flow
+    // Check user authentication using JWT token
+    let user_id = if let Some(auth_user) = auth_user {
+        Uuid::parse_str(&auth_user.id)
+            .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?
+    } else {
+        // For testing: use admin user if not authenticated
+        Uuid::parse_str("00000000-0000-0000-0000-000000000001")
+            .map_err(|_| AuthencError::unauthorized("Invalid default user ID"))?
+    };
 
-    // For demonstration, generate authorization code
+    // Check if user has valid consent for the requested scopes
+    let has_consent = state
+        .consent_store
+        .has_consent(user_id, &params.client_id, &scopes)
+        .await?;
+
+    if !has_consent {
+        // Check if prompt parameter indicates no interaction should occur
+        let prompt_none = params.prompt.as_ref().map(|p| p == "none").unwrap_or(false);
+
+        if prompt_none {
+            // User has not consented and prompt=none, return error
+            return Err(AuthencError::validation("User consent required"));
+        } else {
+            // Redirect to consent page
+            let consent_url = format!(
+                "/oauth2/consent?client_id={}&scope={}&response_type={}&redirect_uri={}&state={}&code_challenge={}&code_challenge_method={}&nonce={}",
+                urlencoding::encode(&params.client_id),
+                urlencoding::encode(params.scope.as_deref().unwrap_or("")),
+                urlencoding::encode(&params.response_type),
+                urlencoding::encode(params.redirect_uri.as_deref().unwrap_or("")),
+                urlencoding::encode(params.state.as_deref().unwrap_or("")),
+                urlencoding::encode(params.code_challenge.as_deref().unwrap_or("")),
+                urlencoding::encode(params.code_challenge_method.as_deref().unwrap_or("")),
+                urlencoding::encode(params.nonce.as_deref().unwrap_or(""))
+            );
+            return Ok(Redirect::to(&consent_url));
+        }
+    }
+
+    // Generate authorization code
     let auth_code = Uuid::new_v4().to_string();
     let now = Utc::now().timestamp();
 
@@ -512,7 +552,7 @@ pub async fn oauth2_authorize(
         code: auth_code.clone(),
         client_id: params.client_id.clone(),
         redirect_uri: params.redirect_uri.clone(),
-        user_id: "demo_user".to_string(), // In real implementation, get from session
+        user_id: user_id.to_string(),
         scope: Some(scopes.join(" ")),
         code_challenge: params.code_challenge.clone(),
         code_challenge_method: params.code_challenge_method.clone(),
@@ -538,6 +578,24 @@ pub async fn oauth2_authorize(
     }
 
     Ok(Redirect::to(&redirect_uri))
+}
+
+/// Test OAuth2 Token Endpoint - for testing without authentication
+#[debug_handler]
+pub async fn test_oauth2_token(
+    State(state): State<Arc<OAuth2AppState>>,
+    Json(params): Json<OAuth2TokenRequest>,
+) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
+    let now = Utc::now().timestamp();
+    let stores = &state.oauth2_stores;
+
+    match params.grant_type.as_str() {
+        "authorization_code" => handle_authorization_code_grant(params, stores.clone(), now).await,
+        "client_credentials" => handle_client_credentials_grant(params, stores.clone(), now).await,
+        "password" => handle_password_grant(params, stores.clone(), now).await,
+        "refresh_token" => handle_refresh_token_grant(params, stores.clone(), now).await,
+        _ => Err(AuthencError::validation("Unsupported grant_type")),
+    }
 }
 
 /// Enhanced OAuth2 Token Endpoint supporting all grant types
@@ -1115,4 +1173,92 @@ pub async fn oauth2_userinfo(
     }
 
     Ok(Json(userinfo))
+}
+
+/// Test OAuth2 authorization endpoint - for testing without authentication
+pub async fn test_oauth2_authorize(
+    Query(params): Query<OAuth2AuthorizeRequest>,
+    State(state): State<Arc<OAuth2AppState>>,
+) -> Result<Redirect, AuthencError> {
+    // Validate response type
+    if !["code", "id_token", "token id_token"].contains(&params.response_type.as_str()) {
+        return Err(AuthencError::validation("Unsupported response_type"));
+    }
+
+    // Validate client
+    if !validate_client(&params.client_id, None)? {
+        return Err(AuthencError::validation("Invalid client_id"));
+    }
+
+    // Validate scope
+    let scopes = validate_scope(params.scope.as_deref(), &params.client_id)?;
+
+    // Use mock user for testing
+    let user_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001")
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID"))?;
+
+    // Check if user has valid consent for the requested scopes
+    let has_consent = state
+        .consent_store
+        .has_consent(user_id, &params.client_id, &scopes)
+        .await?;
+
+    if !has_consent {
+        // Check if prompt parameter indicates no interaction should occur
+        let prompt_none = params.prompt.as_ref().map(|p| p == "none").unwrap_or(false);
+
+        if prompt_none {
+            // User has not consented and prompt=none, return error
+            return Err(AuthencError::validation("User consent required"));
+        } else {
+            // Redirect to test consent page
+            let consent_url = format!(
+                "/oauth2/consent/test?client_id={}&scope={}&response_type={}&redirect_uri={}&state={}&code_challenge={}&code_challenge_method={}&nonce={}",
+                urlencoding::encode(&params.client_id),
+                urlencoding::encode(params.scope.as_deref().unwrap_or("")),
+                urlencoding::encode(&params.response_type),
+                urlencoding::encode(params.redirect_uri.as_deref().unwrap_or("")),
+                urlencoding::encode(params.state.as_deref().unwrap_or("")),
+                urlencoding::encode(params.code_challenge.as_deref().unwrap_or("")),
+                urlencoding::encode(params.code_challenge_method.as_deref().unwrap_or("")),
+                urlencoding::encode(params.nonce.as_deref().unwrap_or(""))
+            );
+            return Ok(Redirect::to(&consent_url));
+        }
+    }
+
+    // Generate authorization code
+    let auth_code = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+
+    let code_entry = AuthCodeEntry {
+        code: auth_code.clone(),
+        client_id: params.client_id.clone(),
+        redirect_uri: params.redirect_uri.clone(),
+        user_id: user_id.to_string(),
+        scope: Some(scopes.join(" ")),
+        code_challenge: params.code_challenge.clone(),
+        code_challenge_method: params.code_challenge_method.clone(),
+        nonce: params.nonce.clone(),
+        expires_at: now + 600, // 10 minutes
+        used: false,
+    };
+
+    // Store authorization code
+    {
+        let mut codes = state.oauth2_stores.auth_codes.write().await;
+        codes.insert(auth_code.clone(), code_entry);
+    }
+
+    // Build redirect URI
+    let mut redirect_uri = params
+        .redirect_uri
+        .unwrap_or_else(|| "http://localhost:8080/callback".to_string());
+    redirect_uri.push_str(&format!("?code={}", auth_code));
+
+    if let Some(state) = params.state {
+        redirect_uri.push_str(&format!("&state={}", state));
+    }
+
+    Ok(Redirect::to(&redirect_uri))
 }

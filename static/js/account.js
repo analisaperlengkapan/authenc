@@ -34,6 +34,11 @@ class AccountConsole {
         document.getElementById('setup-tfa-btn').addEventListener('click', () => this.setupTFA());
         document.getElementById('disable-tfa-btn').addEventListener('click', () => this.disableTFA());
 
+        // Social provider buttons
+        document.querySelectorAll('.provider-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => this.linkSocialAccount(e.target.closest('.provider-btn').dataset.provider));
+        });
+
         // Privacy buttons
         document.getElementById('export-data-btn').addEventListener('click', () => this.exportData());
         document.getElementById('delete-account-btn').addEventListener('click', () => this.confirmDeleteAccount());
@@ -67,9 +72,13 @@ class AccountConsole {
                 break;
             case 'applications':
                 this.loadApplications();
+                this.loadConsents();
                 break;
             case 'security':
                 this.loadTFASettings();
+                break;
+            case 'social':
+                this.loadSocialAccounts();
                 break;
         }
     }
@@ -185,7 +194,7 @@ class AccountConsole {
 
     async loadApplications() {
         try {
-            const response = await this.apiCall('/auth/account/applications');
+            const response = await this.apiCall('/account/applications');
             const applications = response;
 
             const container = document.getElementById('applications-list');
@@ -235,7 +244,7 @@ class AccountConsole {
         }
 
         try {
-            await this.apiCall(`/auth/account/applications/${clientId}`, 'DELETE');
+            await this.apiCall(`/account/applications/${clientId}`, 'DELETE');
             this.showSuccess('Application access revoked successfully');
             this.loadApplications(); // Refresh the list
         } catch (error) {
@@ -245,19 +254,40 @@ class AccountConsole {
     }
 
     async loadTFASettings() {
-        // For now, show 2FA as not configured
-        const container = document.getElementById('tfa-status');
-        container.innerHTML = `
-            <p><i class="fas fa-times-circle" style="color: var(--danger-color);"></i> Two-factor authentication is not configured</p>
-        `;
-        document.getElementById('setup-tfa-btn').style.display = 'inline-block';
-        document.getElementById('disable-tfa-btn').style.display = 'none';
+        try {
+            const response = await this.apiCall('/account/totp');
+            const container = document.getElementById('tfa-status');
+            
+            if (response.enabled) {
+                container.innerHTML = `
+                    <p><i class="fas fa-check-circle" style="color: var(--success-color);"></i> Two-factor authentication is enabled</p>
+                    <p><small>Configured on ${new Date(response.configured_at).toLocaleDateString()}</small></p>
+                `;
+                document.getElementById('setup-tfa-btn').style.display = 'none';
+                document.getElementById('disable-tfa-btn').style.display = 'inline-block';
+            } else {
+                container.innerHTML = `
+                    <p><i class="fas fa-times-circle" style="color: var(--danger-color);"></i> Two-factor authentication is not configured</p>
+                `;
+                document.getElementById('setup-tfa-btn').style.display = 'inline-block';
+                document.getElementById('disable-tfa-btn').style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Failed to load TOTP status:', error);
+            // Fallback to showing not configured
+            const container = document.getElementById('tfa-status');
+            container.innerHTML = `
+                <p><i class="fas fa-times-circle" style="color: var(--danger-color);"></i> Two-factor authentication is not configured</p>
+            `;
+            document.getElementById('setup-tfa-btn').style.display = 'inline-block';
+            document.getElementById('disable-tfa-btn').style.display = 'none';
+        }
     }
 
     async setupTFA() {
         try {
             // Step 1: Setup TOTP - get secret and QR code
-            const response = await fetch(`${this.apiBase}/auth/account/credentials/totp/setup`, {
+            const response = await fetch(`${this.apiBase}/account/totp/setup`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -360,7 +390,7 @@ class AccountConsole {
         }
 
         try {
-            const response = await fetch(`${this.apiBase}/auth/account/credentials/totp/disable`, {
+            const response = await fetch(`${this.apiBase}/account/totp`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${this.getAuthToken()}`
@@ -381,10 +411,123 @@ class AccountConsole {
         }
     }
 
+    async loadSocialAccounts() {
+        try {
+            const response = await this.apiCall('/account/social');
+            this.renderSocialAccounts(response);
+        } catch (error) {
+            this.showError('Failed to load social accounts');
+            console.error('Social accounts load error:', error);
+        }
+    }
+
+    renderSocialAccounts(accounts) {
+        const container = document.getElementById('social-accounts-list');
+        
+        if (!accounts || accounts.length === 0) {
+            container.innerHTML = '<p>No social accounts linked yet.</p>';
+            return;
+        }
+
+        const html = accounts.map(account => `
+            <div class="social-account-item">
+                <div class="social-account-info">
+                    <i class="fab fa-${account.provider}"></i>
+                    <div>
+                        <strong>${account.provider.charAt(0).toUpperCase() + account.provider.slice(1)}</strong>
+                        <br>
+                        <small>Linked on ${new Date(account.linked_at).toLocaleDateString()}</small>
+                    </div>
+                </div>
+                <button class="btn-danger btn-small" onclick="accountConsole.unlinkSocialAccount('${account.provider}')">
+                    <i class="fas fa-unlink"></i> Unlink
+                </button>
+            </div>
+        `).join('');
+
+        container.innerHTML = html;
+    }
+
+    async linkSocialAccount(provider) {
+        try {
+            // Redirect to social login flow
+            window.location.href = `/auth/social/${provider}`;
+        } catch (error) {
+            this.showError('Failed to link social account');
+            console.error('Social link error:', error);
+        }
+    }
+
+    async unlinkSocialAccount(provider) {
+        if (!confirm(`Are you sure you want to unlink your ${provider} account?`)) {
+            return;
+        }
+
+        try {
+            await this.apiCall(`/account/social/${provider}`, 'DELETE');
+            this.showSuccess(`${provider} account unlinked successfully`);
+            this.loadSocialAccounts();
+        } catch (error) {
+            this.showError('Failed to unlink social account');
+            console.error('Social unlink error:', error);
+        }
+    }
+
+    async loadConsents() {
+        try {
+            const response = await this.apiCall('/account/consents');
+            this.renderConsents(response);
+        } catch (error) {
+            this.showError('Failed to load consents');
+            console.error('Consents load error:', error);
+        }
+    }
+
+    renderConsents(consents) {
+        const container = document.getElementById('consents-list');
+        
+        if (!consents || consents.length === 0) {
+            container.innerHTML = '<p>No application permissions granted.</p>';
+            return;
+        }
+
+        const html = consents.map(consent => `
+            <div class="consent-item">
+                <div class="consent-info">
+                    <strong>${consent.client_name || consent.client_id}</strong>
+                    <br>
+                    <small>Granted on ${new Date(consent.granted_at).toLocaleDateString()}</small>
+                    <br>
+                    <small>Scopes: ${consent.scopes.join(', ')}</small>
+                </div>
+                <button class="btn-danger btn-small" onclick="accountConsole.revokeConsent('${consent.client_id}')">
+                    <i class="fas fa-times"></i> Revoke
+                </button>
+            </div>
+        `).join('');
+
+        container.innerHTML = html;
+    }
+
+    async revokeConsent(clientId) {
+        if (!confirm('Are you sure you want to revoke this application\'s access?')) {
+            return;
+        }
+
+        try {
+            await this.apiCall(`/account/consents/${clientId}`, 'DELETE');
+            this.showSuccess('Application access revoked successfully');
+            this.loadConsents();
+        } catch (error) {
+            this.showError('Failed to revoke consent');
+            console.error('Consent revoke error:', error);
+        }
+    }
+
     async exportData() {
         try {
             // Trigger download of account data
-            const response = await fetch(`${this.apiBase}/auth/account/export`, {
+            const response = await fetch(`${this.apiBase}/account/export`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${this.getAuthToken()}`
@@ -423,7 +566,7 @@ class AccountConsole {
 
     async deleteAccount() {
         try {
-            await this.apiCall('/auth/account', 'DELETE');
+            await this.apiCall('/account', 'DELETE');
             this.showSuccess('Account deleted successfully');
             setTimeout(() => {
                 this.logout();

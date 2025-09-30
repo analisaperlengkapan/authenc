@@ -15,10 +15,8 @@
 use crate::error::AuthencError;
 use crate::models::oauth2::OAuth2Client;
 use async_trait::async_trait;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use uuid::Uuid;
 
 /// Client Policy Context
 #[derive(Debug, Clone)]
@@ -123,7 +121,9 @@ impl ClientPolicyCondition for ClientAccessTypeCondition {
     async fn evaluate(&self, context: &ClientPolicyContext) -> Result<bool, AuthencError> {
         // Check client access type (confidential, public, bearer-only)
         // Use client_type field which represents the access type
-        Ok(self.allowed_access_types.contains(&context.client.client_type))
+        Ok(self
+            .allowed_access_types
+            .contains(&context.client.client_type))
     }
 
     fn name(&self) -> &str {
@@ -180,7 +180,9 @@ impl ClientPolicyCondition for ClientProtocolCondition {
     async fn evaluate(&self, _context: &ClientPolicyContext) -> Result<bool, AuthencError> {
         // For now, assume all clients use OAuth2/OIDC protocol
         // In a full implementation, this would check a protocol field
-        Ok(self.allowed_protocols.contains(&"openid-connect".to_string()))
+        Ok(self
+            .allowed_protocols
+            .contains(&"openid-connect".to_string()))
     }
 
     fn name(&self) -> &str {
@@ -578,9 +580,7 @@ impl ClientPolicyExecutor for IntentClientBindCheckExecutor {
         if self.check_intent_binding {
             // Check that client intent is properly bound to the authorization request
             // This prevents authorization request tampering
-            let intent_id = context
-                .parameters
-                .get("client_intent_id").cloned();
+            let intent_id = context.parameters.get("client_intent_id").cloned();
             if let Some(intent_id) = intent_id {
                 // Validate intent binding
                 self.validate_intent_binding(&intent_id, context).await?;
@@ -622,10 +622,9 @@ impl ClientPolicyExecutor for UseLightweightAccessTokenExecutor {
         if self.use_lightweight {
             // Configure client to use lightweight access tokens
             // This would modify the token issuance process
-            context.parameters.insert(
-                "use_lightweight_token".to_string(),
-                "true".to_string()
-            );
+            context
+                .parameters
+                .insert("use_lightweight_token".to_string(), "true".to_string());
         }
         Ok(())
     }
@@ -732,9 +731,10 @@ impl ClientPolicyExecutor for SecureSigningAlgorithmForSignedJwtExecutor {
         // Validate signing algorithm for signed JWTs
         if let Some(alg) = context.parameters.get("alg") {
             if !self.allowed_algorithms.contains(alg) {
-                return Err(AuthencError::validation(
-                    format!("Signing algorithm '{}' is not allowed", alg),
-                ));
+                return Err(AuthencError::validation(format!(
+                    "Signing algorithm '{}' is not allowed",
+                    alg
+                )));
             }
         }
         Ok(())
@@ -783,7 +783,9 @@ pub struct RejectRequestExecutor {
 impl ClientPolicyExecutor for RejectRequestExecutor {
     async fn execute(&self, _context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
         if self.reject_request {
-            let reason = self.rejection_reason.as_deref()
+            let reason = self
+                .rejection_reason
+                .as_deref()
                 .unwrap_or("Request rejected by policy");
             return Err(AuthencError::validation(reason.to_string()));
         }

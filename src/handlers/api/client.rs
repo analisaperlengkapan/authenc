@@ -1,7 +1,8 @@
-use crate::handlers::api::auth_bearer::AuthBearer;
-use crate::models::oidc_client::OidcClient;
-use crate::services::oidc_client_store::OidcClientStore;
 use crate::app::AppState;
+use crate::handlers::api::auth_bearer::AuthBearer;
+use crate::models::events::{OperationType, ResourceType};
+use crate::models::oidc_client::OidcClient;
+use crate::services::events::AdminEventBuilder;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -11,8 +12,6 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
-use crate::models::events::{ResourceType, OperationType, AuthDetails};
-use crate::services::events::AdminEventBuilder;
 
 /// Create client management routes for a realm
 pub fn create_client_routes() -> Router<Arc<AppState>> {
@@ -88,7 +87,13 @@ pub async fn create_client(
     };
 
     // Check if client already exists
-    if state.oidc_client_store.get(&req.client_id).await.unwrap_or(None).is_some() {
+    if state
+        .oidc_client_store
+        .get(&req.client_id)
+        .await
+        .unwrap_or(None)
+        .is_some()
+    {
         return Err(StatusCode::CONFLICT);
     }
 
@@ -109,7 +114,7 @@ pub async fn create_client(
     // Fire admin event
     let auth_details = crate::models::events::AuthDetails {
         user_id: auth.sub.clone(),
-        username: None, // Could be looked up from user store if needed
+        username: None,   // Could be looked up from user store if needed
         ip_address: None, // Could be extracted from request headers
         user_agent: None, // Could be extracted from request headers
     };
@@ -127,7 +132,13 @@ pub async fn create_client(
     .representation(representation)
     .build();
 
-    if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, true).await {
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, true)
+        .await
+    {
         tracing::error!("Failed to fire admin event for client creation: {}", e);
     }
 
@@ -196,7 +207,7 @@ pub async fn update_client(
     // Fire admin event
     let auth_details = crate::models::events::AuthDetails {
         user_id: auth.sub.clone(),
-        username: None, // Could be looked up from user store if needed
+        username: None,   // Could be looked up from user store if needed
         ip_address: None, // Could be extracted from request headers
         user_agent: None, // Could be extracted from request headers
     };
@@ -214,7 +225,13 @@ pub async fn update_client(
     .representation(new_representation)
     .build();
 
-    if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, true).await {
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, true)
+        .await
+    {
         tracing::error!("Failed to fire admin event for client update: {}", e);
     }
 
@@ -246,7 +263,7 @@ pub async fn delete_client(
             // Fire admin event
             let auth_details = crate::models::events::AuthDetails {
                 user_id: auth.sub.clone(),
-                username: None, // Could be looked up from user store if needed
+                username: None,   // Could be looked up from user store if needed
                 ip_address: None, // Could be extracted from request headers
                 user_agent: None, // Could be extracted from request headers
             };
@@ -264,7 +281,13 @@ pub async fn delete_client(
             .representation(representation)
             .build();
 
-            if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, true).await {
+            if let Err(e) = state
+                .event_manager
+                .write()
+                .await
+                .fire_admin_event(admin_event, true)
+                .await
+            {
                 tracing::error!("Failed to fire admin event for client deletion: {}", e);
             }
 

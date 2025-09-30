@@ -1,10 +1,10 @@
+use crate::database::operations;
+use crate::database::Database;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use crate::database::Database;
-use crate::database::operations;
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Admin service trait
 #[async_trait]
@@ -64,10 +64,16 @@ pub trait AdminService: Send + Sync {
         -> Result<ZeroTrustDashboard, String>;
 
     /// Get identity providers
-    async fn get_identity_providers(&self, realm_id: &Uuid) -> Result<Vec<IdentityProviderResponse>, String>;
+    async fn get_identity_providers(
+        &self,
+        realm_id: &Uuid,
+    ) -> Result<Vec<IdentityProviderResponse>, String>;
 
     /// Create identity provider
-    async fn create_identity_provider(&self, request: CreateIdentityProviderRequest) -> Result<IdentityProviderResponse, String>;
+    async fn create_identity_provider(
+        &self,
+        request: CreateIdentityProviderRequest,
+    ) -> Result<IdentityProviderResponse, String>;
 
     /// Update identity provider
     async fn update_identity_provider(
@@ -80,10 +86,16 @@ pub trait AdminService: Send + Sync {
     async fn delete_identity_provider(&self, provider_id: &Uuid) -> Result<(), String>;
 
     /// Get identity provider by ID
-    async fn get_identity_provider(&self, provider_id: &Uuid) -> Result<IdentityProviderResponse, String>;
+    async fn get_identity_provider(
+        &self,
+        provider_id: &Uuid,
+    ) -> Result<IdentityProviderResponse, String>;
 
     /// Test identity provider connection
-    async fn test_identity_provider(&self, provider_id: &Uuid) -> Result<TestIdentityProviderResponse, String>;
+    async fn test_identity_provider(
+        &self,
+        provider_id: &Uuid,
+    ) -> Result<TestIdentityProviderResponse, String>;
 }
 
 /// System statistics
@@ -483,8 +495,6 @@ pub struct AdminManager {
     db: Arc<Database>,
 }
 
-
-
 impl AdminManager {
     /// Create a new admin manager for system administration operations
     ///
@@ -516,12 +526,27 @@ impl AdminManager {
     /// ```rust
     /// use authenc::services::admin::AdminManager;
     /// use authenc::database::Database;
+    /// use authenc::config::DatabaseConfig;
     /// use std::sync::Arc;
     ///
-    /// let db = Arc::new(Database::new().await?);
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = DatabaseConfig {
+    ///     host: "localhost".to_string(),
+    ///     port: 5432,
+    ///     username: "postgres".to_string(),
+    ///     password: "password".to_string(),
+    ///     database: "authenc".to_string(),
+    ///     max_connections: 10,
+    ///     connection_timeout: 30,
+    ///     audit_log_url: None,
+    ///     connection_timeout_seconds: 30,
+    /// };
+    /// let db = Arc::new(Database::new(&config).await?);
     /// let admin = AdminManager::new(db);
     /// // Use admin for system management operations
     /// // let stats = admin.get_system_stats().await?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new(db: Arc<Database>) -> Self {
         Self { db }
@@ -641,7 +666,7 @@ impl AdminService for AdminManager {
                     enabled: user.enabled,
                     email_verified: user.email_verified,
                     realm_id: user.realm_id.unwrap_or_else(Uuid::new_v4),
-                    roles: vec![], // TODO: Get user roles
+                    roles: vec![],  // TODO: Get user roles
                     groups: vec![], // TODO: Get user groups
                     created_at: user.created_at,
                     last_login: user.last_login_at,
@@ -685,7 +710,7 @@ impl AdminService for AdminManager {
                     enabled: user.enabled,
                     email_verified: user.email_verified,
                     realm_id: user.realm_id.unwrap_or_else(Uuid::new_v4),
-                    roles: vec![], // TODO: Get user roles
+                    roles: vec![],  // TODO: Get user roles
                     groups: vec![], // TODO: Get user groups
                     created_at: user.created_at,
                     last_login: user.last_login_at,
@@ -716,11 +741,12 @@ impl AdminService for AdminManager {
                         id: role.id,
                         name: role.name,
                         description: role.description.unwrap_or_default(),
-                        realm_id: role.realm_id.unwrap_or_else(|| Uuid::new_v4()),
+                        realm_id: role.realm_id.unwrap_or_else(Uuid::new_v4),
                         composite: role.composite,
                         client_role: role.client_role,
                         container_id: role.client_id,
-                        attributes: role.attributes
+                        attributes: role
+                            .attributes
                             .and_then(|attrs| serde_json::from_value(attrs).ok())
                             .unwrap_or_default(),
                     });
@@ -738,18 +764,21 @@ impl AdminService for AdminManager {
             &request.name,
             Some(&request.description),
             &request.realm_id,
-        ).await {
+        )
+        .await
+        {
             Ok(role) => {
                 // Convert to admin response
                 Ok(RoleResponse {
                     id: role.id,
                     name: role.name,
                     description: role.description.unwrap_or_default(),
-                    realm_id: role.realm_id.unwrap_or_else(|| Uuid::new_v4()),
+                    realm_id: role.realm_id.unwrap_or_else(Uuid::new_v4),
                     composite: role.composite,
                     client_role: role.client_role,
                     container_id: role.client_id,
-                    attributes: role.attributes
+                    attributes: role
+                        .attributes
                         .and_then(|attrs| serde_json::from_value(attrs).ok())
                         .unwrap_or_default(),
                 })
@@ -805,8 +834,13 @@ impl AdminService for AdminManager {
         Ok(self.generate_zero_trust_dashboard(realm_id))
     }
 
-    async fn get_identity_providers(&self, realm_id: &Uuid) -> Result<Vec<IdentityProviderResponse>, String> {
-        match operations::identity_providers::get_identity_providers_by_realm(&self.db, *realm_id).await {
+    async fn get_identity_providers(
+        &self,
+        realm_id: &Uuid,
+    ) -> Result<Vec<IdentityProviderResponse>, String> {
+        match operations::identity_providers::get_identity_providers_by_realm(&self.db, *realm_id)
+            .await
+        {
             Ok(providers) => {
                 let responses = providers
                     .into_iter()
@@ -838,7 +872,10 @@ impl AdminService for AdminManager {
         }
     }
 
-    async fn create_identity_provider(&self, request: CreateIdentityProviderRequest) -> Result<IdentityProviderResponse, String> {
+    async fn create_identity_provider(
+        &self,
+        request: CreateIdentityProviderRequest,
+    ) -> Result<IdentityProviderResponse, String> {
         let provider_type_str = match request.provider_type {
             IdentityProviderType::SAML => "SAML",
             IdentityProviderType::OIDC => "OIDC",
@@ -859,7 +896,9 @@ impl AdminService for AdminManager {
             request.config,
             request.truststore_path.as_deref(),
             request.keystore_path.as_deref(),
-        ).await {
+        )
+        .await
+        {
             Ok(provider) => Ok(IdentityProviderResponse {
                 id: provider.id,
                 name: provider.name,
@@ -910,7 +949,9 @@ impl AdminService for AdminManager {
             request.config,
             request.truststore_path.as_deref(),
             request.keystore_path.as_deref(),
-        ).await {
+        )
+        .await
+        {
             Ok(provider) => Ok(IdentityProviderResponse {
                 id: provider.id,
                 name: provider.name,
@@ -937,14 +978,20 @@ impl AdminService for AdminManager {
     }
 
     async fn delete_identity_provider(&self, provider_id: &Uuid) -> Result<(), String> {
-        match operations::identity_providers::delete_identity_provider(&self.db, *provider_id).await {
+        match operations::identity_providers::delete_identity_provider(&self.db, *provider_id).await
+        {
             Ok(_) => Ok(()),
             Err(e) => Err(format!("Failed to delete identity provider: {}", e)),
         }
     }
 
-    async fn get_identity_provider(&self, provider_id: &Uuid) -> Result<IdentityProviderResponse, String> {
-        match operations::identity_providers::get_identity_provider_by_id(&self.db, *provider_id).await {
+    async fn get_identity_provider(
+        &self,
+        provider_id: &Uuid,
+    ) -> Result<IdentityProviderResponse, String> {
+        match operations::identity_providers::get_identity_provider_by_id(&self.db, *provider_id)
+            .await
+        {
             Ok(Some(provider)) => Ok(IdentityProviderResponse {
                 id: provider.id,
                 name: provider.name,
@@ -971,7 +1018,10 @@ impl AdminService for AdminManager {
         }
     }
 
-    async fn test_identity_provider(&self, provider_id: &Uuid) -> Result<TestIdentityProviderResponse, String> {
+    async fn test_identity_provider(
+        &self,
+        provider_id: &Uuid,
+    ) -> Result<TestIdentityProviderResponse, String> {
         // TODO: Implement actual identity provider testing
         // This would test the connection, validate certificates, etc.
         let _provider_id = provider_id; // Placeholder for future implementation

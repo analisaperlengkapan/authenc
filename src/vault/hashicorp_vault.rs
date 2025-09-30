@@ -40,7 +40,7 @@ impl HashiCorpVault {
     ///
     /// # Example
     /// ```rust
-    /// use authenc::vault::HashiCorpVault;
+    /// use authenc::vault::hashicorp_vault::HashiCorpVault;
     ///
     /// let vault = HashiCorpVault::new();
     /// // Vault is ready for HashiCorp Vault operations

@@ -39,12 +39,12 @@ use async_trait::async_trait;
 ///
 /// #[async_trait]
 /// impl AuditLogStore for DatabaseAuditStore {
-///     async fn add_log(&self, log: &AuditLog) -> Result<()> {
+///     async fn add_log(&self, log: &AuditLog) -> Result<(), anyhow::Error> {
 ///         // Store audit log in database
 ///         Ok(())
 ///     }
 ///     
-///     async fn all(&self) -> Result<Vec<AuditLog>> {
+///     async fn all(&self) -> Result<Vec<AuditLog>, anyhow::Error> {
 ///         // Retrieve all audit logs
 ///         Ok(vec![])
 ///     }
@@ -75,6 +75,7 @@ pub trait AuditLogStore: Send + Sync {
     /// use authenc::models::audit_log::AuditLog;
     /// use chrono::{DateTime, Utc};
     ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let audit_log = AuditLog {
     ///     timestamp: Utc::now(),
     ///     event: "user_login".to_string(),
@@ -83,7 +84,9 @@ pub trait AuditLogStore: Send + Sync {
     ///     status: "success".to_string(),
     ///     detail: Some("User logged in from web client".to_string()),
     /// };
-    /// audit_store.add_log(&audit_log).await?;
+    /// // audit_store.add_log(&audit_log).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     async fn add_log(&self, log: &AuditLog) -> Result<()>;
 
@@ -110,10 +113,13 @@ pub trait AuditLogStore: Send + Sync {
     ///
     /// # Example
     /// ```rust
-    /// let all_logs = audit_store.all().await?;
-    /// for log in all_logs {
-    ///     println!("Event: {} at {}", log.event, log.timestamp);
-    /// }
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// // let all_logs = audit_store.all().await?;
+    /// // for log in all_logs {
+    /// //     println!("Event: {} at {}", log.event, log.timestamp);
+    /// // }
+    /// # Ok(())
+    /// # }
     /// ```
     async fn all(&self) -> Result<Vec<AuditLog>>;
 }

@@ -206,4 +206,203 @@ mod tests {
         assert!(!fingerprint.is_empty());
         assert_eq!(fingerprint.len(), 64); // SHA-256 hex string length
     }
+
+    #[test]
+    fn test_extract_client_cert_info_no_headers() {
+        let headers = HeaderMap::new();
+        let result = extract_client_cert_info(&headers).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_client_cert_info_fingerprint_only() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-SSL-Client-Fingerprint",
+            HeaderValue::from_static("fingerprint123"),
+        );
+
+        let result = extract_client_cert_info(&headers).unwrap();
+        assert!(result.is_some());
+
+        let cert_info = result.unwrap();
+        assert_eq!(cert_info.fingerprint, "fingerprint123");
+        assert!(cert_info.subject.is_none());
+        assert!(cert_info.issuer.is_none());
+    }
+
+    #[test]
+    fn test_extract_client_cert_info_all_fields() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-SSL-Client-Fingerprint",
+            HeaderValue::from_static("fingerprint123"),
+        );
+        headers.insert(
+            "X-SSL-Client-Subject",
+            HeaderValue::from_static("CN=Test User,O=Test Org"),
+        );
+        headers.insert(
+            "X-SSL-Client-Issuer",
+            HeaderValue::from_static("CN=Test CA,O=Test Org"),
+        );
+
+        let result = extract_client_cert_info(&headers).unwrap();
+        assert!(result.is_some());
+
+        let cert_info = result.unwrap();
+        assert_eq!(cert_info.fingerprint, "fingerprint123");
+        assert_eq!(
+            cert_info.subject,
+            Some("CN=Test User,O=Test Org".to_string())
+        );
+        assert_eq!(cert_info.issuer, Some("CN=Test CA,O=Test Org".to_string()));
+    }
+
+    #[test]
+    fn test_extract_client_cert_info_base64_cert() {
+        let mut headers = HeaderMap::new();
+        // Add a base64 encoded certificate header
+        headers.insert(
+            "X-SSL-Client-Cert",
+            HeaderValue::from_static("dGVzdCBjZXJ0IGRhdGE="), // base64 of "test cert data"
+        );
+
+        let result = extract_client_cert_info(&headers).unwrap();
+        assert!(result.is_some());
+
+        let cert_info = result.unwrap();
+        // The fingerprint should be calculated from the decoded cert data
+        let expected_fingerprint = calculate_cert_fingerprint(b"test cert data");
+        assert_eq!(cert_info.fingerprint, expected_fingerprint);
+        assert!(cert_info.subject.is_none());
+        assert!(cert_info.issuer.is_none());
+    }
+
+    #[test]
+    fn test_extract_client_cert_info_invalid_base64() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-SSL-Client-Cert",
+            HeaderValue::from_static("invalid-base64!@#"),
+        );
+
+        let result = extract_client_cert_info(&headers);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_extract_client_cert_info_invalid_utf8() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-SSL-Client-Fingerprint",
+            HeaderValue::from_bytes(&[0xff, 0xfe]).unwrap(), // Invalid UTF-8
+        );
+
+        let result = extract_client_cert_info(&headers);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_validate_client_cert_no_restrictions() {
+        let config = SimpleMtlsConfig::dev_config();
+
+        let cert = ClientCertInfo {
+            fingerprint: "any-fingerprint".to_string(),
+            subject: None,
+            issuer: None,
+        };
+
+        assert!(validate_client_cert(&cert, &config));
+    }
+
+    #[test]
+    fn test_validate_client_cert_multiple_allowed() {
+        let config = SimpleMtlsConfig::prod_config(vec![
+            "allowed1".to_string(),
+            "allowed2".to_string(),
+            "allowed3".to_string(),
+        ]);
+
+        let allowed_cert1 = ClientCertInfo {
+            fingerprint: "allowed1".to_string(),
+            subject: None,
+            issuer: None,
+        };
+        assert!(validate_client_cert(&allowed_cert1, &config));
+
+        let allowed_cert2 = ClientCertInfo {
+            fingerprint: "allowed2".to_string(),
+            subject: None,
+            issuer: None,
+        };
+        assert!(validate_client_cert(&allowed_cert2, &config));
+
+        let denied_cert = ClientCertInfo {
+            fingerprint: "not-allowed".to_string(),
+            subject: None,
+            issuer: None,
+        };
+        assert!(!validate_client_cert(&denied_cert, &config));
+    }
+
+    #[test]
+    fn test_client_cert_info_debug() {
+        let cert_info = ClientCertInfo {
+            fingerprint: "test-fingerprint".to_string(),
+            subject: Some("CN=Test".to_string()),
+            issuer: Some("CN=CA".to_string()),
+        };
+
+        let debug_str = format!("{:?}", cert_info);
+        assert!(debug_str.contains("test-fingerprint"));
+        assert!(debug_str.contains("CN=Test"));
+        assert!(debug_str.contains("CN=CA"));
+    }
+
+    #[test]
+    fn test_simple_mtls_config_debug() {
+        let config = SimpleMtlsConfig {
+            require_client_cert: true,
+            allowed_client_fingerprints: vec!["fp1".to_string(), "fp2".to_string()],
+            trusted_ca_fingerprints: vec!["ca1".to_string()],
+        };
+
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("true"));
+        assert!(debug_str.contains("fp1"));
+        assert!(debug_str.contains("fp2"));
+        assert!(debug_str.contains("ca1"));
+    }
+
+    #[test]
+    fn test_calculate_cert_fingerprint_different_inputs() {
+        let data1 = b"test data 1";
+        let data2 = b"test data 2";
+        let data3 = b"test data 1"; // Same as data1
+
+        let fp1 = calculate_cert_fingerprint(data1);
+        let fp2 = calculate_cert_fingerprint(data2);
+        let fp3 = calculate_cert_fingerprint(data3);
+
+        assert_ne!(fp1, fp2);
+        assert_eq!(fp1, fp3); // Same input should produce same fingerprint
+        assert_eq!(fp1.len(), 64);
+        assert_eq!(fp2.len(), 64);
+        assert_eq!(fp3.len(), 64);
+    }
+
+    #[test]
+    fn test_calculate_cert_fingerprint_empty() {
+        let data = b"";
+        let fp = calculate_cert_fingerprint(data);
+        assert_eq!(fp.len(), 64);
+        // SHA-256 of empty string
+        assert_eq!(
+            fp,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
 }

@@ -1,45 +1,128 @@
 //! Service Provider Interface (SPI) architecture for Authenc
 //!
-//! This module provides the core SPI framework that enables pluggable components
+//! This module provides a pluggable component framework that enables pluggable components
 //! and enterprise extensibility, similar to Keycloak's SPI system.
 
 // Core SPI traits and interfaces
+/// Admin console SPI for managing administrative interfaces
 pub mod admin_console;
+/// Authentication SPI for handling user authentication flows
 pub mod authenticator;
+/// Component SPI for managing pluggable components
 pub mod component;
+/// Credential SPI for managing user credentials
 pub mod credential;
+/// Events SPI for handling audit and event logging
 pub mod events;
+/// Hostname SPI for managing hostname resolution
+pub mod hostname;
+/// Keys SPI for cryptographic key management
 pub mod keys;
+/// LDAP federation SPI for external directory integration
 pub mod ldap_federation;
+/// Locale SPI for internationalization support
 pub mod locale;
+/// Migration SPI for database schema migrations
+pub mod migration;
+/// Organization SPI for multi-tenant organization management
+pub mod organization;
+/// Policy SPI for password and security policies
 pub mod policy;
+/// Protocol mappers SPI for token claim mapping
 pub mod protocol_mappers;
+/// Required actions SPI for user registration flows
 pub mod required_actions;
+/// Rich authorization SPI for fine-grained access control
+pub mod rich_authorization;
+/// Sessions SPI for session management
 pub mod sessions;
+/// Social login SPI for OAuth/OIDC social providers
 pub mod social;
+/// Storage SPI for data persistence
 pub mod storage;
+/// Theme SPI for UI theming
 pub mod theme;
+/// User profile SPI for user attribute management
 pub mod userprofile;
+/// Validation SPI for input validation
 pub mod validation;
 
 // Re-export commonly used SPI items
-pub use admin_console::{AdminConsoleProvider, DefaultAdminConsoleProviderFactory, AdminConsoleSpi, AdminConsoleConfig, AdminConsoleFeature};
-pub use authenticator::{Authenticator, AuthenticatorProvider, AuthenticatorSpi, AuthenticatorConfig, AuthenticatorType, AuthenticationContext, AuthenticationResult, AuthenticationFlowType, DefaultAuthenticatorProviderFactory};
-pub use component::{ComponentFactory, ComponentFactoryProvider, ComponentSpi, ComponentModel, ComponentValidationException, SubComponentFactory};
-pub use credential::{CredentialProvider, CredentialProviderFactory, CredentialSpi, CredentialModel, CredentialTypeMetadata, CredentialMetadata};
-pub use events::{EventProvider, EventProviderFactory, EventsSpi, EventType, Event, AdminEvent};
-pub use keys::{KeyProvider, KeyManager, KeysSpi, KeyMetadata, RsaKeyMetadata, SecretKeyMetadata, KeyStatus, KeyMetadataTrait};
-pub use ldap_federation::{LdapFederationProvider, LdapFederationProviderFactory, LdapFederationSpi, LdapFederationConfig};
+pub use admin_console::{
+    AdminConsoleConfig, AdminConsoleFeature, AdminConsoleProvider, AdminConsoleSpi,
+    DefaultAdminConsoleProviderFactory,
+};
+pub use authenticator::{
+    AuthenticationContext, AuthenticationFlowType, AuthenticationResult, Authenticator,
+    AuthenticatorConfig, AuthenticatorProvider, AuthenticatorSpi, AuthenticatorType,
+    DefaultAuthenticatorProviderFactory,
+};
+pub use component::{
+    ComponentFactory, ComponentFactoryProvider, ComponentModel, ComponentSpi,
+    ComponentValidationException, SubComponentFactory,
+};
+pub use credential::{
+    CredentialMetadata, CredentialModel, CredentialProvider, CredentialProviderFactory,
+    CredentialSpi, CredentialTypeMetadata,
+};
+pub use events::{AdminEvent, Event, EventProvider, EventProviderFactory, EventType, EventsSpi};
+pub use hostname::{
+    DefaultHostnameProviderFactory, HostnameConfig, HostnameProvider, HostnameResolution,
+    HostnameSpi,
+};
+pub use keys::{
+    KeyManager, KeyMetadata, KeyMetadataTrait, KeyProvider, KeyStatus, KeysSpi, RsaKeyMetadata,
+    SecretKeyMetadata,
+};
+pub use ldap_federation::{
+    LdapFederationConfig, LdapFederationProvider, LdapFederationProviderFactory, LdapFederationSpi,
+};
 pub use locale::{LocaleProvider, LocaleProviderFactory, LocaleSpi};
-pub use policy::{PasswordPolicyProvider, PasswordPolicyManager, PolicySpi, PolicyError, PasswordPolicyConfigException};
-pub use protocol_mappers::{ProtocolMapper, ProtocolMapperProvider, ProtocolMapperSpi, ProtocolMapperConfig, ProtocolMapperType, ProtocolMapperContext, DefaultProtocolMapperProviderFactory};
-pub use required_actions::{RequiredActionProvider, RequiredActionProviderFactory, RequiredActionSpi, RequiredActionContext, RequiredActionResult, RequiredActionConfigProperty, RequiredActionPropertyType, DefaultRequiredActionProviderFactory};
-pub use sessions::{SessionProvider, SessionProviderFactory, SessionSpi, SessionProviderType, SessionQueryContext, DefaultSessionProviderFactory};
-pub use social::{SocialProvider, SocialProviderFactory, SocialProviderSpi, SocialProviderConfig, SocialProviderType, SocialUserProfile, OAuth2Token};
-pub use storage::{StorageProvider, StorageProviderFactory, StorageSpi, StorageProviderType, StorageQueryContext, DefaultStorageProviderFactory};
+pub use migration::{
+    DefaultMigrationProviderFactory, MigrationModel, MigrationProvider, MigrationSpi,
+    MigrationStatus, MigrationType,
+};
+pub use organization::{
+    DefaultOrganizationProviderFactory, OrganizationMemberModel, OrganizationModel,
+    OrganizationProvider, OrganizationRole, OrganizationSpi,
+};
+pub use policy::{
+    PasswordPolicyConfigException, PasswordPolicyManager, PasswordPolicyProvider, PolicyError,
+    PolicySpi,
+};
+pub use protocol_mappers::{
+    DefaultProtocolMapperProviderFactory, ProtocolMapper, ProtocolMapperConfig,
+    ProtocolMapperContext, ProtocolMapperProvider, ProtocolMapperSpi, ProtocolMapperType,
+};
+pub use required_actions::{
+    DefaultRequiredActionProviderFactory, RequiredActionConfigProperty, RequiredActionContext,
+    RequiredActionPropertyType, RequiredActionProvider, RequiredActionProviderFactory,
+    RequiredActionResult, RequiredActionSpi,
+};
+pub use rich_authorization::{
+    AuthorizationAction, AuthorizationAdvice, AuthorizationDecision, AuthorizationObligation,
+    AuthorizationResource, AuthorizationSubject, DefaultRichAuthorizationProviderFactory,
+    RichAuthorizationProvider, RichAuthorizationRequest, RichAuthorizationSpi,
+};
+pub use sessions::{
+    DefaultSessionProviderFactory, SessionProvider, SessionProviderFactory, SessionProviderType,
+    SessionQueryContext, SessionSpi,
+};
+pub use social::{
+    OAuth2Token, SocialProvider, SocialProviderConfig, SocialProviderFactory, SocialProviderSpi,
+    SocialProviderType, SocialUserProfile,
+};
+pub use storage::{
+    DefaultStorageProviderFactory, StorageProvider, StorageProviderFactory, StorageProviderType,
+    StorageQueryContext, StorageSpi,
+};
 pub use theme::{ThemeProvider, ThemeProviderFactory, ThemeSpi, ThemeType};
-pub use userprofile::{UserProfileProvider, UserProfileProviderFactory, UserProfileSpi, UserProfileContext};
-pub use validation::{ValidatorProvider, ValidatorProviderFactory, ValidationSpi, ValidationContext, ValidationResult};
+pub use userprofile::{
+    UserProfileContext, UserProfileProvider, UserProfileProviderFactory, UserProfileSpi,
+};
+pub use validation::{
+    ValidationContext, ValidationResult, ValidationSpi, ValidatorProvider, ValidatorProviderFactory,
+};
 
 use async_trait::async_trait;
 use std::any::Any;
@@ -68,7 +151,7 @@ pub trait Spi: Send + Sync {
 #[async_trait]
 pub trait Provider: Send + Sync {
     /// Close the provider and release resources
-    async fn close(&mut self) {}
+    fn close(&mut self) {}
 
     /// Get the provider as Any for downcasting
     fn as_any(&self) -> &dyn Any;
@@ -78,20 +161,19 @@ pub trait Provider: Send + Sync {
 }
 
 /// Provider factory trait for creating provider instances
-#[async_trait]
 pub trait ProviderFactory<T: Provider + ?Sized>: Send + Sync {
     /// Create a new provider instance
-    async fn create(&self, config: &ProviderConfig) -> Result<Box<T>, SpiError>;
+    fn create(&self, config: &ProviderConfig) -> Result<Box<T>, SpiError>;
 
     /// Initialize the factory
-    async fn init(&mut self, config: &ProviderConfig) -> Result<(), SpiError> {
+    fn init(&mut self, config: &ProviderConfig) -> Result<(), SpiError> {
         Ok(())
     }
 
     /// Close the factory and release resources
-    async fn close(&mut self) {}
+    fn close(&mut self) {}
 
-    /// Get the provider ID
+    /// Get the factory ID
     fn get_id(&self) -> &'static str;
 
     /// Get the provider name
@@ -178,30 +260,42 @@ pub struct ConfigProperty {
 /// Configuration property types
 #[derive(Debug, Clone)]
 pub enum ConfigPropertyType {
+    /// String configuration property
     String,
+    /// Integer configuration property
     Integer,
+    /// Boolean configuration property
     Boolean,
+    /// List configuration property
     List,
+    /// Password configuration property (masked)
     Password,
+    /// File configuration property
     File,
+    /// Multiline string configuration property
     MultilineString,
 }
 
 /// SPI-related errors
 #[derive(Debug, thiserror::Error)]
 pub enum SpiError {
+    /// Provider implementation not found
     #[error("Provider not found: {0}")]
     ProviderNotFound(String),
 
+    /// Provider initialization failed
     #[error("Provider initialization failed: {0}")]
     InitializationFailed(String),
 
+    /// Configuration error occurred
     #[error("Configuration error: {0}")]
     ConfigurationError(String),
 
+    /// Provider factory error occurred
     #[error("Provider factory error: {0}")]
     FactoryError(String),
 
+    /// SPI not registered in the system
     #[error("SPI not registered: {0}")]
     SpiNotRegistered(String),
 }
@@ -229,7 +323,7 @@ impl ProviderRegistry {
     ) {
         self.factories
             .entry(spi_name.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(Box::new(factory));
     }
 
@@ -250,14 +344,10 @@ impl ProviderRegistry {
     }
 
     /// Register a provider instance
-    pub fn register_provider<T: Provider + 'static>(
-        &mut self,
-        spi_name: &str,
-        provider: T,
-    ) {
+    pub fn register_provider<T: Provider + 'static>(&mut self, spi_name: &str, provider: T) {
         self.providers
             .entry(spi_name.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(Box::new(provider));
     }
 
@@ -278,10 +368,7 @@ impl ProviderRegistry {
     }
 
     /// Get the first provider for an SPI (by priority)
-    pub fn get_provider<T: Provider + 'static>(
-        &self,
-        spi_name: &str,
-    ) -> Result<&T, SpiError> {
+    pub fn get_provider<T: Provider + 'static>(&self, spi_name: &str) -> Result<&T, SpiError> {
         let providers = self.get_providers::<T>(spi_name)?;
         providers
             .first()
@@ -377,7 +464,7 @@ mod tests {
 
     #[async_trait]
     impl ProviderFactory<MockProvider> for MockFactory {
-        async fn create(&self, _config: &ProviderConfig) -> Result<Box<MockProvider>, SpiError> {
+        fn create(&self, _config: &ProviderConfig) -> Result<Box<MockProvider>, SpiError> {
             Ok(Box::new(MockProvider))
         }
 
@@ -393,7 +480,9 @@ mod tests {
 
         registry.register_factory("test", factory);
 
-        let factories = registry.get_factories::<MockFactory, MockProvider>("test").unwrap();
+        let factories = registry
+            .get_factories::<MockFactory, MockProvider>("test")
+            .unwrap();
         assert_eq!(factories.len(), 1);
         assert_eq!(factories[0].get_id(), "mock");
     }
@@ -404,6 +493,8 @@ mod tests {
 
         // Test registry access
         let registry = manager.registry();
-        assert!(registry.get_factories::<MockFactory, MockProvider>("nonexistent").is_err());
+        assert!(registry
+            .get_factories::<MockFactory, MockProvider>("nonexistent")
+            .is_err());
     }
 }

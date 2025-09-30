@@ -158,4 +158,189 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
     }
+
+    #[tokio::test]
+    async fn test_timeout_with_different_durations() {
+        // Test with very short timeout
+        let app = Router::new()
+            .route(
+                "/short",
+                get(|| async {
+                    sleep(Duration::from_millis(200)).await;
+                    "Should timeout"
+                }),
+            )
+            .layer(TimeoutLayer::new(Duration::from_millis(50)));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/short")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
+
+        // Test with longer timeout
+        let app = Router::new()
+            .route(
+                "/long",
+                get(|| async {
+                    sleep(Duration::from_millis(50)).await;
+                    "Should succeed"
+                }),
+            )
+            .layer(TimeoutLayer::new(Duration::from_millis(200)));
+
+        let response = app
+            .oneshot(Request::builder().uri("/long").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_timeout_middleware_function() {
+        let app = Router::new()
+            .route(
+                "/",
+                get(|| async {
+                    sleep(Duration::from_millis(200)).await;
+                    "Should timeout"
+                }),
+            )
+            .layer(axum::middleware::from_fn(timeout_middleware));
+
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        // Should use default timeout (30 seconds), so this should succeed
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_timeout_with_custom_extension() {
+        let app = Router::new()
+            .route(
+                "/",
+                get(|| async {
+                    sleep(Duration::from_millis(200)).await;
+                    "Should timeout"
+                }),
+            )
+            .layer(axum::middleware::from_fn(
+                |mut req: Request, next: Next| async move {
+                    // Set a very short timeout via extension
+                    req.extensions_mut().insert(Duration::from_millis(50));
+                    timeout_middleware(req, next).await
+                },
+            ));
+
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
+    }
+
+    #[tokio::test]
+    async fn test_timeout_response_body() {
+        let app = Router::new()
+            .route(
+                "/",
+                get(|| async {
+                    sleep(Duration::from_millis(200)).await;
+                    "Should timeout"
+                }),
+            )
+            .layer(TimeoutLayer::new(Duration::from_millis(50)));
+
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
+
+        // Check that the response body contains the timeout message
+        let body = response.into_body();
+        let bytes = http_body_util::BodyExt::collect(body)
+            .await
+            .unwrap()
+            .to_bytes();
+        let body_str = String::from_utf8(bytes.to_vec()).unwrap();
+        assert_eq!(body_str, "Request timed out");
+    }
+
+    #[tokio::test]
+    async fn test_timeout_layer_creation() {
+        let layer = TimeoutLayer::new(Duration::from_secs(10));
+        assert_eq!(layer.timeout, Duration::from_secs(10));
+    }
+
+    #[tokio::test]
+    async fn test_timeout_middleware_debug() {
+        let layer = TimeoutLayer::new(Duration::from_secs(5));
+        let debug_str = format!("{:?}", layer);
+        assert!(debug_str.contains("TimeoutLayer"));
+        assert!(debug_str.contains("5s"));
+    }
+
+    #[tokio::test]
+    async fn test_timeout_boundary_condition() {
+        // Test timeout that occurs exactly at the boundary
+        let app = Router::new()
+            .route(
+                "/",
+                get(|| async {
+                    sleep(Duration::from_millis(100)).await;
+                    "Completed just in time"
+                }),
+            )
+            .layer(TimeoutLayer::new(Duration::from_millis(150)));
+
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        // Should succeed since sleep is shorter than timeout
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_multiple_requests_with_timeout() {
+        let app = Router::new()
+            .route("/fast", get(|| async { "Fast response" }))
+            .route(
+                "/slow",
+                get(|| async {
+                    sleep(Duration::from_millis(200)).await;
+                    "Slow response"
+                }),
+            )
+            .layer(TimeoutLayer::new(Duration::from_millis(50)));
+
+        // Fast request should succeed
+        let response = app
+            .clone()
+            .oneshot(Request::builder().uri("/fast").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Slow request should timeout
+        let response = app
+            .oneshot(Request::builder().uri("/slow").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
+    }
 }

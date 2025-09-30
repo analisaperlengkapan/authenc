@@ -1,7 +1,7 @@
 use authenc::config::DatabaseConfig;
 use authenc::database::Database;
-use authenc::services::kafka_audit_log_sink::KafkaAuditLogSink;
 use authenc::models::audit_log::AuditLog;
+use authenc::services::kafka_audit_log_sink::KafkaAuditLogSink;
 use std::sync::Arc;
 
 #[cfg(test)]
@@ -81,13 +81,16 @@ mod tests {
             user_id: Some("user123".to_string()),
             client_id: Some("client456".to_string()),
             status: "success".to_string(),
-            detail: Some(serde_json::json!({
-                "action": "login",
-                "method": "password",
-                "device_fingerprint": "abc123",
-                "ip_address": "192.168.1.100",
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }).to_string()),
+            detail: Some(
+                serde_json::json!({
+                    "action": "login",
+                    "method": "password",
+                    "device_fingerprint": "abc123",
+                    "ip_address": "192.168.1.100",
+                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                })
+                .to_string(),
+            ),
         };
 
         assert!(!audit_log.timestamp.to_string().is_empty());
@@ -200,7 +203,10 @@ mod tests {
         let valid_configs = vec![
             ("localhost:9092", "authenc.audit.logs"),
             ("kafka1:9092,kafka2:9092", "audit.logs"),
-            ("192.168.1.100:9092,192.168.1.101:9092,192.168.1.102:9092", "security.events"),
+            (
+                "192.168.1.100:9092,192.168.1.101:9092,192.168.1.102:9092",
+                "security.events",
+            ),
         ];
 
         for (brokers, topic) in valid_configs {
@@ -213,14 +219,19 @@ mod tests {
 
         // Test invalid configurations
         let invalid_configs = vec![
-            ("", "valid.topic"), // Empty brokers
-            ("localhost:9092", ""), // Empty topic
+            ("", "valid.topic"),                 // Empty brokers
+            ("localhost:9092", ""),              // Empty topic
             ("localhost:9092", "invalid topic"), // Topic with space
-            ("invalid.brokers", "valid.topic"), // Invalid broker format
+            ("invalid.brokers", "valid.topic"),  // Invalid broker format
         ];
 
         for (brokers, topic) in invalid_configs {
-            assert!(brokers.is_empty() || topic.is_empty() || topic.contains(" ") || !brokers.contains(":"));
+            assert!(
+                brokers.is_empty()
+                    || topic.is_empty()
+                    || topic.contains(" ")
+                    || !brokers.contains(":")
+            );
         }
     }
 
@@ -269,7 +280,10 @@ mod tests {
 
         // Test key generation (user_id or default)
         for log in &test_logs {
-            let key = log.user_id.clone().unwrap_or_else(|| "anonymous".to_string());
+            let key = log
+                .user_id
+                .clone()
+                .unwrap_or_else(|| "anonymous".to_string());
             assert!(!key.is_empty());
 
             if log.user_id.is_some() {
@@ -306,8 +320,8 @@ mod tests {
         // Test error scenarios
         let error_scenarios = vec![
             ("invalid.broker:9092", "test.topic"), // Invalid broker
-            ("", "test.topic"), // Empty broker
-            ("localhost:9092", ""), // Empty topic
+            ("", "test.topic"),                    // Empty broker
+            ("localhost:9092", ""),                // Empty topic
         ];
 
         for (brokers, topic) in error_scenarios {

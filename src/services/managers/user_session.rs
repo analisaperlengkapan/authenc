@@ -6,32 +6,47 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use crate::error::{Result, AuthencError as Error};
-use crate::models::session::Session;
+use crate::error::{AuthencError as Error, Result};
 
 /// User session state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSessionState {
+    /// Unique session identifier
     pub session_id: String,
+    /// User identifier
     pub user_id: String,
+    /// Realm identifier
     pub realm_id: String,
+    /// Session creation timestamp
     pub created_at: i64,
+    /// Last access timestamp
     pub last_access: i64,
+    /// Session expiration timestamp
     pub expires_at: i64,
+    /// Client sessions associated with this user session
     pub client_sessions: HashMap<String, ClientSessionState>,
+    /// Session notes
     pub notes: HashMap<String, String>,
+    /// Whether this is an offline session
     pub is_offline: bool,
 }
 
+/// State of a client session within a user session
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientSessionState {
+    /// Client identifier
     pub client_id: String,
+    /// Session identifier
     pub session_id: String,
+    /// Client session creation timestamp
     pub created_at: i64,
+    /// Last access timestamp for this client session
     pub last_access: i64,
+    /// Client session expiration timestamp
     pub expires_at: i64,
+    /// Client session notes
     pub notes: HashMap<String, String>,
 }
 
@@ -56,17 +71,22 @@ pub trait UserSessionManager: Send + Sync {
     async fn remove_user_session(&self, session_id: &str) -> Result<()>;
 
     /// Get user sessions for a user
-    async fn get_user_sessions(&self, user_id: &str, realm_id: &str) -> Result<Vec<UserSessionState>>;
+    async fn get_user_sessions(
+        &self,
+        user_id: &str,
+        realm_id: &str,
+    ) -> Result<Vec<UserSessionState>>;
 
     /// Create client session for user session
-    async fn create_client_session(
+    async fn create_client_session(&self, user_session_id: &str, client_id: &str)
+        -> Result<String>;
+
+    /// Get client session
+    async fn get_client_session(
         &self,
         user_session_id: &str,
         client_id: &str,
-    ) -> Result<String>;
-
-    /// Get client session
-    async fn get_client_session(&self, user_session_id: &str, client_id: &str) -> Result<Option<ClientSessionState>>;
+    ) -> Result<Option<ClientSessionState>>;
 
     /// Remove client session
     async fn remove_client_session(&self, user_session_id: &str, client_id: &str) -> Result<()>;
@@ -86,6 +106,7 @@ pub struct DefaultUserSessionManager {
 }
 
 impl DefaultUserSessionManager {
+    /// Create a new default user session manager with default timeouts
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
@@ -94,6 +115,7 @@ impl DefaultUserSessionManager {
         }
     }
 
+    /// Create a new default user session manager with custom timeouts
     pub fn with_timeouts(session_timeout: Duration, offline_session_timeout: Duration) -> Self {
         Self {
             sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
@@ -162,9 +184,14 @@ impl UserSessionManager for DefaultUserSessionManager {
         Ok(())
     }
 
-    async fn get_user_sessions(&self, user_id: &str, realm_id: &str) -> Result<Vec<UserSessionState>> {
+    async fn get_user_sessions(
+        &self,
+        user_id: &str,
+        realm_id: &str,
+    ) -> Result<Vec<UserSessionState>> {
         let sessions = self.sessions.read().await;
-        let user_sessions = sessions.values()
+        let user_sessions = sessions
+            .values()
             .filter(|s| s.user_id == user_id && s.realm_id == realm_id)
             .cloned()
             .collect();
@@ -190,7 +217,9 @@ impl UserSessionManager for DefaultUserSessionManager {
 
         let mut sessions = self.sessions.write().await;
         if let Some(user_session) = sessions.get_mut(user_session_id) {
-            user_session.client_sessions.insert(client_id.to_string(), client_session);
+            user_session
+                .client_sessions
+                .insert(client_id.to_string(), client_session);
         } else {
             return Err(Error::resource_not_found("User session not found"));
         }
@@ -198,7 +227,11 @@ impl UserSessionManager for DefaultUserSessionManager {
         Ok(client_session_id)
     }
 
-    async fn get_client_session(&self, user_session_id: &str, client_id: &str) -> Result<Option<ClientSessionState>> {
+    async fn get_client_session(
+        &self,
+        user_session_id: &str,
+        client_id: &str,
+    ) -> Result<Option<ClientSessionState>> {
         let sessions = self.sessions.read().await;
         if let Some(user_session) = sessions.get(user_session_id) {
             Ok(user_session.client_sessions.get(client_id).cloned())

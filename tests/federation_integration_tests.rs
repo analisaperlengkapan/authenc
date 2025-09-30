@@ -37,7 +37,8 @@ impl FederationTestState {
 async fn mock_saml_idp(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let saml_request = payload.get("saml_request")
+    let saml_request = payload
+        .get("saml_request")
         .and_then(|v| v.as_str())
         .ok_or(StatusCode::BAD_REQUEST)?;
 
@@ -123,7 +124,8 @@ async fn mock_saml_idp(
 async fn mock_oidc_idp(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let redirect_uri = payload.get("redirect_uri")
+    let redirect_uri = payload
+        .get("redirect_uri")
         .and_then(|v| v.as_str())
         .ok_or(StatusCode::BAD_REQUEST)?;
 
@@ -141,7 +143,8 @@ async fn mock_oidc_idp(
 async fn mock_oidc_token(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let code = payload.get("code")
+    let code = payload
+        .get("code")
         .and_then(|v| v.as_str())
         .ok_or(StatusCode::BAD_REQUEST)?;
 
@@ -183,10 +186,7 @@ async fn test_saml_federation_jit_provisioning() {
         "saml_request": "test-saml-request-123"
     });
 
-    let response = server
-        .post("/saml/idp")
-        .json(&saml_request)
-        .await;
+    let response = server.post("/saml/idp").json(&saml_request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
 
@@ -220,10 +220,7 @@ async fn test_oidc_federation_flow() {
         "state": "test-state-123"
     });
 
-    let response = server
-        .post("/oidc/idp/auth")
-        .json(&auth_request)
-        .await;
+    let response = server.post("/oidc/idp/auth").json(&auth_request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
 
@@ -238,10 +235,7 @@ async fn test_oidc_federation_flow() {
         "redirect_uri": "http://localhost:8080/auth/realms/test/broker/oidc/callback"
     });
 
-    let token_response = server
-        .post("/oidc/idp/token")
-        .json(&token_request)
-        .await;
+    let token_response = server.post("/oidc/idp/token").json(&token_request).await;
 
     assert_eq!(token_response.status_code(), StatusCode::OK);
 
@@ -261,27 +255,33 @@ async fn test_federated_identity_linking() {
     let user_id = Uuid::new_v4().to_string();
     {
         let mut users = state.users.lock().await;
-        users.insert(user_id.clone(), json!({
-            "id": user_id,
-            "username": "existinguser",
-            "email": "existing@example.com",
-            "federated": false
-        }));
+        users.insert(
+            user_id.clone(),
+            json!({
+                "id": user_id,
+                "username": "existinguser",
+                "email": "existing@example.com",
+                "federated": false
+            }),
+        );
     }
 
     // Simulate federated identity creation
     let fed_id = Uuid::new_v4().to_string();
     {
         let mut fed_identities = state.federated_identities.lock().await;
-        fed_identities.insert(fed_id.clone(), json!({
-            "id": fed_id,
-            "user_id": user_id,
-            "identity_provider_id": Uuid::new_v4().to_string(),
-            "external_id": "ext-user-123",
-            "external_username": "feduser",
-            "external_email": "fed@example.com",
-            "last_login_at": chrono::Utc::now().to_rfc3339()
-        }));
+        fed_identities.insert(
+            fed_id.clone(),
+            json!({
+                "id": fed_id,
+                "user_id": user_id,
+                "identity_provider_id": Uuid::new_v4().to_string(),
+                "external_id": "ext-user-123",
+                "external_username": "feduser",
+                "external_email": "fed@example.com",
+                "last_login_at": chrono::Utc::now().to_rfc3339()
+            }),
+        );
     }
 
     // Verify the linking
@@ -305,18 +305,21 @@ async fn test_identity_provider_management() {
     let provider_id = Uuid::new_v4().to_string();
     {
         let mut providers = state.identity_providers.lock().await;
-        providers.insert(provider_id.clone(), json!({
-            "id": provider_id,
-            "name": "Test SAML Provider",
-            "provider_type": "SAML",
-            "enabled": true,
-            "config": {
-                "entity_id": "http://test-idp.example.com",
-                "sso_url": "http://test-idp.example.com/sso",
-                "certificate": "test-cert"
-            },
-            "realm_id": Uuid::new_v4().to_string()
-        }));
+        providers.insert(
+            provider_id.clone(),
+            json!({
+                "id": provider_id,
+                "name": "Test SAML Provider",
+                "provider_type": "SAML",
+                "enabled": true,
+                "config": {
+                    "entity_id": "http://test-idp.example.com",
+                    "sso_url": "http://test-idp.example.com/sso",
+                    "certificate": "test-cert"
+                },
+                "realm_id": Uuid::new_v4().to_string()
+            }),
+        );
     }
 
     // Verify provider creation
@@ -338,38 +341,41 @@ async fn test_multi_protocol_federation() {
     let state = FederationTestState::new();
 
     let app = Router::new()
-        .route("/federate", post(|Json(payload): Json<serde_json::Value>| async move {
-            // Mock unified federation endpoint
-            match payload.get("protocol").and_then(|v| v.as_str()) {
-                Some("saml") => Json(json!({
-                    "protocol": "saml",
-                    "status": "authenticated",
-                    "user": {
-                        "username": "saml-user",
-                        "email": "saml@example.com"
-                    }
-                })),
-                Some("oidc") => Json(json!({
-                    "protocol": "oidc",
-                    "status": "authenticated",
-                    "user": {
-                        "username": "oidc-user",
-                        "email": "oidc@example.com"
-                    }
-                })),
-                Some("oauth2") => Json(json!({
-                    "protocol": "oauth2",
-                    "status": "authenticated",
-                    "user": {
-                        "username": "oauth2-user",
-                        "email": "oauth2@example.com"
-                    }
-                })),
-                _ => Json(json!({
-                    "error": "Unsupported protocol"
-                }))
-            }
-        }))
+        .route(
+            "/federate",
+            post(|Json(payload): Json<serde_json::Value>| async move {
+                // Mock unified federation endpoint
+                match payload.get("protocol").and_then(|v| v.as_str()) {
+                    Some("saml") => Json(json!({
+                        "protocol": "saml",
+                        "status": "authenticated",
+                        "user": {
+                            "username": "saml-user",
+                            "email": "saml@example.com"
+                        }
+                    })),
+                    Some("oidc") => Json(json!({
+                        "protocol": "oidc",
+                        "status": "authenticated",
+                        "user": {
+                            "username": "oidc-user",
+                            "email": "oidc@example.com"
+                        }
+                    })),
+                    Some("oauth2") => Json(json!({
+                        "protocol": "oauth2",
+                        "status": "authenticated",
+                        "user": {
+                            "username": "oauth2-user",
+                            "email": "oauth2@example.com"
+                        }
+                    })),
+                    _ => Json(json!({
+                        "error": "Unsupported protocol"
+                    })),
+                }
+            }),
+        )
         .with_state(state.clone());
 
     let server = TestServer::new(app).unwrap();
@@ -414,36 +420,39 @@ async fn test_jit_provisioning_workflow() {
     let state = FederationTestState::new();
 
     let app = Router::new()
-        .route("/jit/provision", post(|Json(payload): Json<serde_json::Value>| async move {
-            // Mock JIT provisioning endpoint
-            let external_user = payload.get("external_user").unwrap();
+        .route(
+            "/jit/provision",
+            post(|Json(payload): Json<serde_json::Value>| async move {
+                // Mock JIT provisioning endpoint
+                let external_user = payload.get("external_user").unwrap();
 
-            // Simulate user creation
-            let user_id = Uuid::new_v4().to_string();
-            let fed_identity_id = Uuid::new_v4().to_string();
+                // Simulate user creation
+                let user_id = Uuid::new_v4().to_string();
+                let fed_identity_id = Uuid::new_v4().to_string();
 
-            Json(json!({
-                "user": {
-                    "id": user_id,
-                    "username": external_user["username"],
-                    "email": external_user["email"],
-                    "first_name": external_user["first_name"],
-                    "last_name": external_user["last_name"],
-                    "federated": true,
-                    "created_at": chrono::Utc::now().to_rfc3339()
-                },
-                "federated_identity": {
-                    "id": fed_identity_id,
-                    "user_id": user_id,
-                    "identity_provider_id": payload["identity_provider_id"],
-                    "external_id": external_user["external_id"],
-                    "external_username": external_user["username"],
-                    "external_email": external_user["email"],
-                    "created_at": chrono::Utc::now().to_rfc3339()
-                },
-                "created": true
-            }))
-        }))
+                Json(json!({
+                    "user": {
+                        "id": user_id,
+                        "username": external_user["username"],
+                        "email": external_user["email"],
+                        "first_name": external_user["first_name"],
+                        "last_name": external_user["last_name"],
+                        "federated": true,
+                        "created_at": chrono::Utc::now().to_rfc3339()
+                    },
+                    "federated_identity": {
+                        "id": fed_identity_id,
+                        "user_id": user_id,
+                        "identity_provider_id": payload["identity_provider_id"],
+                        "external_id": external_user["external_id"],
+                        "external_username": external_user["username"],
+                        "external_email": external_user["email"],
+                        "created_at": chrono::Utc::now().to_rfc3339()
+                    },
+                    "created": true
+                }))
+            }),
+        )
         .with_state(state.clone());
 
     let server = TestServer::new(app).unwrap();
@@ -460,10 +469,7 @@ async fn test_jit_provisioning_workflow() {
         }
     });
 
-    let response = server
-        .post("/jit/provision")
-        .json(&jit_request)
-        .await;
+    let response = server.post("/jit/provision").json(&jit_request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
 
@@ -491,27 +497,30 @@ async fn test_federation_error_handling() {
     let state = FederationTestState::new();
 
     let app = Router::new()
-        .route("/federate/error", post(|Json(payload): Json<serde_json::Value>| async move {
-            // Mock error scenarios
-            match payload.get("error_type").and_then(|v| v.as_str()) {
-                Some("invalid_token") => Json(json!({
-                    "error": "invalid_token",
-                    "error_description": "The access token is invalid"
-                })),
-                Some("expired_token") => Json(json!({
-                    "error": "expired_token",
-                    "error_description": "The access token has expired"
-                })),
-                Some("invalid_saml") => Json(json!({
-                    "error": "invalid_saml_response",
-                    "error_description": "SAML response validation failed"
-                })),
-                _ => Json(json!({
-                    "error": "unknown_error",
-                    "error_description": "An unknown error occurred"
-                }))
-            }
-        }))
+        .route(
+            "/federate/error",
+            post(|Json(payload): Json<serde_json::Value>| async move {
+                // Mock error scenarios
+                match payload.get("error_type").and_then(|v| v.as_str()) {
+                    Some("invalid_token") => Json(json!({
+                        "error": "invalid_token",
+                        "error_description": "The access token is invalid"
+                    })),
+                    Some("expired_token") => Json(json!({
+                        "error": "expired_token",
+                        "error_description": "The access token has expired"
+                    })),
+                    Some("invalid_saml") => Json(json!({
+                        "error": "invalid_saml_response",
+                        "error_description": "SAML response validation failed"
+                    })),
+                    _ => Json(json!({
+                        "error": "unknown_error",
+                        "error_description": "An unknown error occurred"
+                    })),
+                }
+            }),
+        )
         .with_state(state.clone());
 
     let server = TestServer::new(app).unwrap();
@@ -525,7 +534,10 @@ async fn test_federation_error_handling() {
     assert_eq!(response.status_code(), StatusCode::OK);
     let error_json: serde_json::Value = response.json();
     assert_eq!(error_json["error"], "invalid_token");
-    assert!(error_json["error_description"].as_str().unwrap().contains("invalid"));
+    assert!(error_json["error_description"]
+        .as_str()
+        .unwrap()
+        .contains("invalid"));
 
     // Test expired token error
     let response = server
@@ -536,5 +548,8 @@ async fn test_federation_error_handling() {
     assert_eq!(response.status_code(), StatusCode::OK);
     let error_json: serde_json::Value = response.json();
     assert_eq!(error_json["error"], "expired_token");
-    assert!(error_json["error_description"].as_str().unwrap().contains("expired"));
+    assert!(error_json["error_description"]
+        .as_str()
+        .unwrap()
+        .contains("expired"));
 }

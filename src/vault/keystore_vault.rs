@@ -40,7 +40,7 @@ impl KeystoreVault {
     ///
     /// # Example
     /// ```rust
-    /// use authenc::vault::KeystoreVault;
+    /// use authenc::vault::keystore_vault::KeystoreVault;
     ///
     /// let vault = KeystoreVault::new();
     /// // Vault is ready for Java KeyStore operations

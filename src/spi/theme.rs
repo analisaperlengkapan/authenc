@@ -3,9 +3,10 @@
 //! Provides theming capabilities for login, account, and admin consoles.
 
 use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
-use async_trait::async_trait;
 use std::any::Any;
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 
 /// Theme SPI implementation
 pub struct ThemeSpi;
@@ -31,11 +32,17 @@ impl Spi for ThemeSpi {
 /// Theme types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThemeType {
+    /// Login theme type
     Login,
+    /// Account theme type
     Account,
+    /// Admin theme type
     Admin,
+    /// Email theme type
     Email,
+    /// Welcome theme type
     Welcome,
+    /// Common theme type
     Common,
 }
 
@@ -54,36 +61,38 @@ impl ThemeType {
 }
 
 /// Theme provider interface
-#[async_trait]
 pub trait ThemeProvider: Provider {
     /// Get the theme name
     fn get_theme_name(&self) -> &str;
 
     /// Get theme resources for a specific type and locale
-    async fn get_theme_resources(
+    fn get_theme_resources(
         &self,
         theme_type: ThemeType,
-        locale: Option<&str>,
-    ) -> Result<Vec<ThemeResource>, ThemeError>;
+        locale: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<ThemeResource>, ThemeError>> + Send>>;
 
     /// Get a specific theme resource
-    async fn get_theme_resource(
+    fn get_theme_resource(
         &self,
         theme_type: ThemeType,
-        path: &str,
-        locale: Option<&str>,
-    ) -> Result<Option<ThemeResource>, ThemeError>;
+        path: String,
+        locale: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<ThemeResource>, ThemeError>> + Send>>;
 
     /// Check if theme has a specific resource
-    async fn has_theme_resource(
+    fn has_theme_resource(
         &self,
         theme_type: ThemeType,
-        path: &str,
-        locale: Option<&str>,
-    ) -> Result<bool, ThemeError>;
+        path: String,
+        locale: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, ThemeError>> + Send>>;
 
     /// Get available locales for a theme type
-    async fn get_theme_locales(&self, theme_type: ThemeType) -> Result<Vec<String>, ThemeError>;
+    fn get_theme_locales(
+        &self,
+        theme_type: ThemeType,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<String>, ThemeError>> + Send>>;
 }
 
 /// Theme resource representation
@@ -100,7 +109,6 @@ pub struct ThemeResource {
 }
 
 /// Theme provider factory
-#[async_trait]
 pub trait ThemeProviderFactory: ProviderFactory<dyn ThemeProvider> {
     /// Get the theme name
     fn get_theme_name(&self) -> &str;
@@ -117,18 +125,23 @@ pub trait ThemeProviderFactory: ProviderFactory<dyn ThemeProvider> {
 /// Theme-related errors
 #[derive(Debug, thiserror::Error)]
 pub enum ThemeError {
+    /// Theme not found
     #[error("Theme not found: {0}")]
     ThemeNotFound(String),
 
+    /// Theme resource not found
     #[error("Theme resource not found: {0}")]
     ResourceNotFound(String),
 
+    /// Theme loading error
     #[error("Theme loading error: {0}")]
     LoadingError(String),
 
+    /// Invalid theme configuration
     #[error("Invalid theme configuration: {0}")]
     ConfigurationError(String),
 
+    /// I/O error
     #[error("I/O error: {0}")]
     IoError(#[from] std::io::Error),
 }
@@ -154,52 +167,64 @@ impl DefaultThemeProvider {
     }
 }
 
-#[async_trait]
 impl ThemeProvider for DefaultThemeProvider {
     fn get_theme_name(&self) -> &str {
         &self.name
     }
 
-    async fn get_theme_resources(
+    fn get_theme_resources(
         &self,
         theme_type: ThemeType,
-        _locale: Option<&str>,
-    ) -> Result<Vec<ThemeResource>, ThemeError> {
-        // Filter resources by theme type prefix
-        let prefix = format!("{}/", theme_type.as_str());
-        let resources = self
-            .resources
-            .iter()
-            .filter(|(path, _)| path.starts_with(&prefix))
-            .map(|(_, resource)| resource.clone())
-            .collect();
+        _locale: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<ThemeResource>, ThemeError>> + Send>> {
+        let resources = self.resources.clone();
+        Box::pin(async move {
+            // Filter resources by theme type prefix
+            let prefix = format!("{}/", theme_type.as_str());
+            let resources = resources
+                .iter()
+                .filter(|(path, _)| path.starts_with(&prefix))
+                .map(|(_, resource)| resource.clone())
+                .collect();
 
-        Ok(resources)
+            Ok(resources)
+        })
     }
 
-    async fn get_theme_resource(
+    fn get_theme_resource(
         &self,
         theme_type: ThemeType,
-        path: &str,
-        _locale: Option<&str>,
-    ) -> Result<Option<ThemeResource>, ThemeError> {
-        let full_path = format!("{}/{}", theme_type.as_str(), path);
-        Ok(self.resources.get(&full_path).cloned())
+        path: String,
+        _locale: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<ThemeResource>, ThemeError>> + Send>> {
+        let resources = self.resources.clone();
+        Box::pin(async move {
+            let full_path = format!("{}/{}", theme_type.as_str(), path);
+            Ok(resources.get(&full_path).cloned())
+        })
     }
 
-    async fn has_theme_resource(
+    fn has_theme_resource(
         &self,
         theme_type: ThemeType,
-        path: &str,
-        _locale: Option<&str>,
-    ) -> Result<bool, ThemeError> {
-        let full_path = format!("{}/{}", theme_type.as_str(), path);
-        Ok(self.resources.contains_key(&full_path))
+        path: String,
+        _locale: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, ThemeError>> + Send>> {
+        let resources = self.resources.clone();
+        Box::pin(async move {
+            let full_path = format!("{}/{}", theme_type.as_str(), path);
+            Ok(resources.contains_key(&full_path))
+        })
     }
 
-    async fn get_theme_locales(&self, _theme_type: ThemeType) -> Result<Vec<String>, ThemeError> {
-        // Default implementation returns English only
-        Ok(vec!["en".to_string()])
+    fn get_theme_locales(
+        &self,
+        _theme_type: ThemeType,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<String>, ThemeError>> + Send>> {
+        Box::pin(async move {
+            // Default implementation returns English only
+            Ok(vec!["en".to_string()])
+        })
     }
 }
 
@@ -225,12 +250,8 @@ impl DefaultThemeProviderFactory {
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn ThemeProvider> for DefaultThemeProviderFactory {
-    async fn create(
-        &self,
-        _config: &ProviderConfig,
-    ) -> Result<Box<dyn ThemeProvider>, SpiError> {
+    fn create(&self, _config: &ProviderConfig) -> Result<Box<dyn ThemeProvider>, SpiError> {
         let mut provider = DefaultThemeProvider::new(self.theme_name.clone());
 
         // Add some basic theme resources
@@ -309,13 +330,13 @@ mod tests {
         assert_eq!(resources.len(), 1);
 
         let resource = provider
-            .get_theme_resource(ThemeType::Login, "test.ftl", None)
+            .get_theme_resource(ThemeType::Login, "test.ftl".to_string(), None)
             .await
             .unwrap();
         assert!(resource.is_some());
 
         let has_resource = provider
-            .has_theme_resource(ThemeType::Login, "test.ftl", None)
+            .has_theme_resource(ThemeType::Login, "test.ftl".to_string(), None)
             .await
             .unwrap();
         assert!(has_resource);

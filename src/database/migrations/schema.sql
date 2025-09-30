@@ -221,6 +221,22 @@ CREATE TABLE IF NOT EXISTS oauth2_access_tokens (
 );
 
 -- ============================================================================
+-- USER CONSENT TABLES
+-- ============================================================================
+
+-- User consents for GDPR compliance
+CREATE TABLE IF NOT EXISTS user_consents (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id VARCHAR(255) NOT NULL,
+    scopes TEXT[] NOT NULL DEFAULT '{}',
+    granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ,
+    metadata JSONB,
+    UNIQUE(user_id, client_id)
+);
+
+-- ============================================================================
 -- SAML TABLES
 -- ============================================================================
 

@@ -383,7 +383,10 @@ impl OrganizationService {
         Ok(())
     }
 
-    async fn get_invitation_by_token(&self, _token: &str) -> Result<Option<OrganizationInvitation>> {
+    async fn get_invitation_by_token(
+        &self,
+        _token: &str,
+    ) -> Result<Option<OrganizationInvitation>> {
         // In production, retrieve from database
         Ok(None)
     }

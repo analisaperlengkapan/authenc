@@ -96,17 +96,29 @@ impl Default for AdminConsoleConfig {
 /// Admin console features
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AdminConsoleFeature {
+    /// Users management feature
     Users,
+    /// Groups management feature
     Groups,
+    /// Roles management feature
     Roles,
+    /// Clients management feature
     Clients,
+    /// Identity providers management feature
     IdentityProviders,
+    /// Realm settings management feature
     RealmSettings,
+    /// Events management feature
     Events,
+    /// Sessions management feature
     Sessions,
+    /// Authentication management feature
     Authentication,
+    /// Authorization management feature
     Authorization,
+    /// Account management feature
     Account,
+    /// Extensions management feature
     Extensions,
 }
 
@@ -147,21 +159,25 @@ impl AdminConsoleProvider for DefaultAdminConsoleProvider {
     }
 
     fn get_supported_features(&self) -> Vec<AdminConsoleFeature> {
-        self.config.features.iter().filter_map(|f| match f.as_str() {
-            "users" => Some(AdminConsoleFeature::Users),
-            "groups" => Some(AdminConsoleFeature::Groups),
-            "roles" => Some(AdminConsoleFeature::Roles),
-            "clients" => Some(AdminConsoleFeature::Clients),
-            "identity-providers" => Some(AdminConsoleFeature::IdentityProviders),
-            "realm-settings" => Some(AdminConsoleFeature::RealmSettings),
-            "events" => Some(AdminConsoleFeature::Events),
-            "sessions" => Some(AdminConsoleFeature::Sessions),
-            "authentication" => Some(AdminConsoleFeature::Authentication),
-            "authorization" => Some(AdminConsoleFeature::Authorization),
-            "account" => Some(AdminConsoleFeature::Account),
-            "extensions" => Some(AdminConsoleFeature::Extensions),
-            _ => None,
-        }).collect()
+        self.config
+            .features
+            .iter()
+            .filter_map(|f| match f.as_str() {
+                "users" => Some(AdminConsoleFeature::Users),
+                "groups" => Some(AdminConsoleFeature::Groups),
+                "roles" => Some(AdminConsoleFeature::Roles),
+                "clients" => Some(AdminConsoleFeature::Clients),
+                "identity-providers" => Some(AdminConsoleFeature::IdentityProviders),
+                "realm-settings" => Some(AdminConsoleFeature::RealmSettings),
+                "events" => Some(AdminConsoleFeature::Events),
+                "sessions" => Some(AdminConsoleFeature::Sessions),
+                "authentication" => Some(AdminConsoleFeature::Authentication),
+                "authorization" => Some(AdminConsoleFeature::Authorization),
+                "account" => Some(AdminConsoleFeature::Account),
+                "extensions" => Some(AdminConsoleFeature::Extensions),
+                _ => None,
+            })
+            .collect()
     }
 
     fn get_theme(&self) -> &str {
@@ -176,6 +192,12 @@ impl AdminConsoleProvider for DefaultAdminConsoleProvider {
 /// Admin console provider factory
 pub struct DefaultAdminConsoleProviderFactory;
 
+impl Default for DefaultAdminConsoleProviderFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultAdminConsoleProviderFactory {
     /// Create a new default admin console provider factory
     pub fn new() -> Self {
@@ -183,12 +205,8 @@ impl DefaultAdminConsoleProviderFactory {
     }
 }
 
-#[async_trait]
 impl crate::spi::ProviderFactory<dyn AdminConsoleProvider> for DefaultAdminConsoleProviderFactory {
-    async fn create(
-        &self,
-        config: &ProviderConfig,
-    ) -> Result<Box<dyn AdminConsoleProvider>, SpiError> {
+    fn create(&self, config: &ProviderConfig) -> Result<Box<dyn AdminConsoleProvider>, SpiError> {
         let console_config = if let Some(global_config) = &config.global_config {
             // Try to extract admin console config from global config
             if let Some(app_config) = global_config.downcast_ref::<crate::config::AppConfig>() {
@@ -259,7 +277,7 @@ mod tests {
         let factory = DefaultAdminConsoleProviderFactory::new();
         let config = ProviderConfig::new();
 
-        let provider = factory.create(&config).await.unwrap();
+        let provider = factory.create(&config).unwrap();
         assert_eq!(provider.get_base_url(), "/admin");
         assert!(provider.is_enabled());
     }

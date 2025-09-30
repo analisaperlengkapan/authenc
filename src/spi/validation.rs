@@ -3,7 +3,6 @@
 //! Provides comprehensive validation framework with built-in validators.
 
 use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
-use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
@@ -49,33 +48,20 @@ pub struct ValidationResult {
 }
 
 /// Validator provider interface
-#[async_trait]
 pub trait ValidatorProvider: Provider {
     /// Validate a single value
-    async fn validate_value(
+    fn validate_value(
         &self,
-        value: &str,
-        context: &ValidationContext,
+        value: String,
+        context: ValidationContext,
     ) -> Result<ValidationResult, ValidationError>;
 
     /// Validate multiple values
-    async fn validate_values(
+    fn validate_values(
         &self,
-        values: &[String],
-        context: &ValidationContext,
-    ) -> Result<ValidationResult, ValidationError> {
-        // Default implementation validates each value individually
-        for value in values {
-            let result = self.validate_value(value, context).await?;
-            if !result.is_valid {
-                return Ok(result);
-            }
-        }
-        Ok(ValidationResult {
-            is_valid: true,
-            error_message: None,
-        })
-    }
+        values: Vec<String>,
+        context: ValidationContext,
+    ) -> Result<ValidationResult, ValidationError>;
 
     /// Get validator ID
     fn get_id(&self) -> &'static str;
@@ -114,13 +100,15 @@ pub struct ValidatorConfigProperty {
 /// Validator property types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ValidatorPropertyType {
+    /// String property type
     String,
+    /// Integer property type
     Integer,
+    /// Boolean property type
     Boolean,
 }
 
 /// Validator provider factory
-#[async_trait]
 pub trait ValidatorProviderFactory: ProviderFactory<dyn ValidatorProvider> {
     /// Get validator ID
     fn get_id(&self) -> &'static str;
@@ -129,12 +117,15 @@ pub trait ValidatorProviderFactory: ProviderFactory<dyn ValidatorProvider> {
 /// Validation errors
 #[derive(Debug, thiserror::Error)]
 pub enum ValidationError {
+    /// Validation configuration error
     #[error("Validation configuration error: {0}")]
     ConfigurationError(String),
 
+    /// Validator not found
     #[error("Validator not found: {0}")]
     ValidatorNotFound(String),
 
+    /// Validation failed
     #[error("Validation failed: {0}")]
     ValidationFailed(String),
 }
@@ -146,12 +137,11 @@ pub mod validators {
     /// Email validator
     pub struct EmailValidator;
 
-    #[async_trait]
     impl ValidatorProvider for EmailValidator {
-        async fn validate_value(
+        fn validate_value(
             &self,
-            value: &str,
-            _context: &ValidationContext,
+            value: String,
+            _context: ValidationContext,
         ) -> Result<ValidationResult, ValidationError> {
             // Simple email validation regex
             let email_regex = Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -166,6 +156,23 @@ pub mod validators {
                 } else {
                     Some("Invalid email format".to_string())
                 },
+            })
+        }
+
+        fn validate_values(
+            &self,
+            values: Vec<String>,
+            context: ValidationContext,
+        ) -> Result<ValidationResult, ValidationError> {
+            for value in values {
+                let result = self.validate_value(value, context.clone())?;
+                if !result.is_valid {
+                    return Ok(result);
+                }
+            }
+            Ok(ValidationResult {
+                is_valid: true,
+                error_message: None,
             })
         }
 
@@ -191,18 +198,21 @@ pub mod validators {
     /// Length validator
     pub struct LengthValidator;
 
-    #[async_trait]
     impl ValidatorProvider for LengthValidator {
-        async fn validate_value(
+        fn validate_value(
             &self,
-            value: &str,
-            context: &ValidationContext,
+            value: String,
+            context: ValidationContext,
         ) -> Result<ValidationResult, ValidationError> {
-            let min = context.config.get("min")
+            let min = context
+                .config
+                .get("min")
                 .and_then(|s| s.parse::<usize>().ok())
                 .unwrap_or(0);
 
-            let max = context.config.get("max")
+            let max = context
+                .config
+                .get("max")
                 .and_then(|s| s.parse::<usize>().ok())
                 .unwrap_or(usize::MAX);
 
@@ -223,6 +233,23 @@ pub mod validators {
             Ok(ValidationResult {
                 is_valid,
                 error_message,
+            })
+        }
+
+        fn validate_values(
+            &self,
+            values: Vec<String>,
+            context: ValidationContext,
+        ) -> Result<ValidationResult, ValidationError> {
+            for value in values {
+                let result = self.validate_value(value, context.clone())?;
+                if !result.is_valid {
+                    return Ok(result);
+                }
+            }
+            Ok(ValidationResult {
+                is_valid: true,
+                error_message: None,
             })
         }
 
@@ -271,20 +298,21 @@ pub mod validators {
     /// Pattern validator (regex)
     pub struct PatternValidator;
 
-    #[async_trait]
     impl ValidatorProvider for PatternValidator {
-        async fn validate_value(
+        fn validate_value(
             &self,
-            value: &str,
-            context: &ValidationContext,
+            value: String,
+            context: ValidationContext,
         ) -> Result<ValidationResult, ValidationError> {
-            let pattern = context.config.get("pattern")
-                .ok_or_else(|| ValidationError::ConfigurationError("Pattern is required".to_string()))?;
+            let pattern = context.config.get("pattern").ok_or_else(|| {
+                ValidationError::ConfigurationError("Pattern is required".to_string())
+            })?;
 
-            let regex = Regex::new(pattern)
-                .map_err(|e| ValidationError::ConfigurationError(format!("Invalid regex pattern: {}", e)))?;
+            let regex = Regex::new(pattern).map_err(|e| {
+                ValidationError::ConfigurationError(format!("Invalid regex pattern: {}", e))
+            })?;
 
-            let is_valid = regex.is_match(value);
+            let is_valid = regex.is_match(&value);
 
             Ok(ValidationResult {
                 is_valid,
@@ -293,6 +321,23 @@ pub mod validators {
                 } else {
                     Some("Value does not match required pattern".to_string())
                 },
+            })
+        }
+
+        fn validate_values(
+            &self,
+            values: Vec<String>,
+            context: ValidationContext,
+        ) -> Result<ValidationResult, ValidationError> {
+            for value in values {
+                let result = self.validate_value(value, context.clone())?;
+                if !result.is_valid {
+                    return Ok(result);
+                }
+            }
+            Ok(ValidationResult {
+                is_valid: true,
+                error_message: None,
             })
         }
 
@@ -309,15 +354,13 @@ pub mod validators {
         }
 
         fn get_config_properties(&self) -> Vec<ValidatorConfigProperty> {
-            vec![
-                ValidatorConfigProperty {
-                    name: "pattern".to_string(),
-                    label: "Regular Expression".to_string(),
-                    property_type: ValidatorPropertyType::String,
-                    default_value: None,
-                    help_text: Some("Regular expression pattern to match".to_string()),
-                },
-            ]
+            vec![ValidatorConfigProperty {
+                name: "pattern".to_string(),
+                label: "Regular Expression".to_string(),
+                property_type: ValidatorPropertyType::String,
+                default_value: None,
+                help_text: Some("Regular expression pattern to match".to_string()),
+            }]
         }
     }
 
@@ -334,14 +377,13 @@ pub mod validators {
     /// URI validator
     pub struct UriValidator;
 
-    #[async_trait]
     impl ValidatorProvider for UriValidator {
-        async fn validate_value(
+        fn validate_value(
             &self,
-            value: &str,
-            _context: &ValidationContext,
+            value: String,
+            _context: ValidationContext,
         ) -> Result<ValidationResult, ValidationError> {
-            let is_valid = url::Url::parse(value).is_ok();
+            let is_valid = url::Url::parse(&value).is_ok();
 
             Ok(ValidationResult {
                 is_valid,
@@ -350,6 +392,23 @@ pub mod validators {
                 } else {
                     Some("Invalid URI format".to_string())
                 },
+            })
+        }
+
+        fn validate_values(
+            &self,
+            values: Vec<String>,
+            context: ValidationContext,
+        ) -> Result<ValidationResult, ValidationError> {
+            for value in values {
+                let result = self.validate_value(value, context.clone())?;
+                if !result.is_valid {
+                    return Ok(result);
+                }
+            }
+            Ok(ValidationResult {
+                is_valid: true,
+                error_message: None,
             })
         }
 
@@ -375,12 +434,11 @@ pub mod validators {
     /// Not blank validator
     pub struct NotBlankValidator;
 
-    #[async_trait]
     impl ValidatorProvider for NotBlankValidator {
-        async fn validate_value(
+        fn validate_value(
             &self,
-            value: &str,
-            _context: &ValidationContext,
+            value: String,
+            _context: ValidationContext,
         ) -> Result<ValidationResult, ValidationError> {
             let is_valid = !value.trim().is_empty();
 
@@ -391,6 +449,23 @@ pub mod validators {
                 } else {
                     Some("Value cannot be blank".to_string())
                 },
+            })
+        }
+
+        fn validate_values(
+            &self,
+            values: Vec<String>,
+            context: ValidationContext,
+        ) -> Result<ValidationResult, ValidationError> {
+            for value in values {
+                let result = self.validate_value(value, context.clone())?;
+                if !result.is_valid {
+                    return Ok(result);
+                }
+            }
+            Ok(ValidationResult {
+                is_valid: true,
+                error_message: None,
             })
         }
 
@@ -416,12 +491,11 @@ pub mod validators {
     /// Not empty validator
     pub struct NotEmptyValidator;
 
-    #[async_trait]
     impl ValidatorProvider for NotEmptyValidator {
-        async fn validate_value(
+        fn validate_value(
             &self,
-            value: &str,
-            _context: &ValidationContext,
+            value: String,
+            _context: ValidationContext,
         ) -> Result<ValidationResult, ValidationError> {
             let is_valid = !value.is_empty();
 
@@ -432,6 +506,23 @@ pub mod validators {
                 } else {
                     Some("Value cannot be empty".to_string())
                 },
+            })
+        }
+
+        fn validate_values(
+            &self,
+            values: Vec<String>,
+            context: ValidationContext,
+        ) -> Result<ValidationResult, ValidationError> {
+            for value in values {
+                let result = self.validate_value(value, context.clone())?;
+                if !result.is_valid {
+                    return Ok(result);
+                }
+            }
+            Ok(ValidationResult {
+                is_valid: true,
+                error_message: None,
             })
         }
 
@@ -458,6 +549,12 @@ pub mod validators {
 /// Default validation provider factory
 pub struct DefaultValidationProviderFactory;
 
+impl Default for DefaultValidationProviderFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultValidationProviderFactory {
     /// Create a new default validation provider factory
     pub fn new() -> Self {
@@ -465,12 +562,8 @@ impl DefaultValidationProviderFactory {
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn ValidatorProvider> for DefaultValidationProviderFactory {
-    async fn create(
-        &self,
-        _config: &ProviderConfig,
-    ) -> Result<Box<dyn ValidatorProvider>, SpiError> {
+    fn create(&self, _config: &ProviderConfig) -> Result<Box<dyn ValidatorProvider>, SpiError> {
         // Return a composite validator that includes all built-in validators
         Ok(Box::new(CompositeValidatorProvider::new()))
     }
@@ -489,6 +582,12 @@ impl ValidatorProviderFactory for DefaultValidationProviderFactory {
 /// Composite validator provider that includes all built-in validators
 pub struct CompositeValidatorProvider {
     validators: HashMap<String, Box<dyn ValidatorProvider>>,
+}
+
+impl Default for CompositeValidatorProvider {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CompositeValidatorProvider {
@@ -530,14 +629,23 @@ impl CompositeValidatorProvider {
     }
 }
 
-#[async_trait]
 impl ValidatorProvider for CompositeValidatorProvider {
-    async fn validate_value(
+    fn validate_value(
         &self,
-        value: &str,
-        context: &ValidationContext,
+        _value: String,
+        _context: ValidationContext,
     ) -> Result<ValidationResult, ValidationError> {
         // This is a composite provider, validation should be done by individual validators
+        Err(ValidationError::ValidationFailed(
+            "Use individual validators for validation".to_string(),
+        ))
+    }
+
+    fn validate_values(
+        &self,
+        _values: Vec<String>,
+        _context: ValidationContext,
+    ) -> Result<ValidationResult, ValidationError> {
         Err(ValidationError::ValidationFailed(
             "Use individual validators for validation".to_string(),
         ))
@@ -558,7 +666,7 @@ impl Provider for CompositeValidatorProvider {
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
-            self
+        self
     }
 }
 
@@ -566,24 +674,28 @@ impl Provider for CompositeValidatorProvider {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_email_validator() {
+    #[test]
+    fn test_email_validator() {
         let validator = validators::EmailValidator;
         let context = ValidationContext {
             config: HashMap::new(),
             attributes: HashMap::new(),
         };
 
-        let result = validator.validate_value("test@example.com", &context).await.unwrap();
+        let result = validator
+            .validate_value("test@example.com".to_string(), context.clone())
+            .unwrap();
         assert!(result.is_valid);
 
-        let result = validator.validate_value("invalid-email", &context).await.unwrap();
+        let result = validator
+            .validate_value("invalid-email".to_string(), context.clone())
+            .unwrap();
         assert!(!result.is_valid);
         assert!(result.error_message.is_some());
     }
 
-    #[tokio::test]
-    async fn test_length_validator() {
+    #[test]
+    fn test_length_validator() {
         let validator = validators::LengthValidator;
         let mut context = ValidationContext {
             config: HashMap::new(),
@@ -593,35 +705,47 @@ mod tests {
         context.config.insert("min".to_string(), "3".to_string());
         context.config.insert("max".to_string(), "10".to_string());
 
-        let result = validator.validate_value("test", &context).await.unwrap();
+        let result = validator
+            .validate_value("test".to_string(), context.clone())
+            .unwrap();
         assert!(result.is_valid);
 
-        let result = validator.validate_value("hi", &context).await.unwrap();
+        let result = validator
+            .validate_value("hi".to_string(), context.clone())
+            .unwrap();
         assert!(!result.is_valid);
 
-        let result = validator.validate_value("thisisaverylongstring", &context).await.unwrap();
+        let result = validator
+            .validate_value("thisisaverylongstring".to_string(), context.clone())
+            .unwrap();
         assert!(!result.is_valid);
     }
 
-    #[tokio::test]
-    async fn test_pattern_validator() {
+    #[test]
+    fn test_pattern_validator() {
         let validator = validators::PatternValidator;
         let mut context = ValidationContext {
             config: HashMap::new(),
             attributes: HashMap::new(),
         };
 
-        context.config.insert("pattern".to_string(), r"^\d{3}-\d{2}-\d{4}$".to_string());
+        context
+            .config
+            .insert("pattern".to_string(), r"^\d{3}-\d{2}-\d{4}$".to_string());
 
-        let result = validator.validate_value("123-45-6789", &context).await.unwrap();
+        let result = validator
+            .validate_value("123-45-6789".to_string(), context.clone())
+            .unwrap();
         assert!(result.is_valid);
 
-        let result = validator.validate_value("invalid", &context).await.unwrap();
+        let result = validator
+            .validate_value("invalid".to_string(), context.clone())
+            .unwrap();
         assert!(!result.is_valid);
     }
 
-    #[tokio::test]
-    async fn test_composite_validator_provider() {
+    #[test]
+    fn test_composite_validator_provider() {
         let provider = CompositeValidatorProvider::new();
 
         assert!(provider.get_validator("email").is_some());

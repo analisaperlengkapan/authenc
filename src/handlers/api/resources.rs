@@ -1,13 +1,11 @@
 use axum::{
     extract::{Query, State},
-    http::{HeaderMap, StatusCode},
     response::Json,
     routing::get,
     Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::error::AuthencError;
 use crate::models::resource::ResourceResponse;
@@ -15,10 +13,7 @@ use crate::services::permission_ticket_store::{PermissionTicketStore, Permission
 use crate::services::resource_store::{ResourceStore, ResourceStoreTrait};
 
 /// Create resources management routes for account console
-pub fn create_resources_routes() -> Router<(
-    Arc<ResourceStore>,
-    Arc<PermissionTicketStore>,
-)> {
+pub fn create_resources_routes() -> Router<(Arc<ResourceStore>, Arc<PermissionTicketStore>)> {
     Router::new()
         .route("/resources", get(get_resources))
         .route("/resources/shared-with-me", get(get_shared_with_me))
@@ -29,17 +24,17 @@ pub fn create_resources_routes() -> Router<(
 /// Query parameters for resource listing
 #[derive(Deserialize)]
 pub struct ResourceQuery {
+    /// Optional name filter for resources
     pub name: Option<String>,
+    /// Starting index for pagination
     pub first: Option<i32>,
+    /// Maximum number of results to return
     pub max: Option<i32>,
 }
 
 /// Get resources owned by the current user
 pub async fn get_resources(
-    State((resource_store, _)): State<(
-        Arc<ResourceStore>,
-        Arc<PermissionTicketStore>,
-    )>,
+    State((resource_store, _)): State<(Arc<ResourceStore>, Arc<PermissionTicketStore>)>,
     Query(query): Query<ResourceQuery>,
 ) -> Result<Json<ResourcesResponse>, AuthencError> {
     // TODO: Get current user from authentication context
@@ -61,10 +56,7 @@ pub async fn get_resources(
 
 /// Get resources shared with the current user
 pub async fn get_shared_with_me(
-    State((resource_store, ticket_store)): State<(
-        Arc<ResourceStore>,
-        Arc<PermissionTicketStore>,
-    )>,
+    State((resource_store, ticket_store)): State<(Arc<ResourceStore>, Arc<PermissionTicketStore>)>,
     Query(query): Query<ResourceQuery>,
 ) -> Result<Json<ResourcesResponse>, AuthencError> {
     // TODO: Get current user from authentication context
@@ -100,10 +92,7 @@ pub async fn get_shared_with_me(
 
 /// Get resources owned by the current user that are shared with others
 pub async fn get_shared_with_others(
-    State((resource_store, ticket_store)): State<(
-        Arc<ResourceStore>,
-        Arc<PermissionTicketStore>,
-    )>,
+    State((resource_store, ticket_store)): State<(Arc<ResourceStore>, Arc<PermissionTicketStore>)>,
     Query(query): Query<ResourceQuery>,
 ) -> Result<Json<ResourcesResponse>, AuthencError> {
     // TODO: Get current user from authentication context
@@ -134,10 +123,7 @@ pub async fn get_shared_with_others(
 
 /// Get pending permission requests for the current user
 pub async fn get_pending_requests(
-    State((resource_store, ticket_store)): State<(
-        Arc<ResourceStore>,
-        Arc<PermissionTicketStore>,
-    )>,
+    State((resource_store, ticket_store)): State<(Arc<ResourceStore>, Arc<PermissionTicketStore>)>,
     Query(query): Query<ResourceQuery>,
 ) -> Result<Json<ResourcesResponse>, AuthencError> {
     // TODO: Get current user from authentication context

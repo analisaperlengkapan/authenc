@@ -1,11 +1,10 @@
 // Re-export axum router for convenience
 use axum::{
+    response::Html,
     routing::{get, post},
-    Router, response::Html,
+    Router,
 };
 use std::sync::Arc;
-
-use crate::middleware::auth_middleware_axum::auth_layer;
 
 // Database
 use crate::app::AppState;
@@ -16,6 +15,8 @@ async fn account_console_handler() -> Html<&'static str> {
 }
 
 // Handlers
+/// Consent UI handlers for user consent management
+pub mod consent_ui;
 /// Health check handlers for Axum web framework
 pub mod health_axum;
 /// JWT token handling with Ed25519 signatures for enhanced security
@@ -59,13 +60,15 @@ pub mod device;
 pub mod federated_auth;
 /// SPI-based federation handlers for LDAP and social providers
 pub mod spi_federation;
-             // pub mod oauth2_comprehensive; // Commented out - already declared above
-             // pub mod organization;
+/// SPI management handlers for enterprise features
+pub mod spi_management;
+// pub mod oauth2_comprehensive; // Commented out - already declared above
+// pub mod organization;
 /// SAML authentication handlers
 pub mod saml;
 /// Social login handlers
 pub mod social;
-             // pub mod webauthn;
+// pub mod webauthn;
 /// OpenID for Verifiable Credentials (OID4VC) handlers
 pub mod oid4vc;
 /// Zero Trust security model handlers and endpoints
@@ -84,17 +87,26 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     let oauth2_state = Arc::new(oauth2_comprehensive::OAuth2AppState {
         database: db_state.clone(),
         oauth2_stores,
+        consent_store: state.consent_store.clone(),
     });
+
+    // Create OAuth2 test router without authentication
+    let oauth2_test_router = Router::new()
+        .route(
+            "/oauth2/authorize/test",
+            get(oauth2_comprehensive::test_oauth2_authorize),
+        )
+        .route(
+            "/oauth2/token/test",
+            post(oauth2_comprehensive::test_oauth2_token),
+        )
+        .with_state(oauth2_state.clone());
 
     // Create OAuth2 router with combined state
     let oauth2_router = Router::new()
         .route(
             "/.well-known/oauth-authorization-server",
             get(oauth2_comprehensive::oauth2_discovery),
-        )
-        .route(
-            "/oauth2/authorize",
-            get(oauth2_comprehensive::oauth2_authorize),
         )
         .route("/oauth2/token", post(oauth2_comprehensive::oauth2_token))
         .route(
@@ -107,12 +119,25 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/oauth2/userinfo",
             get(oauth2_comprehensive::oauth2_userinfo),
         )
-        .with_state(oauth2_state);
+        .layer(axum::middleware::from_fn_with_state(
+            Arc::new(crate::middleware::auth_middleware_axum::AuthState {
+                jwt_secret: state.config.security.jwt_secret.clone(),
+            }),
+            crate::middleware::auth_middleware_axum::auth_middleware,
+        ))
+        .with_state(oauth2_state.clone());
 
     let mut router = Router::new()
         .route("/health", get(health_axum::health))
         .route("/ready", get(health_axum::ready))
         .route("/live", get(health_axum::live))
+        // OAuth2 authorization endpoint (accessible without auth)
+        .nest(
+            "/oauth2",
+            Router::new()
+                .route("/authorize", get(oauth2_comprehensive::oauth2_authorize))
+                .with_state(oauth2_state.clone()),
+        )
         // Legacy OIDC Endpoints with Ed25519 security
         .route(
             "/.well-known/openid_configuration",
@@ -122,13 +147,34 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/oidc/token", post(oidc_ed25519::oidc_token_ed25519))
         .route("/oidc/jwks", get(oidc_ed25519::oidc_jwks_ed25519))
         .route("/oidc/userinfo", get(oidc_ed25519::oidc_userinfo_ed25519))
-        // Merge OAuth2 router
+        // Merge OAuth2 test router (without auth)
+        .merge(oauth2_test_router)
+        // Merge OAuth2 router (with auth for token/userinfo endpoints)
         .merge(oauth2_router)
+        // Test consent routes (without auth)
+        .merge(consent_ui::create_test_consent_routes().with_state(state.clone()))
+        // Consent UI routes (with auth)
+        .merge(
+            consent_ui::create_consent_routes()
+                .layer(axum::middleware::from_fn_with_state(
+                    Arc::new(crate::middleware::auth_middleware_axum::AuthState {
+                        jwt_secret: state.config.security.jwt_secret.clone(),
+                    }),
+                    crate::middleware::auth_middleware_axum::auth_middleware,
+                ))
+                .with_state(state.clone()),
+        )
         // OAuth 2.0 Dynamic Client Registration (RFC 7591/7592)
-        .nest("/oauth2", client_registration::create_client_registration_routes().with_state(state.clone()))
+        .nest(
+            "/oauth2",
+            client_registration::create_client_registration_routes().with_state(state.clone()),
+        )
         // Advanced Services API routes
         // Social login routes
-        .nest("/api/v1/auth/social", social::create_social_routes().with_state(state.clone()))
+        .nest(
+            "/api/v1/auth/social",
+            social::create_social_routes().with_state(state.clone()),
+        )
         // Temporarily disabled authorization routes due to Axum migration
         // .nest(
         //     "/api/v1/auth/authorization",
@@ -152,6 +198,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .nest(
             "/api/v1/auth/federation",
             spi_federation::create_federation_routes().with_state(state.clone()),
+        )
+        // SPI management routes for enterprise features
+        .nest(
+            "/api/v1/admin/spi",
+            spi_management::create_spi_management_routes().with_state(state.clone()),
         )
         .nest("/api/v1/admin", admin::create_admin_routes())
         // API routes for realms, users, roles, permissions
@@ -183,6 +234,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/auth",
             api::auth::create_auth_routes().with_state(state.clone()),
         )
+        // .nest(
+        //     "/api/v1/auth",
+        //     api::auth_flow::create_auth_flow_routes().with_state(state.clone()),
+        // )
         .nest(
             "/api/v1",
             api::events::create_event_routes().with_state(state.clone()),
@@ -220,10 +275,20 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .nest(
             "/api/v1/auth",
-            api::account_credentials::create_account_credentials_routes().with_state(api::account_credentials::AccountCredentialsState {
-                user_store: state.user_store.clone(),
-                totp_store: state.totp_store.clone(),
-            }),
+            api::account::create_consent_routes().with_state(state.clone()),
+        )
+        // .nest(
+        //     "/api/v1/auth",
+        //     api::auth_flow::create_auth_flow_routes().with_state(state.clone()),
+        // )
+        .nest(
+            "/api/v1/auth",
+            api::account_credentials::create_account_credentials_routes().with_state(
+                api::account_credentials::AccountCredentialsState {
+                    user_store: state.user_store.clone(),
+                    totp_store: state.totp_store.clone(),
+                },
+            ),
         )
         // Temporarily disabled organization routes due to Axum migration
         // .nest(
@@ -234,17 +299,24 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // .nest("/api/v1/devices", device::create_device_routes())
         // Temporarily disabled SAML routes due to Axum migration
         // .nest("/saml", saml::create_saml_routes())
-        .nest("/oid4vc", oid4vc::create_oid4vc_router().with_state(state.clone()))
+        .nest(
+            "/oid4vc",
+            oid4vc::create_oid4vc_router().with_state(state.clone()),
+        )
         .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()));
 
     // Static file serving for Account Console UI
-    router = router.nest_service("/static", tower_http::services::ServeDir::new("static"))
+    router = router
+        .nest_service("/static", tower_http::services::ServeDir::new("static"))
         .route("/account", get(account_console_handler));
 
     // Admin Console UI routes
     #[cfg(feature = "admin_console")]
     {
-        router = router.nest("/admin/console", crate::admin_console::create_admin_console_routes(state.clone(), db_state.clone()));
+        router = router.nest(
+            "/admin/console",
+            crate::admin_console::create_admin_console_routes(state.clone(), db_state.clone()),
+        );
     }
 
     router.with_state(db_state)

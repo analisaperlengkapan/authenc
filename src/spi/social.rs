@@ -4,20 +4,27 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::error::{Result, AuthencError as Error};
-use crate::models::User;
-use crate::spi::{Provider, ProviderFactory, Spi, ProviderConfig, SpiError};
+use crate::error::{AuthencError as Error, Result};
+use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
 
 /// Social provider types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SocialProviderType {
+    /// Google OAuth provider
     Google,
+    /// Facebook OAuth provider
     Facebook,
+    /// Twitter OAuth provider
     Twitter,
+    /// GitHub OAuth provider
     GitHub,
+    /// LinkedIn OAuth provider
     LinkedIn,
+    /// Microsoft OAuth provider
     Microsoft,
+    /// Apple OAuth provider
     Apple,
+    /// Custom OAuth provider with custom name
     Custom(String),
 }
 
@@ -191,10 +198,12 @@ pub trait SocialProviderFactory: ProviderFactory<dyn SocialProvider> {
 
 /// Default implementation of social provider
 pub struct DefaultSocialProvider {
+    /// Provider configuration
     config: SocialProviderConfig,
 }
 
 impl DefaultSocialProvider {
+    /// Create a new default social provider with the given configuration
     pub fn new(config: SocialProviderConfig) -> Self {
         Self { config }
     }
@@ -202,7 +211,7 @@ impl DefaultSocialProvider {
 
 #[async_trait]
 impl Provider for DefaultSocialProvider {
-    async fn close(&mut self) -> () {
+    fn close(&mut self) {
         // Close connections
     }
 
@@ -227,13 +236,22 @@ impl SocialProvider for DefaultSocialProvider {
 
     async fn get_authorization_url(&self, state: &str, redirect_uri: &str) -> Result<String> {
         // Build OAuth2 authorization URL
-        let mut url = url::Url::parse(&self.config.authorization_url)
-            .map_err(|e| Error::ConfigurationError { message: e.to_string() })?;
+        let mut url = url::Url::parse(&self.config.authorization_url).map_err(|e| {
+            Error::ConfigurationError {
+                message: e.to_string(),
+            }
+        })?;
 
         url.query_pairs_mut()
             .append_pair("client_id", &self.config.client_id)
             .append_pair("response_type", "code")
-            .append_pair("scope", self.config.scope.as_deref().unwrap_or("openid email profile"))
+            .append_pair(
+                "scope",
+                self.config
+                    .scope
+                    .as_deref()
+                    .unwrap_or("openid email profile"),
+            )
             .append_pair("state", state)
             .append_pair("redirect_uri", redirect_uri);
 
@@ -268,8 +286,13 @@ impl SocialProvider for DefaultSocialProvider {
             });
         }
 
-        let token_response: serde_json::Value = response.json().await
-            .map_err(|e| Error::SerializationError { message: e.to_string() })?;
+        let token_response: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| Error::SerializationError {
+                    message: e.to_string(),
+                })?;
 
         let access_token = token_response["access_token"]
             .as_str()
@@ -283,17 +306,13 @@ impl SocialProvider for DefaultSocialProvider {
             .unwrap_or("Bearer")
             .to_string();
 
-        let expires_in = token_response["expires_in"]
-            .as_u64()
-            .unwrap_or(3600);
+        let expires_in = token_response["expires_in"].as_u64().unwrap_or(3600);
 
         let refresh_token = token_response["refresh_token"]
             .as_str()
             .map(|s| s.to_string());
 
-        let scope = token_response["scope"]
-            .as_str()
-            .map(|s| s.to_string());
+        let scope = token_response["scope"].as_str().map(|s| s.to_string());
 
         Ok(OAuth2Token {
             access_token,
@@ -324,8 +343,13 @@ impl SocialProvider for DefaultSocialProvider {
             });
         }
 
-        let profile_data: serde_json::Value = response.json().await
-            .map_err(|e| Error::SerializationError { message: e.to_string() })?;
+        let profile_data: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| Error::SerializationError {
+                    message: e.to_string(),
+                })?;
 
         // Parse profile data based on provider
         let profile = match self.config.provider_type {
@@ -364,8 +388,13 @@ impl SocialProvider for DefaultSocialProvider {
             });
         }
 
-        let token_response: serde_json::Value = response.json().await
-            .map_err(|e| Error::SerializationError { message: e.to_string() })?;
+        let token_response: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| Error::SerializationError {
+                    message: e.to_string(),
+                })?;
 
         let access_token = token_response["access_token"]
             .as_str()
@@ -379,18 +408,14 @@ impl SocialProvider for DefaultSocialProvider {
             .unwrap_or("Bearer")
             .to_string();
 
-        let expires_in = token_response["expires_in"]
-            .as_u64()
-            .unwrap_or(3600);
+        let expires_in = token_response["expires_in"].as_u64().unwrap_or(3600);
 
         let new_refresh_token = token_response["refresh_token"]
             .as_str()
             .map(|s| s.to_string())
             .unwrap_or_else(|| refresh_token.to_string()); // Keep old refresh token if not provided
 
-        let scope = token_response["scope"]
-            .as_str()
-            .map(|s| s.to_string());
+        let scope = token_response["scope"].as_str().map(|s| s.to_string());
 
         Ok(OAuth2Token {
             access_token,
@@ -404,14 +429,17 @@ impl SocialProvider for DefaultSocialProvider {
 
     async fn validate_token(&self, token: &str) -> Result<bool> {
         // Basic token validation - check if we can fetch user profile
-        match self.get_user_profile(&OAuth2Token {
-            access_token: token.to_string(),
-            token_type: "Bearer".to_string(),
-            expires_in: Some(3600),
-            refresh_token: None,
-            scope: None,
-            id_token: None,
-        }).await {
+        match self
+            .get_user_profile(&OAuth2Token {
+                access_token: token.to_string(),
+                token_type: "Bearer".to_string(),
+                expires_in: Some(3600),
+                refresh_token: None,
+                scope: None,
+                id_token: None,
+            })
+            .await
+        {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
@@ -429,8 +457,11 @@ impl DefaultSocialProvider {
     fn parse_google_profile(&self, data: &serde_json::Value) -> Result<SocialUserProfile> {
         Ok(SocialUserProfile {
             provider_type: SocialProviderType::Google,
-            provider_user_id: data["id"].as_str()
-                .ok_or_else(|| Error::ValidationError { message: "Missing user ID".to_string() })?
+            provider_user_id: data["id"]
+                .as_str()
+                .ok_or_else(|| Error::ValidationError {
+                    message: "Missing user ID".to_string(),
+                })?
                 .to_string(),
             email: data["email"].as_str().map(|s| s.to_string()),
             display_name: data["name"].as_str().map(|s| s.to_string()),
@@ -447,16 +478,21 @@ impl DefaultSocialProvider {
     fn parse_facebook_profile(&self, data: &serde_json::Value) -> Result<SocialUserProfile> {
         Ok(SocialUserProfile {
             provider_type: SocialProviderType::Facebook,
-            provider_user_id: data["id"].as_str()
-                .ok_or_else(|| Error::ValidationError { message: "Missing user ID".to_string() })?
+            provider_user_id: data["id"]
+                .as_str()
+                .ok_or_else(|| Error::ValidationError {
+                    message: "Missing user ID".to_string(),
+                })?
                 .to_string(),
             email: data["email"].as_str().map(|s| s.to_string()),
             display_name: data["name"].as_str().map(|s| s.to_string()),
             first_name: data["first_name"].as_str().map(|s| s.to_string()),
             last_name: data["last_name"].as_str().map(|s| s.to_string()),
             username: None,
-            picture_url: Some(format!("https://graph.facebook.com/{}/picture?type=large",
-                data["id"].as_str().unwrap_or(""))),
+            picture_url: Some(format!(
+                "https://graph.facebook.com/{}/picture?type=large",
+                data["id"].as_str().unwrap_or("")
+            )),
             raw_profile: data.clone(),
             attributes: HashMap::new(),
         })
@@ -466,8 +502,11 @@ impl DefaultSocialProvider {
     fn parse_github_profile(&self, data: &serde_json::Value) -> Result<SocialUserProfile> {
         Ok(SocialUserProfile {
             provider_type: SocialProviderType::GitHub,
-            provider_user_id: data["id"].as_u64()
-                .ok_or_else(|| Error::ValidationError { message: "Missing user ID".to_string() })?
+            provider_user_id: data["id"]
+                .as_u64()
+                .ok_or_else(|| Error::ValidationError {
+                    message: "Missing user ID".to_string(),
+                })?
                 .to_string(),
             email: data["email"].as_str().map(|s| s.to_string()),
             display_name: data["name"].as_str().map(|s| s.to_string()),
@@ -484,24 +523,32 @@ impl DefaultSocialProvider {
     fn parse_generic_profile(&self, data: &serde_json::Value) -> Result<SocialUserProfile> {
         Ok(SocialUserProfile {
             provider_type: self.config.provider_type.clone(),
-            provider_user_id: data["id"].as_str()
+            provider_user_id: data["id"]
+                .as_str()
                 .or_else(|| data["sub"].as_str())
-                .ok_or_else(|| Error::ValidationError { message: "Missing user ID".to_string() })?
+                .ok_or_else(|| Error::ValidationError {
+                    message: "Missing user ID".to_string(),
+                })?
                 .to_string(),
             email: data["email"].as_str().map(|s| s.to_string()),
-            display_name: data["name"].as_str()
+            display_name: data["name"]
+                .as_str()
                 .or_else(|| data["display_name"].as_str())
                 .map(|s| s.to_string()),
-            first_name: data["given_name"].as_str()
+            first_name: data["given_name"]
+                .as_str()
                 .or_else(|| data["first_name"].as_str())
                 .map(|s| s.to_string()),
-            last_name: data["family_name"].as_str()
+            last_name: data["family_name"]
+                .as_str()
                 .or_else(|| data["last_name"].as_str())
                 .map(|s| s.to_string()),
-            username: data["username"].as_str()
+            username: data["username"]
+                .as_str()
                 .or_else(|| data["login"].as_str())
                 .map(|s| s.to_string()),
-            picture_url: data["picture"].as_str()
+            picture_url: data["picture"]
+                .as_str()
                 .or_else(|| data["avatar_url"].as_str())
                 .or_else(|| data["photo"].as_str())
                 .map(|s| s.to_string()),
@@ -514,24 +561,38 @@ impl DefaultSocialProvider {
 /// Default factory for social providers
 pub struct DefaultSocialProviderFactory;
 
+impl Default for DefaultSocialProviderFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultSocialProviderFactory {
+    /// Create a new default social provider factory
     pub fn new() -> Self {
         Self
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn SocialProvider> for DefaultSocialProviderFactory {
-    async fn create(&self, config: &ProviderConfig) -> std::result::Result<Box<dyn SocialProvider>, SpiError> {
-        let social_config: SocialProviderConfig = serde_json::from_value(
-            serde_json::Value::Object(config.properties.iter()
-                .map(|(k, v)| {
-                    // Try to parse as JSON first, fall back to string
-                    let value = serde_json::from_str(v).unwrap_or(serde_json::Value::String(v.clone()));
-                    (k.clone(), value)
-                })
-                .collect())
-        ).map_err(|e| SpiError::ConfigurationError(e.to_string()))?;
+    fn create(
+        &self,
+        config: &ProviderConfig,
+    ) -> std::result::Result<Box<dyn SocialProvider>, SpiError> {
+        let social_config: SocialProviderConfig =
+            serde_json::from_value(serde_json::Value::Object(
+                config
+                    .properties
+                    .iter()
+                    .map(|(k, v)| {
+                        // Try to parse as JSON first, fall back to string
+                        let value =
+                            serde_json::from_str(v).unwrap_or(serde_json::Value::String(v.clone()));
+                        (k.clone(), value)
+                    })
+                    .collect(),
+            ))
+            .map_err(|e| SpiError::ConfigurationError(e.to_string()))?;
         let provider = DefaultSocialProvider::new(social_config);
         Ok(Box::new(provider))
     }
@@ -609,7 +670,10 @@ mod tests {
         };
 
         let provider = DefaultSocialProvider::new(config);
-        let url = provider.get_authorization_url("test-state", "http://localhost:8080/callback").await.unwrap();
+        let url = provider
+            .get_authorization_url("test-state", "http://localhost:8080/callback")
+            .await
+            .unwrap();
 
         assert!(url.contains("client_id=test-client"));
         assert!(url.contains("response_type=code"));
@@ -634,20 +698,40 @@ mod tests {
         properties.insert("provider_type".to_string(), "Facebook".to_string());
         properties.insert("client_id".to_string(), config.client_id.clone());
         properties.insert("client_secret".to_string(), config.client_secret.clone());
-        properties.insert("authorization_url".to_string(), config.authorization_url.clone());
+        properties.insert(
+            "authorization_url".to_string(),
+            config.authorization_url.clone(),
+        );
         properties.insert("token_url".to_string(), config.token_url.clone());
         properties.insert("user_info_url".to_string(), config.user_info_url.clone());
-        properties.insert("enabled".to_string(), config.enabled.unwrap_or(true).to_string());
-        properties.insert("trust_email".to_string(), config.trust_email.unwrap_or(false).to_string());
-        properties.insert("store_tokens".to_string(), config.store_tokens.unwrap_or(true).to_string());
-        properties.insert("link_only".to_string(), config.link_only.unwrap_or(false).to_string());
+        properties.insert(
+            "enabled".to_string(),
+            config.enabled.unwrap_or(true).to_string(),
+        );
+        properties.insert(
+            "trust_email".to_string(),
+            config.trust_email.unwrap_or(false).to_string(),
+        );
+        properties.insert(
+            "store_tokens".to_string(),
+            config.store_tokens.unwrap_or(true).to_string(),
+        );
+        properties.insert(
+            "link_only".to_string(),
+            config.link_only.unwrap_or(false).to_string(),
+        );
 
         let provider_config = ProviderConfig {
             properties,
             global_config: None,
         };
 
-        let provider = <DefaultSocialProviderFactory as ProviderFactory<dyn SocialProvider>>::create(&factory, &provider_config).await.unwrap();
+        let provider =
+            <DefaultSocialProviderFactory as ProviderFactory<dyn SocialProvider>>::create(
+                &factory,
+                &provider_config,
+            )
+            .unwrap();
         assert!(provider.is_enabled());
         assert_eq!(provider.get_provider_type(), SocialProviderType::Facebook);
     }

@@ -1,6 +1,9 @@
-use authenc::database::Database;
-use authenc::services::broker::{IdentityBrokerRegistry, IdentityProviderConfig, LdapConfig, LdapIdentityBroker, IdentityProviderType};
 use authenc::config::DatabaseConfig;
+use authenc::database::Database;
+use authenc::services::broker::{
+    IdentityBroker, IdentityBrokerRegistry, IdentityProviderConfig, IdentityProviderType,
+    LdapConfig, LdapIdentityBroker,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -52,7 +55,7 @@ async fn test_ldap_broker_authentication() {
     match result {
         Ok(Some(user)) => {
             assert_eq!(user.username, "testuser");
-            assert!(user.email.is_some());
+            assert!(!user.email.is_empty());
             println!("LDAP authentication successful for user: {}", user.username);
         }
         Ok(None) => {
@@ -113,8 +116,11 @@ async fn test_ldap_broker_user_info() {
     match result {
         Ok(Some(user)) => {
             assert_eq!(user.username, "testuser");
-            assert!(user.email.is_some());
-            println!("LDAP user info retrieval successful for user: {}", user.username);
+            assert!(!user.email.is_empty());
+            println!(
+                "LDAP user info retrieval successful for user: {}",
+                user.username
+            );
         }
         Ok(None) => {
             println!("LDAP user not found");
@@ -202,7 +208,10 @@ async fn test_ldap_broker_registry_integration() {
     let enabled_providers = registry.get_enabled_providers(&realm_id);
     assert_eq!(enabled_providers.len(), 1);
     assert_eq!(enabled_providers[0].name, "Test LDAP Provider");
-    assert_eq!(enabled_providers[0].provider_type, IdentityProviderType::LDAP);
+    assert_eq!(
+        enabled_providers[0].provider_type,
+        IdentityProviderType::LDAP
+    );
 
     println!("LDAP broker registry integration test completed successfully");
 }
@@ -266,7 +275,7 @@ async fn test_ldap_broker_user_sync() {
     match result {
         Ok(user) => {
             assert_eq!(user.username, "testuser");
-            assert_eq!(user.email, Some("testuser@example.com".to_string()));
+            assert_eq!(user.email, "testuser@example.com");
             assert_eq!(user.first_name, Some("Test".to_string()));
             assert_eq!(user.last_name, Some("User".to_string()));
             assert!(user.federated);

@@ -1,10 +1,10 @@
-use authenc::database::Database;
-use authenc::services::zero_trust::*;
 use authenc::config::DatabaseConfig;
+use authenc::database::Database;
 use authenc::models::audit::*;
-use std::sync::Arc;
+use authenc::services::zero_trust::*;
 use chrono::Utc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -102,13 +102,13 @@ async fn test_device_trust_structure() {
     // Verify DeviceTrust structure
     assert_eq!(device_trust.device_id, "device_123");
     assert_eq!(device_trust.trust_level, TrustLevel::High);
-    
+
     // Check compliance status (can't use assert_eq! since ComplianceStatus doesn't implement PartialEq)
     match device_trust.compliance_status {
         ComplianceStatus::Compliant => assert!(true),
         _ => panic!("Expected Compliant status"),
     }
-    
+
     assert!(device_trust.device_fingerprint.len() > 0);
     assert!(device_trust.last_seen >= device_trust.first_seen);
 }
@@ -171,7 +171,7 @@ async fn test_risk_assessment_calculation() {
     // Verify risk assessment structure
     assert_eq!(risk_assessment.score, 0.8);
     assert_eq!(risk_assessment.factors.len(), 3);
-    
+
     // Check factor types
     assert_eq!(risk_assessment.factors[0].factor_type, "UnusualLocation");
     assert_eq!(risk_assessment.factors[1].factor_type, "NewDevice");
@@ -205,13 +205,13 @@ async fn test_zero_trust_policy_evaluation() {
     // Test ZeroTrustPolicy structure
     let mut params1 = HashMap::new();
     params1.insert("trust_level".to_string(), "2".to_string()); // Medium = 2
-    
+
     let mut params2 = HashMap::new();
     params2.insert("risk_score".to_string(), "0.7".to_string());
-    
+
     let mut params3 = HashMap::new();
     params3.insert("locations".to_string(), "US,CA".to_string());
-    
+
     let policy = ZeroTrustPolicy {
         id: Uuid::new_v4(),
         name: "High Risk Access Policy".to_string(),
@@ -253,12 +253,12 @@ async fn test_zero_trust_policy_evaluation() {
     assert!(policy.enabled);
     assert_eq!(policy.conditions.len(), 3);
     assert_eq!(policy.actions.len(), 3);
-    
+
     // Check condition types
     assert_eq!(policy.conditions[0].condition_type, "TrustLevelBelow");
     assert_eq!(policy.conditions[1].condition_type, "RiskScoreAbove");
     assert_eq!(policy.conditions[2].condition_type, "LocationNotIn");
-    
+
     // Check action types
     assert_eq!(policy.actions[0].action_type, "RequireMFA");
     assert_eq!(policy.actions[1].action_type, "SendNotification");
@@ -530,17 +530,17 @@ async fn test_policy_condition_evaluation() {
     // Test various policy conditions
     let mut params1 = HashMap::new();
     params1.insert("trust_level".to_string(), "2".to_string()); // Medium = 2
-    
+
     let mut params2 = HashMap::new();
     params2.insert("risk_score".to_string(), "0.7".to_string());
-    
+
     let mut params3 = HashMap::new();
     params3.insert("locations".to_string(), "US,CA".to_string());
-    
+
     let mut params4 = HashMap::new();
     params4.insert("start_time".to_string(), "18:00".to_string());
     params4.insert("end_time".to_string(), "06:00".to_string());
-    
+
     let conditions = vec![
         PolicyCondition {
             condition_type: "TrustLevelBelow".to_string(),
@@ -641,7 +641,9 @@ async fn test_zero_trust_audit_logging() {
         status: "WARNING".to_string(),
         details: Some(details),
         ip_address: Some("192.168.1.100".to_string()),
-        user_agent: Some("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36".to_string()),
+        user_agent: Some(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36".to_string(),
+        ),
         location_data: Some("San Francisco, CA".to_string()),
         error_message: None,
         request_id: Some("req_123".to_string()),
@@ -654,6 +656,12 @@ async fn test_zero_trust_audit_logging() {
     assert_eq!(audit_event.status, "WARNING");
     assert!(audit_event.user_id.is_some());
     assert!(audit_event.details.is_some());
-    assert!(audit_event.details.as_ref().unwrap().as_object().unwrap().contains_key("location"));
+    assert!(audit_event
+        .details
+        .as_ref()
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .contains_key("location"));
     assert!(audit_event.timestamp <= Utc::now());
 }

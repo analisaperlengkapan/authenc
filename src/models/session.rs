@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// User session for authentication
-/// 
+///
 /// Represents an active user session with authentication tokens and metadata.
 /// Sessions track user authentication state, expiration, and security information.
-/// 
+///
 /// # Fields
 /// * `id` - Unique session identifier (UUID)
 /// * `user_id` - ID of the authenticated user
@@ -18,7 +18,7 @@ use uuid::Uuid;
 /// * `ip_address` - Client IP address for security tracking
 /// * `user_agent` - Client user agent string for device identification
 /// * `revoked` - Flag indicating if session has been revoked
-/// 
+///
 /// # Security Considerations
 /// - Tokens should be cryptographically secure random values
 /// - Sessions should have reasonable expiration times
@@ -50,16 +50,16 @@ pub struct Session {
 }
 
 /// Session creation request
-/// 
+///
 /// Parameters required to create a new user session.
 /// Used when establishing authentication sessions after successful login.
-/// 
+///
 /// # Fields
 /// * `user_id` - ID of the user for whom to create the session
 /// * `expires_in` - Session lifetime in seconds from creation
 /// * `ip_address` - Client IP address for security tracking
 /// * `user_agent` - Client user agent for device identification
-/// 
+///
 /// # Security Considerations
 /// - Session expiration should be reasonable (hours, not days)
 /// - IP address tracking helps detect session hijacking
@@ -78,10 +78,10 @@ pub struct CreateSessionRequest {
 }
 
 /// Session response (without sensitive tokens)
-/// 
+///
 /// Safe session information returned to clients.
 /// Excludes sensitive token data for security.
-/// 
+///
 /// # Fields
 /// * `id` - Unique session identifier
 /// * `user_id` - ID of the authenticated user
@@ -90,7 +90,7 @@ pub struct CreateSessionRequest {
 /// * `last_accessed` - Last activity timestamp
 /// * `ip_address` - Client IP address (if available)
 /// * `user_agent` - Client user agent (if available)
-/// 
+///
 /// # Security Considerations
 /// - Never includes actual tokens in responses
 /// - Provides necessary session metadata for client management
@@ -130,17 +130,17 @@ impl From<Session> for SessionResponse {
 
 impl Session {
     /// Create a new session
-    /// 
+    ///
     /// Creates a new session instance with generated ID and timestamps.
     /// Initializes session with provided token and request parameters.
-    /// 
+    ///
     /// # Arguments
     /// * `request` - Session creation parameters
     /// * `token` - Generated JWT access token
-    /// 
+    ///
     /// # Returns
     /// A new Session instance ready for use
-    /// 
+    ///
     /// # Security Considerations
     /// - Generates cryptographically secure UUID for session ID
     /// - Sets appropriate expiration based on request
@@ -162,13 +162,13 @@ impl Session {
     }
 
     /// Check if session is valid (not expired and not revoked)
-    /// 
+    ///
     /// Validates session state for authentication decisions.
     /// Sessions are invalid if expired or explicitly revoked.
-    /// 
+    ///
     /// # Returns
     /// true if session is valid and can be used for authentication
-    /// 
+    ///
     /// # Security Considerations
     /// - Always check validity before granting access
     /// - Expired sessions should be cleaned up
@@ -178,10 +178,10 @@ impl Session {
     }
 
     /// Update last accessed time
-    /// 
+    ///
     /// Updates the session's last accessed timestamp.
     /// Used to track session activity and implement idle timeouts.
-    /// 
+    ///
     /// # Security Considerations
     /// - Helps detect inactive sessions
     /// - Supports session timeout policies
@@ -191,10 +191,10 @@ impl Session {
     }
 
     /// Revoke the session
-    /// 
+    ///
     /// Marks the session as revoked, preventing further use.
     /// Used for logout, security incidents, or administrative actions.
-    /// 
+    ///
     /// # Security Considerations
     /// - Immediately invalidates session tokens
     /// - Prevents further authentication with this session
@@ -204,13 +204,13 @@ impl Session {
     }
 
     /// Check if session is expired
-    /// 
+    ///
     /// Determines if the session has exceeded its expiration time.
     /// Used for cleanup and validation logic.
-    /// 
+    ///
     /// # Returns
     /// true if the current time is past the session's expiration
-    /// 
+    ///
     /// # Security Considerations
     /// - Expired sessions should not be accepted
     /// - Helps prevent indefinite session validity

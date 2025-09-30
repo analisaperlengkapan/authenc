@@ -3,6 +3,8 @@
 pub mod audit;
 /// OAuth 2.0 Dynamic Client Registration models (RFC 7591/7592)
 pub mod client_registration;
+/// User consent management models for GDPR compliance
+pub mod consent;
 /// Device management and trust models
 pub mod device;
 /// Event system models for user and admin events
@@ -15,14 +17,14 @@ pub mod oauth2;
 pub mod organization;
 /// Permission and access control models
 pub mod permission;
+/// Permission ticket models
+pub mod permission_ticket;
 /// Security realm and domain models
 pub mod realm;
 /// Resource management models
 pub mod resource;
 /// Resource server models
 pub mod resource_server;
-/// Permission ticket models
-pub mod permission_ticket;
 /// Role-based access control models
 pub mod role;
 /// SAML authentication models
@@ -55,14 +57,15 @@ pub mod oidc_client;
 // Re-exports for convenience
 pub use audit::*;
 pub use client_registration::*;
+pub use consent::*;
 pub use device::*;
 pub use oauth2::*;
 pub use organization::*;
 pub use permission::Permission;
+pub use permission_ticket::*;
 pub use realm::Realm;
 pub use resource::*;
 pub use resource_server::*;
-pub use permission_ticket::*;
 pub use role::Role;
 pub use saml::*;
 pub use scope::*;

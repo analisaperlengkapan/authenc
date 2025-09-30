@@ -131,12 +131,7 @@ impl From<Resource> for ResourceResponse {
 
 impl Resource {
     /// Create a new resource
-    pub fn new(
-        name: String,
-        owner: String,
-        realm_id: Uuid,
-        resource_server_id: Uuid,
-    ) -> Self {
+    pub fn new(name: String, owner: String, realm_id: Uuid, resource_server_id: Uuid) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),

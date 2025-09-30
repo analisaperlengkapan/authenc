@@ -1,10 +1,9 @@
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use crate::database::Database;
 use crate::database::operations;
-use crate::models::realm::{Realm, CreateRealmRequest, UpdateRealmRequest, RealmResponse};
+use crate::database::Database;
+use crate::models::realm::{CreateRealmRequest, RealmResponse, UpdateRealmRequest};
+use async_trait::async_trait;
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Realm service trait for multi-tenant realm management
 #[async_trait]
@@ -19,7 +18,11 @@ pub trait RealmService: Send + Sync {
     async fn get_realm_by_name(&self, name: &str) -> Result<Option<RealmResponse>, String>;
 
     /// Update realm
-    async fn update_realm(&self, realm_id: &Uuid, request: UpdateRealmRequest) -> Result<RealmResponse, String>;
+    async fn update_realm(
+        &self,
+        realm_id: &Uuid,
+        request: UpdateRealmRequest,
+    ) -> Result<RealmResponse, String>;
 
     /// Delete realm
     async fn delete_realm(&self, realm_id: &Uuid) -> Result<(), String>;
@@ -67,7 +70,11 @@ impl RealmService for PostgresRealmService {
             .map_err(|e| format!("Failed to get realm by name: {}", e))
     }
 
-    async fn update_realm(&self, realm_id: &Uuid, request: UpdateRealmRequest) -> Result<RealmResponse, String> {
+    async fn update_realm(
+        &self,
+        realm_id: &Uuid,
+        request: UpdateRealmRequest,
+    ) -> Result<RealmResponse, String> {
         operations::realms::update_realm(&self.db, *realm_id, &request)
             .await
             .map(|realm| realm.into())
@@ -120,7 +127,12 @@ impl RealmManager {
     }
 
     /// Create a new realm with default settings
-    pub async fn create_realm(&self, name: &str, display_name: Option<String>, description: Option<String>) -> Result<RealmResponse, String> {
+    pub async fn create_realm(
+        &self,
+        name: &str,
+        display_name: Option<String>,
+        description: Option<String>,
+    ) -> Result<RealmResponse, String> {
         let request = CreateRealmRequest {
             name: name.to_string(),
             display_name,
@@ -158,7 +170,9 @@ impl RealmManager {
 
     /// Enable or disable a realm
     pub async fn set_realm_status(&self, identifier: &str, enabled: bool) -> Result<(), String> {
-        let realm = self.get_realm(identifier).await?
+        let realm = self
+            .get_realm(identifier)
+            .await?
             .ok_or_else(|| format!("Realm '{}' not found", identifier))?;
 
         self.service.set_realm_enabled(&realm.id, enabled).await

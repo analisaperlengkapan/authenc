@@ -1,9 +1,11 @@
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 
 use authenc::spi::validation::{
-    ValidatorProvider, ValidatorProviderFactory, CompositeValidatorProvider,
-    DefaultValidationProviderFactory, ValidationContext, ValidationResult,
-    ValidationError, ValidatorConfigProperty, ValidatorPropertyType,
+    CompositeValidatorProvider, DefaultValidationProviderFactory, ValidationContext,
+    ValidationError, ValidationResult, ValidatorConfigProperty, ValidatorPropertyType,
+    ValidatorProvider, ValidatorProviderFactory,
 };
 use authenc::spi::ProviderFactory;
 
@@ -33,35 +35,57 @@ impl MockValidatorProvider {
     }
 }
 
-#[async_trait::async_trait]
 impl ValidatorProvider for MockValidatorProvider {
-    async fn validate_value(
+    fn validate_value(
         &self,
-        value: &str,
-        context: &ValidationContext,
+        value: String,
+        context: ValidationContext,
     ) -> Result<ValidationResult, ValidationError> {
-        if let Some(config) = context.config.get("min") {
-            if let Ok(min) = config.parse::<usize>() {
-                if value.len() < min {
-                    return Ok(ValidationResult {
-                        is_valid: false,
-                        error_message: Some(format!("Value too short, minimum length is {}", min)),
-                    });
+            if let Some(config) = context.config.get("min") {
+                if let Ok(min) = config.parse::<usize>() {
+                    if value.len() < min {
+                        return Ok(ValidationResult {
+                            is_valid: false,
+                            error_message: Some(format!(
+                                "Value too short, minimum length is {}",
+                                min
+                            )),
+                        });
+                    }
                 }
             }
-        }
 
-        if let Some(config) = context.config.get("max") {
-            if let Ok(max) = config.parse::<usize>() {
-                if value.len() > max {
-                    return Ok(ValidationResult {
-                        is_valid: false,
-                        error_message: Some(format!("Value too long, maximum length is {}", max)),
-                    });
+            if let Some(config) = context.config.get("max") {
+                if let Ok(max) = config.parse::<usize>() {
+                    if value.len() > max {
+                        return Ok(ValidationResult {
+                            is_valid: false,
+                            error_message: Some(format!(
+                                "Value too long, maximum length is {}",
+                                max
+                            )),
+                        });
+                    }
                 }
             }
-        }
 
+            Ok(ValidationResult {
+                is_valid: true,
+                error_message: None,
+            })
+    }
+
+    fn validate_values(
+        &self,
+        values: Vec<String>,
+        context: ValidationContext,
+    ) -> Result<ValidationResult, ValidationError> {
+        for value in values {
+            let result = self.validate_value(value, context.clone())?;
+            if !result.is_valid {
+                return Ok(result);
+            }
+        }
         Ok(ValidationResult {
             is_valid: true,
             error_message: None,
@@ -107,16 +131,14 @@ mod tests {
         };
 
         let result = provider
-            .validate_value("valid", &context)
-            .await
+            .validate_value("valid".to_string(), context.clone())
             .unwrap();
 
         assert!(result.is_valid);
 
         // Test custom length validator - too short
         let result = provider
-            .validate_value("x", &context)
-            .await
+            .validate_value("x".to_string(), context.clone())
             .unwrap();
 
         assert!(!result.is_valid);
@@ -124,8 +146,7 @@ mod tests {
 
         // Test custom length validator - too long
         let result = provider
-            .validate_value("thisiswaytoolong", &context)
-            .await
+            .validate_value("thisiswaytoolong".to_string(), context.clone())
             .unwrap();
 
         assert!(!result.is_valid);
@@ -159,16 +180,16 @@ mod tests {
         };
 
         let result = length_validator
-            .validate_value("valid", &context)
-            .await
+            .validate_value("valid".to_string(), context.clone())
+            
             .unwrap();
 
         assert!(result.is_valid);
 
         // Test too short
         let result = length_validator
-            .validate_value("x", &context)
-            .await
+            .validate_value("x".to_string(), context.clone())
+            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -176,8 +197,8 @@ mod tests {
 
         // Test too long
         let result = length_validator
-            .validate_value("thisiswaytoolong", &context)
-            .await
+            .validate_value("thisiswaytoolong".to_string(), context)
+            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -196,16 +217,16 @@ mod tests {
         };
 
         let result = email_validator
-            .validate_value("test@example.com", &context)
-            .await
+            .validate_value("test@example.com".to_string(), context.clone())
+            
             .unwrap();
 
         assert!(result.is_valid);
 
         // Test invalid email
         let result = email_validator
-            .validate_value("invalid-email", &context)
-            .await
+            .validate_value("invalid-email".to_string(), context)
+            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -228,16 +249,16 @@ mod tests {
         };
 
         let result = pattern_validator
-            .validate_value("123-45-6789", &context)
-            .await
+            .validate_value("123-45-6789".to_string(), context.clone())
+            
             .unwrap();
 
         assert!(result.is_valid);
 
         // Test invalid pattern
         let result = pattern_validator
-            .validate_value("invalid", &context)
-            .await
+            .validate_value("invalid".to_string(), context)
+            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -260,8 +281,8 @@ mod tests {
         };
 
         let result = length_validator
-            .validate_value("test", &context1)
-            .await
+            .validate_value("test".to_string(), context1)
+            
             .unwrap();
 
         assert!(result.is_valid);
@@ -276,8 +297,8 @@ mod tests {
         };
 
         let result = length_validator
-            .validate_value("test", &context2)
-            .await
+            .validate_value("test".to_string(), context2)
+            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -294,11 +315,12 @@ mod tests {
             attributes: HashMap::new(),
         };
 
-        let result = pattern_validator
-            .validate_value("test", &context)
-            .await;
+        let result = pattern_validator.validate_value("test".to_string(), context);
 
-        assert!(matches!(result, Err(ValidationError::ConfigurationError(_))));
+        assert!(matches!(
+            result,
+            Err(ValidationError::ConfigurationError(_))
+        ));
 
         // Test invalid regex pattern
         let context = ValidationContext {
@@ -310,11 +332,12 @@ mod tests {
             attributes: HashMap::new(),
         };
 
-        let result = pattern_validator
-            .validate_value("test", &context)
-            .await;
+        let result = pattern_validator.validate_value("test".to_string(), context);
 
-        assert!(matches!(result, Err(ValidationError::ConfigurationError(_))));
+        assert!(matches!(
+            result,
+            Err(ValidationError::ConfigurationError(_))
+        ));
     }
 
     #[tokio::test]
@@ -323,7 +346,7 @@ mod tests {
 
         // Test factory creation
         let config = authenc::spi::ProviderConfig::default();
-        let provider = factory.create(&config).await.unwrap();
+        let provider = factory.create(&config).unwrap();
 
         // Test factory priority
         assert_eq!(factory.get_priority(), 0);
@@ -365,24 +388,24 @@ mod tests {
 
         // Test valid non-blank
         let result = not_blank_validator
-            .validate_value("not blank", &context)
-            .await
+            .validate_value("not blank".to_string(), context.clone())
+            
             .unwrap();
 
         assert!(result.is_valid);
 
         // Test blank (should fail)
         let result = not_blank_validator
-            .validate_value("", &context)
-            .await
+            .validate_value("".to_string(), context.clone())
+            
             .unwrap();
 
         assert!(!result.is_valid);
 
         // Test whitespace only (should fail)
         let result = not_blank_validator
-            .validate_value("   ", &context)
-            .await
+            .validate_value("   ".to_string(), context)
+            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -403,10 +426,7 @@ mod tests {
             attributes: HashMap::new(),
         };
 
-        let result = length_validator
-            .validate_value("", &context)
-            .await
-            .unwrap();
+        let result = length_validator.validate_value("".to_string(), context).unwrap();
 
         assert!(!result.is_valid);
 
@@ -422,8 +442,8 @@ mod tests {
         };
 
         let result = length_validator
-            .validate_value(&long_string, &context)
-            .await
+            .validate_value(long_string, context)
+            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -456,16 +476,16 @@ mod tests {
 
         // First validate length
         let result = length_validator
-            .validate_value(test_value, &length_context)
-            .await
+            .validate_value(test_value.to_string(), length_context)
+            
             .unwrap();
 
         assert!(result.is_valid);
 
         // Then validate email format
         let result = email_validator
-            .validate_value(test_value, &email_context)
-            .await
+            .validate_value(test_value.to_string(), email_context)
+            
             .unwrap();
 
         assert!(result.is_valid);

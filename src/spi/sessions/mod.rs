@@ -5,27 +5,36 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::error::{Result, AuthencError as Error};
-use crate::spi::{Provider, ProviderFactory, Spi, ProviderConfig, SpiError};
+use crate::error::Result;
 use crate::models::session::Session;
 use crate::services::session_store::SessionStore;
+use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
 
 /// Session provider types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SessionProviderType {
+    /// User session provider
     User,
+    /// Client session provider
     Client,
 }
 
 /// Session query context for filtering and pagination
 #[derive(Debug, Clone, Default)]
 pub struct SessionQueryContext {
+    /// Optional realm identifier to filter sessions
     pub realm_id: Option<String>,
+    /// Optional user identifier to filter sessions
     pub user_id: Option<String>,
+    /// Optional client identifier to filter sessions
     pub client_id: Option<String>,
+    /// Optional search string for session filtering
     pub search: Option<String>,
+    /// Optional first result index for pagination
     pub first: Option<i32>,
+    /// Optional maximum number of results for pagination
     pub max: Option<i32>,
+    /// Additional filters as key-value pairs
     pub filters: HashMap<String, String>,
 }
 
@@ -68,7 +77,10 @@ pub trait UserSessionProvider: SessionProvider {
 #[async_trait]
 pub trait SessionProviderFactory: Send + Sync {
     /// Create a session provider of the specified type
-    fn create_session_provider(&self, provider_type: SessionProviderType) -> Box<dyn SessionProvider + Send + Sync>;
+    fn create_session_provider(
+        &self,
+        provider_type: SessionProviderType,
+    ) -> Box<dyn SessionProvider + Send + Sync>;
 }
 
 /// Default user session provider implementation
@@ -77,12 +89,12 @@ pub struct DefaultUserSessionProvider {
 }
 
 impl DefaultUserSessionProvider {
+    /// Create a new default user session provider with the given session store
     pub fn new(session_store: Arc<SessionStore>) -> Self {
         Self { session_store }
     }
 }
 
-#[async_trait]
 impl Provider for DefaultUserSessionProvider {
     fn as_any(&self) -> &dyn Any {
         self
@@ -149,19 +161,24 @@ pub struct DefaultSessionProviderFactory {
 }
 
 impl DefaultSessionProviderFactory {
+    /// Create a new default session provider factory with the given session store
     pub fn new(session_store: Arc<SessionStore>) -> Self {
         Self { session_store }
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn SessionProvider> for DefaultSessionProviderFactory {
-    async fn create(&self, _config: &ProviderConfig) -> std::result::Result<Box<dyn SessionProvider>, SpiError> {
+    fn create(
+        &self,
+        _config: &ProviderConfig,
+    ) -> std::result::Result<Box<dyn SessionProvider>, SpiError> {
         // Default to user session provider
-        Ok(Box::new(DefaultUserSessionProvider::new(self.session_store.clone())))
+        Ok(Box::new(DefaultUserSessionProvider::new(
+            self.session_store.clone(),
+        )))
     }
 
-    async fn init(&mut self, _config: &ProviderConfig) -> std::result::Result<(), SpiError> {
+    fn init(&mut self, _config: &ProviderConfig) -> std::result::Result<(), SpiError> {
         Ok(())
     }
 
@@ -171,10 +188,17 @@ impl ProviderFactory<dyn SessionProvider> for DefaultSessionProviderFactory {
 }
 
 impl SessionProviderFactory for DefaultSessionProviderFactory {
-    fn create_session_provider(&self, provider_type: SessionProviderType) -> Box<dyn SessionProvider + Send + Sync> {
+    fn create_session_provider(
+        &self,
+        provider_type: SessionProviderType,
+    ) -> Box<dyn SessionProvider + Send + Sync> {
         match provider_type {
-            SessionProviderType::User => Box::new(DefaultUserSessionProvider::new(self.session_store.clone())),
-            SessionProviderType::Client => Box::new(DefaultUserSessionProvider::new(self.session_store.clone())), // For now, use same implementation
+            SessionProviderType::User => {
+                Box::new(DefaultUserSessionProvider::new(self.session_store.clone()))
+            }
+            SessionProviderType::Client => {
+                Box::new(DefaultUserSessionProvider::new(self.session_store.clone()))
+            } // For now, use same implementation
         }
     }
 }

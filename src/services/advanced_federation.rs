@@ -161,13 +161,35 @@ impl LdapFederationProvider {
     ///
     /// # Example
     /// ```rust
-    /// use authenc::services::advanced_federation::{LdapFederationProvider, LdapConfig};
+    /// use authenc::services::advanced_federation::{LdapFederationProvider, LdapConfig, LdapSyncSettings};
     ///
+    /// // Note: LdapConfig requires all fields to be initialized
+    /// // This is a simplified example - see LdapConfig struct for all required fields
     /// let config = LdapConfig {
     ///     url: "ldaps://ldap.example.com".to_string(),
     ///     bind_dn: "cn=admin,dc=example,dc=com".to_string(),
     ///     bind_password: "secure_password".to_string(),
-    ///     // ... other config
+    ///     user_search_base: "ou=users,dc=example,dc=com".to_string(),
+    ///     user_search_filter: "(uid={0})".to_string(),
+    ///     username_attribute: "uid".to_string(),
+    ///     email_attribute: "mail".to_string(),
+    ///     first_name_attribute: "givenName".to_string(),
+    ///     last_name_attribute: "sn".to_string(),
+    ///     group_search_base: "ou=groups,dc=example,dc=com".to_string(),
+    ///     group_search_filter: "(member={0})".to_string(),
+    ///     group_name_attribute: "cn".to_string(),
+    ///     group_member_attribute: "member".to_string(),
+    ///     connection_timeout: 30,
+    ///     read_timeout: 30,
+    ///     use_ssl: true,
+    ///     trust_store_path: None,
+    ///     sync_settings: LdapSyncSettings {
+    ///         sync_interval: 3600,
+    ///         batch_size: 100,
+    ///         import_on_startup: false,
+    ///         sync_registrations: true,
+    ///         sync_user_attributes: true,
+    ///     },
     /// };
     /// let provider = LdapFederationProvider::new(config);
     /// ```
@@ -217,7 +239,11 @@ impl UserFederationProvider for LdapFederationProvider {
         }))
     }
 
-    async fn search_users(&self, _query: &str, _limit: usize) -> Result<Vec<UserInfo>, AuthencError> {
+    async fn search_users(
+        &self,
+        _query: &str,
+        _limit: usize,
+    ) -> Result<Vec<UserInfo>, AuthencError> {
         // Search LDAP directory
         // This would perform LDAP search with the given query
         Ok(vec![])
@@ -246,10 +272,10 @@ impl UserFederationProvider for LdapFederationProvider {
 }
 
 /// Kerberos Federation Provider
-/// 
+///
 /// Provides authentication against Kerberos Key Distribution Center (KDC).
 /// Supports Kerberos ticket-based authentication for enterprise environments.
-/// 
+///
 /// # Security Considerations
 /// - Uses secure Kerberos protocol for authentication
 /// - Supports keytab-based authentication for service accounts
@@ -261,10 +287,10 @@ pub struct KerberosFederationProvider {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Configuration for Kerberos federation provider
-/// 
+///
 /// Defines the parameters required to connect to a Kerberos Key Distribution Center (KDC)
 /// and configure Kerberos-based authentication for enterprise users.
-/// 
+///
 /// # Fields
 /// * `realm` - The Kerberos realm (domain) for authentication
 /// * `kdc_server` - Address of the Key Distribution Center server
@@ -272,7 +298,7 @@ pub struct KerberosFederationProvider {
 /// * `service_principal` - Kerberos service principal name
 /// * `allow_password_auth` - Whether to allow password-based authentication
 /// * `update_password` - Whether to update passwords in Kerberos database
-/// 
+///
 /// # Security Considerations
 /// - Keytab files contain sensitive service credentials
 /// - Service principals should have minimal required permissions
@@ -294,10 +320,10 @@ pub struct KerberosConfig {
 
 impl KerberosFederationProvider {
     /// Create a new Kerberos federation provider
-    /// 
+    ///
     /// # Arguments
     /// * `config` - Kerberos configuration parameters
-    /// 
+    ///
     /// # Returns
     /// Configured Kerberos federation provider instance
     pub fn new(config: KerberosConfig) -> Self {
@@ -373,10 +399,10 @@ impl UserFederationProvider for KerberosFederationProvider {
 }
 
 /// Social Login Provider trait
-/// 
+///
 /// Defines the interface for social login providers (OAuth2/OIDC).
 /// Implementations handle the OAuth2 flow for various social platforms.
-/// 
+///
 /// # Security Considerations
 /// - All OAuth2 flows must use PKCE (Proof Key for Code Exchange)
 /// - State parameters must be validated to prevent CSRF attacks
@@ -385,43 +411,43 @@ impl UserFederationProvider for KerberosFederationProvider {
 #[async_trait]
 pub trait SocialLoginProvider: Send + Sync {
     /// Get provider name
-    /// 
+    ///
     /// Returns a unique identifier for the social login provider.
     /// Used for provider registration and identification.
     fn name(&self) -> &str;
 
     /// Get authorization URL
-    /// 
+    ///
     /// Generates the OAuth2 authorization URL for the provider.
     /// Includes necessary parameters like client_id, redirect_uri, scope, and state.
-    /// 
+    ///
     /// # Arguments
     /// * `state` - Random state parameter for CSRF protection
-    /// 
+    ///
     /// # Returns
     /// The complete authorization URL to redirect users to
     async fn get_authorization_url(&self, state: &str) -> Result<String, AuthencError>;
 
     /// Exchange code for tokens
-    /// 
+    ///
     /// Exchanges the authorization code for access tokens.
     /// Makes a secure HTTP request to the provider's token endpoint.
-    /// 
+    ///
     /// # Arguments
     /// * `code` - Authorization code received from the provider
-    /// 
+    ///
     /// # Returns
     /// Social login result containing access token and metadata
     async fn exchange_code(&self, code: &str) -> Result<SocialLoginResult, AuthencError>;
 
     /// Get user info from social provider
-    /// 
+    ///
     /// Retrieves user profile information using the access token.
     /// Makes a secure HTTP request to the provider's userinfo endpoint.
-    /// 
+    ///
     /// # Arguments
     /// * `access_token` - Valid access token from the provider
-    /// 
+    ///
     /// # Returns
     /// User information extracted from the social provider
     async fn get_user_info(&self, access_token: &str) -> Result<UserInfo, AuthencError>;
@@ -445,10 +471,10 @@ pub struct SocialLoginResult {
 }
 
 /// Google OAuth2 Provider
-/// 
+///
 /// Implements OAuth2 authentication flow for Google accounts.
 /// Supports OpenID Connect for identity verification.
-/// 
+///
 /// # Security Considerations
 /// - Uses Google's secure OAuth2 endpoints
 /// - Supports OpenID Connect for verified identity claims
@@ -464,15 +490,15 @@ pub struct GoogleOAuth2Provider {
 
 impl GoogleOAuth2Provider {
     /// Create a new Google OAuth2 provider
-    /// 
+    ///
     /// # Arguments
     /// * `client_id` - Google OAuth2 client ID
     /// * `client_secret` - Google OAuth2 client secret
     /// * `redirect_uri` - OAuth2 redirect URI for the application
-    /// 
+    ///
     /// # Returns
     /// Configured Google OAuth2 provider instance
-    /// 
+    ///
     /// # Security Considerations
     /// - Client secret should be stored securely (not in source code)
     /// - Redirect URI must match the registered OAuth2 application
@@ -537,10 +563,10 @@ impl SocialLoginProvider for GoogleOAuth2Provider {
 }
 
 /// GitHub OAuth2 Provider
-/// 
+///
 /// Implements OAuth2 authentication flow for GitHub accounts.
 /// Provides access to GitHub user profile and email information.
-/// 
+///
 /// # Security Considerations
 /// - Uses GitHub's secure OAuth2 endpoints
 /// - Requires user consent for requested scopes
@@ -556,15 +582,15 @@ pub struct GitHubOAuth2Provider {
 
 impl GitHubOAuth2Provider {
     /// Create a new GitHub OAuth2 provider
-    /// 
+    ///
     /// # Arguments
     /// * `client_id` - GitHub OAuth2 client ID
     /// * `client_secret` - GitHub OAuth2 client secret
     /// * `redirect_uri` - OAuth2 redirect URI for the application
-    /// 
+    ///
     /// # Returns
     /// Configured GitHub OAuth2 provider instance
-    /// 
+    ///
     /// # Security Considerations
     /// - Client secret should be stored securely (not in source code)
     /// - Redirect URI must match the registered OAuth2 application
@@ -626,10 +652,10 @@ impl SocialLoginProvider for GitHubOAuth2Provider {
 }
 
 /// SAML Identity Provider
-/// 
+///
 /// Implements SAML 2.0 authentication for enterprise identity providers.
 /// Handles SAML assertions and single sign-on (SSO) flows.
-/// 
+///
 /// # Security Considerations
 /// - Validates SAML assertion signatures using configured certificates
 /// - Supports secure SAML metadata exchange
@@ -643,10 +669,10 @@ pub struct SamlIdentityProvider {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Configuration for SAML Identity Provider
-/// 
+///
 /// Defines the SAML 2.0 configuration for connecting to an enterprise identity provider.
 /// Includes metadata, certificates, and attribute mappings for SAML authentication.
-/// 
+///
 /// # Fields
 /// * `entity_id` - Unique identifier for the SAML entity
 /// * `sso_url` - Single sign-on service URL
@@ -655,7 +681,7 @@ pub struct SamlIdentityProvider {
 /// * `name_id_policy` - SAML NameID policy format
 /// * `authn_context_class_refs` - Authentication context class references
 /// * `attribute_mappings` - Mapping of SAML attributes to user profile fields
-/// 
+///
 /// # Security Considerations
 /// - Signing certificates must be valid and properly chained
 /// - SAML metadata should be exchanged securely
@@ -680,13 +706,13 @@ pub struct SamlIdpConfig {
 
 impl SamlIdentityProvider {
     /// Create a new SAML identity provider
-    /// 
+    ///
     /// # Arguments
     /// * `config` - SAML identity provider configuration
-    /// 
+    ///
     /// # Returns
     /// Configured SAML identity provider instance
-    /// 
+    ///
     /// # Security Considerations
     /// - SAML metadata should be validated before use
     /// - Signing certificates must be properly configured
@@ -751,11 +777,11 @@ impl UserFederationProvider for SamlIdentityProvider {
 }
 
 /// Advanced Federation Registry
-/// 
+///
 /// Central registry for managing multiple federation providers.
 /// Supports both user federation providers (LDAP, Kerberos, SAML) and social login providers (OAuth2).
 /// Provides unified interface for authentication across different provider types.
-/// 
+///
 /// # Security Considerations
 /// - Provider configurations contain sensitive credentials
 /// - Registry should be initialized securely at startup
@@ -774,7 +800,7 @@ impl Default for AdvancedFederationRegistry {
 
 impl AdvancedFederationRegistry {
     /// Create a new federation registry
-    /// 
+    ///
     /// # Returns
     /// Empty federation registry ready for provider registration
     pub fn new() -> Self {
@@ -785,10 +811,10 @@ impl AdvancedFederationRegistry {
     }
 
     /// Register a user federation provider
-    /// 
+    ///
     /// # Arguments
     /// * `provider` - Boxed user federation provider implementation
-    /// 
+    ///
     /// # Security Considerations
     /// - Provider should be validated before registration
     /// - Provider configurations should be secure
@@ -797,10 +823,10 @@ impl AdvancedFederationRegistry {
     }
 
     /// Register a social login provider
-    /// 
+    ///
     /// # Arguments
     /// * `provider` - Boxed social login provider implementation
-    /// 
+    ///
     /// # Security Considerations
     /// - Provider should be validated before registration
     /// - OAuth2 credentials should be properly configured
@@ -817,8 +843,12 @@ impl AdvancedFederationRegistry {
     /// # Returns
     /// Reference to the user federation provider if found
     pub fn get_user_provider(&self, name: &str) -> Option<&dyn UserFederationProvider> {
-        self.user_providers.iter().find(|p| p.name() == name).map(|p| p.as_ref())
-    }    /// Get social login provider by name
+        self.user_providers
+            .iter()
+            .find(|p| p.name() == name)
+            .map(|p| p.as_ref())
+    }
+    /// Get social login provider by name
     ///
     /// # Arguments
     /// * `name` - Provider name identifier
@@ -830,7 +860,7 @@ impl AdvancedFederationRegistry {
     }
 
     /// Get all user providers
-    /// 
+    ///
     /// # Returns
     /// Reference to the vector of all registered user federation providers
     pub fn get_user_providers(&self) -> &Vec<Box<dyn UserFederationProvider>> {
@@ -838,7 +868,7 @@ impl AdvancedFederationRegistry {
     }
 
     /// Get all social providers
-    /// 
+    ///
     /// # Returns
     /// Reference to the hashmap of all registered social login providers
     pub fn get_social_providers(&self) -> &HashMap<String, Box<dyn SocialLoginProvider>> {
@@ -846,17 +876,17 @@ impl AdvancedFederationRegistry {
     }
 
     /// Validate user credentials across all providers
-    /// 
+    ///
     /// Attempts authentication against all registered user federation providers
     /// until one succeeds or all fail.
-    /// 
+    ///
     /// # Arguments
     /// * `username` - User identifier to authenticate
     /// * `password` - User password credential
-    /// 
+    ///
     /// # Returns
     /// User information and provider name if authentication succeeds
-    /// 
+    ///
     /// # Security Considerations
     /// - Failed authentication attempts should be logged
     /// - Password credentials should be handled securely

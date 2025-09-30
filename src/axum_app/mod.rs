@@ -3,7 +3,7 @@
 //! This module provides the Axum-specific implementation for running
 //! the Authenc authentication service as an HTTP server.
 
-use axum::{extract::State, Router};
+use axum::Router;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::signal;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};

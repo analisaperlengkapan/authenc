@@ -79,6 +79,64 @@ CREATE TABLE IF NOT EXISTS webauthn_credentials (
     UNIQUE(user_id, credential_id)
 );
 
+-- User consents table for GDPR compliance
+CREATE TABLE IF NOT EXISTS user_consents (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id VARCHAR(255) NOT NULL,
+    scopes TEXT[] NOT NULL, -- Array of consented scopes
+    granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ, -- Optional expiration
+    metadata JSONB, -- Additional consent metadata
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, client_id) -- One consent record per user-client pair
+);
+
+-- Authentication flows table for pluggable authentication flows
+CREATE TABLE IF NOT EXISTS authentication_flows (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    alias VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT,
+    flow_type VARCHAR(50) NOT NULL, -- 'browser', 'direct_grant', 'client_authentication', 'registration', 'reset_credentials', 'docker', 'custom'
+    realm_id UUID REFERENCES realms(id) ON DELETE CASCADE,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    priority INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Authentication executions table for flow steps
+CREATE TABLE IF NOT EXISTS authentication_executions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    flow_id UUID NOT NULL REFERENCES authentication_flows(id) ON DELETE CASCADE,
+    alias VARCHAR(255) NOT NULL,
+    description TEXT,
+    execution_type VARCHAR(100) NOT NULL, -- authenticator type or 'condition'
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    priority INTEGER NOT NULL DEFAULT 0,
+    configuration JSONB, -- Configuration parameters
+    requirements TEXT[], -- Conditional requirements
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Authentication sessions table for ongoing authentication
+CREATE TABLE IF NOT EXISTS authentication_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_session_id UUID,
+    client_id VARCHAR(255) NOT NULL,
+    flow_id UUID NOT NULL REFERENCES authentication_flows(id) ON DELETE CASCADE,
+    current_execution_id UUID REFERENCES authentication_executions(id) ON DELETE SET NULL,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    session_data JSONB, -- Temporary session data
+    auth_notes JSONB, -- Authentication notes and metadata
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 minutes'),
+    completed BOOLEAN NOT NULL DEFAULT false,
+    success BOOLEAN,
+    error_message TEXT
+);
+
 -- Insert a default realm for testing
 INSERT INTO realms (id, name, display_name, enabled)
 VALUES ('550e8400-e29b-41d4-a716-446655440000', 'test-realm', 'Test Realm', true)

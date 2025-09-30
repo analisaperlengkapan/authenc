@@ -39,7 +39,7 @@ impl FileVault {
     ///
     /// # Example
     /// ```rust
-    /// use authenc::vault::FileVault;
+    /// use authenc::vault::file_vault::FileVault;
     /// use std::path::Path;
     ///
     /// let vault = FileVault::new("/var/authenc/secrets");

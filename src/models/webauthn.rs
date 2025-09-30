@@ -283,7 +283,8 @@ pub struct WebAuthnRegistrationOptions {
     pub attestation: Option<String>,
     /// WebAuthn extensions
     pub extensions: Option<serde_json::Value>,
-}/// Relying party information
+}
+/// Relying party information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelyingParty {
     /// Unique identifier for the relying party

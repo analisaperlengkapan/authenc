@@ -410,12 +410,9 @@ impl SocialLoginManager {
             first_name: data["name"]
                 .as_str()
                 .map(|s| s.split(' ').next().unwrap_or("").to_string()),
-            last_name: data["name"].as_str().map(|s| {
-                s.split(' ')
-                    .skip(1)
-                    .collect::<Vec<&str>>()
-                    .join(" ")
-            }),
+            last_name: data["name"]
+                .as_str()
+                .map(|s| s.split(' ').skip(1).collect::<Vec<&str>>().join(" ")),
             picture_url: data["avatar_url"].as_str().map(|s| s.to_string()),
             locale: None,
             verified_email: false, // GitHub doesn't provide this directly

@@ -4,8 +4,8 @@ use serde_json;
 use std::sync::Arc;
 
 use crate::database::Database;
-use crate::error::{Result, AuthencError as Error};
-use crate::models::events::{Event, AdminEvent, EventType, OperationType, ResourceType};
+use crate::error::{AuthencError as Error, Result};
+use crate::models::events::{AdminEvent, Event, EventType};
 use crate::services::events::EventStoreProvider;
 
 /// PostgreSQL-based event store provider
@@ -16,15 +16,13 @@ pub struct PgEventStoreProvider {
 impl PgEventStoreProvider {
     /// Create a new PostgreSQL event store provider
     pub fn new(database: Arc<Database>) -> Self {
-        Self {
-            database,
-        }
+        Self { database }
     }
 
     /// Initialize the database tables
     pub async fn init_tables(&self) -> Result<()> {
         // Create events table
-        let events_query = r#"
+        let create_events_table = r#"
             CREATE TABLE IF NOT EXISTS events (
                 id VARCHAR(36) PRIMARY KEY,
                 time TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -38,22 +36,32 @@ impl PgEventStoreProvider {
                 error TEXT,
                 details JSONB,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_events_realm_id ON events(realm_id);
-            CREATE INDEX IF NOT EXISTS idx_events_user_id ON events(user_id);
-            CREATE INDEX IF NOT EXISTS idx_events_client_id ON events(client_id);
-            CREATE INDEX IF NOT EXISTS idx_events_time ON events(time);
-            CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+            )
         "#;
 
         self.database
-            .execute(events_query, &[])
+            .execute(create_events_table, &[])
             .await
             .map_err(|e| Error::database(e.to_string()))?;
 
+        // Create indexes for events table
+        let create_events_indexes = vec![
+            "CREATE INDEX IF NOT EXISTS idx_events_realm_id ON events(realm_id)",
+            "CREATE INDEX IF NOT EXISTS idx_events_user_id ON events(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_events_client_id ON events(client_id)",
+            "CREATE INDEX IF NOT EXISTS idx_events_time ON events(time)",
+            "CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)",
+        ];
+
+        for index_query in create_events_indexes {
+            self.database
+                .execute(index_query, &[])
+                .await
+                .map_err(|e| Error::database(e.to_string()))?;
+        }
+
         // Create admin_events table
-        let admin_events_query = r#"
+        let create_admin_events_table = r#"
             CREATE TABLE IF NOT EXISTS admin_events (
                 id VARCHAR(36) PRIMARY KEY,
                 time TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -65,18 +73,28 @@ impl PgEventStoreProvider {
                 error TEXT,
                 auth_details JSONB,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_admin_events_realm_id ON admin_events(realm_id);
-            CREATE INDEX IF NOT EXISTS idx_admin_events_resource_type ON admin_events(resource_type);
-            CREATE INDEX IF NOT EXISTS idx_admin_events_operation_type ON admin_events(operation_type);
-            CREATE INDEX IF NOT EXISTS idx_admin_events_time ON admin_events(time);
+            )
         "#;
 
         self.database
-            .execute(admin_events_query, &[])
+            .execute(create_admin_events_table, &[])
             .await
             .map_err(|e| Error::database(e.to_string()))?;
+
+        // Create indexes for admin_events table
+        let create_admin_events_indexes = vec![
+            "CREATE INDEX IF NOT EXISTS idx_admin_events_realm_id ON admin_events(realm_id)",
+            "CREATE INDEX IF NOT EXISTS idx_admin_events_resource_type ON admin_events(resource_type)",
+            "CREATE INDEX IF NOT EXISTS idx_admin_events_operation_type ON admin_events(operation_type)",
+            "CREATE INDEX IF NOT EXISTS idx_admin_events_time ON admin_events(time)",
+        ];
+
+        for index_query in create_admin_events_indexes {
+            self.database
+                .execute(index_query, &[])
+                .await
+                .map_err(|e| Error::database(e.to_string()))?;
+        }
 
         Ok(())
     }
@@ -85,8 +103,8 @@ impl PgEventStoreProvider {
 #[async_trait]
 impl EventStoreProvider for PgEventStoreProvider {
     async fn store_event(&self, event: &Event) -> Result<()> {
-        let details_json = serde_json::to_string(&event.details)
-            .map_err(|e| Error::validation(e.to_string()))?;
+        let details_json =
+            serde_json::to_string(&event.details).map_err(|e| Error::validation(e.to_string()))?;
 
         let query = r#"
             INSERT INTO events (
@@ -175,7 +193,8 @@ impl EventStoreProvider for PgEventStoreProvider {
             LIMIT $7 OFFSET $8
         "#;
 
-        let rows = self.database
+        let rows = self
+            .database
             .query::<tokio_postgres::Row>(
                 query,
                 &[
@@ -233,7 +252,9 @@ impl EventStoreProvider for PgEventStoreProvider {
                 "REMOVE_FEDERATED_IDENTITY" => EventType::RemoveFederatedIdentity,
                 "REMOVE_FEDERATED_IDENTITY_ERROR" => EventType::RemoveFederatedIdentityError,
                 "FEDERATED_IDENTITY_OVERRIDE_LINK" => EventType::FederatedIdentityOverrideLink,
-                "FEDERATED_IDENTITY_OVERRIDE_LINK_ERROR" => EventType::FederatedIdentityOverrideLinkError,
+                "FEDERATED_IDENTITY_OVERRIDE_LINK_ERROR" => {
+                    EventType::FederatedIdentityOverrideLinkError
+                }
                 "GRANT_CONSENT" => EventType::GrantConsent,
                 "GRANT_CONSENT_ERROR" => EventType::GrantConsentError,
                 "UPDATE_CONSENT" => EventType::UpdateConsent,
@@ -243,9 +264,13 @@ impl EventStoreProvider for PgEventStoreProvider {
                 "OAUTH2_EXTENSION_GRANT" => EventType::Oauth2ExtensionGrant,
                 "OAUTH2_EXTENSION_GRANT_ERROR" => EventType::Oauth2ExtensionGrantError,
                 "USER_DISABLED_BY_PERMANENT_LOCKOUT" => EventType::UserDisabledByPermanentLockout,
-                "USER_DISABLED_BY_PERMANENT_LOCKOUT_ERROR" => EventType::UserDisabledByPermanentLockoutError,
+                "USER_DISABLED_BY_PERMANENT_LOCKOUT_ERROR" => {
+                    EventType::UserDisabledByPermanentLockoutError
+                }
                 "USER_DISABLED_BY_TEMPORARY_LOCKOUT" => EventType::UserDisabledByTemporaryLockout,
-                "USER_DISABLED_BY_TEMPORARY_LOCKOUT_ERROR" => EventType::UserDisabledByTemporaryLockoutError,
+                "USER_DISABLED_BY_TEMPORARY_LOCKOUT_ERROR" => {
+                    EventType::UserDisabledByTemporaryLockoutError
+                }
                 "INVITE_ORG" => EventType::InviteOrg,
                 "INVITE_ORG_ERROR" => EventType::InviteOrgError,
                 _ => continue, // Skip unknown event types
@@ -254,9 +279,7 @@ impl EventStoreProvider for PgEventStoreProvider {
             let details: serde_json::Value = row.get(10);
             let details_map = if let Some(obj) = details.as_object() {
                 obj.iter()
-                    .filter_map(|(k, v)| {
-                        v.as_str().map(|s| (k.clone(), s.to_string()))
-                    })
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
                     .collect()
             } else {
                 std::collections::HashMap::new()
@@ -307,7 +330,8 @@ impl EventStoreProvider for PgEventStoreProvider {
             LIMIT $7 OFFSET $8
         "#;
 
-        let rows = self.database
+        let rows = self
+            .database
             .query::<tokio_postgres::Row>(
                 query,
                 &[
@@ -326,7 +350,9 @@ impl EventStoreProvider for PgEventStoreProvider {
 
         let mut events = Vec::new();
         for row in rows {
-            use crate::models::events::{AuthDetails, OperationType as OpType, ResourceType as ResType};
+            use crate::models::events::{
+                AuthDetails, OperationType as OpType, ResourceType as ResType,
+            };
 
             let operation_type_str: &str = row.get(3);
             let operation_type = match operation_type_str {
@@ -381,10 +407,23 @@ impl EventStoreProvider for PgEventStoreProvider {
             let auth_details_json: serde_json::Value = row.get(8);
             let auth_details = if let Some(obj) = auth_details_json.as_object() {
                 AuthDetails {
-                    user_id: obj.get("user_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    username: obj.get("username").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    ip_address: obj.get("ip_address").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    user_agent: obj.get("user_agent").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    user_id: obj
+                        .get("user_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    username: obj
+                        .get("username")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    ip_address: obj
+                        .get("ip_address")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    user_agent: obj
+                        .get("user_agent")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                 }
             } else {
                 AuthDetails {
@@ -416,7 +455,8 @@ impl EventStoreProvider for PgEventStoreProvider {
 
     async fn clear_old_events(&self, older_than: DateTime<Utc>) -> Result<usize> {
         let query = "DELETE FROM events WHERE time < $1";
-        let result = self.database
+        let result = self
+            .database
             .execute(query, &[&older_than])
             .await
             .map_err(|e| Error::database(e.to_string()))?;

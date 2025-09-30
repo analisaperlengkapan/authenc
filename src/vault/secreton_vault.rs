@@ -44,7 +44,7 @@ impl SecretonClient {
     ///
     /// # Example
     /// ```rust
-    /// use authenc::vault::SecretonClient;
+    /// use authenc::vault::secreton_vault::SecretonClient;
     ///
     /// let client = SecretonClient::new(
     ///     "https://secreton.example.com".to_string(),
@@ -87,13 +87,18 @@ impl SecretonClient {
     ///
     /// # Example
     /// ```rust
-    /// use authenc::vault::SecretonClient;
+    /// use authenc::vault::secreton_vault::SecretonClient;
     ///
-    /// let client = SecretonClient::new(endpoint, token);
+    /// # async fn example() {
+    /// let client = SecretonClient::new(
+    ///     "https://secreton.example.com".to_string(),
+    ///     "your-auth-token".to_string()
+    /// );
     /// let secret = client.get_secret("api-key", Some("production")).await;
     /// if let Some(value) = secret {
     ///     println!("Retrieved secret: {}", value);
     /// }
+    /// # }
     /// ```
     pub async fn get_secret(&self, key: &str, realm: Option<&str>) -> Option<String> {
         let url = if let Some(realm) = realm {
@@ -149,10 +154,14 @@ impl SecretonVault {
     ///
     /// # Example
     /// ```rust
-    /// use authenc::vault::{SecretonClient, SecretonVault};
+    /// use authenc::vault::secreton_vault::{SecretonClient, SecretonVault};
     ///
-    /// let client = SecretonClient::new(endpoint, token);
+    /// let client = SecretonClient::new(
+    ///     "https://secreton.example.com".to_string(),
+    ///     "your-auth-token".to_string()
+    /// );
     /// let vault = SecretonVault::new(client);
+    /// ```
     /// // Vault is ready for secret operations through standard interface
     /// ```
     pub fn new(client: SecretonClient) -> Self {

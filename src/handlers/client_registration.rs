@@ -10,18 +10,20 @@ use std::sync::Arc;
 use crate::app::AppState;
 use crate::error::AuthencError;
 use crate::models::client_registration::{
-    ClientRegistrationRequest, ClientRegistrationResponse, ClientUpdateRequest,
-    ClientRegistrationError
+    ClientRegistrationError, ClientRegistrationRequest, ClientRegistrationResponse,
+    ClientUpdateRequest,
 };
-use crate::services::client_registration::{ClientRegistrationService, DefaultClientRegistrationService};
+use crate::services::client_registration::{
+    ClientRegistrationService, DefaultClientRegistrationService,
+};
 
 /// Create client registration routes (RFC 7591/7592)
 pub fn create_client_registration_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/register", post(register_client))
-        .route("/register/:client_id", get(get_client_configuration))
-        .route("/register/:client_id", put(update_client_configuration))
-        .route("/register/:client_id", delete(delete_client_registration))
+        .route("/register/{client_id}", get(get_client_configuration))
+        .route("/register/{client_id}", put(update_client_configuration))
+        .route("/register/{client_id}", delete(delete_client_registration))
 }
 
 /// Register a new OAuth 2.0 client (RFC 7591)
@@ -29,7 +31,10 @@ async fn register_client(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(request): Json<ClientRegistrationRequest>,
-) -> Result<(StatusCode, Json<ClientRegistrationResponse>), (StatusCode, Json<ClientRegistrationError>)> {
+) -> Result<
+    (StatusCode, Json<ClientRegistrationResponse>),
+    (StatusCode, Json<ClientRegistrationError>),
+> {
     // Create client registration service
     let registration_service = DefaultClientRegistrationService::new(
         state.oidc_client_store.clone(),
@@ -41,28 +46,25 @@ async fn register_client(
     let software_statement = None; // TODO: Parse from Authorization header if present
 
     // Register client
-    match registration_service.register_client(request, software_statement).await {
+    match registration_service
+        .register_client(request, software_statement)
+        .await
+    {
         Ok(response) => Ok((StatusCode::CREATED, Json(response))),
         Err(err) => {
             let error_response = match err {
-                AuthencError::ValidationError { message } => {
-                    ClientRegistrationError {
-                        error: "invalid_client_metadata".to_string(),
-                        error_description: Some(message),
-                    }
+                AuthencError::ValidationError { message } => ClientRegistrationError {
+                    error: "invalid_client_metadata".to_string(),
+                    error_description: Some(message),
                 },
-                AuthencError::ConfigurationError { message } => {
-                    ClientRegistrationError {
-                        error: "invalid_request".to_string(),
-                        error_description: Some(message),
-                    }
+                AuthencError::ConfigurationError { message } => ClientRegistrationError {
+                    error: "invalid_request".to_string(),
+                    error_description: Some(message),
                 },
-                _ => {
-                    ClientRegistrationError {
-                        error: "invalid_request".to_string(),
-                        error_description: Some("Client registration failed".to_string()),
-                    }
-                }
+                _ => ClientRegistrationError {
+                    error: "invalid_request".to_string(),
+                    error_description: Some("Client registration failed".to_string()),
+                },
             };
             Err((StatusCode::BAD_REQUEST, Json(error_response)))
         }
@@ -83,8 +85,10 @@ async fn get_client_configuration(
                 StatusCode::UNAUTHORIZED,
                 Json(ClientRegistrationError {
                     error: "invalid_token".to_string(),
-                    error_description: Some("Missing or invalid registration access token".to_string()),
-                })
+                    error_description: Some(
+                        "Missing or invalid registration access token".to_string(),
+                    ),
+                }),
             ));
         }
     };
@@ -97,28 +101,25 @@ async fn get_client_configuration(
     );
 
     // Get client configuration
-    match registration_service.get_client_configuration(&client_id, &registration_token).await {
+    match registration_service
+        .get_client_configuration(&client_id, &registration_token)
+        .await
+    {
         Ok(response) => Ok(Json(response)),
         Err(err) => {
             let error_response = match err {
-                AuthencError::AuthenticationFailed => {
-                    ClientRegistrationError {
-                        error: "invalid_token".to_string(),
-                        error_description: Some("Invalid registration access token".to_string()),
-                    }
+                AuthencError::AuthenticationFailed => ClientRegistrationError {
+                    error: "invalid_token".to_string(),
+                    error_description: Some("Invalid registration access token".to_string()),
                 },
-                AuthencError::ResourceNotFound { .. } => {
-                    ClientRegistrationError {
-                        error: "invalid_client_id".to_string(),
-                        error_description: Some("Client not found".to_string()),
-                    }
+                AuthencError::ResourceNotFound { .. } => ClientRegistrationError {
+                    error: "invalid_client_id".to_string(),
+                    error_description: Some("Client not found".to_string()),
                 },
-                _ => {
-                    ClientRegistrationError {
-                        error: "invalid_request".to_string(),
-                        error_description: Some("Failed to get client configuration".to_string()),
-                    }
-                }
+                _ => ClientRegistrationError {
+                    error: "invalid_request".to_string(),
+                    error_description: Some("Failed to get client configuration".to_string()),
+                },
             };
             Err((StatusCode::BAD_REQUEST, Json(error_response)))
         }
@@ -140,8 +141,10 @@ async fn update_client_configuration(
                 StatusCode::UNAUTHORIZED,
                 Json(ClientRegistrationError {
                     error: "invalid_token".to_string(),
-                    error_description: Some("Missing or invalid registration access token".to_string()),
-                })
+                    error_description: Some(
+                        "Missing or invalid registration access token".to_string(),
+                    ),
+                }),
             ));
         }
     };
@@ -154,34 +157,29 @@ async fn update_client_configuration(
     );
 
     // Update client configuration
-    match registration_service.update_client_configuration(&client_id, &registration_token, request).await {
+    match registration_service
+        .update_client_configuration(&client_id, &registration_token, request)
+        .await
+    {
         Ok(response) => Ok(Json(response)),
         Err(err) => {
             let error_response = match err {
-                AuthencError::AuthenticationFailed => {
-                    ClientRegistrationError {
-                        error: "invalid_token".to_string(),
-                        error_description: Some("Invalid registration access token".to_string()),
-                    }
+                AuthencError::AuthenticationFailed => ClientRegistrationError {
+                    error: "invalid_token".to_string(),
+                    error_description: Some("Invalid registration access token".to_string()),
                 },
-                AuthencError::ValidationError { message } => {
-                    ClientRegistrationError {
-                        error: "invalid_client_metadata".to_string(),
-                        error_description: Some(message),
-                    }
+                AuthencError::ValidationError { message } => ClientRegistrationError {
+                    error: "invalid_client_metadata".to_string(),
+                    error_description: Some(message),
                 },
-                AuthencError::ResourceNotFound { .. } => {
-                    ClientRegistrationError {
-                        error: "invalid_client_id".to_string(),
-                        error_description: Some("Client not found".to_string()),
-                    }
+                AuthencError::ResourceNotFound { .. } => ClientRegistrationError {
+                    error: "invalid_client_id".to_string(),
+                    error_description: Some("Client not found".to_string()),
                 },
-                _ => {
-                    ClientRegistrationError {
-                        error: "invalid_request".to_string(),
-                        error_description: Some("Failed to update client configuration".to_string()),
-                    }
-                }
+                _ => ClientRegistrationError {
+                    error: "invalid_request".to_string(),
+                    error_description: Some("Failed to update client configuration".to_string()),
+                },
             };
             Err((StatusCode::BAD_REQUEST, Json(error_response)))
         }
@@ -202,8 +200,10 @@ async fn delete_client_registration(
                 StatusCode::UNAUTHORIZED,
                 Json(ClientRegistrationError {
                     error: "invalid_token".to_string(),
-                    error_description: Some("Missing or invalid registration access token".to_string()),
-                })
+                    error_description: Some(
+                        "Missing or invalid registration access token".to_string(),
+                    ),
+                }),
             ));
         }
     };
@@ -216,28 +216,25 @@ async fn delete_client_registration(
     );
 
     // Delete client registration
-    match registration_service.delete_client_registration(&client_id, &registration_token).await {
+    match registration_service
+        .delete_client_registration(&client_id, &registration_token)
+        .await
+    {
         Ok(()) => Ok(StatusCode::NO_CONTENT),
         Err(err) => {
             let error_response = match err {
-                AuthencError::AuthenticationFailed => {
-                    ClientRegistrationError {
-                        error: "invalid_token".to_string(),
-                        error_description: Some("Invalid registration access token".to_string()),
-                    }
+                AuthencError::AuthenticationFailed => ClientRegistrationError {
+                    error: "invalid_token".to_string(),
+                    error_description: Some("Invalid registration access token".to_string()),
                 },
-                AuthencError::ResourceNotFound { .. } => {
-                    ClientRegistrationError {
-                        error: "invalid_client_id".to_string(),
-                        error_description: Some("Client not found".to_string()),
-                    }
+                AuthencError::ResourceNotFound { .. } => ClientRegistrationError {
+                    error: "invalid_client_id".to_string(),
+                    error_description: Some("Client not found".to_string()),
                 },
-                _ => {
-                    ClientRegistrationError {
-                        error: "invalid_request".to_string(),
-                        error_description: Some("Failed to delete client registration".to_string()),
-                    }
-                }
+                _ => ClientRegistrationError {
+                    error: "invalid_request".to_string(),
+                    error_description: Some("Failed to delete client registration".to_string()),
+                },
             };
             Err((StatusCode::BAD_REQUEST, Json(error_response)))
         }

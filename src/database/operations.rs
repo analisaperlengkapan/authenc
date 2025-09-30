@@ -2,12 +2,12 @@
 pub mod devices {
     use crate::{
         database::Database,
-        error::{Result, AuthencError},
+        error::{AuthencError, Result},
         models::{Device, DeviceInfo},
     };
     use chrono::Utc;
-    use uuid::Uuid;
     use log::error;
+    use uuid::Uuid;
 
     /// Register a new device in the database
     pub async fn register_device(
@@ -56,7 +56,7 @@ pub mod devices {
             .await
             .map_err(|e| {
                 error!("Device registration query failed: {}", e);
-                AuthencError::database(&format!("Database query failed: {}", e))
+                AuthencError::database(format!("Database query failed: {}", e))
             })?;
 
         // Convert row to Device
@@ -1108,7 +1108,7 @@ pub mod users {
                     &now,
                     &None::<chrono::DateTime<Utc>>, // deleted_at
                     &None::<chrono::DateTime<Utc>>, // last_login_at
-                    &0i32, // login_count
+                    &0i32,                          // login_count
                 ],
             )
             .await?;
@@ -1767,11 +1767,7 @@ pub mod realms {
 
 /// Database operations for role management
 pub mod roles {
-    use crate::{
-        database::Database,
-        error::Result,
-        models::Role,
-    };
+    use crate::{database::Database, error::Result, models::Role};
     use chrono::Utc;
     use uuid::Uuid;
 
@@ -1797,14 +1793,7 @@ pub mod roles {
         let row = client
             .query_one(
                 query,
-                &[
-                    &role_id,
-                    &name,
-                    &description,
-                    &realm_id,
-                    &now,
-                    &now,
-                ],
+                &[&role_id, &name, &description, &realm_id, &now, &now],
             )
             .await?;
 
@@ -1892,11 +1881,7 @@ pub mod roles {
     }
 
     /// Assign role to user
-    pub async fn assign_role_to_user(
-        db: &Database,
-        user_id: &Uuid,
-        role_id: &Uuid,
-    ) -> Result<()> {
+    pub async fn assign_role_to_user(db: &Database, user_id: &Uuid, role_id: &Uuid) -> Result<()> {
         let client = db.get_connection().await?;
         let now = Utc::now();
 
@@ -1964,10 +1949,7 @@ pub mod roles {
 
 /// Database operations for identity provider management
 pub mod identity_providers {
-    use crate::{
-        database::Database,
-        error::Result,
-    };
+    use crate::{database::Database, error::Result};
     use chrono::{DateTime, Utc};
     use serde_json::Value;
     use uuid::Uuid;
@@ -2143,8 +2125,9 @@ pub mod identity_providers {
         truststore_path: Option<&str>,
         keystore_path: Option<&str>,
     ) -> Result<IdentityProviderData> {
-        let config_json = config.as_ref()
-            .map(|c| serde_json::to_string(c))
+        let config_json = config
+            .as_ref()
+            .map(serde_json::to_string)
             .transpose()?;
 
         let query = r#"
@@ -2197,10 +2180,7 @@ pub mod identity_providers {
     }
 
     /// Delete identity provider (soft delete)
-    pub async fn delete_identity_provider(
-        db: &Database,
-        provider_id: Uuid,
-    ) -> Result<()> {
+    pub async fn delete_identity_provider(db: &Database, provider_id: Uuid) -> Result<()> {
         let query = r#"
             UPDATE identity_providers
             SET deleted_at = NOW()
@@ -2233,7 +2213,7 @@ pub mod federated_identities {
     use crate::{
         database::Database,
         error::Result,
-        models::user::{FederatedIdentity, CreateFederatedIdentityRequest},
+        models::user::{CreateFederatedIdentityRequest, FederatedIdentity},
     };
     use uuid::Uuid;
 
@@ -2245,7 +2225,7 @@ pub mod federated_identities {
         let external_attributes_json = request
             .external_attributes
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
 
         let query = r#"
@@ -2301,21 +2281,26 @@ pub mod federated_identities {
             WHERE identity_provider_id = $1 AND external_id = $2
         "#;
 
-        let rows = db.query(query, &[&identity_provider_id, &external_id]).await?;
-        Ok(rows.into_iter().next().map(|r: tokio_postgres::Row| FederatedIdentity {
-            id: r.get(0),
-            user_id: r.get(1),
-            identity_provider_id: r.get(2),
-            external_id: r.get(3),
-            external_username: r.get(4),
-            external_email: r.get(5),
-            external_attributes: r
-                .get::<_, Option<String>>(6)
-                .and_then(|s: String| serde_json::from_str(&s).ok()),
-            last_login_at: r.get(7),
-            created_at: r.get(8),
-            updated_at: r.get(9),
-        }))
+        let rows = db
+            .query(query, &[&identity_provider_id, &external_id])
+            .await?;
+        Ok(rows
+            .into_iter()
+            .next()
+            .map(|r: tokio_postgres::Row| FederatedIdentity {
+                id: r.get(0),
+                user_id: r.get(1),
+                identity_provider_id: r.get(2),
+                external_id: r.get(3),
+                external_username: r.get(4),
+                external_email: r.get(5),
+                external_attributes: r
+                    .get::<_, Option<String>>(6)
+                    .and_then(|s: String| serde_json::from_str(&s).ok()),
+                last_login_at: r.get(7),
+                created_at: r.get(8),
+                updated_at: r.get(9),
+            }))
     }
 
     /// Get all federated identities for a user
@@ -2355,10 +2340,7 @@ pub mod federated_identities {
     }
 
     /// Update last login time for federated identity
-    pub async fn update_last_login(
-        db: &Database,
-        federated_identity_id: Uuid,
-    ) -> Result<()> {
+    pub async fn update_last_login(db: &Database, federated_identity_id: Uuid) -> Result<()> {
         let query = r#"
             UPDATE federated_identities
             SET last_login_at = NOW(), updated_at = NOW()
@@ -2390,15 +2372,15 @@ pub mod resources {
         database::Database,
         error::Result,
         models::{
-            resource::{Resource, CreateResourceRequest, UpdateResourceRequest},
-            permission_ticket::{PermissionTicket, CreatePermissionTicketRequest},
-            scope::{Scope, CreateScopeRequest, UpdateScopeRequest},
-            resource_server::{ResourceServer, CreateResourceServerRequest, UpdateResourceServerRequest},
+            permission_ticket::{CreatePermissionTicketRequest, PermissionTicket},
+            resource::{CreateResourceRequest, Resource},
+            resource_server::{CreateResourceServerRequest, ResourceServer},
+            scope::{CreateScopeRequest, Scope},
         },
     };
     use chrono::Utc;
-    use uuid::Uuid;
     use serde_json;
+    use uuid::Uuid;
 
     /// Create a new resource server
     pub async fn create_resource_server(
@@ -2434,7 +2416,7 @@ pub mod resources {
                     &realm_id,
                     &"enforcing".to_string(), // default policy_enforcement_mode
                     &"unanimous".to_string(), // default decision_strategy
-                    &false, // allow_remote_resource_management
+                    &false,                   // allow_remote_resource_management
                     &now,
                     &now,
                 ],
@@ -2448,7 +2430,10 @@ pub mod resources {
             description: row.get::<_, Option<String>>(3),
             enabled: row.get::<_, bool>(4),
             realm_id: row.get::<_, Uuid>(5),
-            policy_enforcement_mode: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(6)))?,
+            policy_enforcement_mode: serde_json::from_str(&format!(
+                "\"{}\"",
+                row.get::<_, String>(6)
+            ))?,
             decision_strategy: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(7)))?,
             allow_remote_resource_management: row.get::<_, bool>(8),
             created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(9),
@@ -2480,8 +2465,14 @@ pub mod resources {
                 description: row.get::<_, Option<String>>(3),
                 enabled: row.get::<_, bool>(4),
                 realm_id: row.get::<_, Uuid>(5),
-                policy_enforcement_mode: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(6)))?,
-                decision_strategy: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(7)))?,
+                policy_enforcement_mode: serde_json::from_str(&format!(
+                    "\"{}\"",
+                    row.get::<_, String>(6)
+                ))?,
+                decision_strategy: serde_json::from_str(&format!(
+                    "\"{}\"",
+                    row.get::<_, String>(7)
+                ))?,
                 allow_remote_resource_management: row.get::<_, bool>(8),
                 created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(9),
                 updated_at: row.get::<_, chrono::DateTime<chrono::Utc>>(10),
@@ -2516,8 +2507,14 @@ pub mod resources {
                 description: row.get::<_, Option<String>>(3),
                 enabled: row.get::<_, bool>(4),
                 realm_id: row.get::<_, Uuid>(5),
-                policy_enforcement_mode: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(6)))?,
-                decision_strategy: serde_json::from_str(&format!("\"{}\"", row.get::<_, String>(7)))?,
+                policy_enforcement_mode: serde_json::from_str(&format!(
+                    "\"{}\"",
+                    row.get::<_, String>(6)
+                ))?,
+                decision_strategy: serde_json::from_str(&format!(
+                    "\"{}\"",
+                    row.get::<_, String>(7)
+                ))?,
                 allow_remote_resource_management: row.get::<_, bool>(8),
                 created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(9),
                 updated_at: row.get::<_, chrono::DateTime<chrono::Utc>>(10),
@@ -2615,7 +2612,8 @@ pub mod resources {
             WHERE name = $1 AND resource_server_id = $2
         "#;
 
-        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&name, &resource_server_id];
+        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            vec![&name, &resource_server_id];
         let rows: Vec<tokio_postgres::Row> = db.query(query, &params).await?;
         let row = rows.into_iter().next();
 
@@ -2673,9 +2671,12 @@ pub mod resources {
                     &realm_id,
                     &resource_server_id,
                     &request.scopes.unwrap_or_default(),
-                    &request.attributes
+                    &request
+                        .attributes
                         .as_ref()
-                        .map(|attrs| serde_json::to_string(attrs).unwrap_or_else(|_| "{}".to_string()))
+                        .map(|attrs| {
+                            serde_json::to_string(attrs).unwrap_or_else(|_| "{}".to_string())
+                        })
                         .unwrap_or_else(|| "{}".to_string()),
                     &now,
                     &now,
@@ -2749,7 +2750,8 @@ pub mod resources {
             WHERE name = $1 AND resource_server_id = $2
         "#;
 
-        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&name, &resource_server_id];
+        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            vec![&name, &resource_server_id];
         let rows: Vec<tokio_postgres::Row> = db.query(query, &params).await?;
         let row = rows.into_iter().next();
 
@@ -2852,7 +2854,7 @@ pub mod resources {
                     &request.scope_id,
                     &owner,
                     &request.requester,
-                    &false, // granted
+                    &false,                         // granted
                     &None::<chrono::DateTime<Utc>>, // granted_timestamp
                     &realm_id,
                     &resource_server_id,
@@ -2912,7 +2914,10 @@ pub mod resources {
     }
 
     /// Grant permission ticket
-    pub async fn grant_permission_ticket(db: &Database, ticket_id: Uuid) -> Result<PermissionTicket> {
+    pub async fn grant_permission_ticket(
+        db: &Database,
+        ticket_id: Uuid,
+    ) -> Result<PermissionTicket> {
         let now = Utc::now();
 
         let query = r#"
@@ -2958,7 +2963,8 @@ pub mod resources {
             FROM resources r
             INNER JOIN permission_tickets pt ON r.id = pt.resource_id
             WHERE pt.requester = $1 AND pt.granted = true
-        "#.to_string();
+        "#
+        .to_string();
 
         let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&user_id];
 
@@ -2987,5 +2993,789 @@ pub mod resources {
         }
 
         Ok(resource_ids)
+    }
+}
+
+/// Database operations for user consents
+pub mod consents {
+    use crate::{
+        database::Database,
+        error::{AuthencError, Result},
+        models::{ConsentGrantRequest, UserConsent},
+    };
+    use chrono::{Duration, Utc};
+    use log::error;
+    use uuid::Uuid;
+
+    /// Grant user consent for a client
+    pub async fn grant_consent(
+        db: &Database,
+        user_id: Uuid,
+        request: &ConsentGrantRequest,
+    ) -> Result<UserConsent> {
+        let consent_id = Uuid::new_v4();
+        let granted_at = Utc::now();
+        let expires_at = request
+            .expires_in
+            .map(|expires_in| granted_at + Duration::seconds(expires_in));
+
+        let query = r#"
+            INSERT INTO user_consents (
+                id, user_id, client_id, scopes, granted_at, expires_at, metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (user_id, client_id)
+            DO UPDATE SET
+                scopes = EXCLUDED.scopes,
+                granted_at = EXCLUDED.granted_at,
+                expires_at = EXCLUDED.expires_at,
+                metadata = EXCLUDED.metadata
+            RETURNING id, user_id, client_id, scopes, granted_at, expires_at, metadata
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &consent_id,
+                    &user_id,
+                    &request.client_id,
+                    &request.scopes,
+                    &granted_at,
+                    &expires_at,
+                    &request.metadata,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to grant consent: {}", e);
+                AuthencError::database("Failed to grant consent")
+            })?;
+
+        Ok(UserConsent {
+            id: row.get(0),
+            user_id: row.get(1),
+            client_id: row.get(2),
+            scopes: row.get(3),
+            granted_at: row.get(4),
+            expires_at: row.get(5),
+            metadata: row.get(6),
+        })
+    }
+
+    /// Revoke user consent for a client
+    pub async fn revoke_consent(db: &Database, user_id: Uuid, client_id: &str) -> Result<()> {
+        let query = "DELETE FROM user_consents WHERE user_id = $1 AND client_id = $2";
+
+        db.execute(query, &[&user_id, &client_id])
+            .await
+            .map_err(|e| {
+                error!("Failed to revoke consent: {}", e);
+                AuthencError::database("Failed to revoke consent")
+            })?;
+
+        Ok(())
+    }
+
+    /// Revoke specific consent by ID
+    pub async fn revoke_consent_by_id(
+        db: &Database,
+        user_id: Uuid,
+        consent_id: Uuid,
+    ) -> Result<()> {
+        let query = "DELETE FROM user_consents WHERE user_id = $1 AND id = $2";
+
+        db.execute(query, &[&user_id, &consent_id])
+            .await
+            .map_err(|e| {
+                error!("Failed to revoke consent by ID: {}", e);
+                AuthencError::database("Failed to revoke consent by ID")
+            })?;
+
+        Ok(())
+    }
+
+    /// Get all user consents
+    pub async fn get_user_consents(db: &Database, user_id: Uuid) -> Result<Vec<UserConsent>> {
+        let query = r#"
+            SELECT id, user_id, client_id, scopes, granted_at, expires_at, metadata
+            FROM user_consents
+            WHERE user_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY granted_at DESC
+        "#;
+
+        let rows = db.query(query, &[&user_id]).await.map_err(|e| {
+            error!("Failed to get user consents: {}", e);
+            AuthencError::database("Failed to get user consents")
+        })?;
+
+        let consents = rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| UserConsent {
+                id: row.get(0),
+                user_id: row.get(1),
+                client_id: row.get(2),
+                scopes: row.get(3),
+                granted_at: row.get(4),
+                expires_at: row.get(5),
+                metadata: row.get(6),
+            })
+            .collect();
+
+        Ok(consents)
+    }
+
+    /// Get specific user consent for a client
+    pub async fn get_user_consent(
+        db: &Database,
+        user_id: Uuid,
+        client_id: &str,
+    ) -> Result<Option<UserConsent>> {
+        let query = r#"
+            SELECT id, user_id, client_id, scopes, granted_at, expires_at, metadata
+            FROM user_consents
+            WHERE user_id = $1 AND client_id = $2 AND (expires_at IS NULL OR expires_at > NOW())
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db
+            .query(query, &[&user_id, &client_id])
+            .await
+            .map_err(|e| {
+                error!("Failed to get user consent: {}", e);
+                AuthencError::database("Failed to get user consent")
+            })?;
+
+        if let Some(row) = rows.first() {
+            Ok(Some(UserConsent {
+                id: row.get(0),
+                user_id: row.get(1),
+                client_id: row.get(2),
+                scopes: row.get(3),
+                granted_at: row.get(4),
+                expires_at: row.get(5),
+                metadata: row.get(6),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Check if user has valid consent for client and scopes
+    pub async fn has_consent(
+        db: &Database,
+        user_id: Uuid,
+        client_id: &str,
+        scopes: &[String],
+    ) -> Result<bool> {
+        let query = r#"
+            SELECT 1
+            FROM user_consents
+            WHERE user_id = $1 AND client_id = $2 AND (expires_at IS NULL OR expires_at > NOW())
+            AND scopes @> $3
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db
+            .query(query, &[&user_id, &client_id, &scopes])
+            .await
+            .map_err(|e| {
+                error!("Failed to check consent: {}", e);
+                AuthencError::database("Failed to check consent")
+            })?;
+
+        Ok(!rows.is_empty())
+    }
+
+    /// Clean up expired consents
+    pub async fn cleanup_expired_consents(db: &Database) -> Result<i64> {
+        let query = "DELETE FROM user_consents WHERE expires_at IS NOT NULL AND expires_at < NOW()";
+
+        let deleted = db.execute(query, &[]).await.map_err(|e| {
+            error!("Failed to cleanup expired consents: {}", e);
+            AuthencError::database("Failed to cleanup expired consents")
+        })?;
+
+        Ok(deleted as i64)
+    }
+
+    /// Get consent statistics for a user
+    pub async fn get_consent_stats(db: &Database, user_id: Uuid) -> Result<serde_json::Value> {
+        let query = r#"
+            SELECT
+                COUNT(*) as total_consents,
+                COUNT(CASE WHEN expires_at IS NOT NULL THEN 1 END) as expiring_consents,
+                COUNT(CASE WHEN expires_at IS NOT NULL AND expires_at < NOW() + INTERVAL '30 days' THEN 1 END) as expiring_soon
+            FROM user_consents
+            WHERE user_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
+        "#;
+
+        let row: tokio_postgres::Row = db.query_one(query, &[&user_id]).await.map_err(|e| {
+            error!("Failed to get consent stats: {}", e);
+            AuthencError::database("Failed to get consent stats")
+        })?;
+
+        let stats = serde_json::json!({
+            "total_consents": row.get::<_, i64>(0),
+            "expiring_consents": row.get::<_, i64>(1),
+            "expiring_soon": row.get::<_, i64>(2)
+        });
+
+        Ok(stats)
+    }
+}
+
+/// Database operations for authentication flows
+pub mod auth_flows {
+    use crate::{
+        database::Database,
+        error::{AuthencError, Result},
+        services::auth_flow::{
+            AuthenticationExecutionModel, AuthenticationFlowModel, AuthenticationSessionModel,
+        },
+    };
+    use chrono::Utc;
+    use log::error;
+    use uuid::Uuid;
+
+    /// Create a new authentication flow
+    pub async fn create_flow(
+        db: &Database,
+        flow: &AuthenticationFlowModel,
+    ) -> Result<AuthenticationFlowModel> {
+        let query = r#"
+            INSERT INTO authentication_flows (
+                id, alias, description, flow_type, realm_id, enabled, priority, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, alias, description, flow_type, realm_id, enabled, priority, created_at, updated_at
+        "#;
+
+        let flow_type_str = match flow.flow_type {
+            crate::services::auth_flow::AuthenticationFlowType::Browser => "browser",
+            crate::services::auth_flow::AuthenticationFlowType::DirectGrant => "direct_grant",
+            crate::services::auth_flow::AuthenticationFlowType::ClientAuthentication => {
+                "client_authentication"
+            }
+            crate::services::auth_flow::AuthenticationFlowType::Registration => "registration",
+            crate::services::auth_flow::AuthenticationFlowType::ResetCredentials => {
+                "reset_credentials"
+            }
+            crate::services::auth_flow::AuthenticationFlowType::Docker => "docker",
+            crate::services::auth_flow::AuthenticationFlowType::Custom(ref s) => s,
+        };
+
+        let now = Utc::now();
+        let rows: Vec<tokio_postgres::Row> = db
+            .query(
+                query,
+                &[
+                    &flow.id,
+                    &flow.alias,
+                    &flow.description,
+                    &flow_type_str,
+                    &flow.realm_id,
+                    &flow.enabled,
+                    &flow.priority,
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to create authentication flow: {}", e);
+                AuthencError::database("Failed to create authentication flow")
+            })?;
+
+        let row = rows.first().ok_or_else(|| {
+            error!("No rows returned from create flow query");
+            AuthencError::database("Failed to create authentication flow")
+        })?;
+
+        Ok(AuthenticationFlowModel {
+            id: row.get(0),
+            alias: row.get(1),
+            description: row.get(2),
+            flow_type: match row.get::<_, &str>(3) {
+                "browser" => crate::services::auth_flow::AuthenticationFlowType::Browser,
+                "direct_grant" => crate::services::auth_flow::AuthenticationFlowType::DirectGrant,
+                "client_authentication" => {
+                    crate::services::auth_flow::AuthenticationFlowType::ClientAuthentication
+                }
+                "registration" => crate::services::auth_flow::AuthenticationFlowType::Registration,
+                "reset_credentials" => {
+                    crate::services::auth_flow::AuthenticationFlowType::ResetCredentials
+                }
+                "docker" => crate::services::auth_flow::AuthenticationFlowType::Docker,
+                s => crate::services::auth_flow::AuthenticationFlowType::Custom(s.to_string()),
+            },
+            realm_id: row.get(4),
+            enabled: row.get(5),
+            priority: row.get(6),
+        })
+    }
+
+    /// Get authentication flow by ID
+    pub async fn get_flow(db: &Database, flow_id: Uuid) -> Result<Option<AuthenticationFlowModel>> {
+        let query = r#"
+            SELECT f.id, f.alias, f.description, f.flow_type, f.realm_id, f.enabled, f.priority,
+                   e.id, e.alias, e.description, e.execution_type, e.enabled, e.priority, e.configuration, e.requirements
+            FROM authentication_flows f
+            LEFT JOIN authentication_executions e ON f.id = e.flow_id
+            WHERE f.id = $1
+            ORDER BY e.priority DESC
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&flow_id]).await.map_err(|e| {
+            error!("Failed to get authentication flow: {}", e);
+            AuthencError::database("Failed to get authentication flow")
+        })?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let first_row = &rows[0];
+        let mut executions = Vec::new();
+
+        for row in &rows {
+            if let Some(exec_id) = row.get::<_, Option<Uuid>>(7) {
+                executions.push(AuthenticationExecutionModel {
+                    id: exec_id,
+                    flow_id: row.get(0),
+                    alias: row.get(8),
+                    description: row.get(9),
+                    execution_type: row.get(10),
+                    enabled: row.get(11),
+                    priority: row.get(12),
+                    configuration: row
+                        .get::<_, Option<serde_json::Value>>(13)
+                        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
+                        .as_object()
+                        .unwrap_or(&serde_json::Map::new())
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                        .collect(),
+                    requirements: row.get::<_, Option<Vec<String>>>(14).unwrap_or_default(),
+                });
+            }
+        }
+
+        Ok(Some(AuthenticationFlowModel {
+            id: first_row.get(0),
+            alias: first_row.get(1),
+            description: first_row.get(2),
+            flow_type: match first_row.get::<_, &str>(3) {
+                "browser" => crate::services::auth_flow::AuthenticationFlowType::Browser,
+                "direct_grant" => crate::services::auth_flow::AuthenticationFlowType::DirectGrant,
+                "client_authentication" => {
+                    crate::services::auth_flow::AuthenticationFlowType::ClientAuthentication
+                }
+                "registration" => crate::services::auth_flow::AuthenticationFlowType::Registration,
+                "reset_credentials" => {
+                    crate::services::auth_flow::AuthenticationFlowType::ResetCredentials
+                }
+                "docker" => crate::services::auth_flow::AuthenticationFlowType::Docker,
+                s => crate::services::auth_flow::AuthenticationFlowType::Custom(s.to_string()),
+            },
+            realm_id: first_row.get(4),
+            enabled: first_row.get(5),
+            priority: first_row.get(6),
+        }))
+    }
+
+    /// List authentication flows for a realm
+    pub async fn list_flows(
+        db: &Database,
+        realm_id: Option<Uuid>,
+    ) -> Result<Vec<AuthenticationFlowModel>> {
+        let (query, params) = if let Some(ref realm_id_val) = realm_id {
+            let params_vec: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![realm_id_val];
+            (
+                r#"
+                SELECT DISTINCT f.id, f.alias, f.description, f.flow_type, f.realm_id, f.enabled, f.priority
+                FROM authentication_flows f
+                WHERE f.realm_id = $1 OR f.realm_id IS NULL
+                ORDER BY f.priority DESC, f.alias
+            "#,
+                params_vec,
+            )
+        } else {
+            (
+                r#"
+                SELECT DISTINCT f.id, f.alias, f.description, f.flow_type, f.realm_id, f.enabled, f.priority
+                FROM authentication_flows f
+                ORDER BY f.priority DESC, f.alias
+            "#,
+                vec![],
+            )
+        };
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &params).await.map_err(|e| {
+            error!("Failed to list authentication flows: {}", e);
+            AuthencError::database("Failed to list authentication flows")
+        })?;
+
+        let mut flows = Vec::new();
+        for row in rows {
+            let flow_id: Uuid = row.get(0);
+            if let Some(flow) = get_flow(db, flow_id).await? {
+                flows.push(flow);
+            }
+        }
+
+        Ok(flows)
+    }
+
+    /// Update authentication flow
+    pub async fn update_flow(
+        db: &Database,
+        flow_id: Uuid,
+        flow: &AuthenticationFlowModel,
+    ) -> Result<AuthenticationFlowModel> {
+        let query = r#"
+            UPDATE authentication_flows
+            SET alias = $2, description = $3, flow_type = $4, realm_id = $5,
+                enabled = $6, priority = $7, updated_at = $8
+            WHERE id = $1
+            RETURNING id, alias, description, flow_type, realm_id, enabled, priority, created_at, updated_at
+        "#;
+
+        let flow_type_str = match flow.flow_type {
+            crate::services::auth_flow::AuthenticationFlowType::Browser => "browser",
+            crate::services::auth_flow::AuthenticationFlowType::DirectGrant => "direct_grant",
+            crate::services::auth_flow::AuthenticationFlowType::ClientAuthentication => {
+                "client_authentication"
+            }
+            crate::services::auth_flow::AuthenticationFlowType::Registration => "registration",
+            crate::services::auth_flow::AuthenticationFlowType::ResetCredentials => {
+                "reset_credentials"
+            }
+            crate::services::auth_flow::AuthenticationFlowType::Docker => "docker",
+            crate::services::auth_flow::AuthenticationFlowType::Custom(ref s) => s,
+        };
+
+        let now = Utc::now();
+        let rows: Vec<tokio_postgres::Row> = db
+            .query(
+                query,
+                &[
+                    &flow_id,
+                    &flow.alias,
+                    &flow.description,
+                    &flow_type_str,
+                    &flow.realm_id,
+                    &flow.enabled,
+                    &flow.priority,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to update authentication flow: {}", e);
+                AuthencError::database("Failed to update authentication flow")
+            })?;
+
+        let row = rows.first().ok_or_else(|| {
+            error!("No rows returned from update flow query");
+            AuthencError::database("Failed to update authentication flow")
+        })?;
+
+        // Get the updated flow with executions
+        get_flow(db, flow_id).await?.ok_or_else(|| {
+            error!("Flow not found after update");
+            AuthencError::database("Flow not found after update")
+        })
+    }
+
+    /// Delete authentication flow
+    pub async fn delete_flow(db: &Database, flow_id: Uuid) -> Result<()> {
+        let query = "DELETE FROM authentication_flows WHERE id = $1";
+
+        let deleted = db.execute(query, &[&flow_id]).await.map_err(|e| {
+            error!("Failed to delete authentication flow: {}", e);
+            AuthencError::database("Failed to delete authentication flow")
+        })?;
+
+        if deleted == 0 {
+            return Err(AuthencError::resource_not_found(
+                "Authentication flow not found",
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Create authentication execution
+    pub async fn create_execution(
+        db: &Database,
+        execution: &AuthenticationExecutionModel,
+    ) -> Result<AuthenticationExecutionModel> {
+        let query = r#"
+            INSERT INTO authentication_executions (
+                id, flow_id, alias, description, execution_type, enabled, priority,
+                configuration, requirements, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING id, flow_id, alias, description, execution_type, enabled, priority,
+                      configuration, requirements, created_at, updated_at
+        "#;
+
+        let config_json = serde_json::to_value(&execution.configuration)
+            .map_err(|e| AuthencError::database(format!("Failed to serialize config: {}", e)))?;
+
+        let now = Utc::now();
+        let rows: Vec<tokio_postgres::Row> = db
+            .query(
+                query,
+                &[
+                    &execution.id,
+                    &execution.flow_id,
+                    &execution.alias,
+                    &execution.description,
+                    &execution.execution_type,
+                    &execution.enabled,
+                    &execution.priority,
+                    &config_json,
+                    &execution.requirements,
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to create authentication execution: {}", e);
+                AuthencError::database("Failed to create authentication execution")
+            })?;
+
+        let row = rows.first().ok_or_else(|| {
+            error!("No rows returned from create execution query");
+            AuthencError::database("Failed to create authentication execution")
+        })?;
+
+        Ok(AuthenticationExecutionModel {
+            id: row.get(0),
+            flow_id: row.get(1),
+            alias: row.get(2),
+            description: row.get(3),
+            execution_type: row.get(4),
+            enabled: row.get(5),
+            priority: row.get(6),
+            configuration: row
+                .get::<_, Option<serde_json::Value>>(7)
+                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
+                .as_object()
+                .unwrap_or(&serde_json::Map::new())
+                .iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                .collect(),
+            requirements: row.get::<_, Option<Vec<String>>>(8).unwrap_or_default(),
+        })
+    }
+
+    /// Create authentication session
+    pub async fn create_session(
+        db: &Database,
+        session: &AuthenticationSessionModel,
+    ) -> Result<AuthenticationSessionModel> {
+        let query = r#"
+            INSERT INTO authentication_sessions (
+                id, user_session_id, client_id, flow_id, current_execution_id,
+                started_at, session_data, auth_notes, expires_at, completed, success, error_message
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            RETURNING id, user_session_id, client_id, flow_id, current_execution_id,
+                      started_at, session_data, auth_notes, expires_at, completed, success, error_message
+        "#;
+
+        let session_data_json = serde_json::to_value(&session.session_data).map_err(|e| {
+            AuthencError::database(format!("Failed to serialize session data: {}", e))
+        })?;
+        let auth_notes_json = serde_json::to_value(&session.auth_notes).map_err(|e| {
+            AuthencError::database(format!("Failed to serialize auth notes: {}", e))
+        })?;
+
+        let rows: Vec<tokio_postgres::Row> = db
+            .query(
+                query,
+                &[
+                    &session.id,
+                    &session.user_session_id,
+                    &session.client_id,
+                    &session.flow_id,
+                    &session.current_execution_id,
+                    &session.started_at,
+                    &session_data_json,
+                    &auth_notes_json,
+                    &session.expires_at,
+                    &false,          // completed
+                    &None::<bool>,   // success
+                    &None::<String>, // error_message
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to create authentication session: {}", e);
+                AuthencError::database("Failed to create authentication session")
+            })?;
+
+        let row = rows.first().ok_or_else(|| {
+            error!("No rows returned from create session query");
+            AuthencError::database("Failed to create authentication session")
+        })?;
+
+        Ok(AuthenticationSessionModel {
+            id: row.get(0),
+            user_session_id: row.get(1),
+            client_id: row.get(2),
+            flow_id: row.get(3),
+            current_execution_id: row.get(4),
+            started_at: row.get(5),
+            expires_at: row.get(8),
+            session_data: row
+                .get::<_, Option<serde_json::Value>>(6)
+                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
+                .as_object()
+                .unwrap_or(&serde_json::Map::new())
+                .iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                .collect(),
+            auth_notes: row
+                .get::<_, Option<serde_json::Value>>(7)
+                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
+                .as_object()
+                .unwrap_or(&serde_json::Map::new())
+                .iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                .collect(),
+            completed: row.get(9),
+        })
+    }
+
+    /// Get authentication session
+    pub async fn get_session(
+        db: &Database,
+        session_id: Uuid,
+    ) -> Result<Option<AuthenticationSessionModel>> {
+        let query = r#"
+            SELECT id, user_session_id, client_id, flow_id, current_execution_id,
+                   started_at, session_data, auth_notes, expires_at, completed, success, error_message
+            FROM authentication_sessions
+            WHERE id = $1 AND expires_at > NOW()
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> =
+            db.query(query, &[&session_id]).await.map_err(|e| {
+                error!("Failed to get authentication session: {}", e);
+                AuthencError::database("Failed to get authentication session")
+            })?;
+
+        if let Some(row) = rows.first() {
+            Ok(Some(AuthenticationSessionModel {
+                id: row.get(0),
+                user_session_id: row.get(1),
+                client_id: row.get(2),
+                flow_id: row.get(3),
+                current_execution_id: row.get(4),
+                started_at: row.get(5),
+                expires_at: row.get(8),
+                session_data: row
+                    .get::<_, Option<serde_json::Value>>(6)
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
+                    .as_object()
+                    .unwrap_or(&serde_json::Map::new())
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                    .collect(),
+                auth_notes: row
+                    .get::<_, Option<serde_json::Value>>(7)
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
+                    .as_object()
+                    .unwrap_or(&serde_json::Map::new())
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                    .collect(),
+                completed: row.get(9),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Update authentication session
+    pub async fn update_session(
+        db: &Database,
+        session_id: Uuid,
+        session: &AuthenticationSessionModel,
+    ) -> Result<()> {
+        let query = r#"
+            UPDATE authentication_sessions
+            SET user_session_id = $2, client_id = $3, flow_id = $4, current_execution_id = $5,
+                session_data = $6, auth_notes = $7, completed = $8, success = $9, error_message = $10
+            WHERE id = $1
+        "#;
+
+        let session_data_json = serde_json::to_value(&session.session_data).map_err(|e| {
+            AuthencError::database(format!("Failed to serialize session data: {}", e))
+        })?;
+        let auth_notes_json = serde_json::to_value(&session.auth_notes).map_err(|e| {
+            AuthencError::database(format!("Failed to serialize auth notes: {}", e))
+        })?;
+
+        db.execute(
+            query,
+            &[
+                &session_id,
+                &session.user_session_id,
+                &session.client_id,
+                &session.flow_id,
+                &session.current_execution_id,
+                &session_data_json,
+                &auth_notes_json,
+                &false,          // completed - will be set when flow completes
+                &None::<bool>,   // success
+                &None::<String>, // error_message
+            ],
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to update authentication session: {}", e);
+            AuthencError::database("Failed to update authentication session")
+        })?;
+
+        Ok(())
+    }
+
+    /// Complete authentication session
+    pub async fn complete_session(
+        db: &Database,
+        session_id: Uuid,
+        success: bool,
+        error_message: Option<String>,
+    ) -> Result<()> {
+        let query = r#"
+            UPDATE authentication_sessions
+            SET completed = true, success = $2, error_message = $3
+            WHERE id = $1
+        "#;
+
+        db.execute(query, &[&session_id, &success, &error_message])
+            .await
+            .map_err(|e| {
+                error!("Failed to complete authentication session: {}", e);
+                AuthencError::database("Failed to complete authentication session")
+            })?;
+
+        Ok(())
+    }
+
+    /// Clean up expired authentication sessions
+    pub async fn cleanup_expired_sessions(db: &Database) -> Result<i64> {
+        let query = "DELETE FROM authentication_sessions WHERE expires_at < NOW()";
+
+        let deleted = db.execute(query, &[]).await.map_err(|e| {
+            error!("Failed to cleanup expired sessions: {}", e);
+            AuthencError::database("Failed to cleanup expired sessions")
+        })?;
+
+        Ok(deleted as i64)
     }
 }

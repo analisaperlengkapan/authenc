@@ -347,7 +347,12 @@ impl WebAuthnService {
             VALUES ($1, $2, $3, $4)
         "#;
 
-        client.execute(query, &[&user.id, &challenge_b64, &"registration", &expires_at]).await?;
+        client
+            .execute(
+                query,
+                &[&user.id, &challenge_b64, &"registration", &expires_at],
+            )
+            .await?;
         Ok(())
     }
 
@@ -368,7 +373,9 @@ impl WebAuthnService {
             LIMIT 1
         "#;
 
-        let row = client.query_opt(query, &[&user.id, &"registration"]).await?;
+        let row = client
+            .query_opt(query, &[&user.id, &"registration"])
+            .await?;
         Ok(row.map(|r| {
             let challenge_b64: String = r.get(0);
             base64ct::Base64UrlUnpadded::decode_vec(&challenge_b64).unwrap_or_default()

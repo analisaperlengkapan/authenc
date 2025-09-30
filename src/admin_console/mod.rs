@@ -2,12 +2,7 @@
 //!
 //! Provides a web-based admin interface for managing users, roles, realms, etc.
 
-use axum::{
-    response::Html,
-    Router,
-    extract::State,
-    http::StatusCode,
-};
+use axum::{extract::State, http::StatusCode, response::Html, Router};
 use std::sync::Arc;
 
 use crate::app::AppState;
@@ -17,7 +12,10 @@ use crate::services::admin::{AdminManager, AdminService};
 use crate::services::stores::user_store::UserStoreTrait;
 
 /// Create admin console routes
-pub fn create_admin_console_routes(state: Arc<crate::app::AppState>, db_state: Arc<Database>) -> Router<Arc<Database>> {
+pub fn create_admin_console_routes(
+    state: Arc<crate::app::AppState>,
+    db_state: Arc<Database>,
+) -> Router<Arc<Database>> {
     Router::new()
         .route("/", axum::routing::get(dashboard))
         .route("/users", axum::routing::get(users_page))
@@ -40,7 +38,8 @@ async fn dashboard(
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
 
-    let html = format!(r#"
+    let html = format!(
+        r#"
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -98,7 +97,9 @@ async fn dashboard(
         </div>
     </body>
     </html>
-    "#, stats.total_users, stats.active_sessions, stats.total_realms, stats.security_events_today);
+    "#,
+        stats.total_users, stats.active_sessions, stats.total_realms, stats.security_events_today
+    );
 
     Ok(Html(html))
 }
@@ -133,7 +134,8 @@ async fn users_page(
            user.id, user.id));
     }
 
-    let html = format!(r#"
+    let html = format!(
+        r#"
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -202,7 +204,9 @@ async fn users_page(
         </script>
     </body>
     </html>
-    "#, users_html);
+    "#,
+        users_html
+    );
 
     Ok(Html(html))
 }
@@ -232,7 +236,8 @@ async fn roles_page(
            role.id, role.id));
     }
 
-    let html = format!(r#"
+    let html = format!(
+        r#"
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -300,7 +305,9 @@ async fn roles_page(
         </script>
     </body>
     </html>
-    "#, roles_html);
+    "#,
+        roles_html
+    );
 
     Ok(Html(html))
 }
@@ -330,7 +337,8 @@ async fn realms_page(
            realm.id, realm.id));
     }
 
-    let html = format!(r#"
+    let html = format!(
+        r#"
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -398,7 +406,9 @@ async fn realms_page(
         </script>
     </body>
     </html>
-    "#, realms_html);
+    "#,
+        realms_html
+    );
 
     Ok(Html(html))
 }
@@ -430,7 +440,8 @@ async fn clients_page(
            client.id, client.id));
     }
 
-    let html = format!(r#"
+    let html = format!(
+        r#"
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -498,7 +509,9 @@ async fn clients_page(
         </script>
     </body>
     </html>
-    "#, clients_html);
+    "#,
+        clients_html
+    );
 
     Ok(Html(html))
 }

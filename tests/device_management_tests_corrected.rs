@@ -1,9 +1,9 @@
+use authenc::config::DatabaseConfig;
 use authenc::database::Database;
 use authenc::services::device::*;
-use authenc::config::DatabaseConfig;
+use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::Utc;
 
 #[tokio::test]
 #[ignore = "Requires PostgreSQL database to be running"]
@@ -33,7 +33,8 @@ async fn test_device_registration() {
         browser: Some("Safari".to_string()),
         browser_version: Some("17.0".to_string()),
         ip_address: "192.168.1.100".to_string(),
-        user_agent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15".to_string(),
+        user_agent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15"
+            .to_string(),
         security_features: DeviceSecurityFeatures {
             has_biometrics: true,
             has_hardware_security: true,
@@ -44,7 +45,9 @@ async fn test_device_registration() {
         },
     };
 
-    let result = device_service.register_device(user_id, registration_request).await;
+    let result = device_service
+        .register_device(user_id, registration_request)
+        .await;
     assert!(result.is_ok(), "Device registration should succeed");
 
     let device = result.unwrap();
@@ -93,7 +96,10 @@ async fn test_device_trust_evaluation() {
         },
     };
 
-    let device = device_service.register_device(user_id, registration_request).await.unwrap();
+    let device = device_service
+        .register_device(user_id, registration_request)
+        .await
+        .unwrap();
 
     // Test trust evaluation context
     let context = TrustEvaluationContext {
@@ -149,9 +155,7 @@ async fn test_device_trust_policies() {
         id: Uuid::new_v4(),
         name: "High Trust Score Policy".to_string(),
         description: "Allow devices with high trust scores".to_string(),
-        conditions: vec![
-            TrustCondition::TrustScoreAbove(0.8),
-        ],
+        conditions: vec![TrustCondition::TrustScoreAbove(0.8)],
         action: TrustAction::Allow,
         enabled: true,
         priority: 10,
@@ -195,12 +199,14 @@ async fn test_device_session_management() {
     let device_id = Uuid::new_v4();
 
     // Test session creation
-    let session_result = device_service.create_session(
-        device_id,
-        user_id,
-        "session_123".to_string(),
-        "192.168.1.100".to_string(),
-    ).await;
+    let session_result = device_service
+        .create_session(
+            device_id,
+            user_id,
+            "session_123".to_string(),
+            "192.168.1.100".to_string(),
+        )
+        .await;
 
     assert!(session_result.is_ok(), "Session creation should succeed");
 
@@ -258,7 +264,9 @@ async fn test_get_user_devices() {
             },
         };
 
-        let result = device_service.register_device(user_id, registration_request).await;
+        let result = device_service
+            .register_device(user_id, registration_request)
+            .await;
         assert!(result.is_ok(), "Device registration should succeed");
     }
 

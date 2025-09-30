@@ -1,76 +1,128 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// User event types - comprehensive set similar to Keycloak
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum EventType {
     // Authentication events
+    /// Successful user login event
     Login,
+    /// Failed user login attempt
     LoginError,
+    /// Successful user logout event
     Logout,
+    /// Failed user logout attempt
     LogoutError,
+    /// Successful code to token exchange
     CodeToToken,
+    /// Failed code to token exchange
     CodeToTokenError,
+    /// Successful client login event
     ClientLogin,
+    /// Failed client login attempt
     ClientLoginError,
+    /// Successful token refresh
     RefreshToken,
+    /// Failed token refresh attempt
     RefreshTokenError,
+    /// Successful token introspection
     IntrospectToken,
+    /// Failed token introspection attempt
     IntrospectTokenError,
 
     // User management events
+    /// Successful user registration
     Register,
+    /// Failed user registration attempt
     RegisterError,
+    /// Successful profile update
     UpdateProfile,
+    /// Failed profile update attempt
     UpdateProfileError,
+    /// Successful email update
     UpdateEmail,
+    /// Failed email update attempt
     UpdateEmailError,
+    /// Successful email verification
     VerifyEmail,
+    /// Failed email verification attempt
     VerifyEmailError,
+    /// Successful profile verification
     VerifyProfile,
+    /// Failed profile verification attempt
     VerifyProfileError,
+    /// Successful verification email sent
     SendVerifyEmail,
+    /// Failed to send verification email
     SendVerifyEmailError,
+    /// Successful reset password email sent
     SendResetPassword,
+    /// Failed to send reset password email
     SendResetPasswordError,
+    /// Successful password reset
     ResetPassword,
+    /// Failed password reset attempt
     ResetPasswordError,
 
     // Credential events
+    /// Successful credential update
     UpdateCredential,
+    /// Failed credential update attempt
     UpdateCredentialError,
+    /// Successful credential removal
     RemoveCredential,
+    /// Failed credential removal attempt
     RemoveCredentialError,
 
     // Federation events
+    /// Successful federated identity link
     FederatedIdentityLink,
+    /// Failed federated identity link attempt
     FederatedIdentityLinkError,
+    /// Successful federated identity removal
     RemoveFederatedIdentity,
+    /// Failed federated identity removal attempt
     RemoveFederatedIdentityError,
+    /// Successful federated identity override link
     FederatedIdentityOverrideLink,
+    /// Failed federated identity override link attempt
     FederatedIdentityOverrideLinkError,
 
     // Consent events
+    /// Successful consent grant
     GrantConsent,
+    /// Failed consent grant attempt
     GrantConsentError,
+    /// Successful consent update
     UpdateConsent,
+    /// Failed consent update attempt
     UpdateConsentError,
+    /// Successful grant revocation
     RevokeGrant,
+    /// Failed grant revocation attempt
     RevokeGrantError,
 
     // OAuth2 extension events
+    /// Successful OAuth2 extension grant
     Oauth2ExtensionGrant,
+    /// Failed OAuth2 extension grant attempt
     Oauth2ExtensionGrantError,
 
     // Security events
+    /// User disabled by permanent lockout
     UserDisabledByPermanentLockout,
+    /// Error in disabling user by permanent lockout
     UserDisabledByPermanentLockoutError,
+    /// User disabled by temporary lockout
     UserDisabledByTemporaryLockout,
+    /// Error in disabling user by temporary lockout
     UserDisabledByTemporaryLockoutError,
 
     // Organization events
+    /// Successful organization invitation
     InviteOrg,
+    /// Failed organization invitation attempt
     InviteOrgError,
 }
 
@@ -79,13 +131,23 @@ impl EventType {
     pub fn is_save_by_default(&self) -> bool {
         match self {
             // Authentication events - save by default
-            EventType::Login | EventType::Logout | EventType::Register |
-            EventType::UpdateProfile | EventType::UpdateEmail | EventType::VerifyEmail |
-            EventType::VerifyProfile | EventType::ResetPassword | EventType::GrantConsent |
-            EventType::RevokeGrant | EventType::FederatedIdentityLink |
-            EventType::RemoveFederatedIdentity | EventType::UpdateCredential |
-            EventType::RemoveCredential | EventType::UserDisabledByPermanentLockout |
-            EventType::UserDisabledByTemporaryLockout | EventType::InviteOrg => true,
+            EventType::Login
+            | EventType::Logout
+            | EventType::Register
+            | EventType::UpdateProfile
+            | EventType::UpdateEmail
+            | EventType::VerifyEmail
+            | EventType::VerifyProfile
+            | EventType::ResetPassword
+            | EventType::GrantConsent
+            | EventType::RevokeGrant
+            | EventType::FederatedIdentityLink
+            | EventType::RemoveFederatedIdentity
+            | EventType::UpdateCredential
+            | EventType::RemoveCredential
+            | EventType::UserDisabledByPermanentLockout
+            | EventType::UserDisabledByTemporaryLockout
+            | EventType::InviteOrg => true,
 
             // Error events - don't save by default to reduce noise
             _ => false,
@@ -132,7 +194,9 @@ impl EventType {
             EventType::RemoveFederatedIdentity => "REMOVE_FEDERATED_IDENTITY",
             EventType::RemoveFederatedIdentityError => "REMOVE_FEDERATED_IDENTITY_ERROR",
             EventType::FederatedIdentityOverrideLink => "FEDERATED_IDENTITY_OVERRIDE_LINK",
-            EventType::FederatedIdentityOverrideLinkError => "FEDERATED_IDENTITY_OVERRIDE_LINK_ERROR",
+            EventType::FederatedIdentityOverrideLinkError => {
+                "FEDERATED_IDENTITY_OVERRIDE_LINK_ERROR"
+            }
             EventType::GrantConsent => "GRANT_CONSENT",
             EventType::GrantConsentError => "GRANT_CONSENT_ERROR",
             EventType::UpdateConsent => "UPDATE_CONSENT",
@@ -142,9 +206,13 @@ impl EventType {
             EventType::Oauth2ExtensionGrant => "OAUTH2_EXTENSION_GRANT",
             EventType::Oauth2ExtensionGrantError => "OAUTH2_EXTENSION_GRANT_ERROR",
             EventType::UserDisabledByPermanentLockout => "USER_DISABLED_BY_PERMANENT_LOCKOUT",
-            EventType::UserDisabledByPermanentLockoutError => "USER_DISABLED_BY_PERMANENT_LOCKOUT_ERROR",
+            EventType::UserDisabledByPermanentLockoutError => {
+                "USER_DISABLED_BY_PERMANENT_LOCKOUT_ERROR"
+            }
             EventType::UserDisabledByTemporaryLockout => "USER_DISABLED_BY_TEMPORARY_LOCKOUT",
-            EventType::UserDisabledByTemporaryLockoutError => "USER_DISABLED_BY_TEMPORARY_LOCKOUT_ERROR",
+            EventType::UserDisabledByTemporaryLockoutError => {
+                "USER_DISABLED_BY_TEMPORARY_LOCKOUT_ERROR"
+            }
             EventType::InviteOrg => "INVITE_ORG",
             EventType::InviteOrgError => "INVITE_ORG_ERROR",
         }
@@ -248,13 +316,18 @@ impl Event {
 /// Admin operation types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum OperationType {
+    /// Create operation
     Create,
+    /// Update operation
     Update,
+    /// Delete operation
     Delete,
+    /// Action operation
     Action,
 }
 
 impl OperationType {
+    /// Convert the operation type to its string representation
     pub fn as_str(&self) -> &'static str {
         match self {
             OperationType::Create => "CREATE",
@@ -268,45 +341,82 @@ impl OperationType {
 /// Admin resource types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ResourceType {
+    /// Realm resource
     Realm,
+    /// Realm role resource
     RealmRole,
+    /// Realm role mapping resource
     RealmRoleMapping,
+    /// Realm scope mapping resource
     RealmScopeMapping,
+    /// Authentication flow resource
     AuthFlow,
+    /// Authentication execution flow resource
     AuthExecutionFlow,
+    /// Authentication execution resource
     AuthExecution,
+    /// Authenticator configuration resource
     AuthenticatorConfig,
+    /// Required action configuration resource
     RequiredActionConfig,
+    /// Required action resource
     RequiredAction,
+    /// Identity provider resource
     IdentityProvider,
+    /// Identity provider mapper resource
     IdentityProviderMapper,
+    /// Protocol mapper resource
     ProtocolMapper,
+    /// User resource
     User,
+    /// User login failure resource
     UserLoginFailure,
+    /// User session resource
     UserSession,
+    /// User federation mapper resource
     UserFederationMapper,
+    /// User federation provider resource
     UserFederationProvider,
+    /// Group resource
     Group,
+    /// Group membership resource
     GroupMembership,
+    /// Client resource
     Client,
+    /// Client scope resource
     ClientScope,
+    /// Client scope mapping resource
     ClientScopeMapping,
+    /// Client scope client mapping resource
     ClientScopeClientMapping,
+    /// Client template resource
     ClientTemplate,
+    /// Client template mapping resource
     ClientTemplateMapping,
+    /// Cluster node resource
     ClusterNode,
+    /// Component resource
     Component,
+    /// Authorization resource server
     AuthorizationResourceServer,
+    /// Authorization resource
     AuthorizationResource,
+    /// Authorization scope
     AuthorizationScope,
+    /// Authorization policy
     AuthorizationPolicy,
+    /// Custom resource type
     Custom,
+    /// User profile
     UserProfile,
+    /// Organization
     Organization,
+    /// Organization membership
     OrganizationMembership,
 }
 
 impl ResourceType {
+    /// Convert the resource type to its string representation
     pub fn as_str(&self) -> &'static str {
         match self {
             ResourceType::Realm => "REALM",

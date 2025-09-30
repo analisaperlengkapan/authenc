@@ -64,8 +64,11 @@ impl AuditLogSink for MultiAuditLogSink {
 /// use authenc::services::audit_log_sink::PgAuditLogSink;
 /// use authenc::services::pg_audit_log_store::PgAuditLogStore;
 ///
-/// let pg_store = PgAuditLogStore::new(database_connection);
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let pg_store = PgAuditLogStore::new("postgresql://user:pass@localhost/db").await?;
 /// let sink = PgAuditLogSink { store: pg_store };
+/// # Ok(())
+/// # }
 /// ```
 pub struct PgAuditLogSink {
     /// PostgreSQL audit log store instance
@@ -101,7 +104,6 @@ impl AuditLogSink for PgAuditLogSink {
 }
 
 // TODO: Future implementations could include:
-// - KafkaAuditLogSink for distributed streaming
 // - FileAuditLogSink for local file storage
-// - ElasticsearchAuditLogSink for search and analytics
 // - SyslogAuditLogSink for system logging integration
+// - SplunkAuditLogSink for Splunk SIEM integration

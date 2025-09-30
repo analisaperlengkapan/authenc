@@ -2,9 +2,9 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::database::{Database, operations};
+use crate::database::{operations, Database};
 use crate::error::AuthencError;
-use crate::models::user::{User, CreateUserRequest, UpdateUserRequest};
+use crate::models::user::{CreateUserRequest, UpdateUserRequest, User};
 
 /// User store for managing users in the database
 #[derive(Debug, Clone)]
@@ -41,7 +41,11 @@ pub trait UserStoreTrait: Send + Sync {
     async fn add_user(&self, request: CreateUserRequest) -> Result<User, AuthencError>;
 
     /// Update user
-    async fn update_user(&self, user_id: Uuid, request: UpdateUserRequest) -> Result<User, AuthencError>;
+    async fn update_user(
+        &self,
+        user_id: Uuid,
+        request: UpdateUserRequest,
+    ) -> Result<User, AuthencError>;
 
     /// Delete user (soft delete)
     async fn delete_user(&self, user_id: Uuid) -> Result<(), AuthencError>;
@@ -69,7 +73,11 @@ impl UserStoreTrait for UserStore {
         operations::users::create_user(&self.database, &request).await
     }
 
-    async fn update_user(&self, user_id: Uuid, request: UpdateUserRequest) -> Result<User, AuthencError> {
+    async fn update_user(
+        &self,
+        user_id: Uuid,
+        request: UpdateUserRequest,
+    ) -> Result<User, AuthencError> {
         operations::users::update_user(&self.database, user_id, &request).await
     }
 

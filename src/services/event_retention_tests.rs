@@ -34,7 +34,9 @@ mod tests {
             connection_timeout: 30,
             audit_log_url: None,
             connection_timeout_seconds: 30,
-        }).await {
+        })
+        .await
+        {
             let database = Arc::new(database);
 
             // Create a mock event store (we'd need to implement this properly)
@@ -50,11 +52,17 @@ mod tests {
 
     #[async_trait::async_trait]
     impl crate::services::events::EventStoreProvider for MockEventStore {
-        async fn store_event(&self, _event: &crate::models::events::Event) -> crate::error::Result<()> {
+        async fn store_event(
+            &self,
+            _event: &crate::models::events::Event,
+        ) -> crate::error::Result<()> {
             Ok(())
         }
 
-        async fn store_admin_event(&self, _event: &crate::models::events::AdminEvent) -> crate::error::Result<()> {
+        async fn store_admin_event(
+            &self,
+            _event: &crate::models::events::AdminEvent,
+        ) -> crate::error::Result<()> {
             Ok(())
         }
 
@@ -86,7 +94,10 @@ mod tests {
             Ok(Vec::new())
         }
 
-        async fn clear_old_events(&self, _older_than: chrono::DateTime<chrono::Utc>) -> crate::error::Result<usize> {
+        async fn clear_old_events(
+            &self,
+            _older_than: chrono::DateTime<chrono::Utc>,
+        ) -> crate::error::Result<usize> {
             Ok(0)
         }
     }

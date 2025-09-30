@@ -1,4 +1,4 @@
-use crate::services::{role_store::RoleStore, user_store::UserStore};
+use crate::services::stores::{role_store::RoleStore, user_store::UserStore};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -26,12 +26,29 @@ use std::sync::Arc;
 /// # Example
 /// ```rust
 /// use authenc::handlers::api::user_permission::create_user_permission_routes;
-/// use authenc::services::{UserStore, RoleStore};
+/// use authenc::services::stores::{user_store::UserStore, role_store::RoleStore};
+/// use authenc::database::Database;
+/// use authenc::config::DatabaseConfig;
 /// use std::sync::Arc;
 ///
-/// let user_store = Arc::new(UserStore::new(/* ... */));
-/// let role_store = Arc::new(RoleStore::new(/* ... */));
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = DatabaseConfig {
+///     host: "localhost".to_string(),
+///     port: 5432,
+///     username: "postgres".to_string(),
+///     password: "password".to_string(),
+///     database: "authenc".to_string(),
+///     max_connections: 10,
+///     connection_timeout: 30,
+///     audit_log_url: None,
+///     connection_timeout_seconds: 30,
+/// };
+/// let db = Arc::new(Database::new(&config).await?);
+/// let user_store = Arc::new(UserStore::new(db.clone()));
+/// let role_store = Arc::new(RoleStore::new());
 /// let router = create_user_permission_routes();
+/// # Ok(())
+/// # }
 /// ```
 pub fn create_user_permission_routes() -> Router<(Arc<UserStore>, Arc<RoleStore>)> {
     Router::new().route(

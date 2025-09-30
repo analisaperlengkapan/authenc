@@ -1,23 +1,23 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
-use authenc::models::user::{User, CreateUserRequest};
-use authenc::services::stores::user_store::UserStoreTrait;
+use authenc::error::AuthencError;
+use authenc::models::user::{CreateUserRequest, User};
+use authenc::services::group_store::GroupStore;
 use authenc::services::oidc_client_store::OidcClientStore;
 use authenc::services::stores::role_store::RoleStore;
-use authenc::services::group_store::GroupStore;
+use authenc::services::stores::user_store::UserStoreTrait;
 use authenc::spi::storage::{
-    StorageProviderType, DefaultUserStorageProvider, DefaultRoleStorageProvider,
-    DefaultGroupStorageProvider, StorageProvider, DefaultStorageProviderFactory,
-    StorageProviderFactory,
+    DefaultGroupStorageProvider, DefaultRoleStorageProvider, DefaultStorageProviderFactory,
+    DefaultUserStorageProvider, StorageProvider, StorageProviderFactory, StorageProviderType,
 };
-use authenc::error::AuthencError;
 
 // Mock user store for testing
 #[derive(Debug)]
 struct MockUserStore {
     users: std::sync::Mutex<Vec<User>>,
-}impl MockUserStore {
+}
+impl MockUserStore {
     fn new() -> Self {
         Self {
             users: std::sync::Mutex::new(Vec::new()),
@@ -53,7 +53,9 @@ impl UserStoreTrait for MockUserStore {
             last_name: request.last_name,
             phone_number: request.phone_number,
             phone_verified: false,
-            password_hash: request.password.map(|p| authenc::utils::crypto::password::hash_password(&p).unwrap()),
+            password_hash: request
+                .password
+                .map(|p| authenc::utils::crypto::password::hash_password(&p).unwrap()),
             totp_secret: None,
             totp_backup_codes: None,
             webauthn_enabled: false,
@@ -79,11 +81,25 @@ impl UserStoreTrait for MockUserStore {
         Ok(user)
     }
 
-    async fn update_user(&self, user_id: Uuid, _request: authenc::models::user::UpdateUserRequest) -> Result<User, AuthencError> {
+    async fn update_user(
+        &self,
+        user_id: Uuid,
+        _request: authenc::models::user::UpdateUserRequest,
+    ) -> Result<User, AuthencError> {
         let mut users = self.users.lock().unwrap();
         if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
             user.updated_at = chrono::Utc::now();
             Ok(user.clone())
+        } else {
+            Err(AuthencError::resource_not_found("User not found"))
+        }
+    }
+
+    async fn delete_user(&self, user_id: Uuid) -> Result<(), AuthencError> {
+        let mut users = self.users.lock().unwrap();
+        if let Some(pos) = users.iter().position(|u| u.id == user_id) {
+            users.remove(pos);
+            Ok(())
         } else {
             Err(AuthencError::resource_not_found("User not found"))
         }
@@ -108,13 +124,19 @@ impl MockOidcClientStore {
         }
     }
 
-    async fn add(&self, client: authenc::models::oidc_client::OidcClient) -> Result<(), AuthencError> {
+    async fn add(
+        &self,
+        client: authenc::models::oidc_client::OidcClient,
+    ) -> Result<(), AuthencError> {
         let mut clients = self.clients.lock().unwrap();
         clients.push(client);
         Ok(())
     }
 
-    async fn get(&self, client_id: &str) -> Result<Option<authenc::models::oidc_client::OidcClient>, AuthencError> {
+    async fn get(
+        &self,
+        client_id: &str,
+    ) -> Result<Option<authenc::models::oidc_client::OidcClient>, AuthencError> {
         let clients = self.clients.lock().unwrap();
         Ok(clients.iter().find(|c| c.client_id == client_id).cloned())
     }
@@ -194,7 +216,11 @@ mod tests {
         );
 
         // Test provider types that have working stores (excluding Client for now)
-        for provider_type in &[StorageProviderType::User, StorageProviderType::Role, StorageProviderType::Group] {
+        for provider_type in &[
+            StorageProviderType::User,
+            StorageProviderType::Role,
+            StorageProviderType::Group,
+        ] {
             let provider = factory.create_storage_provider(provider_type.clone());
             assert_eq!(provider.get_type(), *provider_type);
         }

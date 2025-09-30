@@ -310,11 +310,11 @@ pub enum Issuer {
     /// Simple string identifier for the issuer
     String(String),
     /// Object with issuer ID and optional name
-    Object { 
+    Object {
         /// Unique identifier for the issuer
-        id: String, 
+        id: String,
         /// Optional human-readable name
-        name: Option<String> 
+        name: Option<String>,
     },
 }
 

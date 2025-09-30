@@ -8,31 +8,46 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::error::{Result, AuthencError as Error};
-use crate::models::{User, session::Session};
-use crate::spi::authenticator::{AuthenticatorProvider, AuthenticationContext, AuthenticationResult, AuthenticatorType};
+use crate::error::{AuthencError as Error, Result};
+use crate::spi::authenticator::{AuthenticationResult, AuthenticatorProvider, AuthenticatorType};
 
 /// Authentication session state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticationSessionState {
+    /// Unique session identifier
     pub session_id: String,
+    /// Realm identifier
     pub realm_id: String,
+    /// Client identifier
     pub client_id: String,
+    /// User identifier if authenticated
     pub user_id: Option<String>,
+    /// Authentication flow type
     pub flow_type: String,
+    /// Authentication flow identifier
     pub flow_id: String,
+    /// Execution states for flow steps
     pub execution_states: HashMap<String, ExecutionState>,
+    /// Authentication notes
     pub auth_note: HashMap<String, String>,
+    /// Client-specific notes
     pub client_note: HashMap<String, String>,
+    /// User session notes
     pub user_session_note: HashMap<String, String>,
+    /// Required actions for user
     pub required_actions: Vec<String>,
+    /// Session creation timestamp
     pub timestamp: i64,
 }
 
+/// State of an authentication execution step
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionState {
+    /// Execution identifier
     pub execution_id: String,
+    /// Execution requirement type
     pub requirement: String,
+    /// Execution status
     pub status: String,
 }
 
@@ -49,10 +64,16 @@ pub trait AuthenticationManager: Send + Sync {
     ) -> Result<String>;
 
     /// Get authentication session by ID
-    async fn get_authentication_session(&self, session_id: &str) -> Result<Option<AuthenticationSessionState>>;
+    async fn get_authentication_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<AuthenticationSessionState>>;
 
     /// Update authentication session
-    async fn update_authentication_session(&self, session: AuthenticationSessionState) -> Result<()>;
+    async fn update_authentication_session(
+        &self,
+        session: AuthenticationSessionState,
+    ) -> Result<()>;
 
     /// Remove authentication session
     async fn remove_authentication_session(&self, session_id: &str) -> Result<()>;
@@ -92,6 +113,7 @@ pub struct DefaultAuthenticationManager {
 }
 
 impl DefaultAuthenticationManager {
+    /// Create a new default authentication manager
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
@@ -130,12 +152,18 @@ impl AuthenticationManager for DefaultAuthenticationManager {
         Ok(session_id)
     }
 
-    async fn get_authentication_session(&self, session_id: &str) -> Result<Option<AuthenticationSessionState>> {
+    async fn get_authentication_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<AuthenticationSessionState>> {
         let sessions = self.sessions.read().await;
         Ok(sessions.get(session_id).cloned())
     }
 
-    async fn update_authentication_session(&self, session: AuthenticationSessionState) -> Result<()> {
+    async fn update_authentication_session(
+        &self,
+        session: AuthenticationSessionState,
+    ) -> Result<()> {
         let mut sessions = self.sessions.write().await;
         sessions.insert(session.session_id.clone(), session);
         Ok(())
@@ -155,12 +183,9 @@ impl AuthenticationManager for DefaultAuthenticationManager {
         client_id: &str,
     ) -> Result<AuthenticationResult> {
         // Create authentication session
-        let session_id = self.create_authentication_session(
-            realm_id,
-            client_id,
-            "browser",
-            "browser",
-        ).await?;
+        let session_id = self
+            .create_authentication_session(realm_id, client_id, "browser", "browser")
+            .await?;
 
         // For now, return a basic successful authentication
         // In a real implementation, this would validate credentials
@@ -180,7 +205,9 @@ impl AuthenticationManager for DefaultAuthenticationManager {
         session_id: &str,
         _authenticator_provider: &dyn AuthenticatorProvider,
     ) -> Result<AuthenticationResult> {
-        let session = self.get_authentication_session(session_id).await?
+        let session = self
+            .get_authentication_session(session_id)
+            .await?
             .ok_or_else(|| Error::unauthorized("Authentication session not found"))?;
 
         // For now, return success

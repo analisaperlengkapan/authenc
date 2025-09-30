@@ -1,4 +1,6 @@
 use crate::app::AppState;
+use crate::models::events::{AdminEvent, Event};
+use crate::services::event_retention::{RetentionCleanupResult, RetentionStats};
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -8,8 +10,6 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
-use crate::models::events::{Event, AdminEvent};
-use crate::services::event_retention::{RetentionStats, RetentionCleanupResult};
 
 /// Create event querying routes for audit and monitoring
 pub fn create_event_routes() -> Router<Arc<AppState>> {
@@ -89,16 +89,22 @@ pub async fn query_events(
     let first_result = query.first_result.unwrap_or(0);
     let max_results = query.max_results.unwrap_or(100).min(1000); // Cap at 1000
 
-    match state.event_manager.read().await.query_events(
-        query.realm_id.as_deref(),
-        query.event_type.as_deref(),
-        query.user_id.as_deref(),
-        query.client_id.as_deref(),
-        date_from,
-        date_to,
-        first_result,
-        max_results,
-    ).await {
+    match state
+        .event_manager
+        .read()
+        .await
+        .query_events(
+            query.realm_id.as_deref(),
+            query.event_type.as_deref(),
+            query.user_id.as_deref(),
+            query.client_id.as_deref(),
+            date_from,
+            date_to,
+            first_result,
+            max_results,
+        )
+        .await
+    {
         Ok(events) => Ok(Json(events)),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -131,16 +137,22 @@ pub async fn query_admin_events(
     let first_result = query.first_result.unwrap_or(0);
     let max_results = query.max_results.unwrap_or(100).min(1000); // Cap at 1000
 
-    match state.event_manager.read().await.query_admin_events(
-        query.realm_id.as_deref(),
-        query.operation_type.as_deref(),
-        query.resource_type.as_deref(),
-        query.auth_user.as_deref(),
-        date_from,
-        date_to,
-        first_result,
-        max_results,
-    ).await {
+    match state
+        .event_manager
+        .read()
+        .await
+        .query_admin_events(
+            query.realm_id.as_deref(),
+            query.operation_type.as_deref(),
+            query.resource_type.as_deref(),
+            query.auth_user.as_deref(),
+            date_from,
+            date_to,
+            first_result,
+            max_results,
+        )
+        .await
+    {
         Ok(events) => Ok(Json(events)),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }

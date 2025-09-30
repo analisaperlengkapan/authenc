@@ -1,6 +1,6 @@
 use crate::database::Database;
-use crate::services::broker::{ExternalUser, IdentityBrokerRegistry, IdentityProviderType};
 use crate::models::user::JITUserProvisioningResponse;
+use crate::services::broker::{ExternalUser, IdentityBrokerRegistry, IdentityProviderType};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -12,80 +12,124 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-
-
-
 #[derive(Deserialize)]
+/// Request to create a new identity provider
 pub struct CreateIdentityProviderRequest {
+    /// Name of the identity provider
     pub name: String,
+    /// Type of the identity provider
     pub provider_type: IdentityProviderType,
+    /// Configuration for the provider
     pub config: serde_json::Value,
+    /// ID of the realm this provider belongs to
     pub realm_id: Uuid,
+    /// Whether the provider is enabled
     pub enabled: bool,
 }
 
 #[derive(Serialize)]
+/// Response containing identity provider information
 pub struct IdentityProviderResponse {
+    /// Unique identifier of the provider
     pub id: Uuid,
+    /// Name of the identity provider
     pub name: String,
+    /// Type of the identity provider
     pub provider_type: IdentityProviderType,
+    /// Configuration for the provider
     pub config: serde_json::Value,
+    /// ID of the realm this provider belongs to
     pub realm_id: Uuid,
+    /// Whether the provider is enabled
     pub enabled: bool,
+    /// When the provider was created
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// When the provider was last updated
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Deserialize)]
+/// Request to update an existing identity provider
 pub struct UpdateIdentityProviderRequest {
+    /// Optional new name for the provider
     pub name: Option<String>,
+    /// Optional new configuration for the provider
     pub config: Option<serde_json::Value>,
+    /// Optional enabled status
     pub enabled: Option<bool>,
 }
 
 #[derive(Deserialize)]
+/// Request to authenticate a user with an identity provider
 pub struct AuthenticateRequest {
+    /// Username for authentication
     pub username: String,
+    /// Password for authentication
     pub password: String,
+    /// ID of the realm for authentication
     pub realm_id: Uuid,
 }
 
+/// Response containing authentication result information
 #[derive(Serialize)]
 pub struct AuthenticationResponse {
+    /// Whether the authentication was successful
     pub success: bool,
+    /// The authenticated user if successful
     pub user: Option<crate::models::User>,
+    /// External user information from the identity provider
     pub external_user: Option<ExternalUser>,
+    /// Optional message about the authentication result
     pub message: Option<String>,
+    /// Response for JIT (Just-In-Time) user provisioning
     pub jit_provisioned: Option<JITUserProvisioningResponse>,
 }
 
+/// Request to sync a user from an identity provider
 #[derive(Deserialize)]
 pub struct SyncUserRequest {
+    /// The ID of the identity provider broker
     pub broker_id: Uuid,
+    /// External user information to sync
     pub external_user: ExternalUser,
 }
 
+/// Response containing user sync result information
 #[derive(Serialize)]
 pub struct SyncUserResponse {
+    /// Whether the user sync was successful
     pub success: bool,
+    /// The synced user if successful
     pub user: Option<crate::models::User>,
+    /// Message describing the sync result
     pub message: String,
 }
 
+/// Query parameters for listing identity providers
 #[derive(Deserialize)]
 pub struct ListProvidersQuery {
+    /// Optional realm ID to filter providers
     pub realm_id: Option<Uuid>,
+    /// Optional provider type to filter
     pub provider_type: Option<IdentityProviderType>,
+    /// Optional enabled status filter
     pub enabled: Option<bool>,
+    /// Page number for pagination
     pub page: Option<u32>,
+    /// Number of results per page
     pub limit: Option<u32>,
 }
 
+/// Response containing a list of identity providers
 #[derive(Serialize)]
 pub struct ProvidersListResponse {
+    /// List of identity providers
     pub providers: Vec<IdentityProviderResponse>,
+    /// Total count of providers matching the query
     pub total_count: u64,
+    /// Current page number
     pub page: u32,
+    /// Number of results per page
     pub limit: u32,
 }
 

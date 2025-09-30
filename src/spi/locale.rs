@@ -77,15 +77,19 @@ pub trait LocaleProviderFactory: ProviderFactory<dyn LocaleProvider> {
 /// Locale-related errors
 #[derive(Debug, thiserror::Error)]
 pub enum LocaleError {
+    /// Locale not found
     #[error("Locale not found: {0}")]
     LocaleNotFound(String),
 
+    /// Message not found
     #[error("Message not found: {0}")]
     MessageNotFound(String),
 
+    /// Localization error
     #[error("Localization error: {0}")]
     LocalizationError(String),
 
+    /// Configuration error
     #[error("Configuration error: {0}")]
     ConfigurationError(String),
 }
@@ -95,6 +99,12 @@ pub struct DefaultLocaleProvider {
     messages: HashMap<String, HashMap<String, String>>,
     default_locale: String,
     available_locales: Vec<String>,
+}
+
+impl Default for DefaultLocaleProvider {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DefaultLocaleProvider {
@@ -112,18 +122,42 @@ impl DefaultLocaleProvider {
         en_messages.insert("register".to_string(), "Register".to_string());
         en_messages.insert("forgotPassword".to_string(), "Forgot Password?".to_string());
         en_messages.insert("backToLogin".to_string(), "Back to Login".to_string());
-        en_messages.insert("invalidUserMessage".to_string(), "Invalid username or password".to_string());
-        en_messages.insert("invalidCredentialsMessage".to_string(), "Invalid credentials".to_string());
-        en_messages.insert("accountDisabledMessage".to_string(), "Account is disabled, contact admin".to_string());
-        en_messages.insert("accountTemporarilyDisabledMessage".to_string(), "Account is temporarily disabled".to_string());
-        en_messages.insert("accountManagementWelcomeMessage".to_string(), "Welcome to Authenc Account Management".to_string());
-        en_messages.insert("accountManagementTitle".to_string(), "Account Management".to_string());
+        en_messages.insert(
+            "invalidUserMessage".to_string(),
+            "Invalid username or password".to_string(),
+        );
+        en_messages.insert(
+            "invalidCredentialsMessage".to_string(),
+            "Invalid credentials".to_string(),
+        );
+        en_messages.insert(
+            "accountDisabledMessage".to_string(),
+            "Account is disabled, contact admin".to_string(),
+        );
+        en_messages.insert(
+            "accountTemporarilyDisabledMessage".to_string(),
+            "Account is temporarily disabled".to_string(),
+        );
+        en_messages.insert(
+            "accountManagementWelcomeMessage".to_string(),
+            "Welcome to Authenc Account Management".to_string(),
+        );
+        en_messages.insert(
+            "accountManagementTitle".to_string(),
+            "Account Management".to_string(),
+        );
         en_messages.insert("personalInfo".to_string(), "Personal Info".to_string());
-        en_messages.insert("accountSecurity".to_string(), "Account Security".to_string());
+        en_messages.insert(
+            "accountSecurity".to_string(),
+            "Account Security".to_string(),
+        );
         en_messages.insert("signingIn".to_string(), "Signing In".to_string());
         en_messages.insert("deviceActivity".to_string(), "Device Activity".to_string());
         en_messages.insert("linkedAccounts".to_string(), "Linked Accounts".to_string());
-        en_messages.insert("accountManagement".to_string(), "Account Management".to_string());
+        en_messages.insert(
+            "accountManagement".to_string(),
+            "Account Management".to_string(),
+        );
 
         messages.insert("en".to_string(), en_messages);
 
@@ -135,20 +169,59 @@ impl DefaultLocaleProvider {
         es_messages.insert("login".to_string(), "Iniciar Sesión".to_string());
         es_messages.insert("logout".to_string(), "Cerrar Sesión".to_string());
         es_messages.insert("register".to_string(), "Registrarse".to_string());
-        es_messages.insert("forgotPassword".to_string(), "¿Olvidaste tu contraseña?".to_string());
-        es_messages.insert("backToLogin".to_string(), "Volver al inicio de sesión".to_string());
-        es_messages.insert("invalidUserMessage".to_string(), "Nombre de usuario o contraseña inválidos".to_string());
-        es_messages.insert("invalidCredentialsMessage".to_string(), "Credenciales inválidas".to_string());
-        es_messages.insert("accountDisabledMessage".to_string(), "Cuenta deshabilitada, contacta al administrador".to_string());
-        es_messages.insert("accountTemporarilyDisabledMessage".to_string(), "Cuenta temporalmente deshabilitada".to_string());
-        es_messages.insert("accountManagementWelcomeMessage".to_string(), "Bienvenido a la gestión de cuentas de Authenc".to_string());
-        es_messages.insert("accountManagementTitle".to_string(), "Gestión de Cuenta".to_string());
-        es_messages.insert("personalInfo".to_string(), "Información Personal".to_string());
-        es_messages.insert("accountSecurity".to_string(), "Seguridad de la Cuenta".to_string());
+        es_messages.insert(
+            "forgotPassword".to_string(),
+            "¿Olvidaste tu contraseña?".to_string(),
+        );
+        es_messages.insert(
+            "backToLogin".to_string(),
+            "Volver al inicio de sesión".to_string(),
+        );
+        es_messages.insert(
+            "invalidUserMessage".to_string(),
+            "Nombre de usuario o contraseña inválidos".to_string(),
+        );
+        es_messages.insert(
+            "invalidCredentialsMessage".to_string(),
+            "Credenciales inválidas".to_string(),
+        );
+        es_messages.insert(
+            "accountDisabledMessage".to_string(),
+            "Cuenta deshabilitada, contacta al administrador".to_string(),
+        );
+        es_messages.insert(
+            "accountTemporarilyDisabledMessage".to_string(),
+            "Cuenta temporalmente deshabilitada".to_string(),
+        );
+        es_messages.insert(
+            "accountManagementWelcomeMessage".to_string(),
+            "Bienvenido a la gestión de cuentas de Authenc".to_string(),
+        );
+        es_messages.insert(
+            "accountManagementTitle".to_string(),
+            "Gestión de Cuenta".to_string(),
+        );
+        es_messages.insert(
+            "personalInfo".to_string(),
+            "Información Personal".to_string(),
+        );
+        es_messages.insert(
+            "accountSecurity".to_string(),
+            "Seguridad de la Cuenta".to_string(),
+        );
         es_messages.insert("signingIn".to_string(), "Iniciando Sesión".to_string());
-        es_messages.insert("deviceActivity".to_string(), "Actividad del Dispositivo".to_string());
-        es_messages.insert("linkedAccounts".to_string(), "Cuentas Vinculadas".to_string());
-        es_messages.insert("accountManagement".to_string(), "Gestión de Cuenta".to_string());
+        es_messages.insert(
+            "deviceActivity".to_string(),
+            "Actividad del Dispositivo".to_string(),
+        );
+        es_messages.insert(
+            "linkedAccounts".to_string(),
+            "Cuentas Vinculadas".to_string(),
+        );
+        es_messages.insert(
+            "accountManagement".to_string(),
+            "Gestión de Cuenta".to_string(),
+        );
 
         messages.insert("es".to_string(), es_messages);
 
@@ -212,6 +285,12 @@ impl Provider for DefaultLocaleProvider {
 /// Default locale provider factory
 pub struct DefaultLocaleProviderFactory;
 
+impl Default for DefaultLocaleProviderFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultLocaleProviderFactory {
     /// Create a new default locale provider factory
     pub fn new() -> Self {
@@ -219,12 +298,8 @@ impl DefaultLocaleProviderFactory {
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn LocaleProvider> for DefaultLocaleProviderFactory {
-    async fn create(
-        &self,
-        _config: &ProviderConfig,
-    ) -> Result<Box<dyn LocaleProvider>, SpiError> {
+    fn create(&self, _config: &ProviderConfig) -> Result<Box<dyn LocaleProvider>, SpiError> {
         Ok(Box::new(DefaultLocaleProvider::new()))
     }
 
@@ -254,14 +329,23 @@ mod tests {
         let default = provider.get_default_locale().await.unwrap();
         assert_eq!(default, "en");
 
-        let message = provider.get_message("loginTitle", Some("en"), None).await.unwrap();
+        let message = provider
+            .get_message("loginTitle", Some("en"), None)
+            .await
+            .unwrap();
         assert_eq!(message, "Login");
 
-        let message = provider.get_message("loginTitle", Some("es"), None).await.unwrap();
+        let message = provider
+            .get_message("loginTitle", Some("es"), None)
+            .await
+            .unwrap();
         assert_eq!(message, "Iniciar Sesión");
 
         // Test fallback to English
-        let message = provider.get_message("nonexistent", Some("es"), None).await.unwrap();
+        let message = provider
+            .get_message("nonexistent", Some("es"), None)
+            .await
+            .unwrap();
         assert_eq!(message, "nonexistent");
 
         let supported = provider.is_locale_supported("en").await.unwrap();

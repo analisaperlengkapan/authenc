@@ -1,10 +1,10 @@
+use authenc::config::DatabaseConfig;
+use authenc::database::Database;
 use authenc::models::user::{CreateUserRequest, UpdateUserRequest};
 use authenc::services::stores::user_store::{UserStore, UserStoreTrait};
-use authenc::database::Database;
-use authenc::config::DatabaseConfig;
+use std::fs;
 use std::sync::Arc;
 use uuid::Uuid;
-use std::fs;
 
 // Test helper function to setup the test schema
 async fn setup_test_schema(database: &Database) -> Result<(), Box<dyn std::error::Error>> {
@@ -130,12 +130,20 @@ async fn test_user_store_comprehensive_operations() {
 
     // Test 2: Retrieve users by different methods
     let alice_username = format!("alice{}", unique_suffix);
-    let alice = store.get_user_by_username(&alice_username).await.unwrap().unwrap();
+    let alice = store
+        .get_user_by_username(&alice_username)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(alice.username, alice_username);
     assert_eq!(alice.email, format!("alice{}@example.com", unique_suffix));
 
     let bob_username = format!("bob{}", unique_suffix);
-    let bob = store.get_user_by_email(&format!("bob{}@example.com", unique_suffix)).await.unwrap().unwrap();
+    let bob = store
+        .get_user_by_email(&format!("bob{}@example.com", unique_suffix))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(bob.username, bob_username);
 
     // Test 3: Update user
@@ -153,12 +161,21 @@ async fn test_user_store_comprehensive_operations() {
         attributes: None,
     };
     let updated_alice = store.update_user(alice_id, update_req).await.unwrap();
-    assert_eq!(updated_alice.username, format!("alice_updated{}", unique_suffix));
-    assert_eq!(updated_alice.email, format!("alice.updated{}@example.com", unique_suffix));
+    assert_eq!(
+        updated_alice.username,
+        format!("alice_updated{}", unique_suffix)
+    );
+    assert_eq!(
+        updated_alice.email,
+        format!("alice.updated{}@example.com", unique_suffix)
+    );
 
     // Test 4: Verify updated user can still be retrieved
     let retrieved_alice = store.get_user(alice_id).await.unwrap().unwrap();
-    assert_eq!(retrieved_alice.username, format!("alice_updated{}", unique_suffix));
+    assert_eq!(
+        retrieved_alice.username,
+        format!("alice_updated{}", unique_suffix)
+    );
 
     // Test 5: Get all users
     let all_users = store.get_all().await.unwrap();
@@ -171,7 +188,10 @@ async fn test_user_store_comprehensive_operations() {
     let non_existent_username = store.get_user_by_username("nonexistent").await.unwrap();
     assert!(non_existent_username.is_none());
 
-    let non_existent_email = store.get_user_by_email("nonexistent@example.com").await.unwrap();
+    let non_existent_email = store
+        .get_user_by_email("nonexistent@example.com")
+        .await
+        .unwrap();
     assert!(non_existent_email.is_none());
 }
 

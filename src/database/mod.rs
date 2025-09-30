@@ -26,7 +26,7 @@ impl Database {
                 max_size: config.max_connections as usize,
                 timeouts: deadpool_postgres::Timeouts::wait_millis(
                     config.connection_timeout * 1000,
-                )
+                ),
             }),
             ..Default::default()
         };
@@ -78,7 +78,7 @@ impl Database {
         let client = self.get_connection().await?;
         let rows = client.query(statement, params).await.map_err(|e| {
             error!("Query failed: {}\nStatement: {}", e, statement);
-            AuthencError::database(&format!("Database query failed: {}", e))
+            AuthencError::database(format!("Database query failed: {}", e))
         })?;
 
         let mut results = Vec::with_capacity(rows.len());
@@ -90,6 +90,19 @@ impl Database {
         }
 
         Ok(results)
+    }
+
+    /// Execute a read-only query and return raw rows
+    pub async fn query_raw(
+        &self,
+        statement: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Vec<tokio_postgres::Row>> {
+        let client = self.get_connection().await?;
+        client.query(statement, params).await.map_err(|e| {
+            error!("Query failed: {}\nStatement: {}", e, statement);
+            AuthencError::database(format!("Database query failed: {}", e))
+        })
     }
 
     /// Execute a query that returns a single row
@@ -105,7 +118,7 @@ impl Database {
         let client = self.get_connection().await?;
         let row = client.query_one(statement, params).await.map_err(|e| {
             error!("Query one failed: {}\nStatement: {}", e, statement);
-            AuthencError::database(&format!("Database query failed: {}", e))
+            AuthencError::database(format!("Database query failed: {}", e))
         })?;
 
         row.try_into().map_err(|e| {
@@ -123,7 +136,7 @@ impl Database {
         let client = self.get_connection().await?;
         client.execute(statement, params).await.map_err(|e| {
             error!("Execute failed: {}\nStatement: {}", e, statement);
-            AuthencError::database(&format!("Database execute failed: {}", e))
+            AuthencError::database(format!("Database execute failed: {}", e))
         })
     }
 

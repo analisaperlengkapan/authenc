@@ -9,10 +9,10 @@ pub mod anomaly_detector;
 pub mod auth_flow;
 /// Brute force attack prevention and detection
 pub mod brute_force_protector;
-/// OAuth 2.0 Dynamic Client Registration (RFC 7591/7592)
-pub mod client_registration;
 /// Client policy enforcement and validation
 pub mod client_policy;
+/// OAuth 2.0 Dynamic Client Registration (RFC 7591/7592)
+pub mod client_registration;
 /// Service managers for coordinating complex operations
 pub mod managers;
 /// Pushed Authorization Requests (PAR) implementation
@@ -32,10 +32,10 @@ pub mod oidc_client_store;
 pub mod oidc_code_store;
 /// Permission ticket storage and management
 pub mod permission_ticket_store;
-/// Resource data storage and management
-pub mod resource_store;
 /// Resource server storage and management
 pub mod resource_server_store;
+/// Resource data storage and management
+pub mod resource_store;
 /// Scope storage and management
 pub mod scope_store;
 /// Session storage and management
@@ -48,6 +48,8 @@ pub mod totp_store;
 pub mod stores {
     /// Audit log storage service
     pub mod audit_log_store;
+    /// Consent storage service for GDPR compliance
+    pub mod consent_store;
     /// Permission storage service
     pub mod permission_store;
     /// Realm storage service
@@ -64,10 +66,16 @@ pub use stores::*;
 // Audit and logging services
 /// Audit log sink interface and implementations
 pub mod audit_log_sink;
-/// Event system and listener management
-pub mod events;
+/// Elasticsearch-based audit log streaming for SIEM integration
+pub mod elasticsearch_audit_log_sink;
 /// Event listener implementations
 pub mod event_listeners;
+/// Event retention and lifecycle management
+pub mod event_retention;
+#[cfg(test)]
+mod event_retention_tests;
+/// Event system and listener management
+pub mod events;
 /// Kafka-based audit log streaming
 pub mod kafka_audit_log_sink;
 /// Kafka-based event streaming
@@ -76,10 +84,6 @@ pub mod kafka_event_listener;
 pub mod pg_audit_log_store;
 /// PostgreSQL event storage
 pub mod pg_event_store;
-/// Event retention and lifecycle management
-pub mod event_retention;
-#[cfg(test)]
-mod event_retention_tests;
 
 // Federation services
 /// Identity broker and federation management

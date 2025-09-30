@@ -4,10 +4,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::error::{Result, AuthencError};
+use crate::error::{AuthencError, Result};
 use crate::models::client_registration::{
-    ClientRegistrationRequest, ClientRegistrationResponse, ClientUpdateRequest,
-    ClientRegistrationError, SoftwareStatement
+    ClientRegistrationRequest, ClientRegistrationResponse, ClientUpdateRequest, SoftwareStatement,
 };
 use crate::models::oidc_client::OidcClient;
 use crate::services::oidc_client_store::OidcClientStore;
@@ -82,8 +81,8 @@ impl DefaultClientRegistrationService {
     /// Generate a client secret
     fn generate_client_secret(&self) -> String {
         // Generate a secure random client secret
-        use rand::{Rng, thread_rng};
         use rand::distributions::Alphanumeric;
+        use rand::{thread_rng, Rng};
 
         thread_rng()
             .sample_iter(&Alphanumeric)
@@ -95,8 +94,8 @@ impl DefaultClientRegistrationService {
     /// Generate a registration access token
     fn generate_registration_access_token(&self) -> String {
         // Generate a secure random token
-        use rand::{Rng, thread_rng};
         use rand::distributions::Alphanumeric;
+        use rand::{thread_rng, Rng};
 
         thread_rng()
             .sample_iter(&Alphanumeric)
@@ -137,7 +136,13 @@ impl DefaultClientRegistrationService {
 
         // Validate grant types
         if let Some(grant_types) = &request.grant_types {
-            let valid_types = ["authorization_code", "implicit", "password", "client_credentials", "refresh_token"];
+            let valid_types = [
+                "authorization_code",
+                "implicit",
+                "password",
+                "client_credentials",
+                "refresh_token",
+            ];
             for gt in grant_types {
                 if !valid_types.contains(&gt.as_str()) {
                     return Err(AuthencError::ValidationError {
@@ -169,13 +174,20 @@ impl DefaultClientRegistrationService {
             client_id,
             client_secret,
             redirect_uris: request.redirect_uris.clone(),
-            name: request.client_name.clone().unwrap_or_else(|| "Dynamic Client".to_string()),
+            name: request
+                .client_name
+                .clone()
+                .unwrap_or_else(|| "Dynamic Client".to_string()),
             enabled: true,
         }
     }
 
     /// Convert OIDC client to registration response
-    fn client_to_response(&self, client: &OidcClient, registration_access_token: &str) -> ClientRegistrationResponse {
+    fn client_to_response(
+        &self,
+        client: &OidcClient,
+        registration_access_token: &str,
+    ) -> ClientRegistrationResponse {
         let response = ClientRegistrationResponse {
             client_id: client.client_id.clone(),
             client_id_issued_at: Some(chrono::Utc::now().timestamp()),
@@ -269,10 +281,11 @@ impl ClientRegistrationService for DefaultClientRegistrationService {
         }
 
         // Convert to response (need to get client again since it was moved)
-        let client = self.client_store.get(&client_id).await?
-            .ok_or_else(|| AuthencError::ResourceNotFound {
+        let client = self.client_store.get(&client_id).await?.ok_or_else(|| {
+            AuthencError::ResourceNotFound {
                 resource: format!("client {}", client_id),
-            })?;
+            }
+        })?;
         let response = self.client_to_response(&client, &registration_token);
 
         Ok(response)
@@ -296,10 +309,11 @@ impl ClientRegistrationService for DefaultClientRegistrationService {
         }
 
         // Get client
-        let client = self.client_store.get(client_id).await?
-            .ok_or_else(|| AuthencError::ResourceNotFound {
+        let client = self.client_store.get(client_id).await?.ok_or_else(|| {
+            AuthencError::ResourceNotFound {
                 resource: format!("client {}", client_id),
-            })?;
+            }
+        })?;
 
         // Convert to response
         let response = self.client_to_response(&client, registration_access_token);
@@ -326,10 +340,11 @@ impl ClientRegistrationService for DefaultClientRegistrationService {
         }
 
         // Get existing client
-        let mut client = self.client_store.get(client_id).await?
-            .ok_or_else(|| AuthencError::ResourceNotFound {
+        let mut client = self.client_store.get(client_id).await?.ok_or_else(|| {
+            AuthencError::ResourceNotFound {
                 resource: format!("client {}", client_id),
-            })?;
+            }
+        })?;
         let client_id = client.client_id.clone();
 
         // Update client fields
@@ -346,10 +361,11 @@ impl ClientRegistrationService for DefaultClientRegistrationService {
         self.client_store.add(client).await?;
 
         // Get updated client for response
-        let client = self.client_store.get(&client_id).await?
-            .ok_or_else(|| AuthencError::ResourceNotFound {
+        let client = self.client_store.get(&client_id).await?.ok_or_else(|| {
+            AuthencError::ResourceNotFound {
                 resource: format!("client {}", client_id),
-            })?;
+            }
+        })?;
 
         // Convert to response
         let response = self.client_to_response(&client, registration_access_token);

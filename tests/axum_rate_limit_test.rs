@@ -9,6 +9,9 @@ async fn test_rate_limiter_state() {
         requests_per_minute: 2,
         excluded_paths: vec!["/health".to_string()],
         enabled: true,
+        progressive_delays: true,
+        base_delay_ms: 1000,
+        max_delay_ms: 10000,
     };
 
     let state = RateLimiterState::new(config);
@@ -39,6 +42,9 @@ async fn test_rate_limit_disabled() {
         requests_per_minute: 1,
         excluded_paths: vec![],
         enabled: false,
+        progressive_delays: true,
+        base_delay_ms: 1000,
+        max_delay_ms: 10000,
     };
 
     let state = RateLimiterState::new(config);

@@ -5,6 +5,7 @@
 
 use crate::config::AppConfig;
 use crate::error::{AuthencError, Result};
+// use crate::services::stores::auth_flow_store::AuthFlowStore;
 use std::sync::Arc;
 
 /// Comprehensive application state with all services
@@ -28,6 +29,10 @@ pub struct AppState {
     pub federation_registry: Arc<crate::services::federation_provider::FederationRegistry>,
     /// Audit log storage
     pub audit_log_store: Arc<crate::services::pg_audit_log_store::PgAuditLogStore>,
+    /// User consent management store for GDPR compliance
+    pub consent_store: Arc<crate::services::stores::consent_store::ConsentStore>,
+    // /// Authentication flow management store
+    // pub auth_flow_store: Arc<crate::services::stores::auth_flow_store::AuthFlowStore>,
     /// Realm configuration store
     pub realm_store: Arc<crate::services::stores::realm_store::RealmStore>,
     /// Realm management service
@@ -41,7 +46,8 @@ pub struct AppState {
     /// Resource server management store
     pub resource_server_store: Arc<crate::services::resource_server_store::ResourceServerStore>,
     /// Permission ticket management store
-    pub permission_ticket_store: Arc<crate::services::permission_ticket_store::PermissionTicketStore>,
+    pub permission_ticket_store:
+        Arc<crate::services::permission_ticket_store::PermissionTicketStore>,
     /// Scope management store
     pub scope_store: Arc<crate::services::scope_store::ScopeStore>,
     /// OIDC client store for OAuth2/OIDC client management
@@ -83,8 +89,18 @@ impl AppState {
                 })?,
         );
 
+        // Initialize consent store
+        let consent_store = Arc::new(crate::services::stores::consent_store::ConsentStore::new(
+            database.clone(),
+        ));
+
+        // Initialize authentication flow store
+        // let auth_flow_store = Arc::new(crate::services::stores::auth_flow_store::AuthFlowStore::new(database.clone()));
+
         // Initialize other services
-        let user_store = Arc::new(crate::services::stores::user_store::UserStore::new(database.clone()));
+        let user_store = Arc::new(crate::services::stores::user_store::UserStore::new(
+            database.clone(),
+        ));
         let session_store = Arc::new(crate::services::session_store::SessionStore::new());
         let totp_store = Arc::new(crate::services::totp_store::TotpStore::new());
 
@@ -99,15 +115,27 @@ impl AppState {
         let federation_registry =
             Arc::new(crate::services::federation_provider::FederationRegistry::new());
         let realm_store = Arc::new(crate::services::stores::realm_store::RealmStore::new());
-        let realm_service = Arc::new(crate::services::realm::PostgresRealmService::new(database.clone()));
+        let realm_service = Arc::new(crate::services::realm::PostgresRealmService::new(
+            database.clone(),
+        ));
         let role_store = Arc::new(crate::services::stores::role_store::RoleStore::new());
         let permission_store =
             Arc::new(crate::services::stores::permission_store::PermissionStore::new());
-        let resource_store = Arc::new(crate::services::resource_store::ResourceStore::new(database.clone()));
-        let resource_server_store = Arc::new(crate::services::resource_server_store::ResourceServerStore::new(database.clone()));
-        let permission_ticket_store = Arc::new(crate::services::permission_ticket_store::PermissionTicketStore::new(database.clone()));
-        let scope_store = Arc::new(crate::services::scope_store::ScopeStore::new(database.clone()));
-        let oidc_client_store = Arc::new(crate::services::oidc_client_store::OidcClientStore::with_database(database.clone()));
+        let resource_store = Arc::new(crate::services::resource_store::ResourceStore::new(
+            database.clone(),
+        ));
+        let resource_server_store = Arc::new(
+            crate::services::resource_server_store::ResourceServerStore::new(database.clone()),
+        );
+        let permission_ticket_store = Arc::new(
+            crate::services::permission_ticket_store::PermissionTicketStore::new(database.clone()),
+        );
+        let scope_store = Arc::new(crate::services::scope_store::ScopeStore::new(
+            database.clone(),
+        ));
+        let oidc_client_store = Arc::new(
+            crate::services::oidc_client_store::OidcClientStore::with_database(database.clone()),
+        );
 
         // Initialize identity broker registry
         let broker_registry = Arc::new(crate::services::broker::IdentityBrokerRegistry::new());
@@ -118,7 +146,11 @@ impl AppState {
         ));
 
         // Initialize audit log sink
-        let audit_log_sink: Arc<dyn crate::services::audit_log_sink::AuditLogSink> = if let Some(kafka_config) = &config.kafka {
+        let audit_log_sink: Arc<dyn crate::services::audit_log_sink::AuditLogSink> = if let Some(
+            kafka_config,
+        ) =
+            &config.kafka
+        {
             if kafka_config.enabled {
                 match crate::services::kafka_audit_log_sink::KafkaAuditLogSink::new(
                     &kafka_config.brokers,
@@ -127,21 +159,29 @@ impl AppState {
                     Ok(sink) => Arc::new(sink),
                     Err(e) => {
                         tracing::warn!("Failed to initialize Kafka audit log sink: {}. Falling back to PostgreSQL sink.", e);
-                        Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new((*audit_log_store).clone()))
+                        Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new(
+                            (*audit_log_store).clone(),
+                        ))
                     }
                 }
             } else {
-                Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new((*audit_log_store).clone()))
+                Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new(
+                    (*audit_log_store).clone(),
+                ))
             }
         } else {
-            Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new((*audit_log_store).clone()))
+            Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new(
+                (*audit_log_store).clone(),
+            ))
         };
 
         // Initialize event manager
         let event_manager = crate::services::events::create_shared_event_manager();
 
         // Initialize event store provider
-        let event_store = Arc::new(crate::services::pg_event_store::PgEventStoreProvider::new(database.clone()));
+        let event_store = Arc::new(crate::services::pg_event_store::PgEventStoreProvider::new(
+            database.clone(),
+        ));
         event_store.init_tables().await.map_err(|e| {
             AuthencError::database(format!("Failed to initialize event store tables: {}", e))
         })?;
@@ -158,7 +198,10 @@ impl AppState {
 
             // Register Kafka event listener if configured
             if let Some(kafka_config) = &config.kafka {
-                if kafka_config.enabled && !kafka_config.user_events_topic.is_empty() && !kafka_config.admin_events_topic.is_empty() {
+                if kafka_config.enabled
+                    && !kafka_config.user_events_topic.is_empty()
+                    && !kafka_config.admin_events_topic.is_empty()
+                {
                     match crate::services::kafka_event_listener::KafkaEventListener::new(
                         &kafka_config.brokers,
                         &kafka_config.user_events_topic,
@@ -166,8 +209,11 @@ impl AppState {
                     ) {
                         Ok(kafka_listener) => {
                             manager.register_listener(Arc::new(kafka_listener));
-                            tracing::info!("Kafka event listener registered for topics: {} and {}",
-                                kafka_config.user_events_topic, kafka_config.admin_events_topic);
+                            tracing::info!(
+                                "Kafka event listener registered for topics: {} and {}",
+                                kafka_config.user_events_topic,
+                                kafka_config.admin_events_topic
+                            );
                         }
                         Err(e) => {
                             tracing::warn!("Failed to initialize Kafka event listener: {}. Event streaming disabled.", e);
@@ -178,18 +224,20 @@ impl AppState {
         }
 
         // Initialize event retention service
-        let event_retention_service = Arc::new(crate::services::event_retention::EventRetentionService::new(
-            config.events.clone(),
-            database.clone(),
-            event_store,
-        ));
+        let event_retention_service = Arc::new(
+            crate::services::event_retention::EventRetentionService::new(
+                config.events.clone(),
+                database.clone(),
+                event_store,
+            ),
+        );
 
         // Start the retention cleanup task if enabled
         event_retention_service.clone().start_cleanup_task();
 
         // Initialize SPI manager with default providers
         let mut spi_manager = crate::spi::SpiManager::new();
-        
+
         // Register SPIs
         spi_manager.register_spi(Box::new(crate::spi::admin_console::AdminConsoleSpi));
         spi_manager.register_spi(Box::new(crate::spi::credential::CredentialSpi));
@@ -205,7 +253,13 @@ impl AppState {
         spi_manager.register_spi(Box::new(crate::spi::protocol_mappers::ProtocolMapperSpi));
         spi_manager.register_spi(Box::new(crate::spi::authenticator::AuthenticatorSpi));
         spi_manager.register_spi(Box::new(crate::spi::required_actions::RequiredActionSpi));
-        
+        spi_manager.register_spi(Box::new(crate::spi::organization::OrganizationSpi));
+        spi_manager.register_spi(Box::new(
+            crate::spi::rich_authorization::RichAuthorizationSpi,
+        ));
+        spi_manager.register_spi(Box::new(crate::spi::migration::MigrationSpi));
+        spi_manager.register_spi(Box::new(crate::spi::hostname::HostnameSpi));
+
         // Register default providers
         spi_manager.registry_mut().register_factory(
             "admin-console",
@@ -228,7 +282,7 @@ impl AppState {
             crate::spi::theme::DefaultThemeProviderFactory::new("keycloak".to_string()),
         );
         spi_manager.registry_mut().register_factory(
-            "userprofile", 
+            "userprofile",
             crate::spi::userprofile::DefaultUserProfileProviderFactory::new(),
         );
         spi_manager.registry_mut().register_factory(
@@ -276,6 +330,22 @@ impl AppState {
             "required-action",
             crate::spi::required_actions::DefaultRequiredActionProviderFactory::new(),
         );
+        spi_manager.registry_mut().register_factory(
+            "organization",
+            crate::spi::organization::DefaultOrganizationProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "rich-authorization",
+            crate::spi::rich_authorization::DefaultRichAuthorizationProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "migration",
+            crate::spi::migration::DefaultMigrationProviderFactory::new(),
+        );
+        spi_manager.registry_mut().register_factory(
+            "hostname",
+            crate::spi::hostname::DefaultHostnameProviderFactory::new(),
+        );
         let spi_manager = Arc::new(spi_manager);
 
         Ok(Self {
@@ -288,6 +358,8 @@ impl AppState {
             anomaly_detector,
             federation_registry,
             audit_log_store,
+            consent_store,
+            // auth_flow_store,
             realm_store,
             realm_service,
             role_store,
@@ -308,7 +380,9 @@ impl AppState {
 
     /// Initialize social identity brokers from environment variables
     pub fn initialize_social_brokers(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        use crate::services::broker::{IdentityProviderType, SocialConfig, SocialIdentityBroker, IdentityProviderConfig};
+        use crate::services::broker::{
+            IdentityProviderConfig, IdentityProviderType, SocialConfig, SocialIdentityBroker,
+        };
         use uuid::Uuid;
 
         // Initialize Google broker if configured
@@ -327,9 +401,10 @@ impl AppState {
                     "profile".to_string(),
                 ],
             };
-            let google_broker = SocialIdentityBroker::new(google_config, IdentityProviderType::SocialGoogle);
-            
-            let provider_config = IdentityProviderConfig {
+            let _google_broker =
+                SocialIdentityBroker::new(google_config, IdentityProviderType::SocialGoogle);
+
+            let _provider_config = IdentityProviderConfig {
                 id: Uuid::new_v4(),
                 name: "Google".to_string(),
                 provider_type: IdentityProviderType::SocialGoogle,
@@ -341,7 +416,7 @@ impl AppState {
                 }),
                 realm_id: Uuid::new_v4(), // Default realm
             };
-            
+
             // We need to make broker_registry mutable, but it's in Arc. Let's skip this for now.
             // self.broker_registry.register_broker(provider_config, Box::new(google_broker));
         }
@@ -358,9 +433,10 @@ impl AppState {
                     .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
                 scopes: vec!["user:email".to_string()],
             };
-            let github_broker = SocialIdentityBroker::new(github_config, IdentityProviderType::SocialGitHub);
-            
-            let provider_config = IdentityProviderConfig {
+            let _github_broker =
+                SocialIdentityBroker::new(github_config, IdentityProviderType::SocialGitHub);
+
+            let _provider_config = IdentityProviderConfig {
                 id: Uuid::new_v4(),
                 name: "GitHub".to_string(),
                 provider_type: IdentityProviderType::SocialGitHub,
@@ -372,7 +448,7 @@ impl AppState {
                 }),
                 realm_id: Uuid::new_v4(), // Default realm
             };
-            
+
             // self.broker_registry.register_broker(provider_config, Box::new(github_broker));
         }
 
@@ -388,9 +464,10 @@ impl AppState {
                     .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
                 scopes: vec!["email".to_string(), "public_profile".to_string()],
             };
-            let facebook_broker = SocialIdentityBroker::new(facebook_config, IdentityProviderType::SocialFacebook);
-            
-            let provider_config = IdentityProviderConfig {
+            let _facebook_broker =
+                SocialIdentityBroker::new(facebook_config, IdentityProviderType::SocialFacebook);
+
+            let _provider_config = IdentityProviderConfig {
                 id: Uuid::new_v4(),
                 name: "Facebook".to_string(),
                 provider_type: IdentityProviderType::SocialFacebook,
@@ -402,7 +479,7 @@ impl AppState {
                 }),
                 realm_id: Uuid::new_v4(), // Default realm
             };
-            
+
             // self.broker_registry.register_broker(provider_config, Box::new(facebook_broker));
         }
 
@@ -424,12 +501,12 @@ impl ApplicationBuilder {
     /// Build the application state
     pub async fn build_state(self) -> Result<AppState> {
         let state = AppState::new(self.config).await?;
-        
+
         // Initialize social identity brokers
         if let Err(e) = state.initialize_social_brokers() {
             tracing::warn!("Failed to initialize social brokers: {}", e);
         }
-        
+
         Ok(state)
     }
 
@@ -484,10 +561,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_app_state_initialization() {
-        let config = AppConfig::default();
+        // Use a config that will definitely fail to connect
+        let mut config = AppConfig::default();
+        config.database.host = "nonexistent.host.invalid".to_string();
+        config.database.port = 12345; // Invalid port
         let result = AppState::new(config).await;
-        // Note: This will fail without a database, but tests the structure
-        assert!(result.is_err()); // Expected to fail in test environment
+        // Should fail with invalid database configuration
+        assert!(result.is_err());
     }
 
     #[test]

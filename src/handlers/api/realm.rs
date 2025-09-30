@@ -1,7 +1,7 @@
-use crate::models::realm::{CreateRealmRequest, UpdateRealmRequest, RealmResponse};
 use crate::app::AppState;
+use crate::models::realm::{CreateRealmRequest, RealmResponse, UpdateRealmRequest};
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post, put},
@@ -12,7 +12,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Deserialize)]
+/// Query parameters for listing realms
 pub struct ListRealmsQuery {
+    /// Whether to include only enabled realms
     pub enabled_only: Option<bool>,
 }
 
@@ -32,7 +34,9 @@ pub async fn list_realms(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ListRealmsQuery>,
 ) -> Result<Json<Vec<RealmResponse>>, StatusCode> {
-    let realms = state.realm_service.list_realms()
+    let realms = state
+        .realm_service
+        .list_realms()
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -51,11 +55,15 @@ pub async fn get_realm(
     Path(identifier): Path<String>,
 ) -> Result<Json<RealmResponse>, StatusCode> {
     let realm = if let Ok(uuid) = Uuid::parse_str(&identifier) {
-        state.realm_service.get_realm_by_id(&uuid)
+        state
+            .realm_service
+            .get_realm_by_id(&uuid)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     } else {
-        state.realm_service.get_realm_by_name(&identifier)
+        state
+            .realm_service
+            .get_realm_by_name(&identifier)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     };
@@ -91,7 +99,13 @@ pub async fn create_realm(
             .representation(serde_json::to_string(&realm).unwrap_or_default())
             .build();
 
-            if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, true).await {
+            if let Err(e) = state
+                .event_manager
+                .write()
+                .await
+                .fire_admin_event(admin_event, true)
+                .await
+            {
                 tracing::error!("Failed to fire realm creation admin event: {}", e);
             }
 
@@ -111,7 +125,9 @@ pub async fn update_realm(
         uuid
     } else {
         // Get realm by name to find ID
-        let realm = state.realm_service.get_realm_by_name(&identifier)
+        let realm = state
+            .realm_service
+            .get_realm_by_name(&identifier)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             .ok_or(StatusCode::NOT_FOUND)?;
@@ -137,7 +153,13 @@ pub async fn update_realm(
             )
             .build();
 
-            if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, false).await {
+            if let Err(e) = state
+                .event_manager
+                .write()
+                .await
+                .fire_admin_event(admin_event, false)
+                .await
+            {
                 tracing::error!("Failed to fire realm update admin event: {}", e);
             }
 
@@ -156,7 +178,9 @@ pub async fn delete_realm(
         uuid
     } else {
         // Get realm by name to find ID
-        let realm = state.realm_service.get_realm_by_name(&identifier)
+        let realm = state
+            .realm_service
+            .get_realm_by_name(&identifier)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             .ok_or(StatusCode::NOT_FOUND)?;
@@ -182,7 +206,13 @@ pub async fn delete_realm(
             )
             .build();
 
-            if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, false).await {
+            if let Err(e) = state
+                .event_manager
+                .write()
+                .await
+                .fire_admin_event(admin_event, false)
+                .await
+            {
                 tracing::error!("Failed to fire realm deletion admin event: {}", e);
             }
 
@@ -193,7 +223,9 @@ pub async fn delete_realm(
 }
 
 #[derive(Deserialize)]
+/// Request to set the status of a realm
 pub struct SetRealmStatusRequest {
+    /// Whether the realm should be enabled
     pub enabled: bool,
 }
 
@@ -207,14 +239,20 @@ pub async fn set_realm_status(
         uuid
     } else {
         // Get realm by name to find ID
-        let realm = state.realm_service.get_realm_by_name(&identifier)
+        let realm = state
+            .realm_service
+            .get_realm_by_name(&identifier)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             .ok_or(StatusCode::NOT_FOUND)?;
         realm.id
     };
 
-    match state.realm_service.set_realm_enabled(&realm_id, request.enabled).await {
+    match state
+        .realm_service
+        .set_realm_enabled(&realm_id, request.enabled)
+        .await
+    {
         Ok(_) => {
             // Fire admin event for realm status change
             let auth_details = crate::models::events::AuthDetails {
@@ -234,7 +272,13 @@ pub async fn set_realm_status(
             .representation(format!("{{\"enabled\": {}}}", request.enabled))
             .build();
 
-            if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, false).await {
+            if let Err(e) = state
+                .event_manager
+                .write()
+                .await
+                .fire_admin_event(admin_event, false)
+                .await
+            {
                 tracing::error!("Failed to fire realm status change admin event: {}", e);
             }
 

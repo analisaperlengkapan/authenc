@@ -235,9 +235,12 @@ impl AuthencOperator {
     /// use authenc::services::kubernetes::AuthencOperator;
     /// use kube::Client;
     ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = Client::try_default().await?;
     /// let operator = AuthencOperator::new(client);
     /// // Operator is ready for Authenc deployment management
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new(client: Client) -> Self {
         Self { client }
@@ -398,11 +401,11 @@ impl AuthencOperator {
                             ..Default::default()
                         }],
                         ..Default::default()
-                    })
+                    }),
                 },
                 ..Default::default()
             }),
-            status: None
+            status: None,
         };
 
         Ok(deployment)
@@ -617,10 +620,13 @@ impl AuthencController {
     /// use authenc::services::kubernetes::AuthencController;
     /// use kube::Client;
     ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = Client::try_default().await?;
     /// let controller = AuthencController::new(client);
     /// // Start the controller
     /// // controller.run().await?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new(client: Client) -> Self {
         Self {

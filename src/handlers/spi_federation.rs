@@ -4,8 +4,6 @@
 //! It includes handlers for LDAP federation and social provider authentication.
 
 use crate::app::AppState;
-use crate::error::Result;
-use crate::spi::{SpiManager, SpiError};
 use crate::spi::ldap_federation::LdapFederationProvider;
 use crate::spi::social::SocialProvider;
 use axum::{
@@ -31,73 +29,101 @@ pub fn create_federation_routes() -> Router<Arc<AppState>> {
 /// LDAP authentication request
 #[derive(Deserialize)]
 pub struct LdapAuthRequest {
+    /// Username for LDAP authentication
     pub username: String,
+    /// Password for LDAP authentication
     pub password: String,
 }
 
 /// LDAP authentication response
 #[derive(Serialize)]
 pub struct LdapAuthResponse {
+    /// Whether authentication was successful
     pub success: bool,
+    /// User information if authentication succeeded
     pub user_info: Option<LdapUserInfo>,
+    /// Error message if authentication failed
     pub error: Option<String>,
 }
 
 /// LDAP user information
 #[derive(Serialize)]
 pub struct LdapUserInfo {
+    /// Username in LDAP
     pub username: String,
+    /// Email address
     pub email: Option<String>,
+    /// First name
     pub first_name: Option<String>,
+    /// Last name
     pub last_name: Option<String>,
+    /// Groups the user belongs to
     pub groups: Vec<String>,
 }
 
 /// LDAP user search request
 #[derive(Deserialize)]
 pub struct LdapUserSearchRequest {
+    /// Search query string
     pub query: String,
+    /// Maximum number of results to return
     pub limit: Option<usize>,
 }
 
 /// LDAP user search response
 #[derive(Serialize)]
 pub struct LdapUserSearchResponse {
+    /// List of matching users
     pub users: Vec<LdapUserInfo>,
+    /// Total number of matching users
     pub total: usize,
 }
 
 /// Social provider list response
 #[derive(Serialize)]
 pub struct SocialProvidersResponse {
+    /// List of available social providers
     pub providers: Vec<String>,
 }
 
 /// Social authentication request
 #[derive(Deserialize)]
 pub struct SocialAuthRequest {
+    /// Social provider name
     pub provider: String,
+    /// Authorization code from provider
     pub code: String,
+    /// State parameter for CSRF protection
     pub state: String,
+    /// Redirect URI used in the flow
     pub redirect_uri: String,
 }
 
 /// Social authentication response
 #[derive(Serialize)]
 pub struct SocialAuthResponse {
+    /// Whether authentication was successful
     pub success: bool,
+    /// User information if authentication succeeded
     pub user_info: Option<SocialUserInfo>,
+    /// Access token if authentication succeeded
     pub access_token: Option<String>,
+    /// Error message if authentication failed
     pub error: Option<String>,
 }
 
 /// Social user information
 #[derive(Serialize)]
 pub struct SocialUserInfo {
+    /// Social provider name
     pub provider: String,
+    /// User ID from the social provider
     pub provider_user_id: String,
+    /// Email address from social provider
     pub email: Option<String>,
+    /// Display name from social provider
     pub name: Option<String>,
+    /// Avatar/profile image URL
     pub avatar_url: Option<String>,
 }
 
@@ -108,7 +134,11 @@ pub async fn ldap_authenticate(
 ) -> std::result::Result<Json<LdapAuthResponse>, (StatusCode, Json<serde_json::Value>)> {
     // Get LDAP federation provider from SPI manager
     let spi_manager = &state.spi_manager;
-    let provider = match spi_manager.registry().get_provider::<crate::spi::ldap_federation::DefaultLdapFederationProvider>("ldap-federation") {
+    let provider = match spi_manager
+        .registry()
+        .get_provider::<crate::spi::ldap_federation::DefaultLdapFederationProvider>(
+        "ldap-federation",
+    ) {
         Ok(provider) => provider,
         Err(_) => {
             return Ok(Json(LdapAuthResponse {
@@ -120,7 +150,10 @@ pub async fn ldap_authenticate(
     };
 
     // Attempt authentication
-    match provider.authenticate(&request.username, &request.password).await {
+    match provider
+        .authenticate(&request.username, &request.password)
+        .await
+    {
         Ok(Some(user_info)) => {
             // Convert SPI user info to response format
             let user_info = LdapUserInfo {
@@ -157,10 +190,17 @@ pub async fn ldap_search_users(
 ) -> std::result::Result<Json<LdapUserSearchResponse>, (StatusCode, Json<serde_json::Value>)> {
     // Get LDAP federation provider from SPI manager
     let spi_manager = &state.spi_manager;
-    let provider = match spi_manager.registry().get_provider::<crate::spi::ldap_federation::DefaultLdapFederationProvider>("ldap-federation") {
+    let provider = match spi_manager
+        .registry()
+        .get_provider::<crate::spi::ldap_federation::DefaultLdapFederationProvider>(
+        "ldap-federation",
+    ) {
         Ok(provider) => provider,
         Err(_) => {
-            return Err((StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"error": "LDAP federation not configured"}))));
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": "LDAP federation not configured"})),
+            ));
         }
     };
 
@@ -180,12 +220,12 @@ pub async fn ldap_search_users(
                 .collect();
             let total = users.len();
 
-            Ok(Json(LdapUserSearchResponse {
-                users,
-                total,
-            }))
+            Ok(Json(LdapUserSearchResponse { users, total }))
         }
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("Search error: {}", e)})))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Search error: {}", e)})),
+        )),
     }
 }
 
@@ -195,12 +235,13 @@ pub async fn list_social_providers(
 ) -> std::result::Result<Json<SocialProvidersResponse>, (StatusCode, Json<serde_json::Value>)> {
     // Get social providers from SPI manager
     let spi_manager = &state.spi_manager;
-    let providers = match spi_manager.registry().get_providers::<crate::spi::social::DefaultSocialProvider>("social") {
+    let providers = match spi_manager
+        .registry()
+        .get_providers::<crate::spi::social::DefaultSocialProvider>("social")
+    {
         Ok(providers) => providers,
         Err(_) => {
-            return Ok(Json(SocialProvidersResponse {
-                providers: vec![],
-            }));
+            return Ok(Json(SocialProvidersResponse { providers: vec![] }));
         }
     };
 
@@ -231,7 +272,10 @@ pub async fn social_authenticate(
 ) -> std::result::Result<Json<SocialAuthResponse>, (StatusCode, Json<serde_json::Value>)> {
     // Get social provider from SPI manager
     let spi_manager = &state.spi_manager;
-    let provider = match spi_manager.registry().get_provider::<crate::spi::social::DefaultSocialProvider>("social") {
+    let provider = match spi_manager
+        .registry()
+        .get_provider::<crate::spi::social::DefaultSocialProvider>("social")
+    {
         Ok(provider) => provider,
         Err(_) => {
             return Ok(Json(SocialAuthResponse {
@@ -263,7 +307,10 @@ pub async fn social_authenticate(
     };
 
     // Exchange code for token
-    match provider.exchange_code(&request.code, &request.redirect_uri).await {
+    match provider
+        .exchange_code(&request.code, &request.redirect_uri)
+        .await
+    {
         Ok(token) => {
             // Get user profile
             match provider.get_user_profile(&token).await {

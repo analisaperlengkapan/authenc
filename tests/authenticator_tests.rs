@@ -3,10 +3,9 @@ use std::sync::Arc;
 
 use authenc::models::user::User;
 use authenc::spi::authenticator::{
-    Authenticator, AuthenticatorConfig, AuthenticatorProvider, AuthenticatorType,
-    AuthenticationContext, AuthenticationFlowType,
-    DefaultAuthenticatorProvider, DefaultAuthenticatorProviderFactory,
-    UsernamePasswordAuthenticator, OTPAuthenticator,
+    AuthenticationContext, AuthenticationFlowType, Authenticator, AuthenticatorConfig,
+    AuthenticatorProvider, AuthenticatorType, DefaultAuthenticatorProvider,
+    DefaultAuthenticatorProviderFactory, OTPAuthenticator, UsernamePasswordAuthenticator,
 };
 use authenc::spi::ProviderFactory;
 use uuid::Uuid;
@@ -66,7 +65,10 @@ mod tests {
 
         // Test configuration
         assert_eq!(authenticator.get_config().id, "test-username-password");
-        assert_eq!(authenticator.get_authenticator_type(), AuthenticatorType::UsernamePassword);
+        assert_eq!(
+            authenticator.get_authenticator_type(),
+            AuthenticatorType::UsernamePassword
+        );
 
         // Test successful authentication
         let mut context = AuthenticationContext {
@@ -84,14 +86,20 @@ mod tests {
 
         let result = authenticator.authenticate(&context).await.unwrap();
         assert!(result.success);
-        assert_eq!(result.authenticator_type, AuthenticatorType::UsernamePassword);
+        assert_eq!(
+            result.authenticator_type,
+            AuthenticatorType::UsernamePassword
+        );
         assert!(result.error_message.is_none());
 
         // Test failed authentication (missing password)
         context.parameters.remove("password");
         let result = authenticator.authenticate(&context).await.unwrap();
         assert!(!result.success);
-        assert_eq!(result.error_message, Some("Username and password required".to_string()));
+        assert_eq!(
+            result.error_message,
+            Some("Username and password required".to_string())
+        );
 
         // Test is_configured_for
         assert!(authenticator.is_configured_for(&context));
@@ -113,7 +121,10 @@ mod tests {
 
         // Test configuration
         assert_eq!(authenticator.get_config().id, "test-otp");
-        assert_eq!(authenticator.get_authenticator_type(), AuthenticatorType::OTP);
+        assert_eq!(
+            authenticator.get_authenticator_type(),
+            AuthenticatorType::OTP
+        );
 
         // Test successful authentication
         let context = AuthenticationContext {
@@ -121,9 +132,7 @@ mod tests {
             client_id: "test-client".to_string(),
             user: Some(create_mock_user()),
             flow_type: AuthenticationFlowType::Browser,
-            parameters: HashMap::from([
-                ("otp".to_string(), "123456".to_string()),
-            ]),
+            parameters: HashMap::from([("otp".to_string(), "123456".to_string())]),
             session_data: HashMap::new(),
             current_step: None,
         };
@@ -159,16 +168,25 @@ mod tests {
 
         // Check first authenticator (UsernamePassword)
         let username_auth = &authenticators[0];
-        assert_eq!(username_auth.get_config().authenticator_type, AuthenticatorType::UsernamePassword);
+        assert_eq!(
+            username_auth.get_config().authenticator_type,
+            AuthenticatorType::UsernamePassword
+        );
         assert_eq!(username_auth.get_config().id, "username-password");
 
         // Check second authenticator (OTP)
         let otp_auth = &authenticators[1];
-        assert_eq!(otp_auth.get_config().authenticator_type, AuthenticatorType::OTP);
+        assert_eq!(
+            otp_auth.get_config().authenticator_type,
+            AuthenticatorType::OTP
+        );
         assert_eq!(otp_auth.get_config().id, "otp");
 
         // Test get_authenticator by ID
-        let found_auth = provider.get_authenticator("username-password").await.unwrap();
+        let found_auth = provider
+            .get_authenticator("username-password")
+            .await
+            .unwrap();
         assert!(found_auth.is_some());
         assert_eq!(found_auth.unwrap().get_config().id, "username-password");
 
@@ -176,10 +194,16 @@ mod tests {
         assert!(not_found.is_none());
 
         // Test get_authenticators_for_flow
-        let browser_auths = provider.get_authenticators_for_flow(AuthenticationFlowType::Browser).await.unwrap();
+        let browser_auths = provider
+            .get_authenticators_for_flow(AuthenticationFlowType::Browser)
+            .await
+            .unwrap();
         assert_eq!(browser_auths.len(), 2);
 
-        let direct_grant_auths = provider.get_authenticators_for_flow(AuthenticationFlowType::DirectGrant).await.unwrap();
+        let direct_grant_auths = provider
+            .get_authenticators_for_flow(AuthenticationFlowType::DirectGrant)
+            .await
+            .unwrap();
         assert_eq!(direct_grant_auths.len(), 2);
 
         // Test create_authentication_context
@@ -193,7 +217,10 @@ mod tests {
         assert_eq!(context.realm_id, "test-realm");
         assert_eq!(context.client_id, "test-client");
         assert_eq!(context.flow_type, AuthenticationFlowType::Browser);
-        assert_eq!(context.parameters.get("username"), Some(&"testuser".to_string()));
+        assert_eq!(
+            context.parameters.get("username"),
+            Some(&"testuser".to_string())
+        );
     }
 
     #[tokio::test]
@@ -209,13 +236,13 @@ mod tests {
             global_config: None,
         };
 
-        let provider = factory.create(&config).await.unwrap();
+        let provider = factory.create(&config).unwrap();
         // Note: Provider trait doesn't have get_id(), that's on ProviderFactory
         // We can test that the provider was created successfully
 
         // Test init
         let mut factory = DefaultAuthenticatorProviderFactory::new();
-        factory.init(&config).await.unwrap(); // Should not panic
+        factory.init(&config).unwrap(); // Should not panic
     }
 
     #[tokio::test]
@@ -234,22 +261,32 @@ mod tests {
         );
 
         // Get authenticators for this flow
-        let authenticators = provider.get_authenticators_for_flow(AuthenticationFlowType::Browser).await.unwrap();
+        let authenticators = provider
+            .get_authenticators_for_flow(AuthenticationFlowType::Browser)
+            .await
+            .unwrap();
 
         // Test authentication with username/password authenticator
-        let username_auth = authenticators.iter().find(|a| {
-            a.get_authenticator_type() == AuthenticatorType::UsernamePassword
-        }).unwrap();
+        let username_auth = authenticators
+            .iter()
+            .find(|a| a.get_authenticator_type() == AuthenticatorType::UsernamePassword)
+            .unwrap();
 
         let result = username_auth.authenticate(&context).await.unwrap();
         assert!(result.success);
-        assert_eq!(result.authenticator_type, AuthenticatorType::UsernamePassword);
+        assert_eq!(
+            result.authenticator_type,
+            AuthenticatorType::UsernamePassword
+        );
 
         // Test with OTP authenticator (add OTP parameter)
-        context.parameters.insert("otp".to_string(), "123456".to_string());
-        let otp_auth = authenticators.iter().find(|a| {
-            a.get_authenticator_type() == AuthenticatorType::OTP
-        }).unwrap();
+        context
+            .parameters
+            .insert("otp".to_string(), "123456".to_string());
+        let otp_auth = authenticators
+            .iter()
+            .find(|a| a.get_authenticator_type() == AuthenticatorType::OTP)
+            .unwrap();
 
         let result = otp_auth.authenticate(&context).await.unwrap();
         assert!(result.success);
@@ -281,29 +318,62 @@ mod tests {
         assert_eq!(stored_config.priority, 5);
         assert!(stored_config.required);
         assert!(stored_config.enabled);
-        assert_eq!(stored_config.config.get("max_attempts"), Some(&"3".to_string()));
-        assert_eq!(stored_config.config.get("lockout_duration"), Some(&"300".to_string()));
+        assert_eq!(
+            stored_config.config.get("max_attempts"),
+            Some(&"3".to_string())
+        );
+        assert_eq!(
+            stored_config.config.get("lockout_duration"),
+            Some(&"300".to_string())
+        );
     }
 
     #[tokio::test]
     async fn test_authenticator_types() {
         // Test all authenticator types are properly defined
-        assert_eq!(AuthenticatorType::UsernamePassword, AuthenticatorType::UsernamePassword);
+        assert_eq!(
+            AuthenticatorType::UsernamePassword,
+            AuthenticatorType::UsernamePassword
+        );
         assert_eq!(AuthenticatorType::OTP, AuthenticatorType::OTP);
         assert_eq!(AuthenticatorType::WebAuthn, AuthenticatorType::WebAuthn);
-        assert_eq!(AuthenticatorType::RecoveryCode, AuthenticatorType::RecoveryCode);
+        assert_eq!(
+            AuthenticatorType::RecoveryCode,
+            AuthenticatorType::RecoveryCode
+        );
         assert_eq!(AuthenticatorType::Social, AuthenticatorType::Social);
-        assert_eq!(AuthenticatorType::Custom("test".to_string()), AuthenticatorType::Custom("test".to_string()));
+        assert_eq!(
+            AuthenticatorType::Custom("test".to_string()),
+            AuthenticatorType::Custom("test".to_string())
+        );
     }
 
     #[tokio::test]
     async fn test_authentication_flow_types() {
         // Test all flow types are properly defined
-        assert_eq!(AuthenticationFlowType::Browser, AuthenticationFlowType::Browser);
-        assert_eq!(AuthenticationFlowType::DirectGrant, AuthenticationFlowType::DirectGrant);
-        assert_eq!(AuthenticationFlowType::Client, AuthenticationFlowType::Client);
-        assert_eq!(AuthenticationFlowType::Registration, AuthenticationFlowType::Registration);
-        assert_eq!(AuthenticationFlowType::ResetCredentials, AuthenticationFlowType::ResetCredentials);
-        assert_eq!(AuthenticationFlowType::Custom("test".to_string()), AuthenticationFlowType::Custom("test".to_string()));
+        assert_eq!(
+            AuthenticationFlowType::Browser,
+            AuthenticationFlowType::Browser
+        );
+        assert_eq!(
+            AuthenticationFlowType::DirectGrant,
+            AuthenticationFlowType::DirectGrant
+        );
+        assert_eq!(
+            AuthenticationFlowType::Client,
+            AuthenticationFlowType::Client
+        );
+        assert_eq!(
+            AuthenticationFlowType::Registration,
+            AuthenticationFlowType::Registration
+        );
+        assert_eq!(
+            AuthenticationFlowType::ResetCredentials,
+            AuthenticationFlowType::ResetCredentials
+        );
+        assert_eq!(
+            AuthenticationFlowType::Custom("test".to_string()),
+            AuthenticationFlowType::Custom("test".to_string())
+        );
     }
 }

@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// User group for organizing users
-/// 
+///
 /// Represents a user group for organizing and managing users within a realm.
 /// Groups can be used for bulk operations and hierarchical user management.
-/// 
+///
 /// # Fields
 /// * `id` - Unique group identifier (UUID)
 /// * `name` - Group name (unique within realm)
@@ -14,7 +14,7 @@ use uuid::Uuid;
 /// * `realm_id` - ID of the realm this group belongs to
 /// * `created_at` - Group creation timestamp
 /// * `updated_at` - Last modification timestamp
-/// 
+///
 /// # Security Considerations
 /// - Groups are scoped to realms for multi-tenancy
 /// - Group names should be unique within a realm
@@ -38,15 +38,15 @@ pub struct Group {
 }
 
 /// Group creation request
-/// 
+///
 /// Parameters required to create a new user group.
 /// Used when creating groups through the API.
-/// 
+///
 /// # Fields
 /// * `name` - Group name (must be unique within realm)
 /// * `description` - Optional human-readable description
 /// * `realm_id` - ID of the realm to create the group in
-/// 
+///
 /// # Security Considerations
 /// - Group names should follow naming conventions
 /// - Realm ID must be validated before group creation
@@ -64,10 +64,10 @@ pub struct CreateGroupRequest {
 
 /// Group update request
 /// Group update request
-/// 
+///
 /// Parameters for updating an existing user group.
 /// All fields are optional to allow partial updates.
-/// 
+///
 /// # Security Considerations
 /// - Group name changes may affect existing memberships
 /// - Updates should be authorized based on user permissions
@@ -82,10 +82,10 @@ pub struct UpdateGroupRequest {
 }
 
 /// Group response
-/// 
+///
 /// Safe group information returned to clients.
 /// Includes member count for group management.
-/// 
+///
 /// # Fields
 /// * `id` - Unique group identifier
 /// * `name` - Group name
@@ -94,7 +94,7 @@ pub struct UpdateGroupRequest {
 /// * `member_count` - Number of users in the group
 /// * `created_at` - Group creation timestamp
 /// * `updated_at` - Last modification timestamp
-/// 
+///
 /// # Security Considerations
 /// - Provides necessary group metadata for client management
 /// - Member count helps with group size management

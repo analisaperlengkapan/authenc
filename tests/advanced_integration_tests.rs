@@ -444,10 +444,13 @@ async fn create_user_integration_handler(
         "data": user_data
     }));
 
-    Ok((StatusCode::CREATED, JsonResponse(json!({
-        "user_id": user_id,
-        "status": "created"
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        JsonResponse(json!({
+            "user_id": user_id,
+            "status": "created"
+        })),
+    ))
 }
 
 async fn verify_email_handler(
@@ -602,10 +605,13 @@ async fn submit_leave_request_handler(
     State(_state): State<IntegrationState>,
     Json(_request_data): Json<Value>,
 ) -> Result<(StatusCode, JsonResponse<Value>), StatusCode> {
-    Ok((StatusCode::CREATED, JsonResponse(json!({
-        "request_id": "leave_001",
-        "status": "submitted"
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        JsonResponse(json!({
+            "request_id": "leave_001",
+            "status": "submitted"
+        })),
+    ))
 }
 
 async fn process_approval_handler(

@@ -1,7 +1,8 @@
-use crate::handlers::api::auth_bearer::AuthBearer;
-use crate::models::permission::Permission;
-use crate::services::stores::permission_store::PermissionStore;
 use crate::app::AppState;
+use crate::handlers::api::auth_bearer::AuthBearer;
+use crate::models::events::{OperationType, ResourceType};
+use crate::models::permission::Permission;
+use crate::services::events::AdminEventBuilder;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -12,8 +13,6 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::models::events::{ResourceType, OperationType, AuthDetails};
-use crate::services::events::AdminEventBuilder;
 
 /// Create permission management routes for a realm
 pub fn create_permission_routes() -> Router<Arc<AppState>> {
@@ -37,7 +36,9 @@ pub async fn get_permissions(
         None => return Err(StatusCode::NOT_FOUND),
     };
 
-    let permissions = state.permission_store.get_by_realm(&realm_obj.id.to_string());
+    let permissions = state
+        .permission_store
+        .get_by_realm(&realm_obj.id.to_string());
     Ok(Json(permissions))
 }
 
@@ -85,7 +86,7 @@ pub async fn create_permission(
     // Fire admin event
     let auth_details = crate::models::events::AuthDetails {
         user_id: auth.sub.clone(),
-        username: None, // Could be looked up from user store if needed
+        username: None,   // Could be looked up from user store if needed
         ip_address: None, // Could be extracted from request headers
         user_agent: None, // Could be extracted from request headers
     };
@@ -103,7 +104,13 @@ pub async fn create_permission(
     .representation(representation)
     .build();
 
-    if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, true).await {
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, true)
+        .await
+    {
         tracing::error!("Failed to fire admin event for permission creation: {}", e);
     }
 
@@ -129,14 +136,17 @@ pub async fn delete_permission(
     };
 
     // Delete the permission
-    if !state.permission_store.delete_by_name(&realm_obj.id.to_string(), &name) {
+    if !state
+        .permission_store
+        .delete_by_name(&realm_obj.id.to_string(), &name)
+    {
         return Err(StatusCode::NOT_FOUND);
     }
 
     // Fire admin event
     let auth_details = crate::models::events::AuthDetails {
         user_id: auth.sub.clone(),
-        username: None, // Could be looked up from user store if needed
+        username: None,   // Could be looked up from user store if needed
         ip_address: None, // Could be extracted from request headers
         user_agent: None, // Could be extracted from request headers
     };
@@ -154,7 +164,13 @@ pub async fn delete_permission(
     .representation(representation)
     .build();
 
-    if let Err(e) = state.event_manager.write().await.fire_admin_event(admin_event, true).await {
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, true)
+        .await
+    {
         tracing::error!("Failed to fire admin event for permission deletion: {}", e);
     }
 

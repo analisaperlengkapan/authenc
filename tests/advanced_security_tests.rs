@@ -1,3 +1,7 @@
+use authenc::config::DatabaseConfig;
+use authenc::database::Database;
+use authenc::services::anomaly_detector::*;
+use authenc::services::brute_force_protector::*;
 use axum::{
     extract::{Json, Path, Query, State},
     http::StatusCode,
@@ -6,10 +10,6 @@ use axum::{
     Router,
 };
 use axum_test::TestServer;
-use authenc::database::Database;
-use authenc::services::anomaly_detector::*;
-use authenc::services::brute_force_protector::*;
-use authenc::config::DatabaseConfig;
 use chrono::Utc;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -501,16 +501,22 @@ async fn create_post_handler(
         || content.contains("onerror=")
         || content.contains("onload=")
     {
-        return Ok((StatusCode::BAD_REQUEST, JsonResponse(json!({
-            "error": "XSS attempt detected",
-            "content": content
-        }))));
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            JsonResponse(json!({
+                "error": "XSS attempt detected",
+                "content": content
+            })),
+        ));
     }
 
-    Ok((StatusCode::OK, JsonResponse(json!({
-        "post_id": "post123",
-        "status": "created"
-    }))))
+    Ok((
+        StatusCode::OK,
+        JsonResponse(json!({
+            "post_id": "post123",
+            "status": "created"
+        })),
+    ))
 }
 
 async fn get_post_handler(
@@ -588,7 +594,8 @@ async fn login_attempt_handler(
 
     // Track failed attempts (simplified - in real implementation this would be per-user)
     let mut security_events = state.security_events.lock().await;
-    let failed_attempts = security_events.iter()
+    let failed_attempts = security_events
+        .iter()
         .filter(|event| event["type"] == "failed_login" && event["ip"] == ip)
         .count();
 
@@ -628,10 +635,13 @@ async fn create_user_security_handler(
     let user_id = format!("user{}", users.len());
     users.insert(user_id.clone(), user_data);
 
-    Ok((StatusCode::CREATED, JsonResponse(json!({
-        "user_id": user_id,
-        "status": "created"
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        JsonResponse(json!({
+            "user_id": user_id,
+            "status": "created"
+        })),
+    ))
 }
 
 async fn block_ip_handler(
@@ -651,16 +661,22 @@ async fn read_file_handler(
 ) -> Result<(StatusCode, JsonResponse<Value>), StatusCode> {
     // Simple path traversal detection
     if path.contains("..") || path.contains("/") || path.contains("\\") {
-        return Ok((StatusCode::FORBIDDEN, JsonResponse(json!({
-            "error": "Path traversal detected",
-            "path": path
-        }))));
+        return Ok((
+            StatusCode::FORBIDDEN,
+            JsonResponse(json!({
+                "error": "Path traversal detected",
+                "path": path
+            })),
+        ));
     }
 
-    Ok((StatusCode::OK, JsonResponse(json!({
-        "content": "safe file content",
-        "path": path
-    }))))
+    Ok((
+        StatusCode::OK,
+        JsonResponse(json!({
+            "content": "safe file content",
+            "path": path
+        })),
+    ))
 }
 
 async fn validate_path_handler(
@@ -698,16 +714,22 @@ async fn execute_command_handler(
         || command.contains("`")
         || command.contains("$(")
     {
-        return Ok((StatusCode::FORBIDDEN, JsonResponse(json!({
-            "error": "Command injection detected",
-            "command": command
-        }))));
+        return Ok((
+            StatusCode::FORBIDDEN,
+            JsonResponse(json!({
+                "error": "Command injection detected",
+                "command": command
+            })),
+        ));
     }
 
-    Ok((StatusCode::OK, JsonResponse(json!({
-        "output": "command executed safely",
-        "exit_code": 0
-    }))))
+    Ok((
+        StatusCode::OK,
+        JsonResponse(json!({
+            "output": "command executed safely",
+            "exit_code": 0
+        })),
+    ))
 }
 
 async fn validate_command_handler(
@@ -741,10 +763,13 @@ async fn create_session_security_handler(
     let session_id = format!("session{}", sessions.len());
     sessions.insert(session_id.clone(), session_data);
 
-    Ok((StatusCode::CREATED, JsonResponse(json!({
-        "session_id": session_id,
-        "status": "created"
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        JsonResponse(json!({
+            "session_id": session_id,
+            "status": "created"
+        })),
+    ))
 }
 
 async fn validate_session_handler(
@@ -840,7 +865,10 @@ async fn test_advanced_security_anomaly_detector() {
     // Test with different user
     let different_user = "user_456";
     let is_new_different_user = detector.is_new_ip(different_user, known_ip).unwrap();
-    assert!(is_new_different_user, "Same IP for different user should be detected as new");
+    assert!(
+        is_new_different_user,
+        "Same IP for different user should be detected as new"
+    );
 }
 
 #[tokio::test]
@@ -880,7 +908,10 @@ async fn test_advanced_security_brute_force_protector() {
     assert!(!should_block_2, "Second attempt should be allowed");
 
     let should_block_3 = protector.register_attempt(test_key).unwrap();
-    assert!(!should_block_3, "Third attempt should be allowed (at limit)");
+    assert!(
+        !should_block_3,
+        "Third attempt should be allowed (at limit)"
+    );
 
     // Fourth attempt should be blocked
     let should_block_4 = protector.register_attempt(test_key).unwrap();
@@ -984,7 +1015,11 @@ async fn test_advanced_security_anomaly_detector_multiple_users() {
     // Verify that each user has their own IP tracking
     for user in &users {
         let is_known_ip_new = detector.is_new_ip(user, &ips[0]).unwrap();
-        assert!(!is_known_ip_new, "Known IP should not be new for user {}", user);
+        assert!(
+            !is_known_ip_new,
+            "Known IP should not be new for user {}",
+            user
+        );
     }
 
     // Test unknown IP for all users

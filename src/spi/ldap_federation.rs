@@ -1,15 +1,15 @@
 use async_trait::async_trait;
+use ldap3::{LdapConn, LdapConnSettings, Scope, SearchEntry};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
-use ldap3::{LdapConn, LdapConnSettings, Scope, SearchEntry};
 use uuid::Uuid;
 
-use crate::error::{Result, AuthencError as Error};
+use crate::error::{AuthencError as Error, Result};
 use crate::models::user::UserProfile;
 use crate::models::User;
-use crate::spi::{Provider, ProviderFactory, Spi, ProviderConfig, SpiError};
+use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
 
 /// SPI for LDAP and Active Directory federation
 #[async_trait]
@@ -137,7 +137,10 @@ impl Default for LdapFederationConfig {
 #[async_trait]
 pub trait LdapFederationProviderFactory: ProviderFactory<dyn LdapFederationProvider> {
     /// Create a new LDAP federation provider
-    async fn create(&self, config: &LdapFederationConfig) -> Result<Arc<dyn LdapFederationProvider>>;
+    async fn create(
+        &self,
+        config: &LdapFederationConfig,
+    ) -> Result<Arc<dyn LdapFederationProvider>>;
 }
 
 /// Default implementation of LDAP federation provider
@@ -146,20 +149,22 @@ pub struct DefaultLdapFederationProvider {
 }
 
 impl DefaultLdapFederationProvider {
+    /// Create a new default LDAP federation provider with the given configuration
     pub fn new(config: LdapFederationConfig) -> Self {
         Self { config }
     }
 
     /// Create LDAP connection
     async fn create_ldap_connection(&self) -> Result<LdapConn> {
-        let settings = LdapConnSettings::new()
-            .set_starttls(self.config.use_ssl.unwrap_or(false));
+        let settings = LdapConnSettings::new().set_starttls(self.config.use_ssl.unwrap_or(false));
 
         let mut ldap = LdapConn::with_settings(settings, &self.config.server_url)
             .map_err(|e| Error::validation(format!("Failed to create LDAP connection: {}", e)))?;
 
         // Bind with service account if configured
-        if let (Some(bind_dn), Some(bind_password)) = (&self.config.bind_dn, &self.config.bind_password) {
+        if let (Some(bind_dn), Some(bind_password)) =
+            (&self.config.bind_dn, &self.config.bind_password)
+        {
             ldap.simple_bind(bind_dn, bind_password)
                 .map_err(|e| Error::validation(format!("Failed to bind to LDAP: {}", e)))?;
         }
@@ -169,7 +174,8 @@ impl DefaultLdapFederationProvider {
 
     /// Build user search filter
     fn build_user_filter(&self, username: &str) -> String {
-        self.config.user_search_filter
+        self.config
+            .user_search_filter
             .as_ref()
             .unwrap_or(&"(uid={0})".to_string())
             .replace("{0}", username)
@@ -179,15 +185,18 @@ impl DefaultLdapFederationProvider {
     fn extract_user_from_entry(&self, entry: &SearchEntry, username: &str) -> User {
         let attrs = &entry.attrs;
 
-        let email = attrs.get("mail")
+        let email = attrs
+            .get("mail")
             .and_then(|v| v.first())
             .map(|s| s.to_string());
 
-        let first_name = attrs.get("givenName")
+        let first_name = attrs
+            .get("givenName")
             .and_then(|v| v.first())
             .map(|s| s.to_string());
 
-        let last_name = attrs.get("sn")
+        let last_name = attrs
+            .get("sn")
             .and_then(|v| v.first())
             .map(|s| s.to_string());
 
@@ -195,10 +204,16 @@ impl DefaultLdapFederationProvider {
 
         // Add standard attributes
         if let Some(ref fname) = first_name {
-            attributes.insert("firstName".to_string(), serde_json::Value::String(fname.clone()));
+            attributes.insert(
+                "firstName".to_string(),
+                serde_json::Value::String(fname.clone()),
+            );
         }
         if let Some(ref lname) = last_name {
-            attributes.insert("lastName".to_string(), serde_json::Value::String(lname.clone()));
+            attributes.insert(
+                "lastName".to_string(),
+                serde_json::Value::String(lname.clone()),
+            );
         }
 
         // Add custom attributes
@@ -215,7 +230,7 @@ impl DefaultLdapFederationProvider {
         let mut user = User::new(
             username.to_string(),
             email.unwrap_or_else(|| format!("{}@ldap.local", username)),
-            None, // No password hash for LDAP users
+            None,                 // No password hash for LDAP users
             Some(Uuid::new_v4()), // Default realm - should be configurable
         );
 
@@ -230,7 +245,7 @@ impl DefaultLdapFederationProvider {
 
 #[async_trait]
 impl Provider for DefaultLdapFederationProvider {
-    async fn close(&mut self) -> () {
+    fn close(&mut self) {
         // LDAP connections are automatically closed when Ldap goes out of scope
     }
 
@@ -250,13 +265,14 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
 
         // First, search for the user to get their DN
         let filter = self.build_user_filter(username);
-        let search_result = ldap.search(
-            &self.config.base_dn,
-            Scope::Subtree,
-            &filter,
-            vec!["dn", "uid", "mail", "givenName", "sn"],
-        )
-        .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
+        let search_result = ldap
+            .search(
+                &self.config.base_dn,
+                Scope::Subtree,
+                &filter,
+                vec!["dn", "uid", "mail", "givenName", "sn"],
+            )
+            .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
         let entries = search_result.0;
         if entries.is_empty() {
@@ -267,20 +283,18 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
         let user_dn = entry.dn;
 
         // Now try to bind with user credentials
-        let auth_result = match ldap.simple_bind(&user_dn, password) {
-            Ok(_) => true,
-            Err(_) => false,
-        };
+        let auth_result = ldap.simple_bind(&user_dn, password).is_ok();
 
         if auth_result {
             // Get user info again for creating User object
-            let search_result = ldap.search(
-                &self.config.base_dn,
-                Scope::Subtree,
-                &filter,
-                vec!["dn", "uid", "mail", "givenName", "sn"],
-            )
-            .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
+            let search_result = ldap
+                .search(
+                    &self.config.base_dn,
+                    Scope::Subtree,
+                    &filter,
+                    vec!["dn", "uid", "mail", "givenName", "sn"],
+                )
+                .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
             let entries = search_result.0;
             if entries.is_empty() {
@@ -302,13 +316,14 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
 
         let mut ldap = self.create_ldap_connection().await?;
         let filter = self.build_user_filter(username);
-        let search_result = ldap.search(
-            &self.config.base_dn,
-            Scope::Subtree,
-            &filter,
-            vec!["dn", "uid", "mail", "givenName", "sn", "entryUUID"],
-        )
-        .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
+        let search_result = ldap
+            .search(
+                &self.config.base_dn,
+                Scope::Subtree,
+                &filter,
+                vec!["dn", "uid", "mail", "givenName", "sn", "entryUUID"],
+            )
+            .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
         let entries = search_result.0;
         if entries.is_empty() {
@@ -322,18 +337,31 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
 
     async fn sync_user_attributes(&self, user_id: &str) -> Result<UserProfile> {
         let mut ldap = self.create_ldap_connection().await?;
-        let filter = format!("({}={})",
-            self.config.username_attribute.as_ref().unwrap_or(&"uid".to_string()),
+        let filter = format!(
+            "({}={})",
+            self.config
+                .username_attribute
+                .as_ref()
+                .unwrap_or(&"uid".to_string()),
             user_id
         );
 
-        let search_result = ldap.search(
-            &self.config.base_dn,
-            Scope::Subtree,
-            &filter,
-            vec!["dn", "uid", "mail", "givenName", "sn", "entryUUID", "memberOf"],
-        )
-        .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
+        let search_result = ldap
+            .search(
+                &self.config.base_dn,
+                Scope::Subtree,
+                &filter,
+                vec![
+                    "dn",
+                    "uid",
+                    "mail",
+                    "givenName",
+                    "sn",
+                    "entryUUID",
+                    "memberOf",
+                ],
+            )
+            .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
         let entries = search_result.0;
         if entries.is_empty() {
@@ -364,20 +392,30 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
 
         // Extract standard attributes
         if let Some(email) = attrs.get("mail").and_then(|v| v.first()) {
-            preferences.insert("email".to_string(), serde_json::Value::String(email.clone()));
+            preferences.insert(
+                "email".to_string(),
+                serde_json::Value::String(email.clone()),
+            );
         }
 
         if let Some(first_name) = attrs.get("givenName").and_then(|v| v.first()) {
-            preferences.insert("firstName".to_string(), serde_json::Value::String(first_name.clone()));
+            preferences.insert(
+                "firstName".to_string(),
+                serde_json::Value::String(first_name.clone()),
+            );
         }
 
         if let Some(last_name) = attrs.get("sn").and_then(|v| v.first()) {
-            preferences.insert("lastName".to_string(), serde_json::Value::String(last_name.clone()));
+            preferences.insert(
+                "lastName".to_string(),
+                serde_json::Value::String(last_name.clone()),
+            );
         }
 
         // Extract groups
         if let Some(groups) = attrs.get("memberOf") {
-            let groups_array: Vec<serde_json::Value> = groups.iter()
+            let groups_array: Vec<serde_json::Value> = groups
+                .iter()
                 .map(|g| serde_json::Value::String(g.clone()))
                 .collect();
             preferences.insert("groups".to_string(), serde_json::Value::Array(groups_array));
@@ -387,7 +425,8 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
         if let Some(custom_attrs) = &self.config.custom_user_attributes {
             for (key, ldap_attr) in custom_attrs {
                 if let Some(values) = attrs.get(ldap_attr) {
-                    let values_array: Vec<serde_json::Value> = values.iter()
+                    let values_array: Vec<serde_json::Value> = values
+                        .iter()
                         .map(|v| serde_json::Value::String(v.clone()))
                         .collect();
                     preferences.insert(key.clone(), serde_json::Value::Array(values_array));
@@ -404,21 +443,27 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
 
     async fn search_users(&self, query: &str, limit: usize) -> Result<Vec<User>> {
         let mut ldap = self.create_ldap_connection().await?;
-        let filter = format!("(|(uid=*{0}*)(mail=*{0}*)(givenName=*{0}*)(sn=*{0}*))", query);
-        let search_result = ldap.search(
-            &self.config.base_dn,
-            Scope::Subtree,
-            &filter,
-            vec!["dn", "uid", "mail", "givenName", "sn"],
-        )
-        .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
+        let filter = format!(
+            "(|(uid=*{0}*)(mail=*{0}*)(givenName=*{0}*)(sn=*{0}*))",
+            query
+        );
+        let search_result = ldap
+            .search(
+                &self.config.base_dn,
+                Scope::Subtree,
+                &filter,
+                vec!["dn", "uid", "mail", "givenName", "sn"],
+            )
+            .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
         let mut users = Vec::new();
         let max_results = std::cmp::min(search_result.0.len(), limit);
 
         for i in 0..max_results {
             let entry = SearchEntry::construct(search_result.0[i].clone());
-            let username = entry.attrs.get("uid")
+            let username = entry
+                .attrs
+                .get("uid")
                 .and_then(|v| v.first())
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| format!("user{}", i));
@@ -433,42 +478,47 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
     async fn user_exists(&self, username: &str) -> Result<bool> {
         let mut ldap = self.create_ldap_connection().await?;
         let filter = self.build_user_filter(username);
-        let search_result = ldap.search(
-            &self.config.base_dn,
-            Scope::Subtree,
-            &filter,
-            vec!["dn"],
-        )
-        .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
+        let search_result = ldap
+            .search(&self.config.base_dn, Scope::Subtree, &filter, vec!["dn"])
+            .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
         Ok(!search_result.0.is_empty())
     }
 
     async fn is_connected(&self) -> bool {
-        match self.create_ldap_connection().await {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        (self.create_ldap_connection().await).is_ok()
     }
 }
 
 /// Default factory for LDAP federation providers
 pub struct DefaultLdapFederationProviderFactory;
 
+impl Default for DefaultLdapFederationProviderFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultLdapFederationProviderFactory {
+    /// Create a new default LDAP federation provider factory
     pub fn new() -> Self {
         Self
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn LdapFederationProvider> for DefaultLdapFederationProviderFactory {
-    async fn create(&self, config: &ProviderConfig) -> std::result::Result<Box<dyn LdapFederationProvider>, SpiError> {
-        let ldap_config: LdapFederationConfig = serde_json::from_value(
-            serde_json::Value::Object(config.properties.iter()
+    fn create(
+        &self,
+        config: &ProviderConfig,
+    ) -> std::result::Result<Box<dyn LdapFederationProvider>, SpiError> {
+        let ldap_config: LdapFederationConfig = serde_json::from_value(serde_json::Value::Object(
+            config
+                .properties
+                .iter()
                 .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
-                .collect())
-        ).map_err(|e| SpiError::ConfigurationError(e.to_string()))?;
+                .collect(),
+        ))
+        .map_err(|e| SpiError::ConfigurationError(e.to_string()))?;
         let provider = DefaultLdapFederationProvider::new(ldap_config);
         Ok(Box::new(provider))
     }
@@ -480,7 +530,10 @@ impl ProviderFactory<dyn LdapFederationProvider> for DefaultLdapFederationProvid
 
 #[async_trait]
 impl LdapFederationProviderFactory for DefaultLdapFederationProviderFactory {
-    async fn create(&self, config: &LdapFederationConfig) -> Result<Arc<dyn LdapFederationProvider>> {
+    async fn create(
+        &self,
+        config: &LdapFederationConfig,
+    ) -> Result<Arc<dyn LdapFederationProvider>> {
         let provider = DefaultLdapFederationProvider::new(config.clone());
         Ok(Arc::new(provider))
     }
@@ -537,7 +590,10 @@ mod tests {
         provider_config.set_property("server_url".to_string(), config.server_url.clone());
         provider_config.set_property("base_dn".to_string(), config.base_dn.clone());
 
-        let provider = <DefaultLdapFederationProviderFactory as ProviderFactory<dyn LdapFederationProvider>>::create(&factory, &provider_config).await.unwrap();
+        let provider = <DefaultLdapFederationProviderFactory as ProviderFactory<
+            dyn LdapFederationProvider,
+        >>::create(&factory, &provider_config)
+        .unwrap();
         assert!(provider.is_enabled());
     }
 }

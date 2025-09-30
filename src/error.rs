@@ -42,38 +42,38 @@ pub enum AuthencError {
 
     /// Unauthorized access attempt with custom message
     #[error("Unauthorized: {message}")]
-    Unauthorized { 
+    Unauthorized {
         /// The custom error message describing the unauthorized access
-        message: String 
+        message: String,
     },
 
     /// Forbidden operation with custom message
     #[error("Forbidden: {message}")]
-    Forbidden { 
+    Forbidden {
         /// The custom error message describing the forbidden operation
-        message: String 
+        message: String,
     },
 
     // Validation errors
     /// Input validation failed with custom message
     #[error("Invalid input: {message}")]
-    ValidationError { 
+    ValidationError {
         /// The custom error message describing the validation failure
-        message: String 
+        message: String,
     },
 
     /// Required field is missing from input
     #[error("Required field missing: {field}")]
-    MissingField { 
+    MissingField {
         /// The name of the missing required field
-        field: String 
+        field: String,
     },
 
     /// Field has invalid format
     #[error("Invalid format: {field}")]
-    InvalidFormat { 
+    InvalidFormat {
         /// The name of the field with invalid format
-        field: String 
+        field: String,
     },
 
     // Resource errors
@@ -83,45 +83,45 @@ pub enum AuthencError {
 
     /// Requested resource does not exist
     #[error("Resource not found: {resource}")]
-    ResourceNotFound { 
+    ResourceNotFound {
         /// The identifier or name of the resource that was not found
-        resource: String 
+        resource: String,
     },
 
     /// Resource already exists and cannot be created again
     #[error("Resource already exists: {resource}")]
-    ResourceExists { 
+    ResourceExists {
         /// The identifier or name of the resource that already exists
-        resource: String 
+        resource: String,
     },
 
     /// Operation not permitted due to resource state conflict
     #[error("Operation not permitted on resource: {resource}")]
-    ResourceConflict { 
+    ResourceConflict {
         /// The identifier or name of the resource with the state conflict
-        resource: String 
+        resource: String,
     },
 
     // System errors
     /// Database operation failed with custom message
     #[error("Database error: {message}")]
-    DatabaseError { 
+    DatabaseError {
         /// The detailed error message from the database operation
-        message: String 
+        message: String,
     },
 
     /// Configuration is invalid or missing
     #[error("Configuration error: {message}")]
-    ConfigurationError { 
+    ConfigurationError {
         /// The detailed error message describing the configuration issue
-        message: String 
+        message: String,
     },
 
     /// External service dependency failed
     #[error("External service error: {service}")]
-    ExternalServiceError { 
+    ExternalServiceError {
         /// The name or identifier of the external service that failed
-        service: String 
+        service: String,
     },
 
     /// Rate limit exceeded for the operation
@@ -135,16 +135,16 @@ pub enum AuthencError {
     // Internal errors
     /// Internal server error with custom message
     #[error("Internal server error: {message}")]
-    InternalError { 
+    InternalError {
         /// The detailed error message describing the internal server error
-        message: String 
+        message: String,
     },
 
     /// Data serialization/deserialization failed
     #[error("Serialization error: {message}")]
-    SerializationError { 
+    SerializationError {
         /// The detailed error message from the serialization/deserialization operation
-        message: String 
+        message: String,
     },
 
     /// Cryptographic operation failed
@@ -153,9 +153,9 @@ pub enum AuthencError {
 
     /// Network communication failed
     #[error("Network error: {message}")]
-    NetworkError { 
+    NetworkError {
         /// The detailed error message describing the network communication failure
-        message: String 
+        message: String,
     },
 }
 
@@ -320,7 +320,8 @@ impl IntoResponse for AuthencError {
 }
 
 impl AuthencError {
-    fn status_code(&self) -> StatusCode {
+    /// Get the HTTP status code for this error
+    pub fn status_code(&self) -> StatusCode {
         match self {
             // 400 Bad Request
             AuthencError::ValidationError { .. }
@@ -422,6 +423,14 @@ impl From<std::io::Error> for AuthencError {
     fn from(err: std::io::Error) -> Self {
         AuthencError::NetworkError {
             message: format!("IO error: {}", err),
+        }
+    }
+}
+
+impl From<uuid::Error> for AuthencError {
+    fn from(err: uuid::Error) -> Self {
+        AuthencError::ValidationError {
+            message: format!("Invalid UUID: {}", err),
         }
     }
 }

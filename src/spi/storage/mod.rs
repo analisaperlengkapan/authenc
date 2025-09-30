@@ -5,33 +5,39 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::error::{Result, AuthencError as Error};
-use crate::spi::{Provider, ProviderFactory, Spi, ProviderConfig, SpiError};
-use crate::models::user::User;
+use crate::error::{AuthencError as Error, Result};
+use crate::models::group::Group;
 use crate::models::oidc_client::OidcClient;
 use crate::models::role::Role;
-use crate::models::group::Group;
+use crate::models::user::User;
 use crate::services::stores::user_store::UserStoreTrait;
-use crate::services::oidc_client_store::OidcClientStore;
-use crate::services::stores::role_store::RoleStore;
-use crate::services::group_store::GroupStore;
+use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
 
 /// Storage provider types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum StorageProviderType {
+    /// User storage provider
     User,
+    /// Client storage provider
     Client,
+    /// Role storage provider
     Role,
+    /// Group storage provider
     Group,
 }
 
 /// Storage query context for filtering and pagination
 #[derive(Debug, Clone, Default)]
 pub struct StorageQueryContext {
+    /// Optional realm identifier to filter storage items
     pub realm_id: Option<String>,
+    /// Optional search string for storage filtering
     pub search: Option<String>,
+    /// Optional first result index for pagination
     pub first: Option<i32>,
+    /// Optional maximum number of results for pagination
     pub max: Option<i32>,
+    /// Additional filters as key-value pairs
     pub filters: HashMap<String, String>,
 }
 
@@ -83,7 +89,11 @@ pub trait ClientStorageProvider: StorageProvider {
     async fn get_client_by_client_id(&self, client_id: &str) -> Result<Option<OidcClient>>;
 
     /// Search clients
-    async fn search_clients(&self, query: &str, context: &StorageQueryContext) -> Result<Vec<OidcClient>>;
+    async fn search_clients(
+        &self,
+        query: &str,
+        context: &StorageQueryContext,
+    ) -> Result<Vec<OidcClient>>;
 
     /// Count clients
     async fn count_clients(&self, context: &StorageQueryContext) -> Result<i64>;
@@ -133,7 +143,8 @@ pub trait GroupStorageProvider: StorageProvider {
     async fn get_group_by_name(&self, name: &str) -> Result<Option<Group>>;
 
     /// Search groups
-    async fn search_groups(&self, query: &str, context: &StorageQueryContext) -> Result<Vec<Group>>;
+    async fn search_groups(&self, query: &str, context: &StorageQueryContext)
+        -> Result<Vec<Group>>;
 
     /// Count groups
     async fn count_groups(&self, context: &StorageQueryContext) -> Result<i64>;
@@ -174,34 +185,44 @@ impl StorageProvider for DefaultUserStorageProvider {
 #[async_trait]
 impl UserStorageProvider for DefaultUserStorageProvider {
     async fn get_user(&self, user_id: Uuid) -> Result<Option<User>> {
-        self.user_store.get_user(user_id).await.map_err(|e| Error::from(e))
+        self.user_store
+            .get_user(user_id)
+            .await
     }
 
     async fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
-        self.user_store.get_user_by_username(username).await.map_err(|e| Error::from(e))
+        self.user_store
+            .get_user_by_username(username)
+            .await
     }
 
     async fn get_user_by_email(&self, email: &str) -> Result<Option<User>> {
-        self.user_store.get_user_by_email(email).await.map_err(|e| Error::from(e))
+        self.user_store
+            .get_user_by_email(email)
+            .await
     }
 
     async fn search_users(&self, query: &str, _context: &StorageQueryContext) -> Result<Vec<User>> {
         // For now, return all users if query is empty, otherwise filter by username/email
-        let all_users = self.user_store.get_all().await.map_err(|e| Error::from(e))?;
+        let all_users = self
+            .user_store
+            .get_all()
+            .await?;
         if query.is_empty() {
             Ok(all_users)
         } else {
-            Ok(all_users.into_iter()
-                .filter(|user: &User| 
-                    user.username.contains(query) || 
-                    user.email.contains(query)
-                )
+            Ok(all_users
+                .into_iter()
+                .filter(|user: &User| user.username.contains(query) || user.email.contains(query))
                 .collect())
         }
     }
 
     async fn count_users(&self, _context: &StorageQueryContext) -> Result<i64> {
-        let all_users = self.user_store.get_all().await.map_err(|e| Error::from(e))?;
+        let all_users = self
+            .user_store
+            .get_all()
+            .await?;
         Ok(all_users.len() as i64)
     }
 
@@ -218,7 +239,9 @@ impl UserStorageProvider for DefaultUserStorageProvider {
             organization_id: user.organization_id,
             attributes: user.attributes.clone(),
         };
-        self.user_store.add_user(request).await.map_err(|e| Error::from(e))
+        self.user_store
+            .add_user(request)
+            .await
     }
 
     async fn update_user(&self, user: User) -> Result<User> {
@@ -235,7 +258,9 @@ impl UserStorageProvider for DefaultUserStorageProvider {
             require_password_change: Some(user.require_password_change),
             attributes: user.attributes.clone(),
         };
-        self.user_store.update_user(user.id, request).await.map_err(|e| Error::from(e))
+        self.user_store
+            .update_user(user.id, request)
+            .await
     }
 
     async fn delete_user(&self, _user_id: Uuid) -> Result<bool> {
@@ -261,7 +286,9 @@ pub struct DefaultClientStorageProvider {
 
 impl DefaultClientStorageProvider {
     /// Create a new default client storage provider
-    pub fn new(oidc_client_store: Arc<crate::services::oidc_client_store::OidcClientStore>) -> Self {
+    pub fn new(
+        oidc_client_store: Arc<crate::services::oidc_client_store::OidcClientStore>,
+    ) -> Self {
         Self { oidc_client_store }
     }
 }
@@ -286,41 +313,60 @@ impl ClientStorageProvider for DefaultClientStorageProvider {
     }
 
     async fn get_client_by_client_id(&self, client_id: &str) -> Result<Option<OidcClient>> {
-        self.oidc_client_store.get(client_id).await.map_err(|e| Error::from(e))
+        self.oidc_client_store
+            .get(client_id)
+            .await
     }
 
-    async fn search_clients(&self, query: &str, _context: &StorageQueryContext) -> Result<Vec<OidcClient>> {
-        let all_clients = self.oidc_client_store.all().await.map_err(|e| Error::from(e))?;
+    async fn search_clients(
+        &self,
+        query: &str,
+        _context: &StorageQueryContext,
+    ) -> Result<Vec<OidcClient>> {
+        let all_clients = self
+            .oidc_client_store
+            .all()
+            .await?;
         if query.is_empty() {
             Ok(all_clients)
         } else {
-            Ok(all_clients.into_iter()
+            Ok(all_clients
+                .into_iter()
                 .filter(|client| client.name.contains(query) || client.client_id.contains(query))
                 .collect())
         }
     }
 
     async fn count_clients(&self, _context: &StorageQueryContext) -> Result<i64> {
-        let all_clients = self.oidc_client_store.all().await.map_err(|e| Error::from(e))?;
+        let all_clients = self
+            .oidc_client_store
+            .all()
+            .await?;
         Ok(all_clients.len() as i64)
     }
 
     async fn create_client(&self, client: OidcClient) -> Result<OidcClient> {
-        self.oidc_client_store.add(client.clone()).await.map_err(|e| Error::from(e))?;
+        self.oidc_client_store
+            .add(client.clone())
+            .await?;
         Ok(client)
     }
 
     async fn update_client(&self, client: OidcClient) -> Result<OidcClient> {
         // OidcClientStore doesn't have update method, so recreate
         // This is a placeholder - proper implementation would need update method
-        Err(Error::validation("Client update not implemented".to_string()))
+        Err(Error::validation(
+            "Client update not implemented".to_string(),
+        ))
     }
 
     async fn delete_client(&self, client_id: Uuid) -> Result<bool> {
         // Convert UUID to string client_id - this is a simplification
         // In practice, we'd need proper ID mapping
         let client_id_str = client_id.to_string();
-        self.oidc_client_store.delete(&client_id_str).await.map_err(|e| Error::from(e))
+        self.oidc_client_store
+            .delete(&client_id_str)
+            .await
     }
 }
 
@@ -373,7 +419,8 @@ impl RoleStorageProvider for DefaultRoleStorageProvider {
         if query.is_empty() {
             Ok(all_roles)
         } else {
-            Ok(all_roles.into_iter()
+            Ok(all_roles
+                .into_iter()
                 .filter(|role| role.name.contains(query))
                 .collect())
         }
@@ -443,12 +490,17 @@ impl GroupStorageProvider for DefaultGroupStorageProvider {
         Ok(all_groups.into_iter().find(|g| g.name == name))
     }
 
-    async fn search_groups(&self, query: &str, _context: &StorageQueryContext) -> Result<Vec<Group>> {
+    async fn search_groups(
+        &self,
+        query: &str,
+        _context: &StorageQueryContext,
+    ) -> Result<Vec<Group>> {
         let all_groups = self.group_store.all();
         if query.is_empty() {
             Ok(all_groups)
         } else {
-            Ok(all_groups.into_iter()
+            Ok(all_groups
+                .into_iter()
                 .filter(|group| group.name.contains(query))
                 .collect())
         }
@@ -461,11 +513,10 @@ impl GroupStorageProvider for DefaultGroupStorageProvider {
     async fn create_group(&self, group: Group) -> Result<Group> {
         // GroupStore.create requires realm_id and name, but we have a Group
         // For now, recreate the group using the store's create method
-        if let Some(created) = self.group_store.create(
-            group.realm_id,
-            &group.name,
-            group.description.clone()
-        ) {
+        if let Some(created) =
+            self.group_store
+                .create(group.realm_id, &group.name, group.description.clone())
+        {
             Ok(created)
         } else {
             Err(Error::validation("Failed to create group".to_string()))
@@ -474,7 +525,9 @@ impl GroupStorageProvider for DefaultGroupStorageProvider {
 
     async fn update_group(&self, _group: Group) -> Result<Group> {
         // GroupStore doesn't have update method, so return error for now
-        Err(Error::validation("Group update not implemented".to_string()))
+        Err(Error::validation(
+            "Group update not implemented".to_string(),
+        ))
     }
 
     async fn delete_group(&self, group_id: Uuid) -> Result<bool> {
@@ -496,7 +549,10 @@ impl Provider for DefaultGroupStorageProvider {
 #[async_trait]
 pub trait StorageProviderFactory: ProviderFactory<dyn StorageProvider> {
     /// Create a storage provider instance
-    fn create_storage_provider(&self, provider_type: StorageProviderType) -> Box<dyn StorageProvider + Send + Sync>;
+    fn create_storage_provider(
+        &self,
+        provider_type: StorageProviderType,
+    ) -> Box<dyn StorageProvider + Send + Sync>;
 }
 
 /// Default storage provider factory
@@ -508,6 +564,7 @@ pub struct DefaultStorageProviderFactory {
 }
 
 impl DefaultStorageProviderFactory {
+    /// Create a new default storage provider factory with the given stores
     pub fn new(
         user_store: Arc<dyn UserStoreTrait>,
         oidc_client_store: Arc<crate::services::oidc_client_store::OidcClientStore>,
@@ -523,14 +580,18 @@ impl DefaultStorageProviderFactory {
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn StorageProvider> for DefaultStorageProviderFactory {
-    async fn create(&self, _config: &ProviderConfig) -> std::result::Result<Box<dyn StorageProvider>, SpiError> {
+    fn create(
+        &self,
+        _config: &ProviderConfig,
+    ) -> std::result::Result<Box<dyn StorageProvider>, SpiError> {
         // Default to user storage provider
-        Ok(Box::new(DefaultUserStorageProvider::new(self.user_store.clone())))
+        Ok(Box::new(DefaultUserStorageProvider::new(
+            self.user_store.clone(),
+        )))
     }
 
-    async fn init(&mut self, _config: &ProviderConfig) -> std::result::Result<(), SpiError> {
+    fn init(&mut self, _config: &ProviderConfig) -> std::result::Result<(), SpiError> {
         Ok(())
     }
 
@@ -540,12 +601,23 @@ impl ProviderFactory<dyn StorageProvider> for DefaultStorageProviderFactory {
 }
 
 impl StorageProviderFactory for DefaultStorageProviderFactory {
-    fn create_storage_provider(&self, provider_type: StorageProviderType) -> Box<dyn StorageProvider + Send + Sync> {
+    fn create_storage_provider(
+        &self,
+        provider_type: StorageProviderType,
+    ) -> Box<dyn StorageProvider + Send + Sync> {
         match provider_type {
-            StorageProviderType::User => Box::new(DefaultUserStorageProvider::new(self.user_store.clone())),
-            StorageProviderType::Client => Box::new(DefaultClientStorageProvider::new(self.oidc_client_store.clone())),
-            StorageProviderType::Role => Box::new(DefaultRoleStorageProvider::new(self.role_store.clone())),
-            StorageProviderType::Group => Box::new(DefaultGroupStorageProvider::new(self.group_store.clone())),
+            StorageProviderType::User => {
+                Box::new(DefaultUserStorageProvider::new(self.user_store.clone()))
+            }
+            StorageProviderType::Client => Box::new(DefaultClientStorageProvider::new(
+                self.oidc_client_store.clone(),
+            )),
+            StorageProviderType::Role => {
+                Box::new(DefaultRoleStorageProvider::new(self.role_store.clone()))
+            }
+            StorageProviderType::Group => {
+                Box::new(DefaultGroupStorageProvider::new(self.group_store.clone()))
+            }
         }
     }
 }

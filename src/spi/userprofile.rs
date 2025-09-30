@@ -3,10 +3,11 @@
 //! Provides user profile management and validation capabilities.
 
 use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 
 /// User Profile SPI implementation
 pub struct UserProfileSpi;
@@ -55,14 +56,23 @@ pub struct UserProfileAttribute {
 /// Attribute types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AttributeType {
+    /// Text attribute type
     Text,
+    /// Email attribute type
     Email,
+    /// URL attribute type
     Url,
+    /// Number attribute type
     Number,
+    /// Date attribute type
     Date,
+    /// Select attribute type
     Select,
+    /// Multiselect attribute type
     Multiselect,
+    /// Boolean attribute type
     Boolean,
+    /// File attribute type
     File,
 }
 
@@ -91,26 +101,29 @@ pub enum UserProfileContext {
 }
 
 /// User profile provider interface
-#[async_trait]
 pub trait UserProfileProvider: Provider {
     /// Get user profile attributes for a context
-    async fn get_profile_attributes(
+    fn get_profile_attributes(
         &self,
         context: UserProfileContext,
-    ) -> Result<Vec<UserProfileAttribute>, UserProfileError>;
+    ) -> Pin<
+        Box<dyn Future<Output = Result<Vec<UserProfileAttribute>, UserProfileError>> + Send + '_>,
+    >;
 
     /// Validate user profile attributes
-    async fn validate_user_profile(
+    fn validate_user_profile(
         &self,
         context: UserProfileContext,
         attributes: &HashMap<String, Vec<String>>,
-    ) -> Result<UserProfileValidationResult, UserProfileError>;
+    ) -> Pin<
+        Box<dyn Future<Output = Result<UserProfileValidationResult, UserProfileError>> + Send + '_>,
+    >;
 
     /// Create user profile metadata
-    async fn create_user_profile_metadata(
+    fn create_user_profile_metadata(
         &self,
         context: UserProfileContext,
-    ) -> Result<UserProfileMetadata, UserProfileError>;
+    ) -> Pin<Box<dyn Future<Output = Result<UserProfileMetadata, UserProfileError>> + Send + '_>>;
 }
 
 /// User profile validation result
@@ -145,7 +158,6 @@ pub struct UserProfileGroup {
 }
 
 /// User profile provider factory
-#[async_trait]
 pub trait UserProfileProviderFactory: ProviderFactory<dyn UserProfileProvider> {
     /// Get the provider priority
     fn get_priority(&self) -> i32 {
@@ -156,18 +168,23 @@ pub trait UserProfileProviderFactory: ProviderFactory<dyn UserProfileProvider> {
 /// User profile errors
 #[derive(Debug, thiserror::Error)]
 pub enum UserProfileError {
+    /// User profile validation failed
     #[error("User profile validation failed: {0}")]
     ValidationFailed(String),
 
+    /// Attribute not found
     #[error("Attribute not found: {0}")]
     AttributeNotFound(String),
 
+    /// Invalid attribute value
     #[error("Invalid attribute value: {0}")]
     InvalidAttributeValue(String),
 
+    /// Configuration error
     #[error("Configuration error: {0}")]
     ConfigurationError(String),
 
+    /// Profile context not supported
     #[error("Profile context not supported: {0:?}")]
     UnsupportedContext(UserProfileContext),
 }
@@ -175,6 +192,12 @@ pub enum UserProfileError {
 /// Default user profile provider implementation
 pub struct DefaultUserProfileProvider {
     attributes: Vec<UserProfileAttribute>,
+}
+
+impl Default for DefaultUserProfileProvider {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DefaultUserProfileProvider {
@@ -260,111 +283,129 @@ impl DefaultUserProfileProvider {
     }
 }
 
-#[async_trait]
 impl UserProfileProvider for DefaultUserProfileProvider {
-    async fn get_profile_attributes(
+    fn get_profile_attributes(
         &self,
         _context: UserProfileContext,
-    ) -> Result<Vec<UserProfileAttribute>, UserProfileError> {
-        Ok(self.attributes.clone())
+    ) -> Pin<
+        Box<dyn Future<Output = Result<Vec<UserProfileAttribute>, UserProfileError>> + Send + '_>,
+    > {
+        let attributes = self.attributes.clone();
+        Box::pin(async move { Ok(attributes) })
     }
 
-    async fn validate_user_profile(
+    fn validate_user_profile(
         &self,
         _context: UserProfileContext,
         attributes: &HashMap<String, Vec<String>>,
-    ) -> Result<UserProfileValidationResult, UserProfileError> {
-        let mut errors = HashMap::new();
+    ) -> Pin<
+        Box<dyn Future<Output = Result<UserProfileValidationResult, UserProfileError>> + Send + '_>,
+    > {
+        let attributes = attributes.clone();
+        let self_attributes = self.attributes.clone();
+        Box::pin(async move {
+            let mut errors = HashMap::new();
 
-        // Basic validation logic
-        for attr in &self.attributes {
-            if attr.required {
-                if let Some(values) = attributes.get(&attr.name) {
-                    if values.is_empty() || values.iter().all(|v| v.trim().is_empty()) {
+            // Basic validation logic
+            for attr in &self_attributes {
+                if attr.required {
+                    if let Some(values) = attributes.get(&attr.name) {
+                        if values.is_empty() || values.iter().all(|v| v.trim().is_empty()) {
+                            errors.insert(
+                                attr.name.clone(),
+                                vec![format!(
+                                    "{} is required",
+                                    attr.display_name.as_ref().unwrap_or(&attr.name)
+                                )],
+                            );
+                        }
+                    } else {
                         errors.insert(
                             attr.name.clone(),
-                            vec![format!("{} is required", attr.display_name.as_ref().unwrap_or(&attr.name))],
+                            vec![format!(
+                                "{} is required",
+                                attr.display_name.as_ref().unwrap_or(&attr.name)
+                            )],
                         );
                     }
-                } else {
-                    errors.insert(
-                        attr.name.clone(),
-                        vec![format!("{} is required", attr.display_name.as_ref().unwrap_or(&attr.name))],
-                    );
                 }
-            }
 
-            // Run attribute-specific validations
-            if let Some(values) = attributes.get(&attr.name) {
-                for validation in &attr.validations {
-                    match validation.validator.as_str() {
-                        "length" => {
-                            if let Some(min_str) = validation.config.get("min") {
-                                if let Ok(min) = min_str.parse::<usize>() {
-                                    for value in values {
-                                        if value.len() < min {
-                                            errors.entry(attr.name.clone())
-                                                .or_insert_with(Vec::new)
-                                                .push(format!("Minimum length is {}", min));
+                // Run attribute-specific validations
+                if let Some(values) = attributes.get(&attr.name) {
+                    for validation in &attr.validations {
+                        match validation.validator.as_str() {
+                            "length" => {
+                                if let Some(min_str) = validation.config.get("min") {
+                                    if let Ok(min) = min_str.parse::<usize>() {
+                                        for value in values {
+                                            if value.len() < min {
+                                                errors
+                                                    .entry(attr.name.clone())
+                                                    .or_insert_with(Vec::new)
+                                                    .push(format!("Minimum length is {}", min));
+                                            }
+                                        }
+                                    }
+                                }
+                                if let Some(max_str) = validation.config.get("max") {
+                                    if let Ok(max) = max_str.parse::<usize>() {
+                                        for value in values {
+                                            if value.len() > max {
+                                                errors
+                                                    .entry(attr.name.clone())
+                                                    .or_insert_with(Vec::new)
+                                                    .push(format!("Maximum length is {}", max));
+                                            }
                                         }
                                     }
                                 }
                             }
-                            if let Some(max_str) = validation.config.get("max") {
-                                if let Ok(max) = max_str.parse::<usize>() {
-                                    for value in values {
-                                        if value.len() > max {
-                                            errors.entry(attr.name.clone())
-                                                .or_insert_with(Vec::new)
-                                                .push(format!("Maximum length is {}", max));
-                                        }
+                            "email" => {
+                                for value in values {
+                                    if !value.contains('@') {
+                                        errors
+                                            .entry(attr.name.clone())
+                                            .or_insert_with(Vec::new)
+                                            .push("Invalid email format".to_string());
                                     }
                                 }
                             }
+                            _ => {}
                         }
-                        "email" => {
-                            for value in values {
-                                if !value.contains('@') {
-                                    errors.entry(attr.name.clone())
-                                        .or_insert_with(Vec::new)
-                                        .push("Invalid email format".to_string());
-                                }
-                            }
-                        }
-                        _ => {}
                     }
                 }
             }
-        }
 
-        Ok(UserProfileValidationResult {
-            is_valid: errors.is_empty(),
-            errors,
+            Ok(UserProfileValidationResult {
+                is_valid: errors.is_empty(),
+                errors,
+            })
         })
     }
 
-    async fn create_user_profile_metadata(
+    fn create_user_profile_metadata(
         &self,
         _context: UserProfileContext,
-    ) -> Result<UserProfileMetadata, UserProfileError> {
-        let groups = vec![
-            UserProfileGroup {
-                name: "basic".to_string(),
-                display_name: Some("Basic Information".to_string()),
-                display_order: Some(1),
-                annotations: HashMap::new(),
-            },
-            UserProfileGroup {
-                name: "personal".to_string(),
-                display_name: Some("Personal Information".to_string()),
-                display_order: Some(2),
-                annotations: HashMap::new(),
-            },
-        ];
+    ) -> Pin<Box<dyn Future<Output = Result<UserProfileMetadata, UserProfileError>> + Send + '_>>
+    {
+        let attributes = self.attributes.clone();
+        Box::pin(async move {
+            let groups = vec![
+                UserProfileGroup {
+                    name: "basic".to_string(),
+                    display_name: Some("Basic Information".to_string()),
+                    display_order: Some(1),
+                    annotations: HashMap::new(),
+                },
+                UserProfileGroup {
+                    name: "personal".to_string(),
+                    display_name: Some("Personal Information".to_string()),
+                    display_order: Some(2),
+                    annotations: HashMap::new(),
+                },
+            ];
 
-        Ok(UserProfileMetadata {
-            attributes: self.attributes.clone(),
-            groups,
+            Ok(UserProfileMetadata { attributes, groups })
         })
     }
 }
@@ -382,6 +423,12 @@ impl Provider for DefaultUserProfileProvider {
 /// Default user profile provider factory
 pub struct DefaultUserProfileProviderFactory;
 
+impl Default for DefaultUserProfileProviderFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultUserProfileProviderFactory {
     /// Create a new default user profile provider factory
     pub fn new() -> Self {
@@ -389,12 +436,8 @@ impl DefaultUserProfileProviderFactory {
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn UserProfileProvider> for DefaultUserProfileProviderFactory {
-    async fn create(
-        &self,
-        _config: &ProviderConfig,
-    ) -> Result<Box<dyn UserProfileProvider>, SpiError> {
+    fn create(&self, _config: &ProviderConfig) -> Result<Box<dyn UserProfileProvider>, SpiError> {
         Ok(Box::new(DefaultUserProfileProvider::new()))
     }
 

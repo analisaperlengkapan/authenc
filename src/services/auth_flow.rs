@@ -15,6 +15,7 @@ use crate::error::AuthencError;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 /// Authentication Flow Type
 /// Defines the different types of authentication flows supported
@@ -41,17 +42,17 @@ pub enum AuthenticationFlowType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticationFlowModel {
     /// Flow unique identifier
-    pub id: String,
+    pub id: uuid::Uuid,
     /// Flow alias/name for human-readable identification
     pub alias: String,
     /// Flow description explaining its purpose
     pub description: String,
     /// Flow type determining the authentication method
     pub flow_type: AuthenticationFlowType,
+    /// Realm ID this flow belongs to
+    pub realm_id: uuid::Uuid,
     /// Whether the flow is enabled and can be used
     pub enabled: bool,
-    /// Execution steps in the flow
-    pub executions: Vec<AuthenticationExecutionModel>,
     /// Flow priority (higher = executed first)
     pub priority: i32,
 }
@@ -61,7 +62,9 @@ pub struct AuthenticationFlowModel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticationExecutionModel {
     /// Execution unique identifier
-    pub id: String,
+    pub id: uuid::Uuid,
+    /// Flow ID this execution belongs to
+    pub flow_id: uuid::Uuid,
     /// Execution alias/name for human-readable identification
     pub alias: String,
     /// Execution description explaining its purpose
@@ -83,17 +86,19 @@ pub struct AuthenticationExecutionModel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticationSessionModel {
     /// Session unique identifier
-    pub id: String,
+    pub id: uuid::Uuid,
     /// Associated user session ID if user is authenticated
-    pub user_session_id: Option<String>,
+    pub user_session_id: Option<uuid::Uuid>,
     /// Client ID requesting authentication
     pub client_id: String,
     /// Current flow ID being executed
-    pub flow_id: String,
+    pub flow_id: uuid::Uuid,
     /// Current execution ID being processed
-    pub current_execution_id: Option<String>,
+    pub current_execution_id: Option<uuid::Uuid>,
     /// Session start time
     pub started_at: chrono::DateTime<chrono::Utc>,
+    /// Session expiration time
+    pub expires_at: chrono::DateTime<chrono::Utc>,
     /// Session data for storing temporary information
     pub session_data: HashMap<String, String>,
     /// Authentication notes and metadata
@@ -177,113 +182,42 @@ impl DefaultAuthenticationFlowResolver {
     fn initialize_default_flows(&mut self) {
         // Browser Flow
         let browser_flow = AuthenticationFlowModel {
-            id: "browser".to_string(),
+            id: Uuid::new_v4(),
             alias: "browser".to_string(),
             description: "Browser based authentication".to_string(),
             flow_type: AuthenticationFlowType::Browser,
+            realm_id: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(), // Default test realm
             enabled: true,
-            executions: vec![
-                AuthenticationExecutionModel {
-                    id: "cookie-auth".to_string(),
-                    alias: "Cookie".to_string(),
-                    description: "Cookie authentication".to_string(),
-                    execution_type: "authenticator".to_string(),
-                    enabled: true,
-                    priority: 10,
-                    configuration: HashMap::new(),
-                    requirements: vec!["ALTERNATIVE".to_string()],
-                },
-                AuthenticationExecutionModel {
-                    id: "identity-provider-redirector".to_string(),
-                    alias: "Identity Provider Redirector".to_string(),
-                    description: "Redirect to social login".to_string(),
-                    execution_type: "authenticator".to_string(),
-                    enabled: true,
-                    priority: 20,
-                    configuration: HashMap::new(),
-                    requirements: vec!["ALTERNATIVE".to_string()],
-                },
-                AuthenticationExecutionModel {
-                    id: "username-password-form".to_string(),
-                    alias: "Username Password Form".to_string(),
-                    description: "Username/password authentication".to_string(),
-                    execution_type: "authenticator".to_string(),
-                    enabled: true,
-                    priority: 30,
-                    configuration: HashMap::new(),
-                    requirements: vec!["REQUIRED".to_string()],
-                },
-            ],
-            priority: 10,
+            priority: 0,
         };
 
         // Direct Grant Flow
         let direct_grant_flow = AuthenticationFlowModel {
-            id: "direct-grant".to_string(),
+            id: Uuid::new_v4(),
             alias: "direct grant".to_string(),
             description: "Direct grant authentication".to_string(),
             flow_type: AuthenticationFlowType::DirectGrant,
+            realm_id: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(), // Default test realm
             enabled: true,
-            executions: vec![AuthenticationExecutionModel {
-                id: "direct-grant-validate".to_string(),
-                alias: "Direct Grant Validate".to_string(),
-                description: "Validate username/password".to_string(),
-                execution_type: "authenticator".to_string(),
-                enabled: true,
-                priority: 10,
-                configuration: HashMap::new(),
-                requirements: vec!["REQUIRED".to_string()],
-            }],
-            priority: 5,
+            priority: 0,
         };
 
         // Client Authentication Flow
         let client_auth_flow = AuthenticationFlowModel {
-            id: "client-auth".to_string(),
+            id: Uuid::new_v4(),
             alias: "clients".to_string(),
-            description: "Client authentication flow".to_string(),
+            description: "Client authentication".to_string(),
             flow_type: AuthenticationFlowType::ClientAuthentication,
+            realm_id: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(), // Default test realm
             enabled: true,
-            executions: vec![
-                AuthenticationExecutionModel {
-                    id: "client-secret".to_string(),
-                    alias: "Client Id and Secret".to_string(),
-                    description: "Client ID and secret authentication".to_string(),
-                    execution_type: "authenticator".to_string(),
-                    enabled: true,
-                    priority: 10,
-                    configuration: HashMap::new(),
-                    requirements: vec!["ALTERNATIVE".to_string()],
-                },
-                AuthenticationExecutionModel {
-                    id: "client-jwt".to_string(),
-                    alias: "Signed Jwt".to_string(),
-                    description: "JWT client authentication".to_string(),
-                    execution_type: "authenticator".to_string(),
-                    enabled: true,
-                    priority: 20,
-                    configuration: HashMap::new(),
-                    requirements: vec!["ALTERNATIVE".to_string()],
-                },
-                AuthenticationExecutionModel {
-                    id: "client-x509".to_string(),
-                    alias: "X509 Certificate".to_string(),
-                    description: "X.509 certificate authentication".to_string(),
-                    execution_type: "authenticator".to_string(),
-                    enabled: true,
-                    priority: 30,
-                    configuration: HashMap::new(),
-                    requirements: vec!["ALTERNATIVE".to_string()],
-                },
-            ],
-            priority: 15,
+            priority: 0,
         };
 
-        self.flows.insert(browser_flow.id.clone(), browser_flow);
+        // Store flows by alias for easy lookup
+        self.flows.insert("browser".to_string(), browser_flow);
         self.flows
-            .insert(direct_grant_flow.id.clone(), direct_grant_flow);
-        self.flows
-            .insert(client_auth_flow.id.clone(), client_auth_flow);
+            .insert("direct grant".to_string(), direct_grant_flow);
+        self.flows.insert("clients".to_string(), client_auth_flow);
     }
 }
 
@@ -315,7 +249,7 @@ impl AuthenticationFlowResolver for DefaultAuthenticationFlowResolver {
             _ => match context.grant_type.as_deref() {
                 Some("password") => {
                     // Direct grant flow
-                    self.flows.get("direct-grant").cloned().ok_or_else(|| {
+                    self.flows.get("direct grant").cloned().ok_or_else(|| {
                         AuthencError::ValidationError {
                             message: "Direct grant flow not found".to_string(),
                         }
@@ -323,7 +257,7 @@ impl AuthenticationFlowResolver for DefaultAuthenticationFlowResolver {
                 }
                 Some("client_credentials") => {
                     // Client authentication flow
-                    self.flows.get("client-auth").cloned().ok_or_else(|| {
+                    self.flows.get("clients").cloned().ok_or_else(|| {
                         AuthencError::ValidationError {
                             message: "Client authentication flow not found".to_string(),
                         }
@@ -385,21 +319,24 @@ impl AuthenticationSessionManager {
         client_id: String,
         flow_id: String,
     ) -> Result<String, AuthencError> {
-        let session_id = uuid::Uuid::new_v4().to_string();
+        let session_id = uuid::Uuid::new_v4();
+        let flow_id_uuid = uuid::Uuid::parse_str(&flow_id)
+            .map_err(|_| AuthencError::validation("Invalid flow ID"))?;
         let session = AuthenticationSessionModel {
-            id: session_id.clone(),
+            id: session_id,
             user_session_id: None,
             client_id,
-            flow_id,
+            flow_id: flow_id_uuid,
             current_execution_id: None,
             started_at: chrono::Utc::now(),
+            expires_at: chrono::Utc::now() + chrono::Duration::minutes(30),
             session_data: HashMap::new(),
             auth_notes: HashMap::new(),
             completed: false,
         };
 
-        self.sessions.insert(session_id.clone(), session);
-        Ok(session_id)
+        self.sessions.insert(session_id.to_string(), session);
+        Ok(session_id.to_string())
     }
 
     /// Get session by ID
@@ -433,7 +370,7 @@ impl AuthenticationSessionManager {
         &mut self,
         session: AuthenticationSessionModel,
     ) -> Result<(), AuthencError> {
-        self.sessions.insert(session.id.clone(), session);
+        self.sessions.insert(session.id.to_string(), session);
         Ok(())
     }
 
@@ -528,7 +465,7 @@ impl AuthenticationManager {
         // Create authentication session
         let session_id = self
             .session_manager
-            .create_session(context.client_id.clone(), flow.id)
+            .create_session(context.client_id.clone(), flow.id.to_string())
             .await?;
 
         Ok(session_id)
@@ -567,7 +504,7 @@ impl AuthenticationManager {
 
         // Update session
         let mut updated_session = session;
-        updated_session.current_execution_id = Some(next_execution.id.clone());
+        updated_session.current_execution_id = Some(next_execution.id);
         if result.completed {
             updated_session.completed = true;
         }
@@ -581,27 +518,39 @@ impl AuthenticationManager {
         flow: &AuthenticationFlowModel,
         session: &AuthenticationSessionModel,
     ) -> Result<AuthenticationExecutionModel, AuthencError> {
-        // Find the next execution to process
-        let mut sorted_executions = flow.executions.clone();
-        sorted_executions.sort_by(|a, b| a.priority.cmp(&b.priority));
-
-        for execution in &sorted_executions {
-            if !execution.enabled {
-                continue;
+        // TODO: Get executions from database
+        // For now, return appropriate execution based on flow type
+        let (alias, description) = match flow.flow_type {
+            AuthenticationFlowType::Browser => (
+                "Username Password Form",
+                "Username and password authentication",
+            ),
+            AuthenticationFlowType::DirectGrant => {
+                ("Username Password Form", "Direct grant authentication")
             }
-
-            // Check if this execution has been processed
-            if let Some(current_id) = &session.current_execution_id {
-                if execution.id <= *current_id {
-                    continue;
-                }
+            AuthenticationFlowType::ClientAuthentication => {
+                ("Client Id and Secret", "Client credentials authentication")
             }
+            AuthenticationFlowType::Registration => ("Username Password Form", "User registration"),
+            AuthenticationFlowType::ResetCredentials => {
+                ("Username Password Form", "Reset credentials")
+            }
+            AuthenticationFlowType::Docker => ("Username Password Form", "Docker authentication"),
+            AuthenticationFlowType::Custom(_) => {
+                ("Username Password Form", "Custom authentication")
+            }
+        };
 
-            return Ok(execution.clone());
-        }
-
-        Err(AuthencError::ValidationError {
-            message: "No more executions in flow".to_string(),
+        Ok(AuthenticationExecutionModel {
+            id: Uuid::new_v4(),
+            flow_id: flow.id,
+            alias: alias.to_string(),
+            description: description.to_string(),
+            execution_type: "authenticator".to_string(),
+            enabled: true,
+            priority: 0,
+            configuration: HashMap::new(),
+            requirements: vec![],
         })
     }
 
@@ -690,8 +639,7 @@ impl AuthenticationManager {
     }
 }
 
-/// Authentication Step Result
-/// Result of processing an authentication execution step
+/// Result of executing an authentication step
 #[derive(Debug, Clone)]
 pub struct AuthenticationStepResult {
     /// Whether the authentication step was successful

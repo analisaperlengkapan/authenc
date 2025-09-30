@@ -4,10 +4,10 @@
 
 use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
 
 /// Events SPI implementation
 pub struct EventsSpi;
@@ -33,70 +33,135 @@ impl Spi for EventsSpi {
 /// Event types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EventType {
+    /// User login event
     Login,
+    /// User login error event
     LoginError,
+    /// User registration event
     Register,
+    /// User registration error event
     RegisterError,
+    /// User logout event
     Logout,
+    /// Code to token exchange event
     CodeToToken,
+    /// Refresh token event
     RefreshToken,
+    /// Client login event
     ClientLogin,
+    /// Client login error event
     ClientLoginError,
+    /// Refresh token error event
     RefreshTokenError,
+    /// Access token validation event
     ValidateAccessToken,
+    /// Access token validation error event
     ValidateAccessTokenError,
+    /// Token introspection event
     IntrospectToken,
+    /// Token introspection error event
     IntrospectTokenError,
+    /// Token revocation event
     RevokeToken,
+    /// User info request event
     UserInfoRequest,
+    /// User info request error event
     UserInfoRequestError,
+    /// Identity provider login event
     IdentityProviderLogin,
+    /// Identity provider login error event
     IdentityProviderLoginError,
+    /// Identity provider response event
     IdentityProviderResponse,
+    /// Identity provider response error event
     IdentityProviderResponseError,
+    /// Custom grant event
     CustomGrant,
+    /// Custom grant error event
     CustomGrantError,
+    /// Profile update event
     UpdateProfile,
+    /// Profile update error event
     UpdateProfileError,
+    /// Password update event
     UpdatePassword,
+    /// Password update error event
     UpdatePasswordError,
+    /// Send verify email event
     SendVerifyEmail,
+    /// Send verify email error event
     SendVerifyEmailError,
+    /// Send reset password event
     SendResetPassword,
+    /// Send reset password error event
     SendResetPasswordError,
+    /// Email verification event
     VerifyEmail,
+    /// Email verification error event
     VerifyEmailError,
+    /// Password reset event
     ResetPassword,
+    /// Password reset error event
     ResetPasswordError,
+    /// Remove TOTP event
     RemoveTotp,
+    /// Remove TOTP error event
     RemoveTotpError,
+    /// Update TOTP event
     UpdateTotp,
+    /// Update TOTP error event
     UpdateTotpError,
+    /// Remove federated identity event
     RemoveFederatedIdentity,
+    /// Remove federated identity error event
     RemoveFederatedIdentityError,
+    /// Update federated identity event
     UpdateFederatedIdentity,
+    /// Update federated identity error event
     UpdateFederatedIdentityError,
+    /// User impersonation event
     ImPersonate,
+    /// User impersonation error event
     ImPersonateError,
+    /// Custom required action event
     CustomRequiredAction,
+    /// Custom required action error event
     CustomRequiredActionError,
+    /// Execute actions event
     ExecuteActions,
+    /// Execute actions error event
     ExecuteActionsError,
+    /// Execute action token event
     ExecuteActionToken,
+    /// Execute action token error event
     ExecuteActionTokenError,
+    /// Send identity provider link event
     SendIdentityProviderLink,
+    /// Send identity provider link error event
     SendIdentityProviderLinkError,
+    /// Identity provider link account event
     IdentityProviderLinkAccount,
+    /// Identity provider link account error event
     IdentityProviderLinkAccountError,
+    /// Federation link account event
     FederationLinkAccount,
+    /// Federation link account error event
     FederationLinkAccountError,
+    /// Remove federated identity group event
     RemoveFederatedIdentityGroup,
+    /// Remove federated identity group error event
     RemoveFederatedIdentityGroupError,
+    /// Update federated identity group event
     UpdateFederatedIdentityGroup,
+    /// Update federated identity group error event
     UpdateFederatedIdentityGroupError,
+    /// Permission token event
     PermissionToken,
+    /// Permission token error event
     PermissionTokenError,
+    /// Delete account event
     DeleteAccount,
+    /// Delete account error event
     DeleteAccountError,
 }
 
@@ -237,9 +302,13 @@ pub struct AdminEventAuthDetails {
 /// Admin event operation types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AdminEventOperationType {
+    /// Create operation
     Create,
+    /// Update operation
     Update,
+    /// Delete operation
     Delete,
+    /// Action operation
     Action,
 }
 
@@ -266,10 +335,7 @@ pub trait EventStoreProvider: Provider {
     async fn store_admin_event(&self, event: AdminEvent) -> Result<(), EventError>;
 
     /// Query events
-    async fn query_events(
-        &self,
-        query: EventQuery,
-    ) -> Result<Vec<Event>, EventError>;
+    async fn query_events(&self, query: EventQuery) -> Result<Vec<Event>, EventError>;
 
     /// Query admin events
     async fn query_admin_events(
@@ -350,15 +416,19 @@ pub trait EventProviderFactory: ProviderFactory<dyn EventProvider> {
 /// Event-related errors
 #[derive(Debug, thiserror::Error)]
 pub enum EventError {
+    /// Event storage error
     #[error("Event storage error: {0}")]
     StorageError(String),
 
+    /// Event query error
     #[error("Event query error: {0}")]
     QueryError(String),
 
+    /// Event listener error
     #[error("Event listener error: {0}")]
     ListenerError(String),
 
+    /// Configuration error
     #[error("Configuration error: {0}")]
     ConfigurationError(String),
 }
@@ -368,6 +438,12 @@ pub struct DefaultEventProvider {
     events: Vec<Event>,
     admin_events: Vec<AdminEvent>,
     listeners: Vec<Box<dyn EventListenerProvider>>,
+}
+
+impl Default for DefaultEventProvider {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DefaultEventProvider {
@@ -433,7 +509,10 @@ impl EventStoreProvider for DefaultEventProvider {
         Ok(Vec::new())
     }
 
-    async fn query_admin_events(&self, _query: AdminEventQuery) -> Result<Vec<AdminEvent>, EventError> {
+    async fn query_admin_events(
+        &self,
+        _query: AdminEventQuery,
+    ) -> Result<Vec<AdminEvent>, EventError> {
         // Return empty results for now
         Ok(Vec::new())
     }
@@ -446,7 +525,10 @@ impl EventStoreProvider for DefaultEventProvider {
         Ok(())
     }
 
-    async fn clear_expired_events(&self, _expiration_time: DateTime<Utc>) -> Result<(), EventError> {
+    async fn clear_expired_events(
+        &self,
+        _expiration_time: DateTime<Utc>,
+    ) -> Result<(), EventError> {
         Ok(())
     }
 }
@@ -461,6 +543,12 @@ impl EventProvider for DefaultEventProvider {
 /// Default event provider factory
 pub struct DefaultEventProviderFactory;
 
+impl Default for DefaultEventProviderFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultEventProviderFactory {
     /// Create a new default event provider factory
     pub fn new() -> Self {
@@ -468,12 +556,8 @@ impl DefaultEventProviderFactory {
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn EventProvider> for DefaultEventProviderFactory {
-    async fn create(
-        &self,
-        _config: &ProviderConfig,
-    ) -> Result<Box<dyn EventProvider>, SpiError> {
+    fn create(&self, _config: &ProviderConfig) -> Result<Box<dyn EventProvider>, SpiError> {
         Ok(Box::new(DefaultEventProvider::new()))
     }
 

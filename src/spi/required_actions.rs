@@ -4,9 +4,9 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::error::{Result, AuthencError as Error};
+use crate::error::{AuthencError as Error, Result};
 use crate::models::user::User;
-use crate::spi::{Provider, ProviderFactory, ProviderConfig, SpiError};
+use crate::spi::{Provider, ProviderConfig, ProviderFactory, SpiError};
 
 /// Provider for required actions
 #[async_trait]
@@ -89,15 +89,24 @@ pub struct RequiredActionConfigProperty {
 /// Types of configuration properties
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RequiredActionPropertyType {
+    /// String property type
     String,
+    /// Text property type
     Text,
+    /// Boolean property type
     Boolean,
+    /// Number property type
     Number,
+    /// Password property type
     Password,
+    /// Select property type with options
     Select {
+        /// Available options
         options: Vec<String>,
     },
+    /// Multiselect property type with options
     Multiselect {
+        /// Available options
         options: Vec<String>,
     },
 }
@@ -109,7 +118,10 @@ pub trait RequiredActionProviderFactory: Send + Sync {
     fn get_id(&self) -> &str;
 
     /// Create a new provider instance with configuration
-    async fn create_provider(&self, config: HashMap<String, String>) -> Result<Arc<dyn RequiredActionProvider>>;
+    async fn create_provider(
+        &self,
+        config: HashMap<String, String>,
+    ) -> Result<Arc<dyn RequiredActionProvider>>;
 
     /// Get the configuration properties for this provider
     fn get_config_properties(&self) -> Vec<RequiredActionConfigProperty>;
@@ -118,19 +130,28 @@ pub trait RequiredActionProviderFactory: Send + Sync {
 /// Default required action provider factory
 pub struct DefaultRequiredActionProviderFactory;
 
+impl Default for DefaultRequiredActionProviderFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultRequiredActionProviderFactory {
+    /// Create a new default required action provider factory
     pub fn new() -> Self {
         Self
     }
 }
 
-#[async_trait]
 impl ProviderFactory<dyn RequiredActionProvider> for DefaultRequiredActionProviderFactory {
-    async fn create(&self, _config: &ProviderConfig) -> std::result::Result<Box<dyn RequiredActionProvider>, SpiError> {
+    fn create(
+        &self,
+        _config: &ProviderConfig,
+    ) -> std::result::Result<Box<dyn RequiredActionProvider>, SpiError> {
         Ok(Box::new(DefaultRequiredActionProvider::new()))
     }
 
-    async fn init(&mut self, _config: &ProviderConfig) -> std::result::Result<(), SpiError> {
+    fn init(&mut self, _config: &ProviderConfig) -> std::result::Result<(), SpiError> {
         Ok(())
     }
 
@@ -144,7 +165,14 @@ pub struct DefaultRequiredActionProvider {
     // Configuration would be stored here
 }
 
+impl Default for DefaultRequiredActionProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DefaultRequiredActionProvider {
+    /// Create a new default required action provider
     pub fn new() -> Self {
         Self {}
     }
@@ -165,25 +193,23 @@ impl RequiredActionProvider for DefaultRequiredActionProvider {
     }
 
     fn get_config_properties(&self) -> Vec<RequiredActionConfigProperty> {
-        vec![
-            RequiredActionConfigProperty {
-                name: "action_type".to_string(),
-                label: "Action Type".to_string(),
-                help_text: Some("Type of required action to perform".to_string()),
-                property_type: RequiredActionPropertyType::Select {
-                    options: vec![
-                        "UPDATE_PASSWORD".to_string(),
-                        "VERIFY_EMAIL".to_string(),
-                        "UPDATE_PROFILE".to_string(),
-                        "CONFIGURE_TOTP".to_string(),
-                        "UPDATE_USER_LOCALE".to_string(),
-                    ],
-                },
-                default_value: Some("UPDATE_PASSWORD".to_string()),
-                required: true,
-                secret: false,
+        vec![RequiredActionConfigProperty {
+            name: "action_type".to_string(),
+            label: "Action Type".to_string(),
+            help_text: Some("Type of required action to perform".to_string()),
+            property_type: RequiredActionPropertyType::Select {
+                options: vec![
+                    "UPDATE_PASSWORD".to_string(),
+                    "VERIFY_EMAIL".to_string(),
+                    "UPDATE_PROFILE".to_string(),
+                    "CONFIGURE_TOTP".to_string(),
+                    "UPDATE_USER_LOCALE".to_string(),
+                ],
             },
-        ]
+            default_value: Some("UPDATE_PASSWORD".to_string()),
+            required: true,
+            secret: false,
+        }]
     }
 
     async fn evaluate_triggers(&self, _context: &RequiredActionContext) -> Result<bool> {
@@ -195,7 +221,10 @@ impl RequiredActionProvider for DefaultRequiredActionProvider {
     async fn execute(&self, context: &RequiredActionContext) -> Result<RequiredActionResult> {
         // Default implementation - mark as success
         // Real implementations would perform the actual required action
-        tracing::info!("Executing default required action for user: {}", context.user.username);
+        tracing::info!(
+            "Executing default required action for user: {}",
+            context.user.username
+        );
         Ok(RequiredActionResult::Success)
     }
 
@@ -214,7 +243,6 @@ impl RequiredActionProvider for DefaultRequiredActionProvider {
     }
 }
 
-#[async_trait]
 impl Provider for DefaultRequiredActionProvider {
     fn as_any(&self) -> &dyn Any {
         self
@@ -228,7 +256,14 @@ impl Provider for DefaultRequiredActionProvider {
 /// Update password required action provider
 pub struct UpdatePasswordRequiredActionProvider;
 
+impl Default for UpdatePasswordRequiredActionProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UpdatePasswordRequiredActionProvider {
+    /// Create a new update password required action provider
     pub fn new() -> Self {
         Self
     }
@@ -255,7 +290,11 @@ impl RequiredActionProvider for UpdatePasswordRequiredActionProvider {
     async fn evaluate_triggers(&self, context: &RequiredActionContext) -> Result<bool> {
         // Check if user needs to update password (e.g., temporary password, expired password)
         // This would typically check user attributes or realm policies
-        Ok(context.context_data.get("force_password_update").map(|v| v == "true").unwrap_or(false))
+        Ok(context
+            .context_data
+            .get("force_password_update")
+            .map(|v| v == "true")
+            .unwrap_or(false))
     }
 
     async fn execute(&self, _context: &RequiredActionContext) -> Result<RequiredActionResult> {
@@ -264,7 +303,10 @@ impl RequiredActionProvider for UpdatePasswordRequiredActionProvider {
             challenge_type: "form".to_string(),
             challenge_data: HashMap::from([
                 ("form_type".to_string(), "UPDATE_PASSWORD".to_string()),
-                ("message".to_string(), "Please update your password to continue.".to_string()),
+                (
+                    "message".to_string(),
+                    "Please update your password to continue.".to_string(),
+                ),
             ]),
         })
     }
@@ -275,13 +317,18 @@ impl RequiredActionProvider for UpdatePasswordRequiredActionProvider {
         response_data: HashMap<String, String>,
     ) -> Result<RequiredActionResult> {
         // Process password update form submission
-        let new_password = response_data.get("password").ok_or_else(|| {
-            Error::ValidationError { message: "Password is required".to_string() }
-        })?;
+        let new_password = response_data
+            .get("password")
+            .ok_or_else(|| Error::ValidationError {
+                message: "Password is required".to_string(),
+            })?;
 
-        let confirm_password = response_data.get("confirm_password").ok_or_else(|| {
-            Error::ValidationError { message: "Password confirmation is required".to_string() }
-        })?;
+        let confirm_password =
+            response_data
+                .get("confirm_password")
+                .ok_or_else(|| Error::ValidationError {
+                    message: "Password confirmation is required".to_string(),
+                })?;
 
         if new_password != confirm_password {
             return Ok(RequiredActionResult::Challenge {
@@ -306,7 +353,6 @@ impl RequiredActionProvider for UpdatePasswordRequiredActionProvider {
     }
 }
 
-#[async_trait]
 impl Provider for UpdatePasswordRequiredActionProvider {
     fn as_any(&self) -> &dyn Any {
         self
@@ -320,7 +366,14 @@ impl Provider for UpdatePasswordRequiredActionProvider {
 /// Email verification required action provider
 pub struct VerifyEmailRequiredActionProvider;
 
+impl Default for VerifyEmailRequiredActionProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VerifyEmailRequiredActionProvider {
+    /// Create a new email verification required action provider
     pub fn new() -> Self {
         Self
     }
@@ -351,13 +404,22 @@ impl RequiredActionProvider for VerifyEmailRequiredActionProvider {
 
     async fn execute(&self, context: &RequiredActionContext) -> Result<RequiredActionResult> {
         // Send verification email and return challenge
-        tracing::info!("Sending email verification for user: {}", context.user.username);
+        tracing::info!(
+            "Sending email verification for user: {}",
+            context.user.username
+        );
 
         Ok(RequiredActionResult::Challenge {
             challenge_type: "redirect".to_string(),
             challenge_data: HashMap::from([
-                ("redirect_url".to_string(), "/auth/realms/master/login-actions/verify-email".to_string()),
-                ("message".to_string(), "Please check your email and click the verification link.".to_string()),
+                (
+                    "redirect_url".to_string(),
+                    "/auth/realms/master/login-actions/verify-email".to_string(),
+                ),
+                (
+                    "message".to_string(),
+                    "Please check your email and click the verification link.".to_string(),
+                ),
             ]),
         })
     }
@@ -376,7 +438,6 @@ impl RequiredActionProvider for VerifyEmailRequiredActionProvider {
     }
 }
 
-#[async_trait]
 impl Provider for VerifyEmailRequiredActionProvider {
     fn as_any(&self) -> &dyn Any {
         self
@@ -390,13 +451,19 @@ impl Provider for VerifyEmailRequiredActionProvider {
 /// TOTP setup required action provider
 pub struct ConfigureTotpRequiredActionProvider;
 
+impl Default for ConfigureTotpRequiredActionProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConfigureTotpRequiredActionProvider {
+    /// Create a new TOTP setup required action provider
     pub fn new() -> Self {
         Self
     }
 }
 
-#[async_trait]
 impl Provider for ConfigureTotpRequiredActionProvider {
     fn as_any(&self) -> &dyn Any {
         self
@@ -427,7 +494,11 @@ impl RequiredActionProvider for ConfigureTotpRequiredActionProvider {
 
     async fn evaluate_triggers(&self, context: &RequiredActionContext) -> Result<bool> {
         // Check if TOTP is required but not configured
-        Ok(context.context_data.get("require_totp").map(|v| v == "true").unwrap_or(false))
+        Ok(context
+            .context_data
+            .get("require_totp")
+            .map(|v| v == "true")
+            .unwrap_or(false))
     }
 
     async fn execute(&self, _context: &RequiredActionContext) -> Result<RequiredActionResult> {
@@ -436,7 +507,10 @@ impl RequiredActionProvider for ConfigureTotpRequiredActionProvider {
             challenge_type: "form".to_string(),
             challenge_data: HashMap::from([
                 ("form_type".to_string(), "CONFIGURE_TOTP".to_string()),
-                ("message".to_string(), "Set up two-factor authentication using an authenticator app.".to_string()),
+                (
+                    "message".to_string(),
+                    "Set up two-factor authentication using an authenticator app.".to_string(),
+                ),
             ]),
         })
     }
@@ -447,9 +521,11 @@ impl RequiredActionProvider for ConfigureTotpRequiredActionProvider {
         response_data: HashMap<String, String>,
     ) -> Result<RequiredActionResult> {
         // Process TOTP setup form submission
-        let totp_code = response_data.get("totp_code").ok_or_else(|| {
-            Error::ValidationError { message: "TOTP code is required".to_string() }
-        })?;
+        let totp_code = response_data
+            .get("totp_code")
+            .ok_or_else(|| Error::ValidationError {
+                message: "TOTP code is required".to_string(),
+            })?;
 
         // Here you would validate the TOTP code and save the TOTP secret
         tracing::info!("TOTP configured for user: {}", context.user.username);

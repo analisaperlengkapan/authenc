@@ -4,7 +4,7 @@ use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::time::Duration;
 
 use crate::error::Result;
-use crate::models::events::{Event, AdminEvent};
+use crate::models::events::{AdminEvent, Event};
 use crate::services::events::EventListenerProvider;
 
 /// Kafka event listener for streaming events to Kafka topics
@@ -24,16 +24,12 @@ impl KafkaEventListener {
     /// * `brokers` - Kafka broker addresses (comma-separated)
     /// * `user_events_topic` - Topic for user events
     /// * `admin_events_topic` - Topic for admin events
-    pub fn new(
-        brokers: &str,
-        user_events_topic: &str,
-        admin_events_topic: &str,
-    ) -> Result<Self> {
+    pub fn new(brokers: &str, user_events_topic: &str, admin_events_topic: &str) -> Result<Self> {
         let producer: FutureProducer = ClientConfig::new()
             .set("bootstrap.servers", brokers)
             .create()
             .map_err(|e| crate::error::AuthencError::InternalError {
-                message: format!("Failed to create Kafka producer: {}", e)
+                message: format!("Failed to create Kafka producer: {}", e),
             })?;
 
         Ok(Self {
@@ -44,15 +40,19 @@ impl KafkaEventListener {
     }
 
     /// Send event to Kafka topic
-    async fn send_to_kafka(&self, topic: &str, event: &impl serde::Serialize, key: &str) -> Result<()> {
-        let payload = serde_json::to_string(event)
-            .map_err(|e| crate::error::AuthencError::InternalError {
-                message: format!("Failed to serialize event: {}", e)
-            })?;
+    async fn send_to_kafka(
+        &self,
+        topic: &str,
+        event: &impl serde::Serialize,
+        key: &str,
+    ) -> Result<()> {
+        let payload = serde_json::to_string(event).map_err(|e| {
+            crate::error::AuthencError::InternalError {
+                message: format!("Failed to serialize event: {}", e),
+            }
+        })?;
 
-        let record = FutureRecord::to(topic)
-            .payload(&payload)
-            .key(key);
+        let record = FutureRecord::to(topic).payload(&payload).key(key);
 
         // Send message asynchronously with timeout
         match self.producer.send(record, Duration::from_secs(5)).await {
@@ -63,7 +63,7 @@ impl KafkaEventListener {
             Err((e, _)) => {
                 tracing::error!("Failed to send event to Kafka topic {}: {}", topic, e);
                 Err(crate::error::AuthencError::InternalError {
-                    message: format!("Kafka send error: {}", e)
+                    message: format!("Kafka send error: {}", e),
                 })
             }
         }
@@ -75,20 +75,26 @@ impl EventListenerProvider for KafkaEventListener {
     /// Handle user events by streaming them to Kafka
     async fn on_event(&self, event: &Event) -> Result<()> {
         let key = event.user_id.as_deref().unwrap_or("unknown");
-        self.send_to_kafka(&self.user_events_topic, event, key).await
+        self.send_to_kafka(&self.user_events_topic, event, key)
+            .await
     }
 
     /// Handle admin events by streaming them to Kafka
-    async fn on_admin_event(&self, event: &AdminEvent, _include_representation: bool) -> Result<()> {
+    async fn on_admin_event(
+        &self,
+        event: &AdminEvent,
+        _include_representation: bool,
+    ) -> Result<()> {
         let key = &event.auth_details.user_id;
-        self.send_to_kafka(&self.admin_events_topic, event, key).await
+        self.send_to_kafka(&self.admin_events_topic, event, key)
+            .await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::events::{EventType, ResourceType, OperationType, AuthDetails};
+    use crate::models::events::{AuthDetails, EventType, OperationType, ResourceType};
 
     #[tokio::test]
     async fn test_kafka_event_listener_creation() {
@@ -96,7 +102,7 @@ mod tests {
         let result = KafkaEventListener::new(
             "localhost:9092",
             "authenc.user.events",
-            "authenc.admin.events"
+            "authenc.admin.events",
         );
 
         // This will fail without Kafka running, but tests the creation logic

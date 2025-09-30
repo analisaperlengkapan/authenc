@@ -71,8 +71,8 @@ pub fn generate_jwt(user_id: &str) -> Result<String, String> {
 
     // Encode header and payload
     let header_b64 = Base64UrlUnpadded::encode_string(header.as_bytes());
-    let payload_json = serde_json::to_string(&claims)
-        .map_err(|e| format!("Failed to serialize claims: {}", e))?;
+    let payload_json =
+        serde_json::to_string(&claims).map_err(|e| format!("Failed to serialize claims: {}", e))?;
     let payload_b64 = Base64UrlUnpadded::encode_string(payload_json.as_bytes());
 
     // Create message to sign
@@ -125,8 +125,8 @@ pub fn verify_jwt(token: &str) -> Result<Claims, String> {
     // Decode signature
     let signature_bytes = Base64UrlUnpadded::decode_vec(signature_b64)
         .map_err(|e| format!("Invalid signature encoding: {}", e))?;
-    let signature = Signature::from_slice(&signature_bytes)
-        .map_err(|e| format!("Invalid signature: {}", e))?;
+    let signature =
+        Signature::from_slice(&signature_bytes).map_err(|e| format!("Invalid signature: {}", e))?;
 
     // Create message for verification
     let message = format!("{}.{}", header_b64, payload_b64);
@@ -144,8 +144,8 @@ pub fn verify_jwt(token: &str) -> Result<Claims, String> {
     )
     .map_err(|e| format!("Invalid payload UTF-8: {}", e))?;
 
-    let claims: Claims = serde_json::from_str(&payload_json)
-        .map_err(|e| format!("Invalid claims JSON: {}", e))?;
+    let claims: Claims =
+        serde_json::from_str(&payload_json).map_err(|e| format!("Invalid claims JSON: {}", e))?;
 
     // Check expiration
     let now = SystemTime::now()

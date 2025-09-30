@@ -1,8 +1,8 @@
+use authenc::config::DatabaseConfig;
 use authenc::database::Database;
 use authenc::services::social::*;
-use authenc::config::DatabaseConfig;
-use std::sync::Arc;
 use serde_json::json;
+use std::sync::Arc;
 
 #[tokio::test]
 #[ignore = "Requires PostgreSQL database to be running"]
@@ -31,7 +31,11 @@ async fn test_social_provider_configuration() {
         authorization_url: "https://accounts.google.com/oauth/authorize".to_string(),
         token_url: "https://oauth2.googleapis.com/token".to_string(),
         user_info_url: "https://www.googleapis.com/oauth2/v2/userinfo".to_string(),
-        scopes: vec!["openid".to_string(), "email".to_string(), "profile".to_string()],
+        scopes: vec![
+            "openid".to_string(),
+            "email".to_string(),
+            "profile".to_string(),
+        ],
     };
 
     assert_eq!(google_config.provider, SocialProvider::Google);
@@ -114,7 +118,10 @@ async fn test_social_user_profile() {
     assert_eq!(profile.name, Some("John Doe".to_string()));
     assert_eq!(profile.first_name, Some("John".to_string()));
     assert_eq!(profile.last_name, Some("Doe".to_string()));
-    assert_eq!(profile.picture_url, Some("https://example.com/avatar.jpg".to_string()));
+    assert_eq!(
+        profile.picture_url,
+        Some("https://example.com/avatar.jpg".to_string())
+    );
     assert_eq!(profile.locale, Some("en".to_string()));
     assert!(profile.verified_email);
 }
@@ -149,7 +156,13 @@ async fn test_oauth_token_response() {
     assert_eq!(token_response.access_token, "access_token_123");
     assert_eq!(token_response.token_type, "Bearer");
     assert_eq!(token_response.expires_in, Some(3600));
-    assert_eq!(token_response.refresh_token, Some("refresh_token_456".to_string()));
-    assert_eq!(token_response.scope, Some("openid email profile".to_string()));
+    assert_eq!(
+        token_response.refresh_token,
+        Some("refresh_token_456".to_string())
+    );
+    assert_eq!(
+        token_response.scope,
+        Some("openid email profile".to_string())
+    );
     assert_eq!(token_response.id_token, Some("id_token_789".to_string()));
 }

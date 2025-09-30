@@ -2,7 +2,7 @@ use axum::{
     extract::{Extension, Path, State},
     http::StatusCode,
     response::Json,
-    routing::{get, delete, post, put},
+    routing::{delete, get, post, put},
     Router,
 };
 use serde::Deserialize;
@@ -13,12 +13,13 @@ use crate::error::AuthencError;
 use crate::models::user::UpdateUserRequest;
 use crate::services::stores::user_store::{UserStore, UserStoreTrait};
 use crate::services::totp_store::TotpStore;
-use crate::middleware::auth_middleware_axum::RequireAuth;
 
 /// State for account credentials handlers
 #[derive(Clone)]
 pub struct AccountCredentialsState {
+    /// Store for user data
     pub user_store: Arc<UserStore>,
+    /// Store for TOTP (Time-based One-Time Password) data
     pub totp_store: Arc<TotpStore>,
 }
 
@@ -26,8 +27,14 @@ pub struct AccountCredentialsState {
 pub fn create_account_credentials_routes() -> Router<AccountCredentialsState> {
     Router::new()
         .route("/account/credentials", get(get_account_credentials))
-        .route("/account/credentials/password", put(update_account_password))
-        .route("/account/credentials/{credential_id}", delete(remove_account_credential))
+        .route(
+            "/account/credentials/password",
+            put(update_account_password),
+        )
+        .route(
+            "/account/credentials/{credential_id}",
+            delete(remove_account_credential),
+        )
         .route("/account/credentials/totp/setup", post(setup_totp))
         .route("/account/credentials/totp/verify", post(verify_totp_setup))
         .route("/account/credentials/totp/disable", delete(disable_totp))
@@ -41,7 +48,8 @@ pub async fn get_account_credentials(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    let user = state.user_store
+    let user = state
+        .user_store
         .get_user(user_id)
         .await?
         .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
@@ -64,7 +72,7 @@ pub async fn get_account_credentials(
             credential_type: CredentialType::Totp,
             user_label: Some("Authenticator App".to_string()),
             created_at: user.created_at, // TODO: Store actual TOTP creation time
-            last_used_at: None, // TODO: Track TOTP usage
+            last_used_at: None,          // TODO: Track TOTP usage
         });
     }
 
@@ -74,10 +82,13 @@ pub async fn get_account_credentials(
 /// Update current user's password
 #[derive(Deserialize)]
 pub struct UpdatePasswordRequest {
+    /// The current password for verification
     pub current_password: String,
+    /// The new password to set
     pub new_password: String,
 }
 
+/// Update the authenticated user's account password
 pub async fn update_account_password(
     State(state): State<AccountCredentialsState>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
@@ -105,12 +116,14 @@ pub async fn update_account_password(
     update_request.attributes = Some(serde_json::json!({
         "password": password_request.new_password
     }));
-    state.user_store
+    state
+        .user_store
         .update_user(user_id, update_request)
         .await?;
 
     Ok(StatusCode::NO_CONTENT)
-}/// Remove a credential from current user's account
+}
+/// Remove a credential from current user's account
 pub async fn remove_account_credential(
     State(state): State<AccountCredentialsState>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
@@ -122,8 +135,12 @@ pub async fn remove_account_credential(
     // TODO: Verify credential belongs to current user
     match credential_id.as_str() {
         "totp" => {
-            state.totp_store.remove_secret(&user_id.to_string())
-                .map_err(|e| AuthencError::internal(&format!("Failed to remove TOTP secret: {}", e)))?;
+            state
+                .totp_store
+                .remove_secret(&user_id.to_string())
+                .map_err(|e| {
+                    AuthencError::internal(format!("Failed to remove TOTP secret: {}", e))
+                })?;
         }
         _ => {
             return Err(AuthencError::validation("Unsupported credential type"));
@@ -136,16 +153,22 @@ pub async fn remove_account_credential(
 /// Setup TOTP for current user
 #[derive(Deserialize)]
 pub struct SetupTotpRequest {
+    /// Optional label for the TOTP credential
     pub user_label: Option<String>,
 }
 
 #[derive(serde::Serialize)]
+/// Response containing TOTP setup information
 pub struct SetupTotpResponse {
+    /// The TOTP secret key
     pub secret: String,
+    /// URI for generating QR code
     pub qr_code_uri: String,
+    /// Optional label for the TOTP credential
     pub user_label: Option<String>,
 }
 
+/// Setup TOTP (Time-based One-Time Password) authentication for the user
 #[axum::debug_handler]
 pub async fn setup_totp(
     State(state): State<AccountCredentialsState>,
@@ -167,11 +190,14 @@ pub async fn setup_totp(
 
     // Store the secret temporarily (will be confirmed in verify_totp_setup)
     // For now, we'll store it directly - in production, use a temporary store
-    state.totp_store.set_secret(&user_id.to_string(), &secret)
-        .map_err(|e| AuthencError::internal(&format!("Failed to store TOTP secret: {}", e)))?;
+    state
+        .totp_store
+        .set_secret(&user_id.to_string(), &secret)
+        .map_err(|e| AuthencError::internal(format!("Failed to store TOTP secret: {}", e)))?;
 
     // Get user for account name
-    let user = state.user_store
+    let user = state
+        .user_store
         .get_user(user_id)
         .await?
         .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
@@ -195,9 +221,11 @@ pub async fn setup_totp(
 /// Verify TOTP setup with a code
 #[derive(Deserialize)]
 pub struct VerifyTotpSetupRequest {
+    /// The TOTP code to verify
     pub code: String,
 }
 
+/// Verify TOTP setup by validating a provided code against the stored secret
 pub async fn verify_totp_setup(
     State(state): State<AccountCredentialsState>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
@@ -207,8 +235,10 @@ pub async fn verify_totp_setup(
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     // Get the stored secret
-    let secret = state.totp_store.get_secret(&user_id.to_string())
-        .map_err(|e| AuthencError::internal(&format!("Failed to get TOTP secret: {}", e)))?
+    let secret = state
+        .totp_store
+        .get_secret(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to get TOTP secret: {}", e)))?
         .ok_or_else(|| AuthencError::validation("TOTP not configured"))?;
 
     // Verify the code
@@ -229,8 +259,10 @@ pub async fn disable_totp(
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     // Remove the TOTP secret
-    state.totp_store.remove_secret(&user_id.to_string())
-        .map_err(|e| AuthencError::internal(&format!("Failed to remove TOTP secret: {}", e)))?;
+    state
+        .totp_store
+        .remove_secret(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to remove TOTP secret: {}", e)))?;
 
     Ok(StatusCode::NO_CONTENT)
 }

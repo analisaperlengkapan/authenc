@@ -173,7 +173,8 @@ impl RateLimiterState {
         let key = format!("{}:{}", ip, path);
 
         // Get the current violation count (simplified - in production you'd track violations separately)
-        let count = self.counters
+        let count = self
+            .counters
             .get(&key)
             .map(|entry| entry.0.load(Ordering::Relaxed))
             .unwrap_or(0);

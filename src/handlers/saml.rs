@@ -1,9 +1,12 @@
 use crate::database::Database;
 use crate::error::AuthencError;
-use crate::services::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
-use crate::services::federation::jit_provisioning::{JITProvisioningService, DefaultJITProvisioningService};
-use crate::services::admin::AdminService;
 use crate::models::user::JITUserProvisioningRequest;
+use crate::services::admin::AdminService;
+use crate::services::federation::jit_provisioning::{
+    DefaultJITProvisioningService, JITProvisioningService,
+};
+use crate::services::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
+use async_trait::async_trait;
 use axum::{
     extract::{Query, State},
     response::{Html, Redirect},
@@ -11,7 +14,6 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
-use async_trait::async_trait;
 
 /// Mock Admin Service for SAML JIT provisioning
 struct MockAdminService {
@@ -44,7 +46,10 @@ impl AdminService for MockAdminService {
         Err("Not implemented".to_string())
     }
 
-    async fn create_user(&self, request: crate::services::admin::CreateUserRequest) -> Result<crate::services::admin::UserResponse, String> {
+    async fn create_user(
+        &self,
+        request: crate::services::admin::CreateUserRequest,
+    ) -> Result<crate::services::admin::UserResponse, String> {
         // Use the database operations to create user
         use crate::database::operations::users;
         use crate::models::user::CreateUserRequest as DbCreateUserRequest;
@@ -71,7 +76,7 @@ impl AdminService for MockAdminService {
                 last_name: user.last_name,
                 enabled: user.enabled,
                 realm_id: user.realm_id.unwrap_or_default(),
-                roles: vec![], // TODO: Get roles from database
+                roles: vec![],  // TODO: Get roles from database
                 groups: vec![], // TODO: Get groups from database
                 created_at: user.created_at,
                 last_login: user.last_login_at,
@@ -94,11 +99,17 @@ impl AdminService for MockAdminService {
         Err("Not implemented".to_string())
     }
 
-    async fn get_roles(&self, _realm_id: &uuid::Uuid) -> Result<Vec<crate::services::admin::RoleResponse>, String> {
+    async fn get_roles(
+        &self,
+        _realm_id: &uuid::Uuid,
+    ) -> Result<Vec<crate::services::admin::RoleResponse>, String> {
         Err("Not implemented".to_string())
     }
 
-    async fn create_role(&self, _request: crate::services::admin::CreateRoleRequest) -> Result<crate::services::admin::RoleResponse, String> {
+    async fn create_role(
+        &self,
+        _request: crate::services::admin::CreateRoleRequest,
+    ) -> Result<crate::services::admin::RoleResponse, String> {
         Err("Not implemented".to_string())
     }
 
@@ -115,27 +126,45 @@ impl AdminService for MockAdminService {
         Err("Not implemented".to_string())
     }
 
-    async fn get_audit_logs(&self, _filter: crate::services::admin::AuditLogFilter) -> Result<crate::services::admin::AuditLogResponse, String> {
+    async fn get_audit_logs(
+        &self,
+        _filter: crate::services::admin::AuditLogFilter,
+    ) -> Result<crate::services::admin::AuditLogResponse, String> {
         Err("Not implemented".to_string())
     }
 
-    async fn get_policies(&self, _realm_id: &uuid::Uuid) -> Result<Vec<crate::services::admin::PolicyResponse>, String> {
+    async fn get_policies(
+        &self,
+        _realm_id: &uuid::Uuid,
+    ) -> Result<Vec<crate::services::admin::PolicyResponse>, String> {
         Err("Not implemented".to_string())
     }
 
-    async fn create_policy(&self, _request: crate::services::admin::CreatePolicyRequest) -> Result<crate::services::admin::PolicyResponse, String> {
+    async fn create_policy(
+        &self,
+        _request: crate::services::admin::CreatePolicyRequest,
+    ) -> Result<crate::services::admin::PolicyResponse, String> {
         Err("Not implemented".to_string())
     }
 
-    async fn get_zero_trust_dashboard(&self, _realm_id: &uuid::Uuid) -> Result<crate::services::admin::ZeroTrustDashboard, String> {
+    async fn get_zero_trust_dashboard(
+        &self,
+        _realm_id: &uuid::Uuid,
+    ) -> Result<crate::services::admin::ZeroTrustDashboard, String> {
         Err("Not implemented".to_string())
     }
 
-    async fn get_identity_providers(&self, _realm_id: &uuid::Uuid) -> Result<Vec<crate::services::admin::IdentityProviderResponse>, String> {
+    async fn get_identity_providers(
+        &self,
+        _realm_id: &uuid::Uuid,
+    ) -> Result<Vec<crate::services::admin::IdentityProviderResponse>, String> {
         Err("Not implemented".to_string())
     }
 
-    async fn create_identity_provider(&self, _request: crate::services::admin::CreateIdentityProviderRequest) -> Result<crate::services::admin::IdentityProviderResponse, String> {
+    async fn create_identity_provider(
+        &self,
+        _request: crate::services::admin::CreateIdentityProviderRequest,
+    ) -> Result<crate::services::admin::IdentityProviderResponse, String> {
         Err("Not implemented".to_string())
     }
 
@@ -151,11 +180,17 @@ impl AdminService for MockAdminService {
         Err("Not implemented".to_string())
     }
 
-    async fn get_identity_provider(&self, _provider_id: &uuid::Uuid) -> Result<crate::services::admin::IdentityProviderResponse, String> {
+    async fn get_identity_provider(
+        &self,
+        _provider_id: &uuid::Uuid,
+    ) -> Result<crate::services::admin::IdentityProviderResponse, String> {
         Err("Not implemented".to_string())
     }
 
-    async fn test_identity_provider(&self, _provider_id: &uuid::Uuid) -> Result<crate::services::admin::TestIdentityProviderResponse, String> {
+    async fn test_identity_provider(
+        &self,
+        _provider_id: &uuid::Uuid,
+    ) -> Result<crate::services::admin::TestIdentityProviderResponse, String> {
         Err("Not implemented".to_string())
     }
 }
@@ -288,22 +323,46 @@ pub async fn saml_acs(
 
     let relay_state = params.get("RelayState").map(|s| s.as_str());
 
-    match service.process_response(saml_response, relay_state, "").await {
+    match service
+        .process_response(saml_response, relay_state, "")
+        .await
+    {
         Ok(user_info) => {
             // Create JIT provisioning service
             let admin_service = Arc::new(MockAdminService::new(db.clone()));
-            let jit_service = Arc::new(DefaultJITProvisioningService::new(db.clone(), admin_service));
+            let jit_service = Arc::new(DefaultJITProvisioningService::new(
+                db.clone(),
+                admin_service,
+            ));
 
             // Prepare JIT provisioning request
             let jit_request = JITUserProvisioningRequest {
                 identity_provider_id: uuid::Uuid::new_v4(), // TODO: Get from SAML configuration
                 external_id: user_info.name_id.clone(),
-                external_username: user_info.attributes.get("username").and_then(|v| v.first()).map(|s| s.to_string()),
-                external_email: user_info.attributes.get("email").and_then(|v| v.first()).map(|s| s.to_string()),
-                first_name: user_info.attributes.get("firstName").and_then(|v| v.first()).map(|s| s.to_string()),
-                last_name: user_info.attributes.get("lastName").and_then(|v| v.first()).map(|s| s.to_string()),
-                external_attributes: Some(serde_json::to_value(&user_info.attributes)
-                    .map_err(|_| AuthencError::internal("Failed to serialize attributes"))?),
+                external_username: user_info
+                    .attributes
+                    .get("username")
+                    .and_then(|v| v.first())
+                    .map(|s| s.to_string()),
+                external_email: user_info
+                    .attributes
+                    .get("email")
+                    .and_then(|v| v.first())
+                    .map(|s| s.to_string()),
+                first_name: user_info
+                    .attributes
+                    .get("firstName")
+                    .and_then(|v| v.first())
+                    .map(|s| s.to_string()),
+                last_name: user_info
+                    .attributes
+                    .get("lastName")
+                    .and_then(|v| v.first())
+                    .map(|s| s.to_string()),
+                external_attributes: Some(
+                    serde_json::to_value(&user_info.attributes)
+                        .map_err(|_| AuthencError::internal("Failed to serialize attributes"))?,
+                ),
                 realm_id: uuid::Uuid::new_v4(), // TODO: Get from SAML configuration
             };
 

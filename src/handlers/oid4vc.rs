@@ -56,7 +56,11 @@ async fn handle_authorization(
         code_challenge_method: params.get("code_challenge_method").cloned(),
     };
 
-    match state.oid4vc_service.handle_authorization_request(request).await {
+    match state
+        .oid4vc_service
+        .handle_authorization_request(request)
+        .await
+    {
         Ok(code) => Ok(Json(json!({
             "code": code,
             "state": params.get("state")
@@ -101,7 +105,11 @@ async fn issue_credential(
             )
         })?;
 
-    match state.oid4vc_service.issue_credential(request, access_token).await {
+    match state
+        .oid4vc_service
+        .issue_credential(request, access_token)
+        .await
+    {
         Ok(credential_response) => Ok(Json(json!(credential_response))),
         Err(e) => Err((StatusCode::BAD_REQUEST, Json(json!({"error": e})))),
     }
@@ -123,6 +131,5 @@ pub async fn verify_credential(
 
 /// Create verifiable presentation router
 pub fn create_vp_router() -> Router<Arc<AppState>> {
-    Router::new()
-        .route("/credentials/verify", post(verify_credential))
+    Router::new().route("/credentials/verify", post(verify_credential))
 }

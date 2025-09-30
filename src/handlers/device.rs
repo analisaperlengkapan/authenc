@@ -34,18 +34,31 @@ pub fn create_device_routes() -> Router<Arc<Database>> {
 /// Register device request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegisterDeviceRequest {
+    /// Human-readable name for the device
     pub device_name: String,
+    /// Operating system name (e.g., "iOS", "Android", "Windows")
     pub os: String,
+    /// Operating system version
     pub os_version: String,
+    /// Browser name if applicable
     pub browser: Option<String>,
+    /// Browser version if applicable
     pub browser_version: Option<String>,
+    /// IP address of the device during registration
     pub ip_address: String,
+    /// User agent string from the device
     pub user_agent: String,
+    /// Whether the device has biometric authentication capabilities
     pub has_biometrics: bool,
+    /// Whether the device has hardware security features
     pub has_hardware_security: bool,
+    /// Whether the device has screen lock enabled
     pub has_screen_lock: bool,
+    /// Whether the device has encryption enabled
     pub encryption_enabled: bool,
+    /// Whether the device supports remote wipe functionality
     pub remote_wipe_capable: bool,
+    /// Whether jailbreak/root detection was triggered
     pub jailbreak_detected: bool,
 }
 
@@ -156,11 +169,17 @@ pub async fn delete_device(
 /// Evaluate device trust request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EvaluateTrustRequest {
+    /// Whether this is the first login for this user
     pub is_first_login: bool,
+    /// Whether this device is known/registered
     pub known_device: bool,
+    /// Whether the login time is unusual
     pub unusual_time: bool,
+    /// Whether the location has changed significantly
     pub location_changed: bool,
+    /// IP reputation score (0.0 to 1.0, higher is better)
     pub ip_reputation: f64,
+    /// Whether the device fingerprint matches known patterns
     pub fingerprint_match: bool,
 }
 
@@ -215,7 +234,9 @@ pub async fn get_device_sessions(
 /// Create session request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateSessionRequest {
+    /// Unique session identifier
     pub session_id: String,
+    /// IP address where the session was created
     pub ip_address: String,
 }
 

@@ -1,8 +1,8 @@
+use authenc::config::DatabaseConfig;
 use authenc::database::Database;
 use authenc::services::advanced_federation::*;
-use authenc::config::DatabaseConfig;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[tokio::test]
 #[ignore = "Requires PostgreSQL database to be running"]
@@ -156,7 +156,8 @@ async fn test_sync_result_tracking() {
     assert_eq!(sync_result.removed, 25);
     assert_eq!(sync_result.failed, 5);
 
-    let total_processed = sync_result.added + sync_result.updated + sync_result.removed + sync_result.failed;
+    let total_processed =
+        sync_result.added + sync_result.updated + sync_result.removed + sync_result.failed;
     assert_eq!(total_processed, 255);
 
     let success_rate = (sync_result.added + sync_result.updated) as f64 / total_processed as f64;
@@ -189,10 +190,19 @@ async fn test_ldap_vendor_configurations() {
 
     // Test different LDAP configurations for various scenarios
     let test_configs = vec![
-        ("Active Directory", "(&(objectClass=user)(sAMAccountName={0}))"),
+        (
+            "Active Directory",
+            "(&(objectClass=user)(sAMAccountName={0}))",
+        ),
         ("OpenLDAP", "(&(objectClass=posixAccount)(uid={0}))"),
-        ("Oracle Internet Directory", "(&(objectClass=inetOrgPerson)(uid={0}))"),
-        ("IBM Tivoli Directory Server", "(&(objectClass=ePerson)(uid={0}))"),
+        (
+            "Oracle Internet Directory",
+            "(&(objectClass=inetOrgPerson)(uid={0}))",
+        ),
+        (
+            "IBM Tivoli Directory Server",
+            "(&(objectClass=ePerson)(uid={0}))",
+        ),
         ("Novell eDirectory", "(&(objectClass=User)(cn={0}))"),
         ("Generic LDAP", "(&(objectClass=person)(uid={0}))"),
     ];
@@ -509,14 +519,7 @@ async fn test_ldap_attribute_mapping() {
             "sn",
             "displayName",
         ),
-        (
-            "OpenLDAP",
-            "uid",
-            "mail",
-            "givenName",
-            "sn",
-            "displayName",
-        ),
+        ("OpenLDAP", "uid", "mail", "givenName", "sn", "displayName"),
         (
             "OracleInternetDirectory",
             "uid",
@@ -527,7 +530,15 @@ async fn test_ldap_attribute_mapping() {
         ),
     ];
 
-    for (vendor_name, username_attr, email_attr, first_name_attr, last_name_attr, display_name_attr) in mappings {
+    for (
+        vendor_name,
+        username_attr,
+        email_attr,
+        first_name_attr,
+        last_name_attr,
+        display_name_attr,
+    ) in mappings
+    {
         let config = LdapConfig {
             url: "ldap://localhost:389".to_string(),
             bind_dn: "cn=admin,dc=example,dc=com".to_string(),
@@ -559,7 +570,10 @@ async fn test_ldap_attribute_mapping() {
         assert_eq!(config.email_attribute, email_attr);
         assert_eq!(config.first_name_attribute, first_name_attr);
         assert_eq!(config.last_name_attribute, last_name_attr);
-        println!("Successfully configured LDAP attributes for {}", vendor_name);
+        println!(
+            "Successfully configured LDAP attributes for {}",
+            vendor_name
+        );
     }
 }
 
@@ -588,13 +602,7 @@ async fn test_federation_provider_search_functionality() {
     };
 
     // Test user search functionality structure
-    let search_queries = vec![
-        "john",
-        "john.doe",
-        "john.doe@example.com",
-        "doe",
-        "*",
-    ];
+    let search_queries = vec!["john", "john.doe", "john.doe@example.com", "doe", "*"];
 
     let search_limits = vec![10, 50, 100, 1000];
 

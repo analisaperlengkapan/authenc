@@ -1,8 +1,8 @@
 use axum::{
-    extract::{Extension, Path, Query, Request, State},
+    extract::{Extension, Path, State},
     http::{header, StatusCode},
     response::{Json, Response},
-    routing::{get, put, delete, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -10,18 +10,18 @@ use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::app::AppState;
 use crate::error::AuthencError;
-use crate::models::user::{UpdateUserRequest, UserResponse};
 use crate::models::session::SessionResponse;
-use crate::models::oidc_client::OidcClient;
-use crate::services::stores::user_store::UserStoreTrait;
-use crate::services::session_store::SessionStore;
-use crate::services::stores::user_store::UserStore;
+use crate::models::user::{UpdateUserRequest, UserResponse};
 use crate::services::oidc_client_store::OidcClientStore;
-use crate::services::totp_store::TotpStore;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
-use crate::middleware::auth_middleware_axum::{AuthUserExt, RequireAuth};
-use crate::services::social::{SocialProvider, SocialLoginService};
+use crate::services::session_store::SessionStore;
+use crate::services::social::SocialProvider;
+use crate::services::stores::consent_store::ConsentStoreTrait;
+use crate::services::stores::user_store::UserStore;
+use crate::services::stores::user_store::UserStoreTrait;
+use crate::services::totp_store::TotpStore;
 
 /// Request to setup TOTP
 #[derive(Debug, Deserialize, Serialize)]
@@ -90,9 +90,15 @@ pub fn create_account_routes() -> Router<(
         .route("/account", get(get_account_profile))
         .route("/account", put(update_account_profile))
         .route("/account/sessions", get(get_account_sessions))
-        .route("/account/sessions/{session_id}", delete(revoke_account_session))
+        .route(
+            "/account/sessions/{session_id}",
+            delete(revoke_account_session),
+        )
         .route("/account/applications", get(get_account_applications))
-        .route("/account/applications/{client_id}", delete(revoke_application_access))
+        .route(
+            "/account/applications/{client_id}",
+            delete(revoke_application_access),
+        )
         .route("/account/export", get(export_account_data))
         .route("/account", delete(delete_account))
         .route("/account/totp/setup", post(setup_totp))
@@ -100,6 +106,11 @@ pub fn create_account_routes() -> Router<(
         .route("/account/totp", delete(disable_totp))
         .route("/account/social", get(get_linked_social_accounts))
         .route("/account/social/{provider}", delete(unlink_social_account))
+}
+
+/// Create consent management routes
+pub fn create_consent_routes() -> Router<Arc<AppState>> {
+    Router::new()
         .route("/account/consents", get(get_user_consents))
         .route("/account/consents/{client_id}", delete(revoke_consent))
 }
@@ -141,9 +152,7 @@ pub async fn update_account_profile(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    user_store
-        .update_user(user_id, update_request)
-        .await?;
+    user_store.update_user(user_id, update_request).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -162,14 +171,9 @@ pub async fn get_account_sessions(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    let sessions = session_store
-        .get_user_sessions(user_id)
-        .await?;
+    let sessions = session_store.get_user_sessions(user_id).await?;
 
-    let response = sessions
-        .into_iter()
-        .map(|s| s.into())
-        .collect();
+    let response = sessions.into_iter().map(|s| s.into()).collect();
 
     Ok(Json(response))
 }
@@ -196,12 +200,12 @@ pub async fn revoke_account_session(
         .ok_or_else(|| AuthencError::resource_not_found("Session not found"))?;
 
     if session.user_id != user_id {
-        return Err(AuthencError::forbidden("Cannot revoke session belonging to another user"));
+        return Err(AuthencError::forbidden(
+            "Cannot revoke session belonging to another user",
+        ));
     }
 
-    session_store
-        .delete_session(session_id)
-        .await?;
+    session_store.delete_session(session_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -209,9 +213,13 @@ pub async fn revoke_account_session(
 /// Application response for account console
 #[derive(Debug, Serialize)]
 pub struct ApplicationResponse {
+    /// The client ID of the application
     pub client_id: String,
+    /// The name of the application
     pub name: String,
+    /// When the application was created
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// When the application was last accessed
     pub last_access: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -236,7 +244,7 @@ pub async fn get_account_applications(
             client_id: client.client_id,
             name: client.name,
             created_at: chrono::Utc::now(), // TODO: Add created_at to OidcClient model
-            last_access: None, // TODO: Track last access time
+            last_access: None,              // TODO: Track last access time
         })
         .collect();
 
@@ -286,9 +294,7 @@ pub async fn export_account_data(
         .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
     // Get user sessions
-    let sessions = session_store
-        .get_user_sessions(user_id)
-        .await?;
+    let sessions = session_store.get_user_sessions(user_id).await?;
 
     // Get authorized applications
     let applications = oidc_client_store.all().await?;
@@ -322,9 +328,13 @@ pub async fn export_account_data(
         user_id: Some(auth_user.id.clone()),
         client_id: None,
         status: "success".to_string(),
-        detail: Some(format!("User exported account data containing profile, {} sessions, and {} applications", sessions.len(), applications.len())),
+        detail: Some(format!(
+            "User exported account data containing profile, {} sessions, and {} applications",
+            sessions.len(),
+            applications.len()
+        )),
     };
-    
+
     if let Err(e) = audit_log_store.add_log(&audit_log).await {
         // Log the error but don't fail the export
         eprintln!("Failed to log account data export: {}", e);
@@ -360,16 +370,16 @@ pub async fn delete_account(
     crate::database::operations::oauth2::revoke_user_tokens(user_store.database(), user_id).await?;
 
     // Delete all WebAuthn credentials for the user
-    crate::database::operations::webauthn::delete_user_credentials(user_store.database(), user_id).await?;
+    crate::database::operations::webauthn::delete_user_credentials(user_store.database(), user_id)
+        .await?;
 
     // Remove TOTP secret
-    totp_store.remove_secret(&user_id.to_string())
-        .map_err(|e| AuthencError::internal(&format!("Failed to remove TOTP secret: {}", e)))?;
+    totp_store
+        .remove_secret(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to remove TOTP secret: {}", e)))?;
 
     // Delete the user account
-    user_store
-        .delete_user(user_id)
-        .await?;
+    user_store.delete_user(user_id).await?;
 
     // Log the account deletion for audit purposes
     let audit_log = crate::models::audit_log::AuditLog {
@@ -378,9 +388,12 @@ pub async fn delete_account(
         user_id: Some(auth_user.id.clone()),
         client_id: None,
         status: "success".to_string(),
-        detail: Some("User account deleted with complete data cleanup (sessions, tokens, credentials, TOTP)".to_string()),
+        detail: Some(
+            "User account deleted with complete data cleanup (sessions, tokens, credentials, TOTP)"
+                .to_string(),
+        ),
     };
-    
+
     if let Err(e) = audit_log_store.add_log(&audit_log).await {
         // Log the error but don't fail the deletion
         eprintln!("Failed to log account deletion: {}", e);
@@ -406,21 +419,21 @@ pub async fn setup_totp(
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     // Generate TOTP secret
-    use rand::{RngCore, rngs::OsRng};
+    use rand::{rngs::OsRng, RngCore};
     let mut rng = OsRng;
     let mut secret_bytes = [0u8; 32];
     rng.fill_bytes(&mut secret_bytes);
     let secret = base32::encode(base32::Alphabet::RFC4648 { padding: false }, &secret_bytes);
 
     // Store the secret
-    totp_store.set_secret(&user_id.to_string(), &secret)
-        .map_err(|e| AuthencError::internal(&format!("Failed to store TOTP secret: {}", e)))?;
+    totp_store
+        .set_secret(&user_id.to_string(), &secret)
+        .map_err(|e| AuthencError::internal(format!("Failed to store TOTP secret: {}", e)))?;
 
     // Generate QR code URL
     let qr_code_url = format!(
         "otpauth://totp/Authenc:{}?secret={}&issuer=Authenc",
-        auth_user.email,
-        secret
+        auth_user.email, secret
     );
 
     // Generate backup codes
@@ -474,8 +487,9 @@ pub async fn get_totp_status(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    let has_secret = totp_store.get_secret(&user_id.to_string())
-        .map_err(|e| AuthencError::internal(&format!("Failed to check TOTP status: {}", e)))?
+    let has_secret = totp_store
+        .get_secret(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to check TOTP status: {}", e)))?
         .is_some();
 
     Ok(Json(TotpStatusResponse {
@@ -498,8 +512,9 @@ pub async fn disable_totp(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    totp_store.remove_secret(&user_id.to_string())
-        .map_err(|e| AuthencError::internal(&format!("Failed to disable TOTP: {}", e)))?;
+    totp_store
+        .remove_secret(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to disable TOTP: {}", e)))?;
 
     // Log TOTP disable
     let audit_log = crate::models::audit_log::AuditLog {
@@ -593,36 +608,50 @@ pub async fn unlink_social_account(
 
 /// Get user consents for current user
 pub async fn get_user_consents(
-    State((_, _, oidc_client_store, _, _)): State<(
-        Arc<UserStore>,
-        Arc<SessionStore>,
-        Arc<OidcClientStore>,
-        Arc<TotpStore>,
-        Arc<PgAuditLogStore>,
-    )>,
-    Extension(_auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
 ) -> Result<Json<Vec<ConsentResponse>>, AuthencError> {
-    // TODO: Implement proper consent storage and retrieval
-    // For now, return empty list - in production this would query user consents
-    let consents: Vec<ConsentResponse> = vec![];
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    Ok(Json(consents))
+    // Get user consents from the consent store
+    let consents = state.consent_store.get_user_consents(user_id).await?;
+
+    // Convert UserConsent to ConsentResponse
+    let mut consent_responses = Vec::new();
+    for consent in consents {
+        // Get client name if available
+        let client_name = match state.oidc_client_store.get(&consent.client_id).await {
+            Ok(Some(client)) => Some(client.name),
+            _ => None, // Client might not exist or be accessible
+        };
+
+        consent_responses.push(ConsentResponse {
+            client_id: consent.client_id,
+            client_name: client_name.unwrap_or_else(|| "Unknown Client".to_string()),
+            scopes: consent.scopes,
+            granted_at: consent.granted_at.to_string(),
+            expires_at: consent.expires_at.map(|dt| dt.to_string()),
+        });
+    }
+
+    Ok(Json(consent_responses))
 }
 
 /// Revoke consent for a specific client
 pub async fn revoke_consent(
-    State((_, _, _, _, audit_log_store)): State<(
-        Arc<UserStore>,
-        Arc<SessionStore>,
-        Arc<OidcClientStore>,
-        Arc<TotpStore>,
-        Arc<PgAuditLogStore>,
-    )>,
+    State(state): State<Arc<AppState>>,
     Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
     Path(client_id): Path<String>,
 ) -> Result<StatusCode, AuthencError> {
-    // TODO: Implement proper consent revocation
-    // This should revoke all tokens and remove stored consents for the client
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    // Revoke consent for the client
+    state
+        .consent_store
+        .revoke_consent(user_id, &client_id)
+        .await?;
 
     // Log consent revocation
     let audit_log = crate::models::audit_log::AuditLog {
@@ -634,7 +663,7 @@ pub async fn revoke_consent(
         detail: Some(format!("Consent revoked for client {}", client_id)),
     };
 
-    if let Err(e) = audit_log_store.add_log(&audit_log).await {
+    if let Err(e) = state.audit_log_store.add_log(&audit_log).await {
         eprintln!("Failed to log consent revocation: {}", e);
     }
 

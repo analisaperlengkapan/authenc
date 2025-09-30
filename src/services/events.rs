@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::models::events::{Event, AdminEvent};
 use crate::error::Result;
+use crate::models::events::{AdminEvent, Event};
 
 /// Event listener provider trait - SPI for custom event handlers
 #[async_trait]
@@ -136,7 +136,13 @@ impl AdminEventBuilder {
         resource_path: String,
     ) -> Self {
         Self {
-            event: AdminEvent::new(realm_id, auth_details, resource_type, operation_type, resource_path),
+            event: AdminEvent::new(
+                realm_id,
+                auth_details,
+                resource_type,
+                operation_type,
+                resource_path,
+            ),
         }
     }
 
@@ -170,6 +176,12 @@ pub struct EventManager {
     listeners: Vec<Arc<dyn EventListenerProvider>>,
     /// Event store provider
     store_provider: Option<Arc<dyn EventStoreProvider>>,
+}
+
+impl Default for EventManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EventManager {
@@ -210,7 +222,11 @@ impl EventManager {
     }
 
     /// Fire an admin event to all listeners and store it
-    pub async fn fire_admin_event(&self, event: AdminEvent, include_representation: bool) -> Result<()> {
+    pub async fn fire_admin_event(
+        &self,
+        event: AdminEvent,
+        include_representation: bool,
+    ) -> Result<()> {
         // Store the admin event if we have a store provider
         if let Some(store) = &self.store_provider {
             store.store_admin_event(&event).await?;
@@ -218,7 +234,10 @@ impl EventManager {
 
         // Notify all listeners
         for listener in &self.listeners {
-            if let Err(e) = listener.on_admin_event(&event, include_representation).await {
+            if let Err(e) = listener
+                .on_admin_event(&event, include_representation)
+                .await
+            {
                 // Log error but continue with other listeners
                 tracing::error!("Admin event listener error: {}", e);
             }
@@ -240,7 +259,18 @@ impl EventManager {
         max_results: usize,
     ) -> Result<Vec<Event>> {
         if let Some(store) = &self.store_provider {
-            store.query_events(realm_id, event_type, user_id, client_id, date_from, date_to, first_result, max_results).await
+            store
+                .query_events(
+                    realm_id,
+                    event_type,
+                    user_id,
+                    client_id,
+                    date_from,
+                    date_to,
+                    first_result,
+                    max_results,
+                )
+                .await
         } else {
             Ok(Vec::new())
         }
@@ -259,7 +289,18 @@ impl EventManager {
         max_results: usize,
     ) -> Result<Vec<AdminEvent>> {
         if let Some(store) = &self.store_provider {
-            store.query_admin_events(realm_id, operation_type, resource_type, auth_user, date_from, date_to, first_result, max_results).await
+            store
+                .query_admin_events(
+                    realm_id,
+                    operation_type,
+                    resource_type,
+                    auth_user,
+                    date_from,
+                    date_to,
+                    first_result,
+                    max_results,
+                )
+                .await
         } else {
             Ok(Vec::new())
         }

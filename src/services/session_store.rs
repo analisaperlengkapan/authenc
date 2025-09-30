@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
-use crate::models::session::Session;
 use crate::error::AuthencError;
+use crate::models::session::Session;
 
 /// Session store for managing user authentication sessions
 pub struct SessionStore {

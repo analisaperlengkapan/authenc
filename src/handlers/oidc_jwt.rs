@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 // use rsa::pkcs1::EncodeRsaPrivateKey; // REMOVED: Vulnerable to timing attacks
 
 /// Legacy OIDC ID token claims structure - DEPRECATED
-/// 
+///
 /// This struct is deprecated and should not be used.
 /// Use OidcIdTokenClaims from handlers/oidc_ed25519.rs instead.
-/// 
+///
 /// # Security Considerations
 /// - This legacy implementation uses RSA which is vulnerable to timing attacks
 /// - Replaced with Ed25519 for enhanced security
@@ -35,20 +35,20 @@ pub struct OidcIdTokenClaims {
 }
 
 /// Legacy JWT generation function - DEPRECATED
-/// 
+///
 /// This function is deprecated and will panic if called.
 /// Use generate_ed25519_jwt from handlers/oidc_ed25519.rs instead.
-/// 
+///
 /// # Arguments
 /// * `sub` - Subject identifier (user ID)
 /// * `aud` - Audience (client ID)
 /// * `email` - User's email address
 /// * `name` - User's display name
 /// * `role` - User's role/authorization level
-/// 
+///
 /// # Returns
 /// This function will panic - do not use
-/// 
+///
 /// # Security Considerations
 /// - Legacy RSA implementation removed due to security vulnerabilities
 /// - RSA signatures are susceptible to timing attacks

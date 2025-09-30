@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Role entity for role-based access control
-/// 
+///
 /// Represents a role in the role-based access control (RBAC) system.
 /// Roles define permissions and access levels for users within a realm.
-/// 
+///
 /// # Fields
 /// * `id` - Unique role identifier (UUID)
 /// * `name` - Role name (unique within realm)
@@ -19,7 +19,7 @@ use uuid::Uuid;
 /// * `created_at` - Role creation timestamp
 /// * `updated_at` - Last modification timestamp
 /// * `deleted_at` - Soft delete timestamp (None if active)
-/// 
+///
 /// # Security Considerations
 /// - Roles are scoped to realms for multi-tenancy
 /// - Role names should be unique within a realm
@@ -53,15 +53,15 @@ pub struct Role {
 }
 
 /// Role creation request
-/// 
+///
 /// Parameters required to create a new role.
 /// Used when creating roles through the API.
-/// 
+///
 /// # Fields
 /// * `name` - Role name (must be unique within realm)
 /// * `description` - Optional human-readable description
 /// * `realm_id` - ID of the realm to create the role in
-/// 
+///
 /// # Security Considerations
 /// - Role names should follow naming conventions
 /// - Realm ID must be validated before role creation
@@ -78,14 +78,14 @@ pub struct CreateRoleRequest {
 }
 
 /// Role update request
-/// 
+///
 /// Parameters for updating an existing role.
 /// All fields are optional to allow partial updates.
-/// 
+///
 /// # Fields
 /// * `name` - New role name (if updating)
 /// * `description` - New description (if updating)
-/// 
+///
 /// # Security Considerations
 /// - Role name changes may affect existing permissions
 /// - Updates should be authorized based on user permissions
@@ -100,10 +100,10 @@ pub struct UpdateRoleRequest {
 }
 
 /// Role response
-/// 
+///
 /// Safe role information returned to clients.
 /// Excludes sensitive internal fields.
-/// 
+///
 /// # Fields
 /// * `id` - Unique role identifier
 /// * `name` - Role name
@@ -111,7 +111,7 @@ pub struct UpdateRoleRequest {
 /// * `realm_id` - Realm the role belongs to
 /// * `created_at` - Role creation timestamp
 /// * `updated_at` - Last modification timestamp
-/// 
+///
 /// # Security Considerations
 /// - Never includes deleted_at in responses
 /// - Provides necessary role metadata for client management
@@ -148,18 +148,18 @@ impl From<Role> for RoleResponse {
 
 impl Role {
     /// Create a new role
-    /// 
+    ///
     /// Creates a new role instance with generated ID and timestamps.
     /// Initializes role with provided parameters.
-    /// 
+    ///
     /// # Arguments
     /// * `name` - Role name (should be unique within realm)
     /// * `description` - Optional human-readable description
     /// * `realm_id` - ID of the realm this role belongs to
-    /// 
+    ///
     /// # Returns
     /// A new Role instance ready for use
-    /// 
+    ///
     /// # Security Considerations
     /// - Generates cryptographically secure UUID for role ID
     /// - Sets appropriate creation and update timestamps
@@ -182,13 +182,13 @@ impl Role {
     }
 
     /// Check if role is active
-    /// 
+    ///
     /// Determines if the role is currently active (not soft deleted).
     /// Used for permission checks and role validation.
-    /// 
+    ///
     /// # Returns
     /// true if the role is active and can be used
-    /// 
+    ///
     /// # Security Considerations
     /// - Inactive roles should not grant permissions
     /// - Soft deleted roles maintain referential integrity
@@ -198,10 +198,10 @@ impl Role {
     }
 
     /// Soft delete the role
-    /// 
+    ///
     /// Marks the role as deleted without removing the record.
     /// Preserves referential integrity and audit trails.
-    /// 
+    ///
     /// # Security Considerations
     /// - Immediately revokes role permissions
     /// - Preserves audit trail of role existence
@@ -213,13 +213,13 @@ impl Role {
     }
 
     /// Update role fields
-    /// 
+    ///
     /// Updates role information based on the update request.
     /// Only updates fields that are provided in the request.
-    /// 
+    ///
     /// # Arguments
     /// * `request` - Update parameters (partial update supported)
-    /// 
+    ///
     /// # Security Considerations
     /// - Role name changes may affect existing permissions
     /// - Updates should be authorized based on user permissions

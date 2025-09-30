@@ -1,15 +1,15 @@
+use authenc::config::DatabaseConfig;
 use authenc::database::Database;
 use authenc::services::device::*;
-use authenc::config::DatabaseConfig;
-use std::sync::Arc;
-use uuid::Uuid;
 use chrono::Utc;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 /// Helper function to setup test data
 async fn setup_test_data(database: &Database) -> Result<(Uuid, Uuid), Box<dyn std::error::Error>> {
     use std::time::{SystemTime, UNIX_EPOCH};
-    
+
     // Create a test realm with unique name
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
     let realm_name = format!("test-realm-{}", timestamp);
@@ -18,7 +18,9 @@ async fn setup_test_data(database: &Database) -> Result<(Uuid, Uuid), Box<dyn st
         INSERT INTO realms (id, name, display_name, enabled)
         VALUES ($1, $2, $3, $4)
     "#;
-    database.execute(realm_query, &[&realm_id, &realm_name, &"Test Realm", &true]).await?;
+    database
+        .execute(realm_query, &[&realm_id, &realm_name, &"Test Realm", &true])
+        .await?;
 
     // Create a test user with unique username
     let user_id = Uuid::new_v4();
@@ -28,7 +30,9 @@ async fn setup_test_data(database: &Database) -> Result<(Uuid, Uuid), Box<dyn st
         INSERT INTO users (id, username, email, enabled, realm_id)
         VALUES ($1, $2, $3, $4, $5)
     "#;
-    database.execute(user_query, &[&user_id, &username, &email, &true, &realm_id]).await?;
+    database
+        .execute(user_query, &[&user_id, &username, &email, &true, &realm_id])
+        .await?;
 
     Ok((realm_id, user_id))
 }
@@ -68,7 +72,8 @@ async fn test_device_registration() {
         browser: Some("Safari".to_string()),
         browser_version: Some("17.0".to_string()),
         ip_address: "192.168.1.100".to_string(),
-        user_agent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15".to_string(),
+        user_agent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15"
+            .to_string(),
         security_features: DeviceSecurityFeatures {
             has_biometrics: true,
             has_hardware_security: true,
@@ -79,7 +84,9 @@ async fn test_device_registration() {
         },
     };
 
-    let result = device_service.register_device(user_id, registration_request).await;
+    let result = device_service
+        .register_device(user_id, registration_request)
+        .await;
     if let Err(ref e) = result {
         eprintln!("Device registration failed with error: {:?}", e);
     }
@@ -138,7 +145,10 @@ async fn test_device_trust_evaluation() {
         },
     };
 
-    let device = device_service.register_device(user_id, registration_request).await.unwrap();
+    let device = device_service
+        .register_device(user_id, registration_request)
+        .await
+        .unwrap();
 
     // Test trust evaluation context
     let context = TrustEvaluationContext {
@@ -201,9 +211,7 @@ async fn test_device_trust_policies() {
         id: Uuid::new_v4(),
         name: "High Trust Score Policy".to_string(),
         description: "Allow devices with high trust scores".to_string(),
-        conditions: vec![
-            TrustCondition::TrustScoreAbove(0.8),
-        ],
+        conditions: vec![TrustCondition::TrustScoreAbove(0.8)],
         action: TrustAction::Allow,
         enabled: true,
         priority: 10,
@@ -254,12 +262,14 @@ async fn test_device_session_management() {
     let device_id = Uuid::new_v4();
 
     // Test session creation
-    let session_result = device_service.create_session(
-        device_id,
-        user_id,
-        "session_123".to_string(),
-        "192.168.1.100".to_string(),
-    ).await;
+    let session_result = device_service
+        .create_session(
+            device_id,
+            user_id,
+            "session_123".to_string(),
+            "192.168.1.100".to_string(),
+        )
+        .await;
 
     assert!(session_result.is_ok(), "Session creation should succeed");
 
@@ -325,7 +335,9 @@ async fn test_get_user_devices() {
             },
         };
 
-        let result = device_service.register_device(user_id, registration_request).await;
+        let result = device_service
+            .register_device(user_id, registration_request)
+            .await;
         assert!(result.is_ok(), "Device registration should succeed");
     }
 

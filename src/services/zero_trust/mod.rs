@@ -368,7 +368,9 @@ impl ZeroTrustManager {
 
         // Behavioral factor (using anomaly detector if available)
         if let Some(detector) = &self.anomaly_detector {
-            let behavioral_score = self.calculate_behavioral_risk(context, detector.as_ref()).await;
+            let behavioral_score = self
+                .calculate_behavioral_risk(context, detector.as_ref())
+                .await;
             total_score += behavioral_score * 0.25; // 25% weight
             factors.push(RiskFactor {
                 factor_type: "behavioral".to_string(),

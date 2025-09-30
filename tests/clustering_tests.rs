@@ -1,9 +1,9 @@
+use authenc::config::DatabaseConfig;
 use authenc::database::Database;
 use authenc::services::clustering::*;
-use authenc::config::DatabaseConfig;
-use std::sync::Arc;
 use chrono::Utc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[tokio::test]
 #[ignore = "Requires PostgreSQL database to be running"]
@@ -52,7 +52,10 @@ async fn test_cluster_node_registration() {
     assert_eq!(node.metadata.len(), 3);
     assert_eq!(node.metadata.get("region"), Some(&"us-west-2".to_string()));
     assert_eq!(node.metadata.get("zone"), Some(&"a".to_string()));
-    assert_eq!(node.metadata.get("instance_type"), Some(&"t3.large".to_string()));
+    assert_eq!(
+        node.metadata.get("instance_type"),
+        Some(&"t3.large".to_string())
+    );
 }
 
 #[tokio::test]
@@ -67,21 +70,27 @@ async fn test_cluster_topology() {
     let mut metadata2 = HashMap::new();
     metadata2.insert("role".to_string(), "secondary".to_string());
 
-    nodes.insert("node1".to_string(), ClusterNode {
-        node_id: "node1".to_string(),
-        address: "192.168.1.100:8080".to_string(),
-        status: NodeStatus::Up,
-        last_seen: Utc::now(),
-        metadata: metadata1,
-    });
+    nodes.insert(
+        "node1".to_string(),
+        ClusterNode {
+            node_id: "node1".to_string(),
+            address: "192.168.1.100:8080".to_string(),
+            status: NodeStatus::Up,
+            last_seen: Utc::now(),
+            metadata: metadata1,
+        },
+    );
 
-    nodes.insert("node2".to_string(), ClusterNode {
-        node_id: "node2".to_string(),
-        address: "192.168.1.101:8080".to_string(),
-        status: NodeStatus::Up,
-        last_seen: Utc::now(),
-        metadata: metadata2,
-    });
+    nodes.insert(
+        "node2".to_string(),
+        ClusterNode {
+            node_id: "node2".to_string(),
+            address: "192.168.1.101:8080".to_string(),
+            status: NodeStatus::Up,
+            last_seen: Utc::now(),
+            metadata: metadata2,
+        },
+    );
 
     let topology = ClusterTopology {
         cluster_name: "test-cluster".to_string(),
@@ -133,7 +142,10 @@ async fn test_cluster_config() {
     assert!(config.enabled);
     assert_eq!(config.cluster_name, "test-cluster");
     assert_eq!(config.node_id, "node1");
-    assert_eq!(config.communication_type, ClusterCommunicationType::Infinispan);
+    assert_eq!(
+        config.communication_type,
+        ClusterCommunicationType::Infinispan
+    );
     assert_eq!(config.membership_type, ClusterMembershipType::Kubernetes);
     assert_eq!(config.consensus_type, ClusterConsensusType::Raft);
     assert_eq!(config.discovery_addresses.len(), 2);

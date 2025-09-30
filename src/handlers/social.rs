@@ -12,30 +12,45 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// Request to initiate social login
 #[derive(Deserialize)]
 pub struct InitiateLoginRequest {
+    /// Social provider to use for authentication
     pub provider: SocialProvider,
+    /// URI to redirect to after successful authentication
     pub redirect_uri: String,
 }
 
+/// Response containing authorization URL for social login
 #[derive(Serialize)]
 pub struct InitiateLoginResponse {
+    /// URL to redirect user to for social provider authentication
     pub authorization_url: String,
 }
 
+/// Query parameters from social provider callback
 #[derive(Deserialize)]
 pub struct CallbackQuery {
+    /// Authorization code from social provider
     pub code: String,
+    /// State parameter for CSRF protection
     pub state: String,
 }
 
+/// Social user profile information
 #[derive(Serialize)]
 pub struct SocialUserProfile {
+    /// Social provider that authenticated the user
     pub provider: SocialProvider,
+    /// User ID from the social provider
     pub provider_user_id: String,
+    /// Email address from social provider
     pub email: Option<String>,
+    /// Display name from social provider
     pub name: Option<String>,
+    /// Avatar/profile image URL
     pub avatar_url: Option<String>,
+    /// Raw profile data from social provider
     pub raw_profile: serde_json::Value,
 }
 

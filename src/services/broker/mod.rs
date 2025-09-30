@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Types of identity providers supported by the broker
 pub enum IdentityProviderType {
     /// LDAP identity provider
@@ -277,7 +277,12 @@ impl LdapIdentityBroker {
     ///     bind_dn: "cn=admin,dc=example,dc=com".to_string(),
     ///     bind_password: "secure_password".to_string(),
     ///     user_search_base: "ou=users,dc=example,dc=com".to_string(),
-    ///     // ... other config
+    ///     user_search_filter: "(uid={0})".to_string(),
+    ///     group_search_base: "ou=groups,dc=example,dc=com".to_string(),
+    ///     username_attr: "uid".to_string(),
+    ///     email_attr: "mail".to_string(),
+    ///     first_name_attr: "givenName".to_string(),
+    ///     last_name_attr: "sn".to_string(),
     /// };
     /// let broker = LdapIdentityBroker::new(config);
     /// ```
@@ -630,9 +635,9 @@ impl SocialIdentityBroker {
     ///     client_id: "google-client-id".to_string(),
     ///     client_secret: "google-client-secret".to_string(),
     ///     redirect_uri: "https://myapp.com/oauth/callback".to_string(),
-    ///     // ... other config
+    ///     scopes: vec!["openid".to_string(), "email".to_string(), "profile".to_string()],
     /// };
-    /// let broker = SocialIdentityBroker::new(config, IdentityProviderType::Google);
+    /// let broker = SocialIdentityBroker::new(config, IdentityProviderType::SocialGoogle);
     /// ```
     pub fn new(config: SocialConfig, provider_type: IdentityProviderType) -> Self {
         Self {

@@ -194,8 +194,8 @@ pub fn create_authorization_routes() -> Router<Arc<Database>> {
     Router::new()
         .route("/policies", post(create_policy))
         .route("/policies", get(list_policies))
-        .route("/policies/:policy_id", get(get_policy))
-        .route("/policies/:policy_id", put(update_policy))
-        .route("/policies/:policy_id", delete(delete_policy))
+        .route("/policies/{policy_id}", get(get_policy))
+        .route("/policies/{policy_id}", put(update_policy))
+        .route("/policies/{policy_id}", delete(delete_policy))
         .route("/check-permission", post(check_permission))
 }

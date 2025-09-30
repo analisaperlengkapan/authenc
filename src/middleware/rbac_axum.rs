@@ -137,10 +137,16 @@ impl<S> RbacMiddleware<S> {
     /// - Log access denials for security monitoring
     ///
     /// # Example
+    /// # Example
     /// ```rust
     /// use authenc::middleware::rbac_axum::RbacMiddleware;
+    /// use tower::service_fn;
+    /// use std::convert::Infallible;
+    /// use axum::http::Request;
     ///
-    /// let middleware = RbacMiddleware::new(my_service, "admin".to_string());
+    /// // Create a simple service for demonstration
+    /// let service = service_fn(|_req: Request<axum::body::Body>| async { Ok::<_, Infallible>(axum::http::Response::new(axum::body::Body::empty())) });
+    /// let middleware = RbacMiddleware::new(service, "admin".to_string());
     /// ```
     pub fn new(inner: S, required_role: String) -> Self {
         Self {

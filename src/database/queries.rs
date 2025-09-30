@@ -1,8 +1,8 @@
 /// Database queries for user management
-/// 
+///
 /// Contains SQL queries for user CRUD operations, authentication, and user data retrieval.
 /// All queries include soft delete filtering (deleted_at IS NULL) for data integrity.
-/// 
+///
 /// # Security Considerations
 /// - Password hashes are stored securely using bcrypt/scrypt
 /// - User data is filtered by realm for multi-tenancy
@@ -10,10 +10,10 @@
 /// - All queries use parameterized statements to prevent SQL injection
 pub mod users {
     /// Create a new user record
-    /// 
+    ///
     /// Inserts a new user into the database with all required fields.
     /// Returns the created user record with generated timestamps.
-    /// 
+    ///
     /// # Parameters
     /// - $1: user ID (UUID)
     /// - $2: username (unique within realm)
@@ -29,10 +29,10 @@ pub mod users {
     "#;
 
     /// Get user by ID
-    /// 
+    ///
     /// Retrieves a user record by their unique identifier.
     /// Only returns active (non-deleted) users.
-    /// 
+    ///
     /// # Parameters
     /// - $1: user ID (UUID)
     pub const GET_USER_BY_ID: &str = r#"
@@ -40,10 +40,10 @@ pub mod users {
     "#;
 
     /// Get user by username
-    /// 
+    ///
     /// Retrieves a user record by their username.
     /// Used during authentication and user lookup operations.
-    /// 
+    ///
     /// # Parameters
     /// - $1: username (string)
     pub const GET_USER_BY_USERNAME: &str = r#"
@@ -51,10 +51,10 @@ pub mod users {
     "#;
 
     /// Get user by email
-    /// 
+    ///
     /// Retrieves a user record by their email address.
     /// Used for password reset and email-based authentication.
-    /// 
+    ///
     /// # Parameters
     /// - $1: email address (string)
     pub const GET_USER_BY_EMAIL: &str = r#"
@@ -62,10 +62,10 @@ pub mod users {
     "#;
 
     /// Update user information
-    /// 
+    ///
     /// Updates user profile information (username, email).
     /// Password updates are handled separately for security.
-    /// 
+    ///
     /// # Parameters
     /// - $1: user ID (UUID)
     /// - $2: new username
@@ -79,10 +79,10 @@ pub mod users {
     "#;
 
     /// Soft delete user
-    /// 
+    ///
     /// Marks a user as deleted without removing the record.
     /// Preserves referential integrity and audit trails.
-    /// 
+    ///
     /// # Parameters
     /// - $1: user ID (UUID)
     /// - $2: deleted_at timestamp
@@ -93,10 +93,10 @@ pub mod users {
     "#;
 
     /// List users with pagination
-    /// 
+    ///
     /// Retrieves a paginated list of active users.
     /// Ordered by creation date (newest first).
-    /// 
+    ///
     /// # Parameters
     /// - $1: limit (number of records)
     /// - $2: offset (pagination offset)
@@ -109,10 +109,10 @@ pub mod users {
 }
 
 /// Database queries for realm management
-/// 
+///
 /// Contains SQL queries for realm CRUD operations and multi-tenancy support.
 /// Realms provide logical separation of users, roles, and resources.
-/// 
+///
 /// # Security Considerations
 /// - Realms enforce multi-tenancy isolation
 /// - Realm-scoped queries prevent data leakage between tenants
@@ -120,10 +120,10 @@ pub mod users {
 /// - All queries use parameterized statements
 pub mod realms {
     /// Create a new realm
-    /// 
+    ///
     /// Inserts a new realm record for multi-tenancy support.
     /// Returns the created realm with generated timestamps.
-    /// 
+    ///
     /// # Parameters
     /// - $1: realm ID (UUID)
     /// - $2: realm name (unique identifier)
@@ -138,10 +138,10 @@ pub mod realms {
     "#;
 
     /// Get realm by ID
-    /// 
+    ///
     /// Retrieves a realm record by its unique identifier.
     /// Only returns active (non-deleted) realms.
-    /// 
+    ///
     /// # Parameters
     /// - $1: realm ID (UUID)
     pub const GET_REALM_BY_ID: &str = r#"
@@ -149,10 +149,10 @@ pub mod realms {
     "#;
 
     /// Get realm by name
-    /// 
+    ///
     /// Retrieves a realm record by its name identifier.
     /// Used for realm resolution during authentication.
-    /// 
+    ///
     /// # Parameters
     /// - $1: realm name (string)
     pub const GET_REALM_BY_NAME: &str = r#"
@@ -160,7 +160,7 @@ pub mod realms {
     "#;
 
     /// List all realms
-    /// 
+    ///
     /// Retrieves all active realms in the system.
     /// Used for realm selection and administration.
     pub const LIST_REALMS: &str = r#"
@@ -170,10 +170,10 @@ pub mod realms {
     "#;
 
     /// Update realm information
-    /// 
+    ///
     /// Updates realm metadata (display name, description).
     /// Core realm name cannot be changed for consistency.
-    /// 
+    ///
     /// # Parameters
     /// - $1: realm ID (UUID)
     /// - $2: new display name
@@ -187,10 +187,10 @@ pub mod realms {
     "#;
 
     /// Soft delete realm
-    /// 
+    ///
     /// Marks a realm as deleted without removing the record.
     /// Cascading effects should be handled by application logic.
-    /// 
+    ///
     /// # Parameters
     /// - $1: realm ID (UUID)
     /// - $2: deleted_at timestamp
@@ -202,10 +202,10 @@ pub mod realms {
 }
 
 /// Database queries for role management
-/// 
+///
 /// Contains SQL queries for role-based access control (RBAC) operations.
 /// Manages roles, user-role assignments, and permission structures.
-/// 
+///
 /// # Security Considerations
 /// - Roles are scoped to realms for multi-tenancy
 /// - User-role assignments control access permissions
@@ -213,10 +213,10 @@ pub mod realms {
 /// - All queries prevent privilege escalation
 pub mod roles {
     /// Create a new role
-    /// 
+    ///
     /// Inserts a new role record within a specific realm.
     /// Returns the created role with generated timestamps.
-    /// 
+    ///
     /// # Parameters
     /// - $1: role ID (UUID)
     /// - $2: role name (unique within realm)
@@ -231,10 +231,10 @@ pub mod roles {
     "#;
 
     /// Get role by ID
-    /// 
+    ///
     /// Retrieves a role record by its unique identifier.
     /// Only returns active (non-deleted) roles.
-    /// 
+    ///
     /// # Parameters
     /// - $1: role ID (UUID)
     pub const GET_ROLE_BY_ID: &str = r#"
@@ -242,10 +242,10 @@ pub mod roles {
     "#;
 
     /// List roles by realm
-    /// 
+    ///
     /// Retrieves all roles within a specific realm.
     /// Used for role assignment and permission management.
-    /// 
+    ///
     /// # Parameters
     /// - $1: realm ID (UUID)
     pub const LIST_ROLES_BY_REALM: &str = r#"
@@ -255,10 +255,10 @@ pub mod roles {
     "#;
 
     /// Assign role to user
-    /// 
+    ///
     /// Creates a user-role assignment relationship.
     /// Uses ON CONFLICT DO NOTHING to prevent duplicate assignments.
-    /// 
+    ///
     /// # Parameters
     /// - $1: user ID (UUID)
     /// - $2: role ID (UUID)
@@ -270,10 +270,10 @@ pub mod roles {
     "#;
 
     /// Remove role from user
-    /// 
+    ///
     /// Removes a user-role assignment relationship.
     /// Immediately revokes the role's permissions from the user.
-    /// 
+    ///
     /// # Parameters
     /// - $1: user ID (UUID)
     /// - $2: role ID (UUID)
@@ -283,10 +283,10 @@ pub mod roles {
     "#;
 
     /// Get user roles
-    /// 
+    ///
     /// Retrieves all roles assigned to a specific user.
     /// Used for permission checking and access control decisions.
-    /// 
+    ///
     /// # Parameters
     /// - $1: user ID (UUID)
     pub const GET_USER_ROLES: &str = r#"
@@ -297,10 +297,10 @@ pub mod roles {
 }
 
 /// Database queries for audit logging
-/// 
+///
 /// Contains SQL queries for comprehensive audit logging and compliance.
 /// Tracks all security-relevant actions, user activities, and system events.
-/// 
+///
 /// # Security Considerations
 /// - Audit logs are immutable and append-only
 /// - All security events must be logged for compliance
@@ -309,10 +309,10 @@ pub mod roles {
 /// - Filtering supports compliance reporting requirements
 pub mod audit {
     /// Create audit log entry
-    /// 
+    ///
     /// Inserts a new audit log record for security monitoring.
     /// Captures user actions, system events, and security-relevant activities.
-    /// 
+    ///
     /// # Parameters
     /// - $1: audit log ID (UUID)
     /// - $2: user ID (UUID, nullable for system events)
@@ -328,10 +328,10 @@ pub mod audit {
     "#;
 
     /// Get audit logs with filtering
-    /// 
+    ///
     /// Retrieves paginated audit log entries with optional filtering.
     /// Supports filtering by user, action type, and date range.
-    /// 
+    ///
     /// # Parameters
     /// - $1: user ID filter (UUID, nullable)
     /// - $2: action filter (string, nullable)
@@ -350,10 +350,10 @@ pub mod audit {
     "#;
 
     /// Get audit log count
-    /// 
+    ///
     /// Returns the total count of audit log entries matching filters.
     /// Used for pagination and reporting purposes.
-    /// 
+    ///
     /// # Parameters
     /// - $1: user ID filter (UUID, nullable)
     /// - $2: action filter (string, nullable)

@@ -1,11 +1,11 @@
 use crate::database::Database;
 use crate::error::AuthencError;
 use crate::services::admin::{
-    AdminManager, AdminService, AuditLogResponse, CreatePolicyRequest, CreateRoleRequest,
-    CreateUserRequest, PolicyResponse, RoleResponse, SecurityEvent, SessionListResponse,
-    SystemStats, UpdateUserRequest, UserListResponse, UserResponse,
-    IdentityProviderResponse, CreateIdentityProviderRequest, UpdateIdentityProviderRequest,
-    TestIdentityProviderResponse,
+    AdminManager, AdminService, AuditLogResponse, CreateIdentityProviderRequest,
+    CreatePolicyRequest, CreateRoleRequest, CreateUserRequest, IdentityProviderResponse,
+    PolicyResponse, RoleResponse, SecurityEvent, SessionListResponse, SystemStats,
+    TestIdentityProviderResponse, UpdateIdentityProviderRequest, UpdateUserRequest,
+    UserListResponse, UserResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -405,7 +405,10 @@ pub async fn update_identity_provider(
 ) -> Result<Json<IdentityProviderResponse>, StatusCode> {
     let admin_manager = AdminManager::new(db);
 
-    match admin_manager.update_identity_provider(&provider_id, request).await {
+    match admin_manager
+        .update_identity_provider(&provider_id, request)
+        .await
+    {
         Ok(provider) => Ok(Json(provider)),
         Err(e) => {
             eprintln!("Failed to update identity provider: {}", e);
@@ -481,8 +484,20 @@ pub fn create_admin_routes() -> Router<Arc<Database>> {
         .route("/risk-analytics", get(get_risk_analytics))
         .route("/identity-providers", get(list_identity_providers))
         .route("/identity-providers", post(create_identity_provider))
-        .route("/identity-providers/{provider_id}", get(get_identity_provider))
-        .route("/identity-providers/{provider_id}", put(update_identity_provider))
-        .route("/identity-providers/{provider_id}", delete(delete_identity_provider))
-        .route("/identity-providers/{provider_id}/test", post(test_identity_provider))
+        .route(
+            "/identity-providers/{provider_id}",
+            get(get_identity_provider),
+        )
+        .route(
+            "/identity-providers/{provider_id}",
+            put(update_identity_provider),
+        )
+        .route(
+            "/identity-providers/{provider_id}",
+            delete(delete_identity_provider),
+        )
+        .route(
+            "/identity-providers/{provider_id}/test",
+            post(test_identity_provider),
+        )
 }
