@@ -41,38 +41,32 @@ impl ValidatorProvider for MockValidatorProvider {
         value: String,
         context: ValidationContext,
     ) -> Result<ValidationResult, ValidationError> {
-            if let Some(config) = context.config.get("min") {
-                if let Ok(min) = config.parse::<usize>() {
-                    if value.len() < min {
-                        return Ok(ValidationResult {
-                            is_valid: false,
-                            error_message: Some(format!(
-                                "Value too short, minimum length is {}",
-                                min
-                            )),
-                        });
-                    }
+        if let Some(config) = context.config.get("min") {
+            if let Ok(min) = config.parse::<usize>() {
+                if value.len() < min {
+                    return Ok(ValidationResult {
+                        is_valid: false,
+                        error_message: Some(format!("Value too short, minimum length is {}", min)),
+                    });
                 }
             }
+        }
 
-            if let Some(config) = context.config.get("max") {
-                if let Ok(max) = config.parse::<usize>() {
-                    if value.len() > max {
-                        return Ok(ValidationResult {
-                            is_valid: false,
-                            error_message: Some(format!(
-                                "Value too long, maximum length is {}",
-                                max
-                            )),
-                        });
-                    }
+        if let Some(config) = context.config.get("max") {
+            if let Ok(max) = config.parse::<usize>() {
+                if value.len() > max {
+                    return Ok(ValidationResult {
+                        is_valid: false,
+                        error_message: Some(format!("Value too long, maximum length is {}", max)),
+                    });
                 }
             }
+        }
 
-            Ok(ValidationResult {
-                is_valid: true,
-                error_message: None,
-            })
+        Ok(ValidationResult {
+            is_valid: true,
+            error_message: None,
+        })
     }
 
     fn validate_values(
@@ -181,7 +175,6 @@ mod tests {
 
         let result = length_validator
             .validate_value("valid".to_string(), context.clone())
-            
             .unwrap();
 
         assert!(result.is_valid);
@@ -189,7 +182,6 @@ mod tests {
         // Test too short
         let result = length_validator
             .validate_value("x".to_string(), context.clone())
-            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -198,7 +190,6 @@ mod tests {
         // Test too long
         let result = length_validator
             .validate_value("thisiswaytoolong".to_string(), context)
-            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -218,7 +209,6 @@ mod tests {
 
         let result = email_validator
             .validate_value("test@example.com".to_string(), context.clone())
-            
             .unwrap();
 
         assert!(result.is_valid);
@@ -226,7 +216,6 @@ mod tests {
         // Test invalid email
         let result = email_validator
             .validate_value("invalid-email".to_string(), context)
-            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -250,7 +239,6 @@ mod tests {
 
         let result = pattern_validator
             .validate_value("123-45-6789".to_string(), context.clone())
-            
             .unwrap();
 
         assert!(result.is_valid);
@@ -258,7 +246,6 @@ mod tests {
         // Test invalid pattern
         let result = pattern_validator
             .validate_value("invalid".to_string(), context)
-            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -282,7 +269,6 @@ mod tests {
 
         let result = length_validator
             .validate_value("test".to_string(), context1)
-            
             .unwrap();
 
         assert!(result.is_valid);
@@ -298,7 +284,6 @@ mod tests {
 
         let result = length_validator
             .validate_value("test".to_string(), context2)
-            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -389,7 +374,6 @@ mod tests {
         // Test valid non-blank
         let result = not_blank_validator
             .validate_value("not blank".to_string(), context.clone())
-            
             .unwrap();
 
         assert!(result.is_valid);
@@ -397,7 +381,6 @@ mod tests {
         // Test blank (should fail)
         let result = not_blank_validator
             .validate_value("".to_string(), context.clone())
-            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -405,7 +388,6 @@ mod tests {
         // Test whitespace only (should fail)
         let result = not_blank_validator
             .validate_value("   ".to_string(), context)
-            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -426,7 +408,9 @@ mod tests {
             attributes: HashMap::new(),
         };
 
-        let result = length_validator.validate_value("".to_string(), context).unwrap();
+        let result = length_validator
+            .validate_value("".to_string(), context)
+            .unwrap();
 
         assert!(!result.is_valid);
 
@@ -443,7 +427,6 @@ mod tests {
 
         let result = length_validator
             .validate_value(long_string, context)
-            
             .unwrap();
 
         assert!(!result.is_valid);
@@ -477,7 +460,6 @@ mod tests {
         // First validate length
         let result = length_validator
             .validate_value(test_value.to_string(), length_context)
-            
             .unwrap();
 
         assert!(result.is_valid);
@@ -485,7 +467,6 @@ mod tests {
         // Then validate email format
         let result = email_validator
             .validate_value(test_value.to_string(), email_context)
-            
             .unwrap();
 
         assert!(result.is_valid);

@@ -284,7 +284,6 @@ pub trait CredentialProvider: Provider + Send + Sync {
         credential: &CredentialModel,
         _type_metadata: &CredentialTypeMetadata,
     ) -> CredentialMetadata {
-        
         CredentialMetadata {
             user_credential_model: Some(credential.clone()),
             info: HashMap::new(),
@@ -660,10 +659,12 @@ impl OTPCredentialProvider {
             return None;
         }
 
-        credential.credential_data.as_ref().map(|secret| format!(
+        credential.credential_data.as_ref().map(|secret| {
+            format!(
                 "otpauth://totp/{}:{}?secret={}&issuer={}",
                 issuer, account_name, secret, issuer
-            ))
+            )
+        })
     }
 }
 

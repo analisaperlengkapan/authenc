@@ -30,8 +30,7 @@ pub struct ResourceServer {
 }
 
 /// Policy enforcement modes
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum PolicyEnforcementMode {
     /// Enforce policies
     #[default]
@@ -43,8 +42,7 @@ pub enum PolicyEnforcementMode {
 }
 
 /// Decision strategies for policy evaluation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum DecisionStrategy {
     /// Unanimous decision (all policies must permit)
     #[default]
@@ -131,8 +129,6 @@ impl From<ResourceServer> for ResourceServerResponse {
         }
     }
 }
-
-
 
 impl ResourceServer {
     /// Create a new resource server

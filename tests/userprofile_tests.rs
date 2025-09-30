@@ -48,7 +48,9 @@ impl UserProfileProvider for MockUserProfileProvider {
     fn get_profile_attributes(
         &self,
         _context: UserProfileContext,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<UserProfileAttribute>, UserProfileError>> + Send + '_>> {
+    ) -> Pin<
+        Box<dyn Future<Output = Result<Vec<UserProfileAttribute>, UserProfileError>> + Send + '_>,
+    > {
         let attributes = self.attributes.clone();
         Box::pin(async move { Ok(attributes) })
     }
@@ -57,7 +59,9 @@ impl UserProfileProvider for MockUserProfileProvider {
         &self,
         _context: UserProfileContext,
         attributes: &HashMap<String, Vec<String>>,
-    ) -> Pin<Box<dyn Future<Output = Result<UserProfileValidationResult, UserProfileError>> + Send + '_>> {
+    ) -> Pin<
+        Box<dyn Future<Output = Result<UserProfileValidationResult, UserProfileError>> + Send + '_>,
+    > {
         let mut errors = HashMap::new();
         let self_attributes = self.attributes.clone();
 
@@ -96,7 +100,8 @@ impl UserProfileProvider for MockUserProfileProvider {
     fn create_user_profile_metadata(
         &self,
         _context: UserProfileContext,
-    ) -> Pin<Box<dyn Future<Output = Result<UserProfileMetadata, UserProfileError>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<UserProfileMetadata, UserProfileError>> + Send + '_>>
+    {
         let attributes = self.attributes.clone();
         Box::pin(async move {
             let groups = vec![UserProfileGroup {
@@ -106,10 +111,7 @@ impl UserProfileProvider for MockUserProfileProvider {
                 annotations: HashMap::new(),
             }];
 
-            Ok(UserProfileMetadata {
-                attributes,
-                groups,
-            })
+            Ok(UserProfileMetadata { attributes, groups })
         })
     }
 }

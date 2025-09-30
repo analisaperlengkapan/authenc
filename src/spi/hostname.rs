@@ -41,8 +41,7 @@ impl Spi for HostnameSpi {
 }
 
 /// Hostname configuration for dynamic URL management
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HostnameConfig {
     /// The hostname to use for URLs
     pub hostname: Option<String>,
@@ -55,7 +54,6 @@ pub struct HostnameConfig {
     /// The admin URL to use
     pub admin_url: Option<String>,
 }
-
 
 /// Represents a hostname resolution result
 #[derive(Debug, Clone, Serialize, Deserialize)]

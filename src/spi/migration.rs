@@ -66,8 +66,7 @@ pub struct MigrationModel {
 }
 
 /// Migration types
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MigrationType {
     /// SQL migration
     #[default]
@@ -75,7 +74,6 @@ pub enum MigrationType {
     /// Custom migration with custom type
     Custom(String),
 }
-
 
 /// Migration status information
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2125,10 +2125,7 @@ pub mod identity_providers {
         truststore_path: Option<&str>,
         keystore_path: Option<&str>,
     ) -> Result<IdentityProviderData> {
-        let config_json = config
-            .as_ref()
-            .map(serde_json::to_string)
-            .transpose()?;
+        let config_json = config.as_ref().map(serde_json::to_string).transpose()?;
 
         let query = r#"
             UPDATE identity_providers

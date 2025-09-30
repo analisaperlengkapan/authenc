@@ -185,29 +185,20 @@ impl StorageProvider for DefaultUserStorageProvider {
 #[async_trait]
 impl UserStorageProvider for DefaultUserStorageProvider {
     async fn get_user(&self, user_id: Uuid) -> Result<Option<User>> {
-        self.user_store
-            .get_user(user_id)
-            .await
+        self.user_store.get_user(user_id).await
     }
 
     async fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
-        self.user_store
-            .get_user_by_username(username)
-            .await
+        self.user_store.get_user_by_username(username).await
     }
 
     async fn get_user_by_email(&self, email: &str) -> Result<Option<User>> {
-        self.user_store
-            .get_user_by_email(email)
-            .await
+        self.user_store.get_user_by_email(email).await
     }
 
     async fn search_users(&self, query: &str, _context: &StorageQueryContext) -> Result<Vec<User>> {
         // For now, return all users if query is empty, otherwise filter by username/email
-        let all_users = self
-            .user_store
-            .get_all()
-            .await?;
+        let all_users = self.user_store.get_all().await?;
         if query.is_empty() {
             Ok(all_users)
         } else {
@@ -219,10 +210,7 @@ impl UserStorageProvider for DefaultUserStorageProvider {
     }
 
     async fn count_users(&self, _context: &StorageQueryContext) -> Result<i64> {
-        let all_users = self
-            .user_store
-            .get_all()
-            .await?;
+        let all_users = self.user_store.get_all().await?;
         Ok(all_users.len() as i64)
     }
 
@@ -239,9 +227,7 @@ impl UserStorageProvider for DefaultUserStorageProvider {
             organization_id: user.organization_id,
             attributes: user.attributes.clone(),
         };
-        self.user_store
-            .add_user(request)
-            .await
+        self.user_store.add_user(request).await
     }
 
     async fn update_user(&self, user: User) -> Result<User> {
@@ -258,9 +244,7 @@ impl UserStorageProvider for DefaultUserStorageProvider {
             require_password_change: Some(user.require_password_change),
             attributes: user.attributes.clone(),
         };
-        self.user_store
-            .update_user(user.id, request)
-            .await
+        self.user_store.update_user(user.id, request).await
     }
 
     async fn delete_user(&self, _user_id: Uuid) -> Result<bool> {
@@ -313,9 +297,7 @@ impl ClientStorageProvider for DefaultClientStorageProvider {
     }
 
     async fn get_client_by_client_id(&self, client_id: &str) -> Result<Option<OidcClient>> {
-        self.oidc_client_store
-            .get(client_id)
-            .await
+        self.oidc_client_store.get(client_id).await
     }
 
     async fn search_clients(
@@ -323,10 +305,7 @@ impl ClientStorageProvider for DefaultClientStorageProvider {
         query: &str,
         _context: &StorageQueryContext,
     ) -> Result<Vec<OidcClient>> {
-        let all_clients = self
-            .oidc_client_store
-            .all()
-            .await?;
+        let all_clients = self.oidc_client_store.all().await?;
         if query.is_empty() {
             Ok(all_clients)
         } else {
@@ -338,17 +317,12 @@ impl ClientStorageProvider for DefaultClientStorageProvider {
     }
 
     async fn count_clients(&self, _context: &StorageQueryContext) -> Result<i64> {
-        let all_clients = self
-            .oidc_client_store
-            .all()
-            .await?;
+        let all_clients = self.oidc_client_store.all().await?;
         Ok(all_clients.len() as i64)
     }
 
     async fn create_client(&self, client: OidcClient) -> Result<OidcClient> {
-        self.oidc_client_store
-            .add(client.clone())
-            .await?;
+        self.oidc_client_store.add(client.clone()).await?;
         Ok(client)
     }
 
@@ -364,9 +338,7 @@ impl ClientStorageProvider for DefaultClientStorageProvider {
         // Convert UUID to string client_id - this is a simplification
         // In practice, we'd need proper ID mapping
         let client_id_str = client_id.to_string();
-        self.oidc_client_store
-            .delete(&client_id_str)
-            .await
+        self.oidc_client_store.delete(&client_id_str).await
     }
 }
 
