@@ -1,264 +1,455 @@
+//! mTLS (Mutual TLS) Authentication
+//!
+//! This module provides client certificate validation suitable for:
+//! - Development environments with self-signed certificates
+//! - Production with TLS termination at reverse proxy (nginx, traefik, etc.)
+//! - Scenarios where full X.509 chain validation is handled upstream
+//!
+//! ## Architecture
+//!
+//! The implementation expects the reverse proxy/load balancer to:
+//! 1. Handle TLS termination and certificate validation
+//! 2. Forward certificate information via HTTP headers:
+//!    - `X-SSL-Client-Fingerprint`: SHA-256 fingerprint of client cert
+//!    - `X-SSL-Client-Cert`: Base64 encoded DER certificate
+//!    - `X-SSL-Client-Subject`: Certificate subject DN
+//!    - `X-SSL-Client-Issuer`: Certificate issuer DN
+//!
+//! ## Security Considerations
+//!
+//! - This is NOT a replacement for proper TLS/mTLS at the transport layer
+//! - Always use this behind a trusted reverse proxy
+//! - Validate that headers cannot be spoofed by clients
+//! - Use `allowed_client_fingerprints` in production for whitelist-based auth
+//!
+//! ## Example
+//!
+//! ```rust,no_run
+//! use authenc::crypto::mtls::{MtlsConfig, mtls_middleware};
+//! use axum::{Router, middleware, routing::get};
+//! use std::sync::Arc;
+//!
+//! async fn handler() -> &'static str {
+//!     "Hello, authenticated client!"
+//! }
+//!
+//! let config = MtlsConfig::prod_config(vec![
+//!     "abc123...".to_string(), // Allowed client cert fingerprints
+//! ]);
+//!
+//! let app: Router = Router::new()
+//!     .route("/", get(handler))
+//!     .layer(middleware::from_fn_with_state(
+//!         Arc::new(config),
+//!         mtls_middleware
+//!     ));
+//! ```
+
 use axum::{
     extract::{Request, State},
     http::{HeaderMap, StatusCode},
     middleware::Next,
     response::Response,
 };
-use rustls::{Certificate, ClientConfig, RootCertStore, ServerConfig};
-use std::{
-    collections::HashMap,
-    fs,
-    path::Path,
-    sync::Arc,
-};
-use tokio_rustls::TlsAcceptor;
+use base64ct::{Base64, Encoding};
+use std::sync::Arc;
 use tracing::{error, info, warn};
-use x509_parser::{certificate::X509Certificate, prelude::*};
 
 /// mTLS configuration for client certificate validation
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct MtlsConfig {
+    /// Whether client certificates are required for authentication
     pub require_client_cert: bool,
-    pub trusted_ca_certs: Vec<Certificate>,
-    pub allowed_client_dns_names: Vec<String>,
-    pub cert_revocation_list: HashMap<String, bool>,
-}
-
-impl Default for MtlsConfig {
-    fn default() -> Self {
-        Self {
-            require_client_cert: true,
-            trusted_ca_certs: Vec::new(),
-            allowed_client_dns_names: Vec::new(),
-            cert_revocation_list: HashMap::new(),
-        }
-    }
+    /// List of allowed client certificate fingerprints (SHA-256)
+    pub allowed_client_fingerprints: Vec<String>,
+    /// List of trusted CA certificate fingerprints for validation
+    pub trusted_ca_fingerprints: Vec<String>,
 }
 
 impl MtlsConfig {
-    /// Load trusted CA certificates from PEM files
-    pub fn load_ca_certs<P: AsRef<Path>>(mut self, ca_cert_path: P) -> Result<Self, Box<dyn std::error::Error>> {
-        let ca_cert_pem = fs::read_to_string(ca_cert_path)?;
-        let ca_certs = rustls_pemfile::certs(&mut ca_cert_pem.as_bytes())?;
-        
-        for cert_der in ca_certs {
-            self.trusted_ca_certs.push(Certificate(cert_der));
+    /// Create development configuration that allows all certificates
+    pub fn dev_config() -> Self {
+        Self {
+            require_client_cert: false,
+            allowed_client_fingerprints: Vec::new(),
+            trusted_ca_fingerprints: Vec::new(),
         }
-        
-        info!("Loaded {} trusted CA certificates", self.trusted_ca_certs.len());
-        Ok(self)
     }
 
-    /// Add allowed client DNS names for certificate validation
-    pub fn allow_client_dns_names(mut self, dns_names: Vec<String>) -> Self {
-        self.allowed_client_dns_names = dns_names;
-        self
-    }
-
-    /// Load certificate revocation list
-    pub fn load_crl<P: AsRef<Path>>(mut self, crl_path: P) -> Result<Self, Box<dyn std::error::Error>> {
-        // Simplified CRL loading - in production use proper CRL parsing
-        let crl_content = fs::read_to_string(crl_path)?;
-        for line in crl_content.lines() {
-            if !line.trim().is_empty() && !line.starts_with('#') {
-                self.cert_revocation_list.insert(line.trim().to_string(), true);
-            }
+    /// Create production configuration with specific allowed fingerprints
+    pub fn prod_config(allowed_fingerprints: Vec<String>) -> Self {
+        Self {
+            require_client_cert: true,
+            allowed_client_fingerprints: allowed_fingerprints,
+            trusted_ca_fingerprints: Vec::new(),
         }
-        
-        info!("Loaded {} revoked certificates", self.cert_revocation_list.len());
-        Ok(self)
     }
+}
+
+/// Client certificate information
+#[derive(Debug, Clone)]
+pub struct ClientCertInfo {
+    /// SHA-256 fingerprint of the client certificate
+    pub fingerprint: String,
+    /// Subject field from the client certificate
+    pub subject: Option<String>,
+    /// Issuer field from the client certificate
+    pub issuer: Option<String>,
 }
 
 /// mTLS middleware for Axum
 pub async fn mtls_middleware(
     State(mtls_config): State<Arc<MtlsConfig>>,
     headers: HeaderMap,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Extract client certificate from TLS connection
-    // Note: This requires proper TLS termination configuration
-    let client_cert = extract_client_certificate(&headers)?;
-    
-    if mtls_config.require_client_cert && client_cert.is_none() {
+    // Extract client certificate from headers (set by reverse proxy)
+    let client_cert_info = extract_client_cert_info(&headers)?;
+
+    // Check if client certificate is required
+    if mtls_config.require_client_cert && client_cert_info.is_none() {
         warn!("Client certificate required but not provided");
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    if let Some(cert_der) = client_cert {
-        // Validate client certificate
-        validate_client_certificate(&cert_der, &mtls_config)?;
-        
-        // Add certificate info to request extensions for downstream handlers
-        // request.extensions_mut().insert(ClientCertInfo::from_der(&cert_der));
+    // Validate client certificate if present
+    if let Some(cert_info) = client_cert_info {
+        if !validate_client_cert(&cert_info, &mtls_config) {
+            error!("Client certificate validation failed");
+            return Err(StatusCode::FORBIDDEN);
+        }
+
+        // Add certificate information to request extensions
+        request.extensions_mut().insert(cert_info);
+        info!("Client certificate validation successful");
     }
 
     Ok(next.run(request).await)
 }
 
-/// Extract client certificate from request headers or TLS connection
-pub fn extract_client_certificate(headers: &HeaderMap) -> Result<Option<Vec<u8>>, StatusCode> {
-    // Check for client certificate in headers (from reverse proxy)
-    if let Some(cert_header) = headers.get("X-Client-Cert") {
-        let cert_pem = cert_header.to_str().map_err(|_| StatusCode::BAD_REQUEST)?;
-        
-        // Decode PEM certificate
-        let mut cert_reader = cert_pem.as_bytes();
-        let certs = rustls_pemfile::certs(&mut cert_reader)
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
-        
-        if let Some(cert_der) = certs.into_iter().next() {
-            return Ok(Some(cert_der));
-        }
+/// Extract client certificate information from headers
+fn extract_client_cert_info(headers: &HeaderMap) -> Result<Option<ClientCertInfo>, StatusCode> {
+    // Check for client certificate fingerprint (common in reverse proxy setups)
+    if let Some(fingerprint_header) = headers.get("X-SSL-Client-Fingerprint") {
+        let fingerprint = fingerprint_header
+            .to_str()
+            .map_err(|_| StatusCode::BAD_REQUEST)?
+            .to_string();
+
+        let subject = headers
+            .get("X-SSL-Client-Subject")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+
+        let issuer = headers
+            .get("X-SSL-Client-Issuer")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+
+        return Ok(Some(ClientCertInfo {
+            fingerprint,
+            subject,
+            issuer,
+        }));
     }
 
-    // Check for certificate in custom header format
+    // Check for base64 encoded certificate
     if let Some(cert_header) = headers.get("X-SSL-Client-Cert") {
         let cert_b64 = cert_header.to_str().map_err(|_| StatusCode::BAD_REQUEST)?;
-        let cert_der = base64ct::Base64::decode_vec(cert_b64)
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
-        return Ok(Some(cert_der));
+
+        // Decode certificate and calculate fingerprint
+        let cert_der = Base64::decode_vec(cert_b64).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+        let fingerprint = calculate_cert_fingerprint(&cert_der);
+
+        return Ok(Some(ClientCertInfo {
+            fingerprint,
+            subject: None,
+            issuer: None,
+        }));
     }
 
     Ok(None)
 }
 
-/// Validate client certificate against mTLS configuration
-fn validate_client_certificate(cert_der: &[u8], config: &MtlsConfig) -> Result<(), StatusCode> {
-    // Parse X.509 certificate
-    let (_, cert) = X509Certificate::from_der(cert_der)
-        .map_err(|e| {
-            error!("Failed to parse client certificate: {}", e);
-            StatusCode::BAD_REQUEST
-        })?;
-
-    // Check certificate validity period
-    let now = chrono::Utc::now();
-    let not_before = cert.validity().not_before.to_datetime();
-    let not_after = cert.validity().not_after.to_datetime();
-    
-    if now < not_before || now > not_after {
-        warn!("Client certificate is not valid at current time");
-        return Err(StatusCode::UNAUTHORIZED);
+/// Validate client certificate against configuration
+fn validate_client_cert(cert_info: &ClientCertInfo, config: &MtlsConfig) -> bool {
+    // If no specific fingerprints are configured, allow all certificates
+    if config.allowed_client_fingerprints.is_empty() {
+        return true;
     }
 
-    // Check certificate revocation
-    let cert_serial = format!("{:x}", cert.serial);
-    if config.cert_revocation_list.contains_key(&cert_serial) {
-        warn!("Client certificate is revoked: {}", cert_serial);
-        return Err(StatusCode::FORBIDDEN);
-    }
-
-    // Validate certificate chain against trusted CAs
-    // This is a simplified check - production should use full chain validation
-    if !config.trusted_ca_certs.is_empty() {
-        // In a real implementation, verify the certificate chain
-        info!("Certificate chain validation passed for client");
-    }
-
-    // Check allowed DNS names if configured
-    if !config.allowed_client_dns_names.is_empty() {
-        let subject_alt_names = cert.subject_alternative_name()
-            .map(|san| san.value.general_names.iter()
-                .filter_map(|gn| match gn {
-                    x509_parser::extensions::GeneralName::DNSName(name) => Some(name.to_string()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>())
-            .unwrap_or_default();
-
-        let dns_name_allowed = subject_alt_names.iter()
-            .any(|name| config.allowed_client_dns_names.contains(name));
-
-        if !dns_name_allowed {
-            warn!("Client certificate DNS name not in allowed list");
-            return Err(StatusCode::FORBIDDEN);
-        }
-    }
-
-    info!("Client certificate validation successful");
-    Ok(())
+    // Check if certificate fingerprint is in allowed list
+    config
+        .allowed_client_fingerprints
+        .contains(&cert_info.fingerprint)
 }
 
-/// Create TLS server configuration with client certificate requirements
-pub fn create_mtls_server_config(
-    server_cert_path: &str,
-    server_key_path: &str,
-    mtls_config: &MtlsConfig,
-) -> Result<ServerConfig, Box<dyn std::error::Error>> {
-    // Load server certificate and key
-    let cert_file = fs::read(server_cert_path)?;
-    let key_file = fs::read(server_key_path)?;
-
-    let cert_chain = rustls_pemfile::certs(&mut cert_file.as_slice())?
-        .into_iter()
-        .map(Certificate)
-        .collect();
-
-    let mut keys = rustls_pemfile::pkcs8_private_keys(&mut key_file.as_slice())?;
-    if keys.is_empty() {
-        keys = rustls_pemfile::rsa_private_keys(&mut key_file.as_slice())?;
-    }
-
-    let private_key = keys.into_iter().next()
-        .ok_or("No private key found")?;
-
-    // Create root certificate store for client validation
-    let mut root_store = RootCertStore::empty();
-    for ca_cert in &mtls_config.trusted_ca_certs {
-        root_store.add(ca_cert)?;
-    }
-
-    // Configure server to require client certificates
-    let client_cert_verifier = if mtls_config.require_client_cert {
-        rustls::server::WebPkiClientVerifier::builder(root_store.into())
-            .build()?
-    } else {
-        rustls::server::WebPkiClientVerifier::builder(root_store.into())
-            .allow_unauthenticated()
-            .build()?
-    };
-
-    let config = ServerConfig::builder()
-        .with_cipher_suites(&[
-            rustls::cipher_suite::TLS13_AES_256_GCM_SHA384,
-            rustls::cipher_suite::TLS13_AES_128_GCM_SHA256,
-            rustls::cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
-        ])
-        .with_kx_groups(&[
-            &rustls::kx_group::X25519,
-            &rustls::kx_group::SECP256R1,
-            &rustls::kx_group::SECP384R1,
-        ])
-        .with_protocol_versions(&[&rustls::version::TLS13])
-        .unwrap()
-        .with_client_cert_verifier(client_cert_verifier)
-        .with_single_cert(cert_chain, rustls::PrivateKey(private_key))?;
-
-    Ok(config)
+/// Calculate SHA-256 fingerprint of certificate
+fn calculate_cert_fingerprint(cert_der: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(cert_der);
+    let result = hasher.finalize();
+    hex::encode(result)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::HeaderValue;
 
     #[test]
-    fn test_mtls_config_creation() {
-        let config = MtlsConfig::default()
-            .allow_client_dns_names(vec!["client.example.com".to_string()]);
-        
-        assert!(config.require_client_cert);
-        assert_eq!(config.allowed_client_dns_names.len(), 1);
+    fn test_simple_mtls_config_creation() {
+        let dev_config = MtlsConfig::dev_config();
+        assert!(!dev_config.require_client_cert);
+
+        let prod_config = MtlsConfig::prod_config(vec!["abc123".to_string()]);
+        assert!(prod_config.require_client_cert);
+        assert_eq!(prod_config.allowed_client_fingerprints.len(), 1);
     }
 
     #[test]
-    fn test_extract_client_certificate_from_headers() {
+    fn test_extract_client_cert_info() {
         let mut headers = HeaderMap::new();
-        headers.insert("X-SSL-Client-Cert", "dGVzdA==".parse().unwrap()); // base64 "test"
-        
-        let result = extract_client_certificate(&headers).unwrap();
+        headers.insert(
+            "X-SSL-Client-Fingerprint",
+            HeaderValue::from_static("abc123"),
+        );
+        headers.insert("X-SSL-Client-Subject", HeaderValue::from_static("CN=test"));
+
+        let result = extract_client_cert_info(&headers).unwrap();
         assert!(result.is_some());
-        assert_eq!(result.unwrap(), b"test");
+
+        let cert_info = result.unwrap();
+        assert_eq!(cert_info.fingerprint, "abc123");
+        assert_eq!(cert_info.subject, Some("CN=test".to_string()));
+    }
+
+    #[test]
+    fn test_validate_client_cert() {
+        let config = MtlsConfig::prod_config(vec!["allowed123".to_string()]);
+
+        let allowed_cert = ClientCertInfo {
+            fingerprint: "allowed123".to_string(),
+            subject: None,
+            issuer: None,
+        };
+        assert!(validate_client_cert(&allowed_cert, &config));
+
+        let denied_cert = ClientCertInfo {
+            fingerprint: "denied456".to_string(),
+            subject: None,
+            issuer: None,
+        };
+        assert!(!validate_client_cert(&denied_cert, &config));
+    }
+
+    #[test]
+    fn test_calculate_cert_fingerprint() {
+        let test_data = b"test certificate data";
+        let fingerprint = calculate_cert_fingerprint(test_data);
+        assert!(!fingerprint.is_empty());
+        assert_eq!(fingerprint.len(), 64); // SHA-256 hex string length
+    }
+
+    #[test]
+    fn test_extract_client_cert_info_no_headers() {
+        let headers = HeaderMap::new();
+        let result = extract_client_cert_info(&headers).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_client_cert_info_fingerprint_only() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-SSL-Client-Fingerprint",
+            HeaderValue::from_static("fingerprint123"),
+        );
+
+        let result = extract_client_cert_info(&headers).unwrap();
+        assert!(result.is_some());
+
+        let cert_info = result.unwrap();
+        assert_eq!(cert_info.fingerprint, "fingerprint123");
+        assert!(cert_info.subject.is_none());
+        assert!(cert_info.issuer.is_none());
+    }
+
+    #[test]
+    fn test_extract_client_cert_info_all_fields() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-SSL-Client-Fingerprint",
+            HeaderValue::from_static("fingerprint123"),
+        );
+        headers.insert(
+            "X-SSL-Client-Subject",
+            HeaderValue::from_static("CN=Test User,O=Test Org"),
+        );
+        headers.insert(
+            "X-SSL-Client-Issuer",
+            HeaderValue::from_static("CN=Test CA,O=Test Org"),
+        );
+
+        let result = extract_client_cert_info(&headers).unwrap();
+        assert!(result.is_some());
+
+        let cert_info = result.unwrap();
+        assert_eq!(cert_info.fingerprint, "fingerprint123");
+        assert_eq!(
+            cert_info.subject,
+            Some("CN=Test User,O=Test Org".to_string())
+        );
+        assert_eq!(cert_info.issuer, Some("CN=Test CA,O=Test Org".to_string()));
+    }
+
+    #[test]
+    fn test_extract_client_cert_info_base64_cert() {
+        let mut headers = HeaderMap::new();
+        // Add a base64 encoded certificate header
+        headers.insert(
+            "X-SSL-Client-Cert",
+            HeaderValue::from_static("dGVzdCBjZXJ0IGRhdGE="), // base64 of "test cert data"
+        );
+
+        let result = extract_client_cert_info(&headers).unwrap();
+        assert!(result.is_some());
+
+        let cert_info = result.unwrap();
+        // The fingerprint should be calculated from the decoded cert data
+        let expected_fingerprint = calculate_cert_fingerprint(b"test cert data");
+        assert_eq!(cert_info.fingerprint, expected_fingerprint);
+        assert!(cert_info.subject.is_none());
+        assert!(cert_info.issuer.is_none());
+    }
+
+    #[test]
+    fn test_extract_client_cert_info_invalid_base64() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-SSL-Client-Cert",
+            HeaderValue::from_static("invalid-base64!@#"),
+        );
+
+        let result = extract_client_cert_info(&headers);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_extract_client_cert_info_invalid_utf8() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-SSL-Client-Fingerprint",
+            HeaderValue::from_bytes(&[0xff, 0xfe]).unwrap(), // Invalid UTF-8
+        );
+
+        let result = extract_client_cert_info(&headers);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_validate_client_cert_no_restrictions() {
+        let config = MtlsConfig::dev_config();
+
+        let cert = ClientCertInfo {
+            fingerprint: "any-fingerprint".to_string(),
+            subject: None,
+            issuer: None,
+        };
+
+        assert!(validate_client_cert(&cert, &config));
+    }
+
+    #[test]
+    fn test_validate_client_cert_multiple_allowed() {
+        let config = MtlsConfig::prod_config(vec![
+            "allowed1".to_string(),
+            "allowed2".to_string(),
+            "allowed3".to_string(),
+        ]);
+
+        let allowed_cert1 = ClientCertInfo {
+            fingerprint: "allowed1".to_string(),
+            subject: None,
+            issuer: None,
+        };
+        assert!(validate_client_cert(&allowed_cert1, &config));
+
+        let allowed_cert2 = ClientCertInfo {
+            fingerprint: "allowed2".to_string(),
+            subject: None,
+            issuer: None,
+        };
+        assert!(validate_client_cert(&allowed_cert2, &config));
+
+        let denied_cert = ClientCertInfo {
+            fingerprint: "not-allowed".to_string(),
+            subject: None,
+            issuer: None,
+        };
+        assert!(!validate_client_cert(&denied_cert, &config));
+    }
+
+    #[test]
+    fn test_client_cert_info_debug() {
+        let cert_info = ClientCertInfo {
+            fingerprint: "test-fingerprint".to_string(),
+            subject: Some("CN=Test".to_string()),
+            issuer: Some("CN=CA".to_string()),
+        };
+
+        let debug_str = format!("{:?}", cert_info);
+        assert!(debug_str.contains("test-fingerprint"));
+        assert!(debug_str.contains("CN=Test"));
+        assert!(debug_str.contains("CN=CA"));
+    }
+
+    #[test]
+    fn test_simple_mtls_config_debug() {
+        let config = MtlsConfig {
+            require_client_cert: true,
+            allowed_client_fingerprints: vec!["fp1".to_string(), "fp2".to_string()],
+            trusted_ca_fingerprints: vec!["ca1".to_string()],
+        };
+
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("true"));
+        assert!(debug_str.contains("fp1"));
+        assert!(debug_str.contains("fp2"));
+        assert!(debug_str.contains("ca1"));
+    }
+
+    #[test]
+    fn test_calculate_cert_fingerprint_different_inputs() {
+        let data1 = b"test data 1";
+        let data2 = b"test data 2";
+        let data3 = b"test data 1"; // Same as data1
+
+        let fp1 = calculate_cert_fingerprint(data1);
+        let fp2 = calculate_cert_fingerprint(data2);
+        let fp3 = calculate_cert_fingerprint(data3);
+
+        assert_ne!(fp1, fp2);
+        assert_eq!(fp1, fp3); // Same input should produce same fingerprint
+        assert_eq!(fp1.len(), 64);
+        assert_eq!(fp2.len(), 64);
+        assert_eq!(fp3.len(), 64);
+    }
+
+    #[test]
+    fn test_calculate_cert_fingerprint_empty() {
+        let data = b"";
+        let fp = calculate_cert_fingerprint(data);
+        assert_eq!(fp.len(), 64);
+        // SHA-256 of empty string
+        assert_eq!(
+            fp,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 }

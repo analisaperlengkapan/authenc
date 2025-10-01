@@ -25,8 +25,12 @@ use once_cell::sync::Lazy;
 ///
 /// # Migration
 /// Migrate to: `authenc::crypto::ed25519_keys`
+#[deprecated(since = "1.0.0", note = "Use Ed25519 keys instead - RSA is insecure")]
 pub static RSA_KEYPAIR: Lazy<()> =
-    Lazy::new(|| panic!("Legacy RSA keys disabled - use Ed25519 implementation"));
+    Lazy::new(|| {
+        log::error!("SECURITY: Attempted to use legacy RSA keys - use Ed25519 implementation");
+        ()
+    });
 
 /// DEPRECATED: Get public key in PEM format - DISABLED FOR SECURITY
 ///
@@ -43,8 +47,10 @@ pub static RSA_KEYPAIR: Lazy<()> =
 /// ```rust
 /// use authenc::crypto::ed25519_keys::get_ed25519_public_pem;
 /// ```
-pub fn get_public_pem() -> String {
-    panic!("Legacy RSA PEM disabled - use Ed25519 implementation")
+#[deprecated(since = "1.0.0", note = "Use Ed25519 public key functions instead - RSA is insecure")]
+pub fn get_public_pem() -> Result<String, String> {
+    log::error!("SECURITY: Attempted to use legacy RSA PEM - use Ed25519 implementation");
+    Err("Legacy RSA PEM disabled - use Ed25519 implementation (see crypto/ed25519_keys.rs)".to_string())
 }
 
 /// DEPRECATED: Get private key in PEM format - DISABLED FOR SECURITY
@@ -63,6 +69,8 @@ pub fn get_public_pem() -> String {
 /// ```rust
 /// use authenc::crypto::ed25519_keys::sign_ed25519;
 /// ```
-pub fn get_private_pem() -> String {
-    panic!("Legacy RSA private PEM disabled - use Ed25519 implementation")
+#[deprecated(since = "1.0.0", note = "Use Ed25519 signing functions instead - RSA is insecure")]
+pub fn get_private_pem() -> Result<String, String> {
+    log::error!("SECURITY: Attempted to use legacy RSA private PEM - use Ed25519 implementation");
+    Err("Legacy RSA private PEM disabled - use Ed25519 implementation (see crypto/ed25519_keys.rs)".to_string())
 }

@@ -314,6 +314,10 @@ pub fn generate_access_token(claims: &AccessTokenClaims) -> String {
     };
 
     CryptoMonitor::monitor_rsa_operation("ed25519_access_token_signing", || {
+        // SAFETY NOTE: These serializations are safe to unwrap because:
+        // 1. Ed25519JwtHeader and OAuth2Claims have simple string fields
+        // 2. String serialization to JSON cannot fail for well-formed structs
+        // 3. If serialization fails, it indicates a critical bug that should be caught in testing
         let header_json = serde_json::to_string(&header).unwrap();
         let claims_json = serde_json::to_string(&claims).unwrap();
 
@@ -368,6 +372,10 @@ pub fn generate_id_token(
     }
 
     CryptoMonitor::monitor_rsa_operation("ed25519_id_token_signing", || {
+        // SAFETY NOTE: These serializations are safe to unwrap because:
+        // 1. Ed25519JwtHeader and OAuth2IdTokenClaims have simple string fields
+        // 2. String serialization to JSON cannot fail for well-formed structs
+        // 3. If serialization fails, it indicates a critical bug that should be caught in testing
         let header_json = serde_json::to_string(&header).unwrap();
         let claims_json = serde_json::to_string(&claims).unwrap();
 

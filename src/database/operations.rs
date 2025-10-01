@@ -3260,6 +3260,10 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
         param_index += 1;
     }
 
+    // SECURITY: This is SAFE from SQL injection because:
+    // 1. The where_clause only contains parameterized query placeholders ($1, $2, etc.)
+    // 2. Actual user data is passed via params vector and properly escaped by tokio_postgres
+    // 3. The format! is only building query structure, NOT interpolating user data
     let where_clause = if conditions.is_empty() {
         String::new()
     } else {
@@ -3269,6 +3273,10 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
     let limit = query.max_results.unwrap_or(100).min(1000);
     let offset = query.first_result.unwrap_or(0);
 
+    // SECURITY NOTE: Using format! here is safe because:
+    // - where_clause contains only SQL structure with $N placeholders
+    // - param_index values are integers generated internally
+    // - All user data goes through parameterized queries (params vector)
     let query_sql = format!(
         r#"
             SELECT
@@ -3376,6 +3384,10 @@ pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Resul
         param_index += 1;
     }
 
+    // SECURITY: This is SAFE from SQL injection because:
+    // 1. The where_clause only contains parameterized query placeholders ($1, $2, etc.)
+    // 2. Actual user data is passed via params vector and properly escaped by tokio_postgres
+    // 3. The format! is only building query structure, NOT interpolating user data
     let where_clause = if conditions.is_empty() {
         String::new()
     } else {
@@ -3385,6 +3397,10 @@ pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Resul
     let limit = query.max_results.unwrap_or(100).min(1000);
     let offset = query.first_result.unwrap_or(0);
 
+    // SECURITY NOTE: Using format! here is safe because:
+    // - where_clause contains only SQL structure with $N placeholders
+    // - param_index values are integers generated internally
+    // - All user data goes through parameterized queries (params vector)
     let query_sql = format!(
         r#"
             SELECT

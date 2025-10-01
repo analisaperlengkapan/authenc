@@ -104,6 +104,10 @@ pub fn generate_ed25519_jwt(
     // Monitor Ed25519 operations for security
     CryptoMonitor::monitor_rsa_operation("ed25519_jwt_signing", || {
         // Encode header and payload
+        // SAFETY NOTE: These serializations are safe to unwrap because:
+        // 1. Ed25519JwtHeader and Ed25519JwtClaims have simple string/number fields
+        // 2. Serialization of these types cannot fail unless there's a memory issue
+        // 3. If serialization fails, it indicates a critical system error
         let header_json = serde_json::to_string(&header).unwrap();
         let claims_json = serde_json::to_string(&claims).unwrap();
 

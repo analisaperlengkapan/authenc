@@ -19,6 +19,8 @@ pub mod managers;
 pub mod par;
 /// Password policy enforcement and validation
 pub mod password_policy;
+/// Comprehensive security testing framework - SUPERIOR TO KEYCLOAK
+pub mod security_testing;
 
 // Storage abstraction layer
 // pub mod storage;

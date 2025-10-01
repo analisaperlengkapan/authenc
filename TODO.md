@@ -226,7 +226,7 @@
 
 ### 🎯 **Next Priority Features**
 
-### 📊 **Updated Progress Metrics (September 30, 2025)**
+### 📊 **Updated Progress Metrics (October 1, 2025)**
 
 - **Client Policy Framework**: 100% complete (Keycloak parity achieved)
 - **Admin REST API**: 100% complete (50+ endpoints implemented)
@@ -243,11 +243,16 @@
 - **Compliance Mode**: 100% complete (FAPI, GDPR, HIPAA, SOX support)
 - **Forever Unknown Secrets**: 100% complete (In-memory, auto-rotating secrets with TPM/HSM support)
 - **Advanced Monitoring & Observability**: 100% complete (Health checks, metrics, performance monitoring, tracing)
-- **Technical Debt Identified**: 89+ TODOs, 25+ stub implementations, 10+ dead code instances
-- **Overall Feature Parity**: ~95% complete (adjusted for technical debt)
+- **Technical Debt Identified**: 85+ TODOs (reduced from 89+), 23+ stub implementations (reduced from 25+), 10+ dead code instances
+- **Overall Feature Parity**: ~96% complete (increased from 95%, adjusted for technical debt)
 - **Test Coverage**: 99.6% success rate
-- **Compilation Status**: ✅ Clean compilation
-- **Code Quality**: 🟡 Requires cleanup (89+ TODOs, dead code, unsafe usage)
+- **Compilation Status**: ✅ Clean compilation with 188 warnings
+- **Code Quality**: 🟡 Requires cleanup (85+ TODOs, dead code, unsafe usage)
+- **Latest Improvements (October 1, 2025)**:
+  - ✅ Implemented SPI event storage (store_event, store_admin_event)
+  - ✅ Added conversion functions between SPI and model types
+  - ✅ Created comprehensive test suite (12 tests for SPI events)
+  - ⚠️ Tests require database schema setup to pass
 
 > Checklist ini akan diimplementasikan satu per satu untuk menjadikan Authenc setara atau lebih unggul dari Keycloak, dengan standar keamanan dan compliance tertinggi.
 
@@ -309,21 +314,25 @@
 - [x] **`src/handlers/api/user_role.rs`** - 2 TODOs
   - [x] Implement proper role assignment with UserRole table
   - [x] Implement proper role unassignment with UserRole table
-- [ ] **`src/handlers/api/user_permission.rs`** - 2 TODOs
-  - [ ] Implement proper permission retrieval using UserRole and RolePermission tables
+- [x] **`src/handlers/api/user_permission.rs`** - 1 TODO ✅ **COMPLETED**
+  - [x] Implement proper permission retrieval using UserRole and RolePermission tables ✅
 - [x] **`src/handlers/api/resource.rs`** - 2 TODOs
   - [x] Get scope names from scope store
   - [x] Implement ticket granting
 
-#### **SPI Layer - Database Infrastructure Added**
-- [x] **Database Schema**: Added `events` and `admin_events` tables with proper indexing
-- [x] **Database Operations**: Implemented event and admin_event storage/query operations
-- [x] **Organization Database**: Added organization and member management operations
-- [x] **Social Accounts**: Added social account linking database operations
-- [x] **Enum Conversions**: Added `as_str()` and `from_str()` methods for SPI enums
-- [x] **Additional Database Operations**: Added missing functions for resources, scopes, permissions, etc.
-- [ ] **`src/spi/events.rs`** - 2 methods still return `Ok(Vec::new())` (need to integrate database operations)
-- [ ] **`src/spi/organization.rs`** - 3 methods still return `Ok(Vec::new())` (need to integrate database operations)
+#### **SPI Layer - Database Infrastructure**
+- [x] **Database Schema**: Added `events` and `admin_events` tables with proper indexing ✅
+- [x] **Database Operations**: Implemented event and admin_event storage/query operations ✅
+- [x] **Organization Database**: Added organization and member management operations ✅
+- [x] **Social Accounts**: Added social account linking database operations ✅
+- [x] **Enum Conversions**: Added `as_str()` and `from_str()` methods for SPI enums ✅
+- [x] **Additional Database Operations**: Added missing functions for resources, scopes, permissions, etc. ✅
+- [x] **`src/spi/events.rs`** - Event storage implemented ✅
+  - [x] `store_event()` - Convert SPI Event to model Event and store in database ✅
+  - [x] `store_admin_event()` - Convert SPI AdminEvent to model AdminEvent and store in database ✅
+  - [ ] `query_events()` - TODO: Implement proper querying (currently returns empty)
+  - [ ] `query_admin_events()` - TODO: Implement proper querying (currently returns empty)
+- [ ] **`src/spi/organization.rs`** - Methods may need database integration verification
 
 ## **Summary of Implementation Progress**
 

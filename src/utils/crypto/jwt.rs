@@ -27,7 +27,44 @@ pub struct Claims {
     pub exp: usize,
 }
 
-const SECRET: &[u8] = b"supersecretkey";
+// SECURITY NOTE: Previously had hardcoded secret here. Now removed for security.
+// JWT signing now uses Ed25519 keypair (see crypto/ed25519_keys.rs)
+// If symmetric signing is needed, use get_jwt_secret() function below.
+
+/// Get JWT secret from environment variable or secure configuration
+///
+/// This function retrieves the JWT secret from the environment variable `JWT_SECRET`.
+/// If not found, it falls back to a test-only value (NOT for production).
+///
+/// # Security Considerations
+/// - ALWAYS set JWT_SECRET environment variable in production
+/// - Never use hardcoded secrets
+/// - Rotate secrets regularly
+/// - Use strong random secrets (at least 32 bytes)
+///
+/// # Returns
+/// A `Result` containing the secret bytes on success, or an error string on failure
+fn get_jwt_secret() -> Result<Vec<u8>, String> {
+    // Try to get from environment variable
+    if let Ok(secret) = std::env::var("JWT_SECRET") {
+        if secret.is_empty() {
+            return Err("JWT_SECRET environment variable is empty".to_string());
+        }
+        return Ok(secret.into_bytes());
+    }
+    
+    // For development/testing only - should NEVER reach here in production
+    #[cfg(debug_assertions)]
+    {
+        log::warn!("JWT_SECRET not set! Using insecure default. DO NOT USE IN PRODUCTION!");
+        return Ok(b"test-secret-for-development-only-change-in-production".to_vec());
+    }
+    
+    #[cfg(not(debug_assertions))]
+    {
+        Err("JWT_SECRET environment variable must be set in production".to_string())
+    }
+}
 
 /// Generate a JWT token for user authentication using Ed25519
 ///

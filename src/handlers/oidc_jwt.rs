@@ -36,7 +36,7 @@ pub struct OidcIdTokenClaims {
 
 /// Legacy JWT generation function - DEPRECATED
 ///
-/// This function is deprecated and will panic if called.
+/// This function is deprecated and will return an error if called.
 /// Use generate_ed25519_jwt from handlers/oidc_ed25519.rs instead.
 ///
 /// # Arguments
@@ -47,19 +47,20 @@ pub struct OidcIdTokenClaims {
 /// * `role` - User's role/authorization level
 ///
 /// # Returns
-/// This function will panic - do not use
+/// Always returns an error indicating this function is deprecated
 ///
 /// # Security Considerations
 /// - Legacy RSA implementation removed due to security vulnerabilities
 /// - RSA signatures are susceptible to timing attacks
 /// - Use Ed25519 implementation for secure JWT signing
+#[deprecated(since = "1.0.0", note = "Use generate_ed25519_jwt instead - RSA JWT signing is insecure")]
 pub fn generate_id_token(
     sub: &str,
     aud: &str,
     email: Option<&str>,
     name: Option<&str>,
     role: Option<&str>,
-) -> String {
+) -> Result<String, String> {
     let now = Utc::now().timestamp() as usize;
     let _claims = OidcIdTokenClaims {
         iss: "http://localhost:8080/v1".to_string(),
@@ -73,5 +74,5 @@ pub fn generate_id_token(
     };
     // DEPRECATED: Legacy RSA implementation removed for security
     // Use handlers/oidc_ed25519.rs for secure Ed25519 JWT signing instead
-    panic!("Legacy RSA JWT signing disabled - use Ed25519 implementation")
+    Err("Legacy RSA JWT signing disabled - use Ed25519 implementation (see handlers/oidc_ed25519.rs)".to_string())
 }

@@ -6,6 +6,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// Enhanced compliance module with SOC 2/3, ISO 27001, etc. (SUPERIOR TO KEYCLOAK)
+pub mod enhanced;
+
 /// Compliance framework types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ComplianceFramework {

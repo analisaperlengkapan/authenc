@@ -4,6 +4,7 @@ impl Default for FederationRegistry {
     }
 }
 use crate::models::user::User;
+use subtle::ConstantTimeEq;
 
 /// Trait for federation providers that can authenticate users from external systems
 pub trait FederationProvider: Send + Sync {
@@ -94,7 +95,23 @@ impl FederationProvider for DummyFederationProvider {
             None
         }
     }
+    
+    /// Verify password using constant-time comparison to prevent timing attacks
+    ///
+    /// # Security
+    /// - Uses constant-time comparison to prevent timing attacks
+    /// - Attacker cannot infer password by measuring response time
+    /// - In production, passwords should be hashed with bcrypt/argon2
     fn verify_password(&self, username: &str, password: &str) -> bool {
-        username == "federated" && password == "federatedpass"
+        // Expected credentials (in production, these should be hashed)
+        let expected_username = b"federated";
+        let expected_password = b"federatedpass";
+        
+        // Constant-time comparison for both username and password
+        let username_match = username.as_bytes().ct_eq(expected_username);
+        let password_match = password.as_bytes().ct_eq(expected_password);
+        
+        // Both must match - using & instead of && for constant-time evaluation
+        (username_match & password_match).into()
     }
 }

@@ -56,10 +56,10 @@ pub mod input_validation_axum;
 
 /// Mutual TLS (mTLS) authentication middleware
 ///
-/// Implements client certificate authentication.
-/// Validates client certificates against trusted Certificate Authorities.
-/// Provides high-security authentication for sensitive operations.
-pub mod mtls_simple;
+/// Provides client certificate validation for API endpoints.
+/// Can be configured to work with reverse proxies that handle
+/// TLS termination and forward certificate information via headers.
+pub mod mtls;
 
 /// Security headers middleware for Axum
 ///
