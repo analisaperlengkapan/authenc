@@ -1,8 +1,8 @@
 use authenc::config::AppConfig;
 use authenc::database::Database;
 use authenc::spi::events::{
-    AdminEvent, AdminEventAuthDetails, AdminEventOperationType, Event, EventType,
-    DefaultEventProvider, EventStoreProvider,
+    AdminEvent, AdminEventAuthDetails, AdminEventOperationType, DefaultEventProvider, Event,
+    EventStoreProvider, EventType,
 };
 use chrono::Utc;
 use std::collections::HashMap;
@@ -92,7 +92,11 @@ async fn test_store_event_multiple_types() {
         };
 
         let result = provider.store_event(event).await;
-        assert!(result.is_ok(), "Store event type {:?} should succeed", event_type);
+        assert!(
+            result.is_ok(),
+            "Store event type {:?} should succeed",
+            event_type
+        );
     }
 }
 
@@ -218,7 +222,10 @@ async fn test_store_admin_event_with_error() {
     };
 
     let result = provider.store_admin_event(admin_event).await;
-    assert!(result.is_ok(), "Store admin event with error should succeed");
+    assert!(
+        result.is_ok(),
+        "Store admin event with error should succeed"
+    );
 }
 
 #[tokio::test]
@@ -229,7 +236,10 @@ async fn test_store_event_with_details() {
     let mut details = HashMap::new();
     details.insert("auth_method".to_string(), "password".to_string());
     details.insert("remember_me".to_string(), "true".to_string());
-    details.insert("redirect_uri".to_string(), "https://example.com/callback".to_string());
+    details.insert(
+        "redirect_uri".to_string(),
+        "https://example.com/callback".to_string(),
+    );
 
     let event = Event {
         id: uuid::Uuid::new_v4().to_string(),
@@ -259,7 +269,11 @@ async fn test_store_multiple_events_bulk() {
         let event = Event {
             id: uuid::Uuid::new_v4().to_string(),
             time: Utc::now(),
-            event_type: if i % 2 == 0 { EventType::Login } else { EventType::Logout },
+            event_type: if i % 2 == 0 {
+                EventType::Login
+            } else {
+                EventType::Logout
+            },
             realm_id: Some("test-realm".to_string()),
             client_id: Some(format!("client-{}", i)),
             user_id: Some(format!("user-{}", i)),
@@ -295,7 +309,10 @@ async fn test_event_without_database() {
 
     // Should succeed even without database (no-op)
     let result = provider.store_event(event).await;
-    assert!(result.is_ok(), "Store event without database should succeed (no-op)");
+    assert!(
+        result.is_ok(),
+        "Store event without database should succeed (no-op)"
+    );
 }
 
 #[tokio::test]
@@ -320,5 +337,8 @@ async fn test_admin_event_without_database() {
 
     // Should succeed even without database (no-op)
     let result = provider.store_admin_event(admin_event).await;
-    assert!(result.is_ok(), "Store admin event without database should succeed (no-op)");
+    assert!(
+        result.is_ok(),
+        "Store admin event without database should succeed (no-op)"
+    );
 }

@@ -316,7 +316,7 @@ impl ComplianceModeService {
                     .await?,
             );
             results.push(
-                GDPRComplianceChecks::consent_management_check()
+                GDPRComplianceChecks::consent_management_check(None) // TODO: Pass actual ConsentStore when available
                     .execute()
                     .await?,
             );

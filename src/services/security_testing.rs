@@ -2,12 +2,12 @@
 //
 // This module provides comprehensive security testing capabilities
 // including penetration testing, vulnerability scanning, and compliance testing.
-// 
+//
 // SUPERIOR TO KEYCLOAK: More comprehensive and automated security testing
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 
 /// Security test suite for comprehensive security validation
 pub mod security_tests {
@@ -115,7 +115,8 @@ pub mod security_tests {
 
             // Check if timing variance is minimal (< 1ms)
             let avg_time = timings.iter().sum::<Duration>() / timings.len() as u32;
-            let max_variance = timings.iter()
+            let max_variance = timings
+                .iter()
                 .map(|t| {
                     if *t > avg_time {
                         *t - avg_time
@@ -133,7 +134,8 @@ pub mod security_tests {
                 test_name: "Timing Attack Resistance".to_string(),
                 passed,
                 severity: SecuritySeverity::High,
-                description: "Tests resistance to timing attacks on password comparison".to_string(),
+                description: "Tests resistance to timing attacks on password comparison"
+                    .to_string(),
                 remediation: None, // Fixed with constant-time comparison using subtle crate
                 cve_references: vec!["CWE-208".to_string()],
             }
@@ -197,7 +199,8 @@ pub mod security_tests {
                 test_name: "Dependency Vulnerability Scan".to_string(),
                 passed: true,
                 severity: SecuritySeverity::High,
-                description: "Scans dependencies for known vulnerabilities (cargo audit)".to_string(),
+                description: "Scans dependencies for known vulnerabilities (cargo audit)"
+                    .to_string(),
                 remediation: Some("Run 'cargo audit' regularly".to_string()),
                 cve_references: vec![],
             }
@@ -209,7 +212,8 @@ pub mod security_tests {
                 test_name: "Weak Cryptography Scan".to_string(),
                 passed: true, // Using Ed25519, not RSA
                 severity: SecuritySeverity::Critical,
-                description: "Scans for weak cryptographic algorithms (MD5, SHA1, DES, RSA<2048)".to_string(),
+                description: "Scans for weak cryptographic algorithms (MD5, SHA1, DES, RSA<2048)"
+                    .to_string(),
                 remediation: None,
                 cve_references: vec!["CWE-327".to_string()],
             }
@@ -339,30 +343,39 @@ pub mod security_tests {
 
         /// Run all penetration tests
         pub fn run_penetration_tests(&mut self) {
-            self.results.push(penetration_tests::test_sql_injection_resistance());
+            self.results
+                .push(penetration_tests::test_sql_injection_resistance());
             self.results.push(penetration_tests::test_xss_resistance());
             self.results.push(penetration_tests::test_csrf_protection());
-            self.results.push(penetration_tests::test_timing_attack_resistance());
-            self.results.push(penetration_tests::test_brute_force_protection());
-            self.results.push(penetration_tests::test_session_fixation_protection());
+            self.results
+                .push(penetration_tests::test_timing_attack_resistance());
+            self.results
+                .push(penetration_tests::test_brute_force_protection());
+            self.results
+                .push(penetration_tests::test_session_fixation_protection());
         }
 
         /// Run all vulnerability scans
         pub fn run_vulnerability_scans(&mut self) {
-            self.results.push(vulnerability_scans::scan_hardcoded_secrets());
+            self.results
+                .push(vulnerability_scans::scan_hardcoded_secrets());
             self.results.push(vulnerability_scans::scan_dependencies());
-            self.results.push(vulnerability_scans::scan_weak_cryptography());
-            self.results.push(vulnerability_scans::scan_insecure_deserialization());
+            self.results
+                .push(vulnerability_scans::scan_weak_cryptography());
+            self.results
+                .push(vulnerability_scans::scan_insecure_deserialization());
         }
 
         /// Run all compliance tests
         pub fn run_compliance_tests(&mut self) {
             self.results.push(compliance_tests::test_soc2_compliance());
             self.results.push(compliance_tests::test_soc3_compliance());
-            self.results.push(compliance_tests::test_iso27001_compliance());
+            self.results
+                .push(compliance_tests::test_iso27001_compliance());
             self.results.push(compliance_tests::test_gdpr_compliance());
             self.results.push(compliance_tests::test_hipaa_compliance());
-            self.results.push(compliance_tests::test_pci_dss_compliance());
+            self.results
+                .push(compliance_tests::test_pci_dss_compliance());
         }
 
         /// Run all security tests
@@ -424,10 +437,14 @@ pub mod security_tests {
             let base_score = (self.passed as f64 / self.total_tests as f64) * 100.0;
 
             // Penalize for failed critical/high severity tests
-            let critical_failed = self.results.iter()
+            let critical_failed = self
+                .results
+                .iter()
                 .filter(|r| !r.passed && r.severity == SecuritySeverity::Critical)
                 .count();
-            let high_failed = self.results.iter()
+            let high_failed = self
+                .results
+                .iter()
                 .filter(|r| !r.passed && r.severity == SecuritySeverity::High)
                 .count();
 
@@ -439,7 +456,9 @@ pub mod security_tests {
         pub fn is_production_ready(&self) -> bool {
             // No failed critical or high severity tests
             !self.results.iter().any(|r| {
-                !r.passed && (r.severity == SecuritySeverity::Critical || r.severity == SecuritySeverity::High)
+                !r.passed
+                    && (r.severity == SecuritySeverity::Critical
+                        || r.severity == SecuritySeverity::High)
             })
         }
     }
@@ -455,20 +474,29 @@ mod tests {
         runner.run_all_tests();
 
         let report = runner.generate_report();
-        
+
         assert!(report.passed > 0, "Should have passing tests");
         // Note: Some tests are simulated and may not fully pass without actual API endpoints
         // In production deployment, these would all pass with real infrastructure
-        assert!(report.total_tests >= 15, "Should have comprehensive test coverage");
+        assert!(
+            report.total_tests >= 15,
+            "Should have comprehensive test coverage"
+        );
         assert!(report.passed >= 10, "Should pass majority of tests");
         // Production readiness depends on no critical/high failures
-        let critical_high_failures = report.results.iter()
-            .filter(|r| !r.passed && (
-                r.severity == SecuritySeverity::Critical || 
-                r.severity == SecuritySeverity::High
-            ))
+        let critical_high_failures = report
+            .results
+            .iter()
+            .filter(|r| {
+                !r.passed
+                    && (r.severity == SecuritySeverity::Critical
+                        || r.severity == SecuritySeverity::High)
+            })
             .count();
-        assert_eq!(critical_high_failures, 0, "Should have no critical/high severity failures");
+        assert_eq!(
+            critical_high_failures, 0,
+            "Should have no critical/high severity failures"
+        );
     }
 
     #[test]
@@ -478,7 +506,10 @@ mod tests {
 
         let report = runner.generate_report();
         // Note: Some tests are simulated - in production, these would be actual API calls
-        assert!(report.total_tests >= 5, "Should have major penetration tests defined");
+        assert!(
+            report.total_tests >= 5,
+            "Should have major penetration tests defined"
+        );
         // Most should pass (some may be simulated)
         assert!(report.passed >= 3, "Should pass most penetration tests");
     }

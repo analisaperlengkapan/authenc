@@ -5,9 +5,9 @@
 //!
 //! SUPERIOR TO KEYCLOAK: More comprehensive compliance coverage
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
 
 /// Compliance standard types
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -428,21 +428,25 @@ pub struct ComplianceManager {
 impl ComplianceManager {
     pub fn new() -> Self {
         let mut controls = HashMap::new();
-        
-        controls.insert(ComplianceStandard::Soc2TypeII, soc2::get_trust_service_criteria());
+
+        controls.insert(
+            ComplianceStandard::Soc2TypeII,
+            soc2::get_trust_service_criteria(),
+        );
         controls.insert(ComplianceStandard::Iso27001, iso27001::get_controls());
         controls.insert(ComplianceStandard::Gdpr, gdpr::get_controls());
-        
+
         Self { controls }
     }
 
     pub fn get_compliance_score(&self, standard: ComplianceStandard) -> f64 {
         if let Some(controls) = self.controls.get(&standard) {
             let total = controls.len() as f64;
-            let implemented = controls.iter()
+            let implemented = controls
+                .iter()
                 .filter(|c| c.status == ControlStatus::Implemented)
                 .count() as f64;
-            
+
             (implemented / total) * 100.0
         } else {
             0.0
@@ -455,12 +459,21 @@ impl ComplianceManager {
 
     pub fn generate_compliance_report(&self, standard: ComplianceStandard) -> ComplianceReport {
         let controls = self.controls.get(&standard).cloned().unwrap_or_default();
-        
+
         let total = controls.len();
-        let implemented = controls.iter().filter(|c| c.status == ControlStatus::Implemented).count();
-        let partial = controls.iter().filter(|c| c.status == ControlStatus::PartiallyImplemented).count();
-        let not_implemented = controls.iter().filter(|c| c.status == ControlStatus::NotImplemented).count();
-        
+        let implemented = controls
+            .iter()
+            .filter(|c| c.status == ControlStatus::Implemented)
+            .count();
+        let partial = controls
+            .iter()
+            .filter(|c| c.status == ControlStatus::PartiallyImplemented)
+            .count();
+        let not_implemented = controls
+            .iter()
+            .filter(|c| c.status == ControlStatus::NotImplemented)
+            .count();
+
         ComplianceReport {
             standard,
             total_controls: total,
@@ -503,18 +516,27 @@ mod tests {
     fn test_soc2_compliance() {
         let manager = ComplianceManager::new();
         let report = manager.generate_compliance_report(ComplianceStandard::Soc2TypeII);
-        
-        assert!(report.compliance_score >= 100.0, "Should be SOC 2 compliant");
+
+        assert!(
+            report.compliance_score >= 100.0,
+            "Should be SOC 2 compliant"
+        );
         assert!(report.is_compliant, "Should be marked as compliant");
-        assert_eq!(report.not_implemented, 0, "All controls should be implemented");
+        assert_eq!(
+            report.not_implemented, 0,
+            "All controls should be implemented"
+        );
     }
 
     #[test]
     fn test_iso27001_compliance() {
         let manager = ComplianceManager::new();
         let report = manager.generate_compliance_report(ComplianceStandard::Iso27001);
-        
-        assert!(report.compliance_score >= 100.0, "Should be ISO 27001 compliant");
+
+        assert!(
+            report.compliance_score >= 100.0,
+            "Should be ISO 27001 compliant"
+        );
         assert!(report.is_compliant, "Should be marked as compliant");
     }
 
@@ -522,7 +544,7 @@ mod tests {
     fn test_gdpr_compliance() {
         let manager = ComplianceManager::new();
         let report = manager.generate_compliance_report(ComplianceStandard::Gdpr);
-        
+
         assert!(report.compliance_score >= 100.0, "Should be GDPR compliant");
         assert!(report.is_compliant, "Should be marked as compliant");
         assert!(report.implemented >= 6, "Should have key GDPR controls");

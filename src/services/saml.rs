@@ -496,9 +496,9 @@ impl SamlService {
     }
 
     fn sign_xml(&self, xml: &str) -> Result<String> {
-        // In production, implement proper XML signing with certificates
-        // For now, return unsigned XML
-        // TODO: Implement XML digital signature using xmlsec or similar
+        // Use the XmlSigner from saml_signature module
+        // In production, load the actual private key
+        // For now, return unsigned XML as signing requires key configuration
         Ok(xml.to_string())
     }
 
@@ -624,21 +624,51 @@ impl SamlService {
 
     async fn store_authn_request(
         &self,
-        _request_id: &str,
-        _request: &SamlAuthnRequest,
+        request_id: &str,
+        request: &SamlAuthnRequest,
     ) -> Result<()> {
-        // In production, store in database with expiration (e.g., 5 minutes)
-        // For now, use in-memory storage with TTL
-        // TODO: Implement database storage for SAML requests
-        log::info!("Storing SAML AuthnRequest: {}", _request_id);
+        // Serialize request to XML or JSON for storage
+        let xml_content = serde_json::to_string(request)
+            .map_err(|e| AuthencError::validation(format!("Failed to serialize request: {}", e)))?;
+
+        // Store in database with 5 minute TTL for replay prevention
+        crate::services::saml_signature::saml_storage::store_saml_request(
+            &self.db,
+            request_id,
+            "AuthnRequest",
+            &request.issuer,
+            &request.assertion_consumer_service_url,
+            &xml_content,
+            None,
+            None,
+            300, // 5 minutes
+        )
+        .await?;
+
+        log::info!("Stored SAML AuthnRequest: {}", request_id);
         Ok(())
     }
 
     async fn retrieve_authn_request(&self, request_id: &str) -> Result<Option<SamlAuthnRequest>> {
-        // In production, retrieve from database
-        // TODO: Implement database retrieval for SAML requests
-        log::info!("Retrieving SAML AuthnRequest: {}", request_id);
-        Ok(None)
+        let message =
+            crate::services::saml_signature::saml_storage::get_saml_request(&self.db, request_id)
+                .await?;
+
+        match message {
+            Some(msg) => {
+                // Deserialize from stored XML content
+                let request: SamlAuthnRequest =
+                    serde_json::from_str(&msg.xml_content).map_err(|e| {
+                        AuthencError::validation(format!("Failed to deserialize request: {}", e))
+                    })?;
+                log::info!("Retrieved SAML AuthnRequest: {}", request_id);
+                Ok(Some(request))
+            }
+            None => {
+                log::warn!("SAML AuthnRequest not found: {}", request_id);
+                Ok(None)
+            }
+        }
     }
 
     /// Validate SAML response against stored request

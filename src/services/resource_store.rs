@@ -100,102 +100,109 @@ impl ResourceStoreTrait for ResourceStore {
         resource_server_id: Uuid,
         owner: String,
     ) -> Result<Resource, AuthencError> {
-        let resource_value = serde_json::to_value(&request)
-            .map_err(|e| AuthencError::validation(format!("Invalid resource data: {}", e)))?;
-        crate::database::operations::resources::create_resource(&self.database, &resource_value)
-            .await
-            .map_err(|e| AuthencError::database(e.to_string()))?;
-
-        // For now, return a dummy resource since this is a stub
-        Ok(Resource {
-            id: Uuid::new_v4(),
-            name: request.name,
-            display_name: request.display_name,
-            uris: request.uris.unwrap_or_default(),
-            icon_uri: request.icon_uri,
-            resource_type: request.resource_type,
+        crate::database::operations::resources::create_resource(
+            &self.database,
+            request,
             owner,
-            enabled: true,
             realm_id,
             resource_server_id,
-            scopes: request.scopes.unwrap_or_default(),
-            attributes: std::collections::HashMap::new(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        })
+        )
+        .await
     }
 
     async fn get_resource(&self, id: Uuid) -> Result<Option<Resource>, AuthencError> {
-        // Stub implementation - return None
-        Ok(None)
+        crate::database::operations::resources::get_resource_by_id(&self.database, id).await
     }
 
     async fn get_resource_by_name(
         &self,
-        _name: &str,
-        _resource_server_id: Uuid,
+        name: &str,
+        resource_server_id: Uuid,
     ) -> Result<Option<Resource>, AuthencError> {
-        // Stub implementation - return None
-        Ok(None)
+        crate::database::operations::resources::get_resource_by_name(
+            &self.database,
+            name,
+            resource_server_id,
+        )
+        .await
     }
 
     async fn get_resources_by_owner(
         &self,
-        _owner: &str,
-        _first: Option<i32>,
-        _max: Option<i32>,
+        owner: &str,
+        first: Option<i32>,
+        max: Option<i32>,
     ) -> Result<Vec<Resource>, AuthencError> {
-        // Stub implementation - return empty vec
-        Ok(Vec::new())
+        crate::database::operations::resources::get_resources_by_owner(
+            &self.database,
+            owner,
+            first,
+            max,
+        )
+        .await
     }
 
     async fn get_resources_by_server(
         &self,
-        _resource_server_id: Uuid,
-        _first: Option<i32>,
-        _max: Option<i32>,
+        resource_server_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
     ) -> Result<Vec<Resource>, AuthencError> {
-        // Stub implementation - return empty vec
-        Ok(Vec::new())
+        crate::database::operations::resources::get_resources_by_server(
+            &self.database,
+            resource_server_id,
+            first,
+            max,
+        )
+        .await
     }
 
     async fn get_resources_by_realm(
         &self,
-        _realm_id: Uuid,
-        _first: Option<i32>,
-        _max: Option<i32>,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
     ) -> Result<Vec<Resource>, AuthencError> {
-        // Stub implementation - return empty vec
-        Ok(Vec::new())
+        crate::database::operations::resources::get_resources_by_realm(
+            &self.database,
+            realm_id,
+            first,
+            max,
+        )
+        .await
     }
 
     async fn update_resource(
         &self,
-        _id: Uuid,
-        _request: UpdateResourceRequest,
+        id: Uuid,
+        request: UpdateResourceRequest,
     ) -> Result<Resource, AuthencError> {
-        // Stub implementation - return error
-        Err(AuthencError::resource_not_found("Resource not found"))
+        crate::database::operations::resources::update_resource(&self.database, id, request).await
     }
 
-    async fn delete_resource(&self, _id: Uuid) -> Result<(), AuthencError> {
-        // Stub implementation - do nothing
-        Ok(())
+    async fn delete_resource(&self, id: Uuid) -> Result<(), AuthencError> {
+        crate::database::operations::resources::delete_resource(&self.database, id).await
     }
 
     async fn search_resources(
         &self,
-        _name: &str,
-        _realm_id: Uuid,
-        _first: Option<i32>,
-        _max: Option<i32>,
+        name: &str,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
     ) -> Result<Vec<Resource>, AuthencError> {
-        // Stub implementation - return empty vec
-        Ok(Vec::new())
+        crate::database::operations::resources::search_resources(
+            &self.database,
+            name,
+            realm_id,
+            first,
+            max,
+        )
+        .await
     }
 
-    async fn count_resources_by_owner(&self, _owner: &str) -> Result<i64, AuthencError> {
-        // Stub implementation - return 0
-        Ok(0)
+    async fn count_resources_by_owner(&self, owner: &str) -> Result<i64, AuthencError> {
+        crate::database::operations::resources::count_resources_by_owner(&self.database, owner)
+            .await
     }
 }

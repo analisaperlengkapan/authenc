@@ -471,6 +471,72 @@ impl DefaultEventProvider {
     pub fn add_listener(&mut self, listener: Box<dyn EventListenerProvider>) {
         self.listeners.push(listener);
     }
+    
+    /// Convert SPI EventType to Model EventType
+    fn convert_event_type(spi_type: EventType) -> crate::models::events::EventType {
+        use crate::models::events::EventType as ModelEventType;
+        match spi_type {
+            EventType::Login => ModelEventType::Login,
+            EventType::LoginError => ModelEventType::LoginError,
+            EventType::Register => ModelEventType::Register,
+            EventType::RegisterError => ModelEventType::RegisterError,
+            EventType::Logout => ModelEventType::Logout,
+            EventType::CodeToToken => ModelEventType::CodeToToken,
+            EventType::RefreshToken => ModelEventType::RefreshToken,
+            EventType::ClientLogin => ModelEventType::ClientLogin,
+            EventType::ClientLoginError => ModelEventType::ClientLoginError,
+            EventType::RefreshTokenError => ModelEventType::RefreshTokenError,
+            EventType::UpdateProfile => ModelEventType::UpdateProfile,
+            EventType::SendVerifyEmail => ModelEventType::SendVerifyEmail,
+            EventType::VerifyEmail => ModelEventType::VerifyEmail,
+            EventType::ResetPassword => ModelEventType::ResetPassword,
+            _ => ModelEventType::Login, // Default fallback for types not in model
+        }
+    }
+    
+    /// Convert Model EventType to SPI EventType
+    fn convert_model_event_type(model_type: crate::models::events::EventType) -> EventType {
+        use crate::models::events::EventType as ModelEventType;
+        match model_type {
+            ModelEventType::Login => EventType::Login,
+            ModelEventType::LoginError => EventType::LoginError,
+            ModelEventType::Register => EventType::Register,
+            ModelEventType::RegisterError => EventType::RegisterError,
+            ModelEventType::Logout => EventType::Logout,
+            ModelEventType::CodeToToken => EventType::CodeToToken,
+            ModelEventType::RefreshToken => EventType::RefreshToken,
+            ModelEventType::ClientLogin => EventType::ClientLogin,
+            ModelEventType::ClientLoginError => EventType::ClientLoginError,
+            ModelEventType::RefreshTokenError => EventType::RefreshTokenError,
+            ModelEventType::UpdateProfile => EventType::UpdateProfile,
+            ModelEventType::SendVerifyEmail => EventType::SendVerifyEmail,
+            ModelEventType::VerifyEmail => EventType::VerifyEmail,
+            ModelEventType::ResetPassword => EventType::ResetPassword,
+            _ => EventType::Login, // Default fallback
+        }
+    }
+    
+    /// Convert SPI AdminEventOperationType to Model OperationType
+    fn convert_admin_operation_type(spi_type: AdminEventOperationType) -> crate::models::events::OperationType {
+        use crate::models::events::OperationType as ModelOperationType;
+        match spi_type {
+            AdminEventOperationType::Create => ModelOperationType::Create,
+            AdminEventOperationType::Update => ModelOperationType::Update,
+            AdminEventOperationType::Delete => ModelOperationType::Delete,
+            AdminEventOperationType::Action => ModelOperationType::Action,
+        }
+    }
+    
+    /// Convert Model OperationType to SPI AdminEventOperationType
+    fn convert_model_admin_operation_type(model_type: crate::models::events::OperationType) -> AdminEventOperationType {
+        use crate::models::events::OperationType as ModelOperationType;
+        match model_type {
+            ModelOperationType::Create => AdminEventOperationType::Create,
+            ModelOperationType::Update => AdminEventOperationType::Update,
+            ModelOperationType::Delete => AdminEventOperationType::Delete,
+            ModelOperationType::Action => AdminEventOperationType::Action,
+        }
+    }
 }
 
 impl Provider for DefaultEventProvider {
@@ -503,62 +569,122 @@ impl EventListenerProvider for DefaultEventProvider {
 #[async_trait]
 impl EventStoreProvider for DefaultEventProvider {
     async fn store_event(&self, event: Event) -> Result<(), EventError> {
-        // TODO: Convert SPI Event to model Event and store in database
-        // For now, skip database storage to avoid type conversion issues
-        /*
         if let Some(db) = &self.database {
-            crate::database::operations::store_event(db, &event)
+            // Convert SPI Event to Model Event
+            let model_event = crate::models::events::Event {
+                id: event.id.clone(),
+                time: event.time,
+                event_type: Self::convert_event_type(event.event_type),
+                realm_id: event.realm_id.unwrap_or_else(|| "default".to_string()),
+                realm_name: None,
+                client_id: event.client_id.clone(),
+                user_id: event.user_id.clone(),
+                session_id: event.session_id.clone(),
+                ip_address: event.ip_address.clone(),
+                error: event.error.clone(),
+                details: event.details.clone(),
+            };
+            
+            crate::database::operations::store_event(db, &model_event)
                 .await
-                .map_err(|e| EventError::DatabaseError(e.to_string()))?;
+                .map_err(|e| EventError::StorageError(e.to_string()))?;
         }
-        */
         Ok(())
     }
 
     async fn store_admin_event(&self, event: AdminEvent) -> Result<(), EventError> {
-        // TODO: Convert SPI AdminEvent to model AdminEvent and store in database
-        // For now, skip database storage to avoid type conversion issues
-        /*
         if let Some(db) = &self.database {
-            crate::database::operations::store_admin_event(db, &event)
+            // Convert SPI AdminEvent to Model AdminEvent
+            let model_event = crate::models::events::AdminEvent {
+                id: event.id.clone(),
+                time: event.time,
+                realm_id: event.realm_id.clone(),
+                realm_name: None,
+                auth_details: crate::models::events::AuthDetails {
+                    user_id: event.auth_details.user_id.clone(),
+                    username: None,
+                    ip_address: Some(event.auth_details.ip_address.clone()),
+                    user_agent: event.auth_details.user_agent.clone(),
+                },
+                resource_type: crate::models::events::ResourceType::Custom, // Will need proper mapping
+                operation_type: Self::convert_admin_operation_type(event.operation_type),
+                resource_path: event.resource_path.unwrap_or_default(),
+                representation: event.representation.clone(),
+                error: event.error.clone(),
+            };
+            
+            crate::database::operations::store_admin_event(db, &model_event)
                 .await
-                .map_err(|e| EventError::DatabaseError(e.to_string()))?;
+                .map_err(|e| EventError::StorageError(e.to_string()))?;
         }
-        */
         Ok(())
     }
 
     async fn query_events(&self, query: EventQuery) -> Result<Vec<Event>, EventError> {
-        // TODO: Convert model Events to SPI Events
-        // For now, return empty vector to avoid type conversion issues
-        /*
         if let Some(db) = &self.database {
-            crate::database::operations::query_events(db, &query)
+            // Use database query_events operation directly with SPI query
+            let model_events = crate::database::operations::query_events(db, &query)
                 .await
-                .map_err(|e| EventError::DatabaseError(e.to_string()))
+                .map_err(|e| EventError::StorageError(e.to_string()))?;
+            
+            // Convert Model Events back to SPI Events
+            let mut spi_events = Vec::new();
+            for me in model_events {
+                spi_events.push(Event {
+                    id: me.id,
+                    time: me.time,
+                    event_type: Self::convert_model_event_type(me.event_type),
+                    realm_id: Some(me.realm_id),
+                    client_id: me.client_id,
+                    user_id: me.user_id,
+                    session_id: me.session_id,
+                    ip_address: me.ip_address,
+                    user_agent: None, // Model doesn't have user_agent
+                    error: me.error,
+                    details: me.details,
+                });
+            }
+            
+            Ok(spi_events)
         } else {
             Ok(Vec::new())
         }
-        */
-        Ok(Vec::new())
     }
 
     async fn query_admin_events(
         &self,
         query: AdminEventQuery,
     ) -> Result<Vec<AdminEvent>, EventError> {
-        // TODO: Convert model AdminEvents to SPI AdminEvents
-        // For now, return empty vector to avoid type conversion issues
-        /*
         if let Some(db) = &self.database {
-            crate::database::operations::query_admin_events(db, &query)
+            // Use database query_admin_events operation directly with SPI query
+            let model_events = crate::database::operations::query_admin_events(db, &query)
                 .await
-                .map_err(|e| EventError::DatabaseError(e.to_string()))
+                .map_err(|e| EventError::StorageError(e.to_string()))?;
+            
+            // Convert Model AdminEvents back to SPI AdminEvents
+            let mut spi_events = Vec::new();
+            for me in model_events {
+                spi_events.push(AdminEvent {
+                    id: me.id,
+                    time: me.time,
+                    realm_id: me.realm_id,
+                    auth_details: AdminEventAuthDetails {
+                        user_id: me.auth_details.user_id.clone(),
+                        ip_address: me.auth_details.ip_address.unwrap_or_default(),
+                        user_agent: me.auth_details.user_agent,
+                    },
+                    resource_type: me.resource_type.as_str().to_string(),
+                    operation_type: Self::convert_model_admin_operation_type(me.operation_type),
+                    resource_path: Some(me.resource_path),
+                    representation: me.representation,
+                    error: me.error,
+                });
+            }
+            
+            Ok(spi_events)
         } else {
             Ok(Vec::new())
         }
-        */
-        Ok(Vec::new())
     }
 
     async fn clear_events(&self) -> Result<(), EventError> {

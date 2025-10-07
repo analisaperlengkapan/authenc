@@ -326,7 +326,7 @@ impl ClientStorageProvider for DefaultClientStorageProvider {
         Ok(client)
     }
 
-    async fn update_client(&self, client: OidcClient) -> Result<OidcClient> {
+    async fn update_client(&self, _client: OidcClient) -> Result<OidcClient> {
         // OidcClientStore doesn't have update method, so recreate
         // This is a placeholder - proper implementation would need update method
         Err(Error::validation(

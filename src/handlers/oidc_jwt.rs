@@ -53,7 +53,10 @@ pub struct OidcIdTokenClaims {
 /// - Legacy RSA implementation removed due to security vulnerabilities
 /// - RSA signatures are susceptible to timing attacks
 /// - Use Ed25519 implementation for secure JWT signing
-#[deprecated(since = "1.0.0", note = "Use generate_ed25519_jwt instead - RSA JWT signing is insecure")]
+#[deprecated(
+    since = "1.0.0",
+    note = "Use generate_ed25519_jwt instead - RSA JWT signing is insecure"
+)]
 pub fn generate_id_token(
     sub: &str,
     aud: &str,

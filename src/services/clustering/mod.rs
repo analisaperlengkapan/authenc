@@ -173,34 +173,68 @@ impl ClusterCommunication for InMemoryClusterCommunication {
 /// JGroups-based cluster communication
 pub struct JGroupsClusterCommunication {
     /// Name of the JGroups channel
-    #[allow(dead_code)]
     channel_name: String,
+    /// Message queue for incoming messages
+    message_queue: Arc<RwLock<Vec<(String, Vec<u8>)>>>,
+    /// Sender for outgoing messages
+    outgoing_tx: mpsc::UnboundedSender<(Option<String>, Vec<u8>)>,
+    /// Receiver for incoming messages
+    incoming_rx: Arc<RwLock<mpsc::UnboundedReceiver<(String, Vec<u8>)>>>,
 }
 
 impl JGroupsClusterCommunication {
     /// Create a new JGroups cluster communication instance
     pub fn new(channel_name: String) -> Self {
-        Self { channel_name }
+        let (outgoing_tx, mut outgoing_rx): (mpsc::UnboundedSender<(Option<String>, Vec<u8>)>, _) =
+            mpsc::unbounded_channel();
+        let (incoming_tx, incoming_rx): (mpsc::UnboundedSender<(String, Vec<u8>)>, _) =
+            mpsc::unbounded_channel();
+
+        // Background task to simulate JGroups message processing
+        tokio::spawn(async move {
+            while let Some((target, message)) = outgoing_rx.recv().await {
+                // In production, this would send via JGroups
+                // For now, we simulate by echoing back
+                if target.is_none() {
+                    // Broadcast - echo to all nodes
+                    let _ = incoming_tx.send(("broadcast".to_string(), message));
+                } else {
+                    // Unicast - send to specific node
+                    let _ = incoming_tx.send((target.unwrap(), message));
+                }
+            }
+        });
+
+        Self {
+            channel_name,
+            message_queue: Arc::new(RwLock::new(Vec::new())),
+            outgoing_tx,
+            incoming_rx: Arc::new(RwLock::new(incoming_rx)),
+        }
     }
 }
 
 #[async_trait]
 impl ClusterCommunication for JGroupsClusterCommunication {
     async fn send_message(&self, node_id: &str, message: &[u8]) -> Result<()> {
-        // TODO: Implement JGroups-based messaging
-        println!("JGroups: Sending message to {}: {:?}", node_id, message);
+        self.outgoing_tx
+            .send((Some(node_id.to_string()), message.to_vec()))
+            .map_err(|e| anyhow::anyhow!("Failed to send message: {}", e))?;
         Ok(())
     }
 
     async fn broadcast_message(&self, message: &[u8]) -> Result<()> {
-        // TODO: Implement JGroups-based broadcasting
-        println!("JGroups: Broadcasting message: {:?}", message);
+        self.outgoing_tx
+            .send((None, message.to_vec()))
+            .map_err(|e| anyhow::anyhow!("Failed to broadcast message: {}", e))?;
         Ok(())
     }
 
     async fn receive_message(&self) -> Result<(String, Vec<u8>)> {
-        // TODO: Implement JGroups-based message receiving
-        Ok(("node1".to_string(), vec![]))
+        let mut rx = self.incoming_rx.write().await;
+        rx.recv()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("Message channel closed"))
     }
 }
 
@@ -619,43 +653,6 @@ pub trait ClusterEventListener: Send + Sync {
 }
 
 /// Session replication service for sticky sessions
-pub struct SessionReplicationService {
-    /// Cluster manager instance
-    cluster_manager: Arc<ClusterManager>,
-    /// Local session cache
-    session_cache: HashMap<String, Vec<u8>>,
-}
-
-impl SessionReplicationService {
-    /// Create a new session replication service
-    pub fn new(cluster_manager: Arc<ClusterManager>) -> Self {
-        Self {
-            cluster_manager,
-            session_cache: HashMap::new(),
-        }
-    }
-
-    /// Replicate session data across cluster
-    pub async fn replicate_session(&mut self, session_id: &str, data: &[u8]) -> Result<()> {
-        self.session_cache
-            .insert(session_id.to_string(), data.to_vec());
-
-        // Broadcast to other nodes
-        let mut message = Vec::new();
-        message.extend_from_slice(b"SESSION_UPDATE:");
-        message.extend_from_slice(session_id.as_bytes());
-        message.extend_from_slice(b":");
-        message.extend_from_slice(data);
-
-        self.cluster_manager.broadcast_message(&message).await?;
-        Ok(())
-    }
-
-    /// Get replicated session data
-    pub fn get_session_data(&self, session_id: &str) -> Option<&Vec<u8>> {
-        self.session_cache.get(session_id)
-    }
-}
 
 /// Distributed cache service
 pub struct DistributedCacheService {
@@ -714,6 +711,223 @@ impl DistributedCacheService {
         self.cluster_manager.propose(&consensus_key, b"").await?;
 
         Ok(())
+    }
+
+    /// Invalidate cache entry across all cluster nodes
+    pub async fn invalidate(&mut self, key: &str) -> Result<()> {
+        // Remove from local cache
+        self.cache.remove(key);
+
+        // Broadcast invalidation message to all cluster nodes
+        let invalidation_msg = serde_json::json!({
+            "action": "invalidate",
+            "key": key,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+
+        let message = serde_json::to_vec(&invalidation_msg)?;
+        self.cluster_manager.broadcast_message(&message).await?;
+
+        Ok(())
+    }
+
+    /// Process cache invalidation message from another node
+    pub fn process_invalidation(&mut self, message: &[u8]) -> Result<()> {
+        let invalidation: serde_json::Value = serde_json::from_slice(message)?;
+        if let Some(key) = invalidation.get("key").and_then(|k| k.as_str()) {
+            self.cache.remove(key);
+        }
+        Ok(())
+    }
+
+    /// Clean up expired cache entries
+    pub fn cleanup_expired(&mut self) {
+        let now = chrono::Utc::now();
+        self.cache.retain(|_key, (_value, expiry)| *expiry > now);
+    }
+}
+
+/// Session replication service for distributed session management
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplicatedSession {
+    /// Session ID
+    pub session_id: String,
+    /// User ID associated with the session
+    pub user_id: Option<uuid::Uuid>,
+    /// Session data as key-value pairs
+    pub data: HashMap<String, String>,
+    /// Session creation time
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Last access time
+    pub last_accessed_at: chrono::DateTime<chrono::Utc>,
+    /// Session expiry time
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    /// Version number for optimistic locking
+    pub version: u64,
+}
+
+/// Session replication service
+pub struct SessionReplicationService {
+    /// Cluster manager instance
+    cluster_manager: Arc<ClusterManager>,
+    /// Local session storage
+    sessions: Arc<RwLock<HashMap<String, ReplicatedSession>>>,
+}
+
+impl SessionReplicationService {
+    /// Create a new session replication service
+    pub fn new(cluster_manager: Arc<ClusterManager>) -> Self {
+        Self {
+            cluster_manager,
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Store session with replication
+    pub async fn store_session(&self, session: ReplicatedSession) -> Result<()> {
+        let session_id = session.session_id.clone();
+
+        // Store locally
+        {
+            let mut sessions = self.sessions.write().await;
+            sessions.insert(session_id.clone(), session.clone());
+        }
+
+        // Replicate to cluster
+        let replication_msg = serde_json::json!({
+            "action": "store_session",
+            "session": session,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+
+        let message = serde_json::to_vec(&replication_msg)?;
+        self.cluster_manager.broadcast_message(&message).await?;
+
+        Ok(())
+    }
+
+    /// Get session from local or remote nodes
+    pub async fn get_session(&self, session_id: &str) -> Result<Option<ReplicatedSession>> {
+        // Try local first
+        let sessions = self.sessions.read().await;
+        if let Some(session) = sessions.get(session_id) {
+            return Ok(Some(session.clone()));
+        }
+        drop(sessions);
+
+        // If not found locally, request from cluster
+        let request_msg = serde_json::json!({
+            "action": "request_session",
+            "session_id": session_id,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+
+        let message = serde_json::to_vec(&request_msg)?;
+        self.cluster_manager.broadcast_message(&message).await?;
+
+        // In production, we'd wait for response
+        // For now, return None if not found locally
+        Ok(None)
+    }
+
+    /// Update session with replication
+    pub async fn update_session(
+        &self,
+        session_id: &str,
+        updates: HashMap<String, String>,
+    ) -> Result<()> {
+        let mut sessions = self.sessions.write().await;
+
+        if let Some(session) = sessions.get_mut(session_id) {
+            // Update session data
+            session.data.extend(updates.clone());
+            session.last_accessed_at = chrono::Utc::now();
+            session.version += 1;
+
+            // Replicate update to cluster
+            let update_msg = serde_json::json!({
+                "action": "update_session",
+                "session_id": session_id,
+                "updates": updates,
+                "version": session.version,
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            });
+
+            let message = serde_json::to_vec(&update_msg)?;
+            self.cluster_manager.broadcast_message(&message).await?;
+
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Session not found: {}", session_id))
+        }
+    }
+
+    /// Delete session with replication
+    pub async fn delete_session(&self, session_id: &str) -> Result<()> {
+        // Remove from local storage
+        {
+            let mut sessions = self.sessions.write().await;
+            sessions.remove(session_id);
+        }
+
+        // Broadcast deletion to cluster
+        let delete_msg = serde_json::json!({
+            "action": "delete_session",
+            "session_id": session_id,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+
+        let message = serde_json::to_vec(&delete_msg)?;
+        self.cluster_manager.broadcast_message(&message).await?;
+
+        Ok(())
+    }
+
+    /// Process replication message from another node
+    pub async fn process_replication_message(&self, message: &[u8]) -> Result<()> {
+        let msg: serde_json::Value = serde_json::from_slice(message)?;
+        let action = msg.get("action").and_then(|a| a.as_str()).unwrap_or("");
+
+        match action {
+            "store_session" => {
+                if let Some(session_data) = msg.get("session") {
+                    let session: ReplicatedSession = serde_json::from_value(session_data.clone())?;
+                    let mut sessions = self.sessions.write().await;
+                    sessions.insert(session.session_id.clone(), session);
+                }
+            }
+            "update_session" => {
+                if let Some(session_id) = msg.get("session_id").and_then(|s| s.as_str()) {
+                    if let Some(updates_data) = msg.get("updates") {
+                        let updates: HashMap<String, String> =
+                            serde_json::from_value(updates_data.clone())?;
+                        let mut sessions = self.sessions.write().await;
+                        if let Some(session) = sessions.get_mut(session_id) {
+                            session.data.extend(updates);
+                            if let Some(version) = msg.get("version").and_then(|v| v.as_u64()) {
+                                session.version = version;
+                            }
+                        }
+                    }
+                }
+            }
+            "delete_session" => {
+                if let Some(session_id) = msg.get("session_id").and_then(|s| s.as_str()) {
+                    let mut sessions = self.sessions.write().await;
+                    sessions.remove(session_id);
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// Clean up expired sessions
+    pub async fn cleanup_expired_sessions(&self) {
+        let now = chrono::Utc::now();
+        let mut sessions = self.sessions.write().await;
+        sessions.retain(|_id, session| session.expires_at > now);
     }
 }
 
@@ -829,12 +1043,74 @@ impl MultiClusterFederationService {
     }
 
     /// Route request to appropriate cluster
-    pub async fn route_request(&self, _request: &FederationRequest) -> Result<FederationResponse> {
-        // TODO: Implement request routing logic
-        Ok(FederationResponse {
-            data: vec![],
-            source_cluster: "local".to_string(),
-        })
+    pub async fn route_request(&self, request: &FederationRequest) -> Result<FederationResponse> {
+        // Find matching federation rule
+        let mut target_cluster = "local";
+
+        for (_, rule) in &self.federation_rules {
+            // Check if all conditions match
+            let mut all_conditions_match = true;
+            for (key, value) in &rule.conditions {
+                if let Some(request_value) = request.metadata.get(key) {
+                    if request_value != value {
+                        all_conditions_match = false;
+                        break;
+                    }
+                } else {
+                    all_conditions_match = false;
+                    break;
+                }
+            }
+
+            if all_conditions_match {
+                target_cluster = &rule.target_cluster;
+                break;
+            }
+        }
+
+        // Route to target cluster
+        if target_cluster == "local" {
+            // Handle locally
+            Ok(FederationResponse {
+                data: request.data.clone(),
+                source_cluster: "local".to_string(),
+            })
+        } else if let Some(cluster) = self.clusters.get(target_cluster) {
+            // Forward to target cluster
+            let forward_msg = serde_json::json!({
+                "request_type": request.request_type,
+                "data": request.data,
+                "metadata": request.metadata,
+            });
+
+            let message = serde_json::to_vec(&forward_msg)?;
+            cluster.broadcast_message(&message).await?;
+
+            Ok(FederationResponse {
+                data: vec![],
+                source_cluster: target_cluster.to_string(),
+            })
+        } else {
+            Err(anyhow::anyhow!(
+                "Target cluster not found: {}",
+                target_cluster
+            ))
+        }
+    }
+
+    /// Get cluster by name
+    pub fn get_cluster(&self, name: &str) -> Option<Arc<ClusterManager>> {
+        self.clusters.get(name).cloned()
+    }
+
+    /// List all registered clusters
+    pub fn list_clusters(&self) -> Vec<String> {
+        self.clusters.keys().cloned().collect()
+    }
+
+    /// Remove cluster from federation
+    pub fn remove_cluster(&mut self, name: &str) -> Option<Arc<ClusterManager>> {
+        self.clusters.remove(name)
     }
 }
 
@@ -871,4 +1147,171 @@ pub struct FederationResponse {
     pub data: Vec<u8>,
     /// Source cluster that handled the request
     pub source_cluster: String,
+}
+
+/// Node health monitor
+pub struct NodeHealthMonitor {
+    /// Cluster manager
+    cluster_manager: Arc<ClusterManager>,
+    /// Health check interval
+    check_interval: Duration,
+    /// Timeout threshold for marking nodes as down
+    timeout_threshold: Duration,
+    /// Health status of each node
+    node_health: Arc<RwLock<HashMap<String, NodeHealthStatus>>>,
+}
+
+/// Node health status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeHealthStatus {
+    /// Node ID
+    pub node_id: String,
+    /// Whether node is healthy
+    pub is_healthy: bool,
+    /// Last heartbeat timestamp
+    pub last_heartbeat: chrono::DateTime<chrono::Utc>,
+    /// Number of consecutive failed health checks
+    pub failed_checks: u32,
+    /// Node response time in milliseconds
+    pub response_time_ms: Option<u64>,
+}
+
+impl NodeHealthMonitor {
+    /// Create a new node health monitor
+    pub fn new(cluster_manager: Arc<ClusterManager>) -> Self {
+        Self {
+            cluster_manager,
+            check_interval: Duration::from_secs(5),
+            timeout_threshold: Duration::from_secs(30),
+            node_health: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Start health monitoring
+    pub async fn start(&self) {
+        let cluster_manager = self.cluster_manager.clone();
+        let node_health = self.node_health.clone();
+        let check_interval = self.check_interval;
+        let timeout_threshold = self.timeout_threshold;
+
+        tokio::spawn(async move {
+            let mut interval = time::interval(check_interval);
+            loop {
+                interval.tick().await;
+
+                // Send heartbeat
+                let heartbeat_msg = serde_json::json!({
+                    "action": "heartbeat",
+                    "node_id": cluster_manager.node_id,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                });
+
+                if let Ok(message) = serde_json::to_vec(&heartbeat_msg) {
+                    let _ = cluster_manager.broadcast_message(&message).await;
+                }
+
+                // Check for unhealthy nodes
+                let now = chrono::Utc::now();
+                let mut health = node_health.write().await;
+
+                for (node_id, status) in health.iter_mut() {
+                    let elapsed = now.signed_duration_since(status.last_heartbeat);
+                    if elapsed > chrono::Duration::from_std(timeout_threshold).unwrap() {
+                        status.is_healthy = false;
+                        status.failed_checks += 1;
+                    }
+                }
+            }
+        });
+    }
+
+    /// Process heartbeat from another node
+    pub async fn process_heartbeat(&self, node_id: &str) {
+        let mut health = self.node_health.write().await;
+        let now = chrono::Utc::now();
+
+        if let Some(status) = health.get_mut(node_id) {
+            status.last_heartbeat = now;
+            status.is_healthy = true;
+            status.failed_checks = 0;
+        } else {
+            health.insert(
+                node_id.to_string(),
+                NodeHealthStatus {
+                    node_id: node_id.to_string(),
+                    is_healthy: true,
+                    last_heartbeat: now,
+                    failed_checks: 0,
+                    response_time_ms: None,
+                },
+            );
+        }
+    }
+
+    /// Get health status of all nodes
+    pub async fn get_health_status(&self) -> HashMap<String, NodeHealthStatus> {
+        let health = self.node_health.read().await;
+        health.clone()
+    }
+
+    /// Get health status of specific node
+    pub async fn get_node_health(&self, node_id: &str) -> Option<NodeHealthStatus> {
+        let health = self.node_health.read().await;
+        health.get(node_id).cloned()
+    }
+}
+
+/// Cache eviction policy
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CacheEvictionPolicy {
+    /// Least Recently Used
+    LRU,
+    /// Least Frequently Used
+    LFU,
+    /// First In First Out
+    FIFO,
+    /// Time-based expiration only
+    TTL,
+}
+
+/// Cache statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheStatistics {
+    /// Total number of cache entries
+    pub total_entries: usize,
+    /// Number of cache hits
+    pub hits: u64,
+    /// Number of cache misses
+    pub misses: u64,
+    /// Cache hit rate
+    pub hit_rate: f64,
+    /// Total memory used in bytes
+    pub memory_bytes: usize,
+    /// Number of evictions
+    pub evictions: u64,
+}
+
+impl Default for CacheStatistics {
+    fn default() -> Self {
+        Self {
+            total_entries: 0,
+            hits: 0,
+            misses: 0,
+            hit_rate: 0.0,
+            memory_bytes: 0,
+            evictions: 0,
+        }
+    }
+}
+
+impl CacheStatistics {
+    /// Calculate hit rate
+    pub fn calculate_hit_rate(&mut self) {
+        let total = self.hits + self.misses;
+        self.hit_rate = if total > 0 {
+            self.hits as f64 / total as f64
+        } else {
+            0.0
+        };
+    }
 }

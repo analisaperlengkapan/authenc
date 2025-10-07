@@ -58,6 +58,10 @@ pub struct AppState {
     pub broker_registry: Arc<crate::services::broker::IdentityBrokerRegistry>,
     /// OID4VC service for verifiable credentials
     pub oid4vc_service: Arc<crate::services::oid4vc::EnhancedOid4VcManager>,
+    /// SSO service for unified single sign-on
+    pub sso_service: Arc<dyn crate::services::sso::SsoService>,
+    /// SSO cookie manager for secure cookie operations
+    pub sso_cookie_manager: Arc<crate::services::sso::SsoCookieManager>,
     /// Event manager for handling application events
     pub event_manager: Arc<tokio::sync::RwLock<crate::services::events::EventManager>>,
     /// Event retention service for managing event lifecycle
@@ -109,7 +113,9 @@ impl AppState {
         let user_store = Arc::new(crate::services::stores::user_store::UserStore::new(
             database.clone(),
         ));
-        let session_store = Arc::new(crate::services::session_store::SessionStore::new());
+        let session_store = Arc::new(crate::services::session_store::SessionStore::new(
+            database.clone(),
+        ));
         let totp_store = Arc::new(crate::services::totp_store::TotpStore::new());
 
         let brute_force_protector = Arc::new(
@@ -159,6 +165,30 @@ impl AppState {
         let oid4vc_service = Arc::new(crate::services::oid4vc::EnhancedOid4VcManager::new(
             "https://authenc.example.com".to_string(),
         ));
+
+        // Initialize SSO cookie manager
+        let sso_secret: &[u8] = if config.security.jwt_secret.is_empty() {
+            b"default-sso-secret-key-change-in-production!!"
+        } else {
+            config.security.jwt_secret.as_bytes()
+        };
+        let sso_cookie_manager = Arc::new(crate::services::sso::SsoCookieManager::new(
+            sso_secret,
+            "AUTHENC_SSO",
+            None, // cookie_domain from config
+            true, // secure = true (use HTTPS in production)
+        ));
+
+        // Initialize SSO session manager
+        let sso_session_manager = Arc::new(crate::services::sso::session::DefaultSsoSessionManager::new());
+
+        // Initialize SSO service
+        let sso_service: Arc<dyn crate::services::sso::SsoService> =
+            Arc::new(crate::services::sso::DefaultSsoService::new(
+                sso_session_manager,
+                sso_cookie_manager.clone(),
+                database.clone(),
+            ));
 
         // Initialize audit log sink
         let audit_log_sink: Arc<dyn crate::services::audit_log_sink::AuditLogSink> = if let Some(
@@ -420,6 +450,8 @@ impl AppState {
             social_account_store,
             broker_registry,
             oid4vc_service,
+            sso_service,
+            sso_cookie_manager,
             event_manager,
             event_retention_service,
             audit_log_sink,

@@ -14,13 +14,18 @@ pub struct OidcCodeStore {
 }
 
 impl OidcCodeStore {
-    /// Create new OIDC code store (unimplemented for in-memory)
+    /// Create new OIDC code store
+    ///
+    /// # Note
+    /// This method requires a database connection. Use `with_database()` instead.
+    ///
+    /// # Panics
+    /// This method will panic if called. It exists only for backward compatibility.
     pub fn new(_ttl_secs: u64) -> Self {
-        // This would need database parameter in production
-        unimplemented!("Database-backed OidcCodeStore not implemented")
+        panic!("OidcCodeStore requires database connection. Use OidcCodeStore::with_database() instead.");
     }
 
-    /// Create OIDC code store with database connection and TTL
+    /// Create OIDC code store with database connection and TTL (recommended for production)
     pub fn with_database(db: Arc<Database>, ttl_secs: u64) -> Self {
         Self { db, ttl: ttl_secs }
     }

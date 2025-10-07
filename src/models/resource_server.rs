@@ -234,3 +234,69 @@ impl ResourceServer {
         self.updated_at = Utc::now();
     }
 }
+
+impl TryFrom<tokio_postgres::Row> for ResourceServer {
+    type Error = crate::error::AuthencError;
+
+    fn try_from(row: tokio_postgres::Row) -> Result<Self, Self::Error> {
+        let policy_mode_str: String = row.try_get("policy_enforcement_mode").map_err(|e| {
+            crate::error::AuthencError::database(format!(
+                "Failed to get policy_enforcement_mode: {}",
+                e
+            ))
+        })?;
+        let policy_enforcement_mode = policy_mode_str.parse().map_err(|e| {
+            crate::error::AuthencError::database(format!(
+                "Failed to parse policy_enforcement_mode: {}",
+                e
+            ))
+        })?;
+
+        let decision_strat_str: String = row.try_get("decision_strategy").map_err(|e| {
+            crate::error::AuthencError::database(format!("Failed to get decision_strategy: {}", e))
+        })?;
+        let decision_strategy = decision_strat_str.parse().map_err(|e| {
+            crate::error::AuthencError::database(format!(
+                "Failed to parse decision_strategy: {}",
+                e
+            ))
+        })?;
+
+        Ok(ResourceServer {
+            id: row.try_get("id").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get id: {}", e))
+            })?,
+            client_id: row.try_get("client_id").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get client_id: {}", e))
+            })?,
+            name: row.try_get("name").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get name: {}", e))
+            })?,
+            description: row.try_get("description").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get description: {}", e))
+            })?,
+            enabled: row.try_get("enabled").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get enabled: {}", e))
+            })?,
+            realm_id: row.try_get("realm_id").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get realm_id: {}", e))
+            })?,
+            policy_enforcement_mode,
+            decision_strategy,
+            allow_remote_resource_management: row
+                .try_get("allow_remote_resource_management")
+                .map_err(|e| {
+                    crate::error::AuthencError::database(format!(
+                        "Failed to get allow_remote_resource_management: {}",
+                        e
+                    ))
+                })?,
+            created_at: row.try_get("created_at").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get created_at: {}", e))
+            })?,
+            updated_at: row.try_get("updated_at").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get updated_at: {}", e))
+            })?,
+        })
+    }
+}

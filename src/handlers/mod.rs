@@ -71,6 +71,8 @@ pub mod social;
 // pub mod webauthn;
 /// OpenID for Verifiable Credentials (OID4VC) handlers
 pub mod oid4vc;
+/// Single Sign-On (SSO) handlers and endpoints
+pub mod sso;
 /// Zero Trust security model handlers and endpoints
 pub mod zero_trust;
 
@@ -194,6 +196,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/auth/federated",
             federated_auth::create_federated_auth_routes(),
         )
+        // SSO (Single Sign-On) routes
+        .merge(sso::create_sso_router().with_state(state.clone()))
         // SPI-based federation routes for enterprise providers
         .nest(
             "/api/v1/auth/federation",
@@ -249,6 +253,21 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .nest(
             "/api/v1",
             api::events::create_event_routes().with_state(state.clone()),
+        )
+        // Session 5: Event Listener System API
+        .nest(
+            "/api/v1/realms",
+            api::event_listeners::create_event_listener_routes().with_state(state.clone()),
+        )
+        // Session 5: Protocol Mapper API
+        .nest(
+            "/api/v1/realms",
+            api::protocol_mappers::create_protocol_mapper_routes().with_state(state.clone()),
+        )
+        // Session 5: Custom Authenticator API
+        .nest(
+            "/api/v1/realms",
+            api::authenticators::create_authenticator_routes().with_state(state.clone()),
         )
         .nest(
             "/api/v1/auth",

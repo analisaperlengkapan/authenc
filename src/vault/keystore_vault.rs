@@ -59,4 +59,47 @@ impl Vault for KeystoreVault {
         // TODO: Implement keystore secret retrieval
         None
     }
+
+    async fn put_secret(
+        &self,
+        _key: &str,
+        _value: &str,
+        _realm: Option<&str>,
+        _metadata: Option<std::collections::HashMap<String, String>>,
+    ) -> Result<(), super::VaultError> {
+        Err(super::VaultError::Other("Not implemented".to_string()))
+    }
+
+    async fn delete_secret(
+        &self,
+        _key: &str,
+        _realm: Option<&str>,
+    ) -> Result<(), super::VaultError> {
+        Err(super::VaultError::Other("Not implemented".to_string()))
+    }
+
+    async fn list_secrets(&self, _realm: Option<&str>) -> Result<Vec<String>, super::VaultError> {
+        Ok(vec![])
+    }
+
+    async fn rotate_secret(
+        &self,
+        _key: &str,
+        _realm: Option<&str>,
+        _generator: Box<dyn Fn() -> String + Send>,
+    ) -> Result<super::RotationResult, super::VaultError> {
+        Err(super::VaultError::Other("Not implemented".to_string()))
+    }
+
+    async fn get_secret_versions(
+        &self,
+        _key: &str,
+        _realm: Option<&str>,
+    ) -> Result<Vec<Secret>, super::VaultError> {
+        Ok(vec![])
+    }
+
+    async fn health_check(&self) -> Result<bool, super::VaultError> {
+        Ok(false)
+    }
 }

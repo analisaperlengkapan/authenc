@@ -150,7 +150,6 @@ impl AuditLogSink for ElasticsearchAuditLogSink {
 mod tests {
     use super::*;
     use crate::models::audit_log::AuditLog;
-    use crate::models::events::{OperationType, ResourceType};
 
     #[tokio::test]
     async fn test_elasticsearch_sink_creation() {

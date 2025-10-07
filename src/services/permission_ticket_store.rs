@@ -101,25 +101,19 @@ impl PermissionTicketStoreTrait for PermissionTicketStore {
         realm_id: Uuid,
         resource_server_id: Uuid,
     ) -> Result<PermissionTicket, AuthencError> {
-        // Stub implementation
-        Ok(PermissionTicket {
-            id: Uuid::new_v4(),
-            resource_id: request.resource_id,
-            scope_id: request.scope_id,
+        crate::database::operations::permission_tickets::create_permission_ticket(
+            &self.database,
+            request,
             owner,
-            requester: request.requester,
-            granted: false,
-            granted_timestamp: None,
             realm_id,
             resource_server_id,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        })
+        )
+        .await
     }
 
     async fn get_ticket(&self, id: Uuid) -> Result<Option<PermissionTicket>, AuthencError> {
-        // Stub implementation
-        Ok(None)
+        crate::database::operations::permission_tickets::get_permission_ticket(&self.database, id)
+            .await
     }
 
     async fn get_tickets(
@@ -128,8 +122,13 @@ impl PermissionTicketStoreTrait for PermissionTicketStore {
         first: Option<i32>,
         max: Option<i32>,
     ) -> Result<Vec<PermissionTicket>, AuthencError> {
-        // Stub implementation
-        Ok(Vec::new())
+        crate::database::operations::permission_tickets::get_permission_tickets(
+            &self.database,
+            filters,
+            first,
+            max,
+        )
+        .await
     }
 
     async fn get_granted_resources(
@@ -139,8 +138,14 @@ impl PermissionTicketStoreTrait for PermissionTicketStore {
         first: Option<i32>,
         max: Option<i32>,
     ) -> Result<Vec<uuid::Uuid>, AuthencError> {
-        // Stub implementation
-        Ok(Vec::new())
+        crate::database::operations::permission_tickets::get_granted_resources(
+            &self.database,
+            user_id,
+            name_filter,
+            first,
+            max,
+        )
+        .await
     }
 
     async fn get_granted_owner_resources(
@@ -149,8 +154,13 @@ impl PermissionTicketStoreTrait for PermissionTicketStore {
         first: Option<i32>,
         max: Option<i32>,
     ) -> Result<Vec<uuid::Uuid>, AuthencError> {
-        // Stub implementation
-        Ok(Vec::new())
+        crate::database::operations::permission_tickets::get_granted_owner_resources(
+            &self.database,
+            owner,
+            first,
+            max,
+        )
+        .await
     }
 
     async fn get_tickets_for_resource(
@@ -158,8 +168,12 @@ impl PermissionTicketStoreTrait for PermissionTicketStore {
         resource_id: Uuid,
         granted: Option<bool>,
     ) -> Result<Vec<PermissionTicket>, AuthencError> {
-        // Stub implementation
-        Ok(Vec::new())
+        crate::database::operations::permission_tickets::get_tickets_for_resource(
+            &self.database,
+            resource_id,
+            granted,
+        )
+        .await
     }
 
     async fn get_tickets_for_requester(
@@ -167,36 +181,43 @@ impl PermissionTicketStoreTrait for PermissionTicketStore {
         requester: &str,
         granted: Option<bool>,
     ) -> Result<Vec<PermissionTicket>, AuthencError> {
-        // Stub implementation
-        Ok(Vec::new())
+        crate::database::operations::permission_tickets::get_tickets_for_requester(
+            &self.database,
+            requester,
+            granted,
+        )
+        .await
     }
 
     async fn grant_ticket(&self, id: Uuid) -> Result<PermissionTicket, AuthencError> {
-        // Stub implementation
-        Err(AuthencError::resource_not_found(format!(
-            "Permission ticket {} not found",
-            id
-        )))
+        crate::database::operations::permission_tickets::grant_permission_ticket(&self.database, id)
+            .await
     }
 
     async fn revoke_ticket(&self, id: Uuid) -> Result<PermissionTicket, AuthencError> {
-        // Stub implementation
-        Err(AuthencError::resource_not_found(format!(
-            "Permission ticket {} not found",
-            id
-        )))
+        crate::database::operations::permission_tickets::revoke_permission_ticket(
+            &self.database,
+            id,
+        )
+        .await
     }
 
     async fn delete_ticket(&self, id: Uuid) -> Result<(), AuthencError> {
-        // Stub implementation
-        Ok(())
+        crate::database::operations::permission_tickets::delete_permission_ticket(
+            &self.database,
+            id,
+        )
+        .await
     }
 
     async fn count_tickets(
         &self,
         filters: Vec<PermissionTicketFilter>,
     ) -> Result<i64, AuthencError> {
-        // Stub implementation
-        Ok(0)
+        crate::database::operations::permission_tickets::count_permission_tickets(
+            &self.database,
+            filters,
+        )
+        .await
     }
 }

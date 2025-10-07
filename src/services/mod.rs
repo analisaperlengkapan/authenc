@@ -42,6 +42,8 @@ pub mod resource_store;
 pub mod scope_store;
 /// Session storage and management
 pub mod session_store;
+/// Token management and validation (OAuth2/OIDC tokens)
+pub mod token;
 /// TOTP secret storage and management
 pub mod totp_store;
 
@@ -64,6 +66,9 @@ pub mod stores {
     pub mod social_account_store;
     /// User storage service
     pub mod user_store;
+
+    // Re-export commonly used types from sub-modules
+    pub use consent_store::{ConsentStore, ConsentStoreTrait};
 }
 
 // Re-export for convenience
@@ -132,10 +137,16 @@ pub mod realm;
 // SAML services
 /// SAML 2.0 protocol implementation
 pub mod saml;
+/// SAML signature and message storage
+pub mod saml_signature;
 
 // OID4VC services
 /// OpenID for Verifiable Credentials
 pub mod oid4vc;
+
+// SSO services
+/// Single Sign-On (SSO) orchestration across protocols
+pub mod sso;
 
 // Kubernetes operator services
 /// Kubernetes operator for Authenc

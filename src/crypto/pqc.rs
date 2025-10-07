@@ -95,7 +95,7 @@ pub mod mldsa {
             // Zeroize secret key bytes on drop
             let bytes =
                 <mldsa44::SecretKey as pqcrypto_traits::sign::SecretKey>::as_bytes(&self.secret);
-            
+
             // SAFETY: This unsafe block is required to securely zero out secret key material
             // from memory. This is a critical security operation to prevent key leakage.
             //
@@ -259,7 +259,7 @@ pub mod mlkem {
         fn drop(&mut self) {
             let bytes =
                 <mlkem768::SecretKey as pqcrypto_traits::kem::SecretKey>::as_bytes(&self.secret);
-            
+
             // SAFETY: This unsafe block securely zeros out KEM secret key material from memory
             // to prevent key leakage after the key is no longer needed.
             //
@@ -286,7 +286,7 @@ pub mod mlkem {
         fn drop(&mut self) {
             let bytes =
                 <mlkem768::SharedSecret as pqcrypto_traits::kem::SharedSecret>::as_bytes(&self.0);
-            
+
             // SAFETY: This unsafe block securely zeros out shared secret material from memory
             // to prevent secret leakage after key exchange is complete.
             //
@@ -477,7 +477,7 @@ pub mod falcon {
         fn drop(&mut self) {
             let bytes =
                 <falcon512::SecretKey as pqcrypto_traits::sign::SecretKey>::as_bytes(&self.secret);
-            
+
             // SAFETY: This unsafe block securely zeros out FALCON secret key material from memory
             // to prevent key leakage after the key is no longer needed.
             //

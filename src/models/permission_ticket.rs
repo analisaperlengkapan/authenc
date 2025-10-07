@@ -145,3 +145,52 @@ pub enum PermissionTicketFilter {
     /// Filter by resource server ID
     ResourceServerId(Uuid),
 }
+
+/// Convert from database row to PermissionTicket
+impl TryFrom<tokio_postgres::Row> for PermissionTicket {
+    type Error = crate::error::AuthencError;
+
+    fn try_from(row: tokio_postgres::Row) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: row.try_get("id").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get id: {}", e))
+            })?,
+            resource_id: row.try_get("resource_id").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get resource_id: {}", e))
+            })?,
+            scope_id: row.try_get("scope_id").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get scope_id: {}", e))
+            })?,
+            owner: row.try_get("owner").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get owner: {}", e))
+            })?,
+            requester: row.try_get("requester").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get requester: {}", e))
+            })?,
+            granted: row.try_get("granted").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get granted: {}", e))
+            })?,
+            granted_timestamp: row.try_get("granted_timestamp").map_err(|e| {
+                crate::error::AuthencError::database(format!(
+                    "Failed to get granted_timestamp: {}",
+                    e
+                ))
+            })?,
+            realm_id: row.try_get("realm_id").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get realm_id: {}", e))
+            })?,
+            resource_server_id: row.try_get("resource_server_id").map_err(|e| {
+                crate::error::AuthencError::database(format!(
+                    "Failed to get resource_server_id: {}",
+                    e
+                ))
+            })?,
+            created_at: row.try_get("created_at").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get created_at: {}", e))
+            })?,
+            updated_at: row.try_get("updated_at").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get updated_at: {}", e))
+            })?,
+        })
+    }
+}

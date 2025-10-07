@@ -74,66 +74,72 @@ pub trait ConsentStoreTrait: Send + Sync {
 impl ConsentStoreTrait for ConsentStore {
     async fn grant_consent(
         &self,
-        _user_id: Uuid,
-        _request: ConsentGrantRequest,
+        user_id: Uuid,
+        request: ConsentGrantRequest,
     ) -> Result<UserConsent, AuthencError> {
-        // Stub implementation - return dummy consent
-        Ok(UserConsent {
-            id: Uuid::new_v4(),
-            user_id: _user_id,
-            client_id: _request.client_id.clone(),
-            scopes: _request.scopes.clone(),
-            granted_at: chrono::Utc::now(),
-            expires_at: None,
-            metadata: serde_json::Value::Null,
-        })
+        crate::database::operations::user_consents::grant_consent(&self.database, user_id, &request)
+            .await
     }
 
-    async fn revoke_consent(&self, _user_id: Uuid, _client_id: &str) -> Result<(), AuthencError> {
-        // Stub implementation - do nothing
-        Ok(())
+    async fn revoke_consent(&self, user_id: Uuid, client_id: &str) -> Result<(), AuthencError> {
+        crate::database::operations::user_consents::revoke_consent(
+            &self.database,
+            user_id,
+            client_id,
+        )
+        .await
     }
 
-    async fn get_user_consents(&self, _user_id: Uuid) -> Result<Vec<UserConsent>, AuthencError> {
-        // Stub implementation - return empty vec
-        Ok(Vec::new())
+    async fn get_user_consents(&self, user_id: Uuid) -> Result<Vec<UserConsent>, AuthencError> {
+        crate::database::operations::user_consents::get_user_consents(&self.database, user_id).await
     }
 
     async fn get_user_consent(
         &self,
-        _user_id: Uuid,
-        _client_id: &str,
+        user_id: Uuid,
+        client_id: &str,
     ) -> Result<Option<UserConsent>, AuthencError> {
-        // Stub implementation - return None
-        Ok(None)
+        crate::database::operations::user_consents::get_user_consent(
+            &self.database,
+            user_id,
+            client_id,
+        )
+        .await
     }
 
     async fn has_consent(
         &self,
-        _user_id: Uuid,
-        _client_id: &str,
-        _scopes: &[String],
+        user_id: Uuid,
+        client_id: &str,
+        scopes: &[String],
     ) -> Result<bool, AuthencError> {
-        // Stub implementation - return false
-        Ok(false)
+        crate::database::operations::user_consents::has_consent(
+            &self.database,
+            user_id,
+            client_id,
+            scopes,
+        )
+        .await
     }
 
     async fn cleanup_expired_consents(&self) -> Result<i64, AuthencError> {
-        // Stub implementation - return 0
-        Ok(0)
+        crate::database::operations::user_consents::cleanup_expired_consents(&self.database).await
     }
 
     async fn revoke_consent_by_id(
         &self,
-        _user_id: Uuid,
-        _consent_id: Uuid,
+        user_id: Uuid,
+        consent_id: Uuid,
     ) -> Result<(), AuthencError> {
-        // Stub implementation - do nothing
-        Ok(())
+        crate::database::operations::user_consents::revoke_consent_by_id(
+            &self.database,
+            user_id,
+            consent_id,
+        )
+        .await
     }
 
-    async fn get_consent_stats(&self, _user_id: Uuid) -> Result<serde_json::Value, AuthencError> {
-        // Stub implementation - return empty object
-        Ok(serde_json::json!({}))
+    async fn get_consent_stats(&self, user_id: Uuid) -> Result<serde_json::Value, AuthencError> {
+        crate::database::operations::user_consents::get_consent_stats(&self.database, user_id).await
     }
 }

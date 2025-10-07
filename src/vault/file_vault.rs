@@ -64,8 +64,92 @@ impl Vault for FileVault {
             Ok(value) => Some(Secret {
                 value: value.trim().to_string(),
                 metadata: None,
+                version: Some(1),
+                created_at: Some(chrono::Utc::now()),
+                expires_at: None,
             }),
             Err(_) => None,
         }
+    }
+
+    async fn put_secret(
+        &self,
+        key: &str,
+        value: &str,
+        realm: Option<&str>,
+        _metadata: Option<std::collections::HashMap<String, String>>,
+    ) -> Result<(), super::VaultError> {
+        let mut path = self.base_dir.clone();
+        if let Some(realm) = realm {
+            path.push(realm);
+            fs::create_dir_all(&path).map_err(|e| {
+                super::VaultError::Other(format!("Failed to create realm directory: {}", e))
+            })?;
+        }
+        path.push(key);
+        fs::write(&path, value)
+            .map_err(|e| super::VaultError::Other(format!("Failed to write secret: {}", e)))
+    }
+
+    async fn delete_secret(&self, key: &str, realm: Option<&str>) -> Result<(), super::VaultError> {
+        let mut path = self.base_dir.clone();
+        if let Some(realm) = realm {
+            path.push(realm);
+        }
+        path.push(key);
+        fs::remove_file(&path)
+            .map_err(|e| super::VaultError::Other(format!("Failed to delete secret: {}", e)))
+    }
+
+    async fn list_secrets(&self, realm: Option<&str>) -> Result<Vec<String>, super::VaultError> {
+        let mut path = self.base_dir.clone();
+        if let Some(realm) = realm {
+            path.push(realm);
+        }
+
+        match fs::read_dir(&path) {
+            Ok(entries) => Ok(entries
+                .filter_map(|e| e.ok())
+                .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+                .collect()),
+            Err(e) => Err(super::VaultError::Other(format!(
+                "Failed to list secrets: {}",
+                e
+            ))),
+        }
+    }
+
+    async fn rotate_secret(
+        &self,
+        key: &str,
+        realm: Option<&str>,
+        generator: Box<dyn Fn() -> String + Send>,
+    ) -> Result<super::RotationResult, super::VaultError> {
+        let old_secret = self.get_secret(key, realm).await;
+        let new_value = generator();
+        self.put_secret(key, &new_value, realm, None).await?;
+
+        let new_secret = self.get_secret(key, realm).await.ok_or_else(|| {
+            super::VaultError::Other("Failed to retrieve rotated secret".to_string())
+        })?;
+
+        Ok(super::RotationResult {
+            new_secret,
+            old_secret,
+            rotated_at: chrono::Utc::now(),
+        })
+    }
+
+    async fn get_secret_versions(
+        &self,
+        _key: &str,
+        _realm: Option<&str>,
+    ) -> Result<Vec<Secret>, super::VaultError> {
+        // File vault doesn't support versioning
+        Ok(vec![])
+    }
+
+    async fn health_check(&self) -> Result<bool, super::VaultError> {
+        Ok(self.base_dir.exists())
     }
 }

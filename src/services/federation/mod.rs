@@ -2,7 +2,18 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
+
+use crate::database::Database;
+
+// SAML and OIDC provider implementations
+pub mod oidc;
+pub mod saml;
+pub mod saml_security;
+
+use oidc::OidcIdentityProvider;
+use saml::SamlIdentityProvider;
 
 /// Identity provider types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -399,214 +410,7 @@ pub mod jit_provisioning {
     }
 }
 
-/// SAML Identity Provider
-#[allow(dead_code)]
-pub struct SamlIdentityProvider {
-    /// Provider configuration
-    config: IdentityProviderConfig,
-    /// Service Provider entity ID
-    sp_entity_id: String,
-    /// Identity Provider entity ID
-    idp_entity_id: String,
-    /// Single Sign-On URL
-    sso_url: String,
-    /// X.509 certificate for signature validation
-    x509_certificate: String,
-}
-
-impl SamlIdentityProvider {
-    /// Create new SAML identity provider
-    pub fn new(config: IdentityProviderConfig) -> Self {
-        Self {
-            sp_entity_id: config
-                .config
-                .get("sp_entity_id")
-                .unwrap_or(&"authenc".to_string())
-                .clone(),
-            idp_entity_id: config
-                .config
-                .get("idp_entity_id")
-                .unwrap_or(&"".to_string())
-                .clone(),
-            sso_url: config
-                .config
-                .get("sso_url")
-                .unwrap_or(&"".to_string())
-                .clone(),
-            x509_certificate: config
-                .config
-                .get("x509_certificate")
-                .unwrap_or(&"".to_string())
-                .clone(),
-            config,
-        }
-    }
-}
-
-#[async_trait]
-impl IdentityProvider for SamlIdentityProvider {
-    async fn authenticate(&self, request: &AuthRequest) -> Result<AuthResponse> {
-        if let Some(_assertion) = &request.saml_assertion {
-            // TODO: Validate SAML assertion
-            // Parse SAML response, validate signature, extract user information
-            Ok(AuthResponse {
-                success: true,
-                user_id: Some("saml_user".to_string()),
-                username: Some("saml_user".to_string()),
-                email: Some("user@example.com".to_string()),
-                groups: vec![],
-                roles: vec![],
-                attributes: HashMap::new(),
-                token: Some("saml_token".to_string()),
-                refresh_token: None,
-                expires_at: Some(3600),
-                error: None,
-            })
-        } else {
-            Ok(AuthResponse {
-                success: false,
-                user_id: None,
-                username: None,
-                email: None,
-                groups: vec![],
-                roles: vec![],
-                attributes: HashMap::new(),
-                token: None,
-                refresh_token: None,
-                expires_at: None,
-                error: Some("No SAML assertion provided".to_string()),
-            })
-        }
-    }
-
-    async fn get_user_info(&self, _token: &str) -> Result<UserInfo> {
-        // TODO: Implement SAML user info retrieval
-        Ok(UserInfo {
-            id: "saml_user".to_string(),
-            username: Some("saml_user".to_string()),
-            email: Some("user@example.com".to_string()),
-            first_name: Some("John".to_string()),
-            last_name: Some("Doe".to_string()),
-            groups: vec![],
-            roles: vec![],
-            attributes: HashMap::new(),
-        })
-    }
-
-    async fn validate_token(&self, _token: &str) -> Result<bool> {
-        // TODO: Implement SAML token validation
-        Ok(true)
-    }
-
-    async fn logout(&self, _token: &str) -> Result<()> {
-        // TODO: Implement SAML logout
-        Ok(())
-    }
-}
-
-/// OIDC Identity Provider
-#[allow(dead_code)]
-pub struct OidcIdentityProvider {
-    /// Provider configuration
-    config: IdentityProviderConfig,
-    /// OIDC issuer URL
-    issuer_url: String,
-    /// OAuth client ID
-    client_id: String,
-    /// OAuth client secret
-    client_secret: String,
-    /// OAuth redirect URI
-    redirect_uri: String,
-}
-
-impl OidcIdentityProvider {
-    /// Create new OIDC identity provider
-    pub fn new(config: IdentityProviderConfig) -> Self {
-        Self {
-            issuer_url: config
-                .config
-                .get("issuer_url")
-                .unwrap_or(&"".to_string())
-                .clone(),
-            client_id: config
-                .config
-                .get("client_id")
-                .unwrap_or(&"".to_string())
-                .clone(),
-            client_secret: config
-                .config
-                .get("client_secret")
-                .unwrap_or(&"".to_string())
-                .clone(),
-            redirect_uri: config
-                .config
-                .get("redirect_uri")
-                .unwrap_or(&"".to_string())
-                .clone(),
-            config,
-        }
-    }
-}
-
-#[async_trait]
-impl IdentityProvider for OidcIdentityProvider {
-    async fn authenticate(&self, request: &AuthRequest) -> Result<AuthResponse> {
-        if let Some(_code) = &request.oidc_code {
-            // TODO: Exchange code for tokens, validate ID token
-            Ok(AuthResponse {
-                success: true,
-                user_id: Some("oidc_user".to_string()),
-                username: Some("oidc_user".to_string()),
-                email: Some("user@example.com".to_string()),
-                groups: vec![],
-                roles: vec![],
-                attributes: HashMap::new(),
-                token: Some("oidc_token".to_string()),
-                refresh_token: Some("refresh_token".to_string()),
-                expires_at: Some(3600),
-                error: None,
-            })
-        } else {
-            Ok(AuthResponse {
-                success: false,
-                user_id: None,
-                username: None,
-                email: None,
-                groups: vec![],
-                roles: vec![],
-                attributes: HashMap::new(),
-                token: None,
-                refresh_token: None,
-                expires_at: None,
-                error: Some("No OIDC code provided".to_string()),
-            })
-        }
-    }
-
-    async fn get_user_info(&self, _token: &str) -> Result<UserInfo> {
-        // TODO: Call userinfo endpoint
-        Ok(UserInfo {
-            id: "oidc_user".to_string(),
-            username: Some("oidc_user".to_string()),
-            email: Some("user@example.com".to_string()),
-            first_name: Some("John".to_string()),
-            last_name: Some("Doe".to_string()),
-            groups: vec![],
-            roles: vec![],
-            attributes: HashMap::new(),
-        })
-    }
-
-    async fn validate_token(&self, _token: &str) -> Result<bool> {
-        // TODO: Validate JWT token
-        Ok(true)
-    }
-
-    async fn logout(&self, _token: &str) -> Result<()> {
-        // TODO: Implement OIDC logout
-        Ok(())
-    }
-}
+// SAML and OIDC implementations moved to separate modules (saml.rs and oidc.rs)
 
 /// Federation service - main service
 pub struct FederationService {
@@ -614,28 +418,30 @@ pub struct FederationService {
     providers: HashMap<Uuid, Box<dyn IdentityProvider>>,
     /// Provider configurations
     provider_configs: HashMap<Uuid, IdentityProviderConfig>,
-}
-
-impl Default for FederationService {
-    fn default() -> Self {
-        Self::new()
-    }
+    /// Database connection for SAML assertion cache
+    db: Arc<Database>,
 }
 
 impl FederationService {
     /// Create new federation service
-    pub fn new() -> Self {
+    pub fn new(db: Arc<Database>) -> Self {
         Self {
             providers: HashMap::new(),
             provider_configs: HashMap::new(),
+            db,
         }
     }
 
     /// Register identity provider
-    pub fn register_provider(&mut self, config: IdentityProviderConfig) -> Result<()> {
+    pub async fn register_provider(&mut self, config: IdentityProviderConfig) -> Result<()> {
         let provider: Box<dyn IdentityProvider> = match config.provider_type {
-            IdentityProviderType::SAML => Box::new(SamlIdentityProvider::new(config.clone())),
-            IdentityProviderType::OIDC => Box::new(OidcIdentityProvider::new(config.clone())),
+            IdentityProviderType::SAML => Box::new(SamlIdentityProvider::new(
+                config.clone(),
+                Arc::clone(&self.db),
+            )?),
+            IdentityProviderType::OIDC => {
+                Box::new(OidcIdentityProvider::new(config.clone()).await?)
+            }
             _ => return Err(anyhow::anyhow!("Unsupported provider type")),
         };
 

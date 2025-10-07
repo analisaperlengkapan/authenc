@@ -77,7 +77,7 @@ axum = { version = "0.8", features = ["http1", "http2", "json", "macros"], optio
 tower = { version = "0.5", features = ["util", "timeout", "load-shed", "limit"], optional = true }
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-br", "fs", "add-extension"], optional = true }
 hyper = { version = "1.0", features = ["full"] }
-reqwest = { version = "0.11", features = ["json"], optional = true }
+reqwest = { version = "0.11", features = ["json", "blocking"], optional = true }
 
 # Authentication and Security
 jsonwebtoken = { version = "9.3", features = ["use_pem"], optional = true }
@@ -154,6 +154,7 @@ ldap3 = "0.11"
 xml-rs = "0.8"
 xmltree = "0.10"
 quick-xml = { version = "0.31", features = ["serialize"] }
+openssl = "0.10"  # X.509 certificate and signature validation
 
 # Kubernetes Operator
 kube = { version = "0.87", features = ["runtime", "derive"] }

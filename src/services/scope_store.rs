@@ -88,82 +88,96 @@ impl ScopeStoreTrait for ScopeStore {
         realm_id: Uuid,
         resource_server_id: Uuid,
     ) -> Result<Scope, AuthencError> {
-        // Stub implementation
-        Ok(Scope {
-            id: Uuid::new_v4(),
-            name: request.name,
-            display_name: request.display_name,
-            icon_uri: request.icon_uri,
+        crate::database::operations::scopes::create_scope(
+            &self.database,
+            request,
             realm_id,
             resource_server_id,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        })
+        )
+        .await
     }
 
-    async fn get_scope(&self, _id: Uuid) -> Result<Option<Scope>, AuthencError> {
-        // Stub implementation
-        Ok(None)
+    async fn get_scope(&self, id: Uuid) -> Result<Option<Scope>, AuthencError> {
+        crate::database::operations::scopes::get_scope_by_id(&self.database, id).await
     }
 
     async fn get_scope_by_name(
         &self,
-        _name: &str,
-        _resource_server_id: Uuid,
+        name: &str,
+        resource_server_id: Uuid,
     ) -> Result<Option<Scope>, AuthencError> {
-        // Stub implementation
-        Ok(None)
+        crate::database::operations::scopes::get_scope_by_name(
+            &self.database,
+            name,
+            resource_server_id,
+        )
+        .await
     }
 
     async fn get_scopes_by_server(
         &self,
-        _resource_server_id: Uuid,
-        _first: Option<i32>,
-        _max: Option<i32>,
+        resource_server_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
     ) -> Result<Vec<Scope>, AuthencError> {
-        // Stub implementation
-        Ok(Vec::new())
+        crate::database::operations::scopes::get_scopes_by_server(
+            &self.database,
+            resource_server_id,
+            first,
+            max,
+        )
+        .await
     }
 
     async fn get_scopes_by_realm(
         &self,
-        _realm_id: Uuid,
-        _first: Option<i32>,
-        _max: Option<i32>,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
     ) -> Result<Vec<Scope>, AuthencError> {
-        // Stub implementation
-        Ok(Vec::new())
+        crate::database::operations::scopes::get_scopes_by_realm(
+            &self.database,
+            realm_id,
+            first,
+            max,
+        )
+        .await
     }
 
     async fn update_scope(
         &self,
-        _id: Uuid,
-        _request: UpdateScopeRequest,
+        id: Uuid,
+        request: UpdateScopeRequest,
     ) -> Result<Scope, AuthencError> {
-        // Stub implementation
-        Err(AuthencError::resource_not_found(
-            "Scope not found".to_string(),
-        ))
+        crate::database::operations::scopes::update_scope(&self.database, id, request).await
     }
 
-    async fn delete_scope(&self, _id: Uuid) -> Result<(), AuthencError> {
-        // Stub implementation
-        Ok(())
+    async fn delete_scope(&self, id: Uuid) -> Result<(), AuthencError> {
+        crate::database::operations::scopes::delete_scope(&self.database, id).await
     }
 
     async fn search_scopes(
         &self,
-        _name: &str,
-        _realm_id: Uuid,
-        _first: Option<i32>,
-        _max: Option<i32>,
+        name: &str,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
     ) -> Result<Vec<Scope>, AuthencError> {
-        // Stub implementation
-        Ok(Vec::new())
+        crate::database::operations::scopes::search_scopes(
+            &self.database,
+            name,
+            realm_id,
+            first,
+            max,
+        )
+        .await
     }
 
-    async fn count_scopes_by_server(&self, _resource_server_id: Uuid) -> Result<i64, AuthencError> {
-        // Stub implementation
-        Ok(0)
+    async fn count_scopes_by_server(&self, resource_server_id: Uuid) -> Result<i64, AuthencError> {
+        crate::database::operations::scopes::count_scopes_by_server(
+            &self.database,
+            resource_server_id,
+        )
+        .await
     }
 }

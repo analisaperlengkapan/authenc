@@ -110,13 +110,15 @@ pub trait AuthenticationManager: Send + Sync {
 /// Default authentication manager implementation
 pub struct DefaultAuthenticationManager {
     sessions: Arc<tokio::sync::RwLock<HashMap<String, AuthenticationSessionState>>>,
+    database: Arc<crate::database::Database>,
 }
 
 impl DefaultAuthenticationManager {
     /// Create a new default authentication manager
-    pub fn new() -> Self {
+    pub fn new(database: Arc<crate::database::Database>) -> Self {
         Self {
             sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            database,
         }
     }
 }
@@ -187,14 +189,38 @@ impl AuthenticationManager for DefaultAuthenticationManager {
             .create_authentication_session(realm_id, client_id, "browser", "browser")
             .await?;
 
-        // For now, return a basic successful authentication
-        // In a real implementation, this would validate credentials
+        // Load user from database
+        let user_opt = crate::database::operations::users::get_user_by_username(&self.database, username)
+            .await?;
+
+        // Check if user exists and password is valid
+        let (success, error_message) = if let Some(ref u) = user_opt {
+            if !u.enabled {
+                (false, Some("User is disabled".to_string()))
+            } else if let Some(ref hash) = u.password_hash {
+                // Validate password hash against stored hash
+                match crate::utils::crypto::password::verify_password(hash, password) {
+                    Ok(true) => (true, None),
+                    Ok(false) => (false, Some("Invalid username or password".to_string())),
+                    Err(_) => (false, Some("Password verification failed".to_string())),
+                }
+            } else {
+                // No password hash stored (federated user or passwordless)
+                (false, Some("Password authentication not available for this user".to_string()))
+            }
+        } else {
+            (false, Some("Invalid username or password".to_string()))
+        };
+
+        // Wrap user in Arc if present
+        let user = user_opt.map(Arc::new);
+
         let result = AuthenticationResult {
-            success: true,
-            user: None, // TODO: Load user from storage
+            success,
+            user,
             authenticator_type: AuthenticatorType::UsernamePassword,
             auth_data: HashMap::new(),
-            error_message: None,
+            error_message,
         };
 
         Ok(result)
@@ -210,11 +236,26 @@ impl AuthenticationManager for DefaultAuthenticationManager {
             .await?
             .ok_or_else(|| Error::unauthorized("Authentication session not found"))?;
 
+        // Load user if we have a user_id in the session
+        let user_opt = if let Some(ref user_id_str) = session.user_id {
+            // Parse user_id as UUID
+            if let Ok(user_id) = uuid::Uuid::parse_str(user_id_str) {
+                crate::database::operations::users::get_user_by_id(&self.database, user_id).await?
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Wrap user in Arc if present
+        let user = user_opt.map(Arc::new);
+
         // For now, return success
         // In a real implementation, this would process the authentication flow
         let result = AuthenticationResult {
             success: true,
-            user: None, // TODO: Load user from storage
+            user,
             authenticator_type: AuthenticatorType::UsernamePassword,
             auth_data: session.auth_note.clone(),
             error_message: None,
@@ -241,8 +282,5 @@ impl AuthenticationManager for DefaultAuthenticationManager {
     }
 }
 
-impl Default for DefaultAuthenticationManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// Default implementation removed - requires database parameter
+// Use DefaultAuthenticationManager::new(database) instead

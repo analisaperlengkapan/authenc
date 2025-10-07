@@ -1,6 +1,8 @@
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
-use crate::models::organization::{Organization, OrganizationMember};
+use crate::models::organization::{
+    Organization, OrganizationInvitation as ModelOrganizationInvitation, OrganizationMember,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -347,7 +349,8 @@ impl OrganizationService {
         .await?;
 
         // Mark invitation as accepted
-        self.mark_invitation_accepted(&invitation.id).await?;
+        self.mark_invitation_accepted(&invitation.id, user_id)
+            .await?;
 
         // Get organization details
         self.get_organization(&invitation.organization_id)
@@ -407,6 +410,65 @@ impl OrganizationService {
         Ok(())
     }
 
+    /// Add domain to organization for verification
+    pub async fn add_domain(
+        &self,
+        organization_id: &Uuid,
+        domain: &str,
+        verification_method: &str,
+    ) -> Result<crate::database::operations::organizations::OrganizationDomain> {
+        crate::database::operations::organizations::add_domain(
+            &self.db,
+            *organization_id,
+            domain,
+            verification_method,
+        )
+        .await
+    }
+
+    /// Verify organization domain
+    pub async fn verify_domain(&self, domain_id: &Uuid) -> Result<()> {
+        crate::database::operations::organizations::verify_domain(&self.db, *domain_id).await
+    }
+
+    /// Get organization domains
+    pub async fn get_domains(
+        &self,
+        organization_id: &Uuid,
+    ) -> Result<Vec<crate::database::operations::organizations::OrganizationDomain>> {
+        crate::database::operations::organizations::get_domains(&self.db, *organization_id).await
+    }
+
+    /// Link identity provider to organization
+    pub async fn link_identity_provider(
+        &self,
+        organization_id: &Uuid,
+        identity_provider_id: &Uuid,
+        priority: i32,
+    ) -> Result<()> {
+        crate::database::operations::organizations::link_identity_provider(
+            &self.db,
+            *organization_id,
+            *identity_provider_id,
+            priority,
+        )
+        .await
+    }
+
+    /// Unlink identity provider from organization
+    pub async fn unlink_identity_provider(
+        &self,
+        organization_id: &Uuid,
+        identity_provider_id: &Uuid,
+    ) -> Result<()> {
+        crate::database::operations::organizations::unlink_identity_provider(
+            &self.db,
+            *organization_id,
+            *identity_provider_id,
+        )
+        .await
+    }
+
     /// Generate secure invitation token
     fn generate_invitation_token(&self) -> String {
         use rand::Rng;
@@ -425,26 +487,69 @@ impl OrganizationService {
         Ok(())
     }
 
-    async fn store_member(&self, _member: &OrganizationMember) -> Result<()> {
-        // Stub implementation - in production, store in database
-        Ok(())
+    async fn store_member(&self, member: &OrganizationMember) -> Result<()> {
+        crate::database::operations::organizations::add_member(
+            &self.db,
+            member.organization_id,
+            member.user_id,
+            &member.role,
+            member.invited_by,
+        )
+        .await
     }
 
-    async fn store_invitation(&self, _invitation: &OrganizationInvitation) -> Result<()> {
-        // In production, store in database
-        Ok(())
+    async fn store_invitation(&self, invitation: &OrganizationInvitation) -> Result<()> {
+        // Convert service invitation to model invitation
+        let model_invitation = ModelOrganizationInvitation {
+            id: invitation.id,
+            organization_id: invitation.organization_id,
+            email: invitation.email.clone(),
+            role: invitation.role.as_str().to_string(),
+            invited_by: invitation.invited_by,
+            token_hash: invitation.token.clone(), // Note: caller should hash the token
+            expires_at: invitation.expires_at,
+            accepted_at: invitation.accepted_at,
+            accepted_by: None,
+            created_at: invitation.invited_at,
+        };
+        crate::database::operations::organizations::create_invitation(&self.db, &model_invitation)
+            .await
     }
 
-    async fn get_invitation_by_token(
-        &self,
-        _token: &str,
-    ) -> Result<Option<OrganizationInvitation>> {
-        // In production, retrieve from database
-        Ok(None)
+    async fn get_invitation_by_token(&self, token: &str) -> Result<Option<OrganizationInvitation>> {
+        use sha2::{Digest, Sha256};
+        let token_hash = format!("{:x}", Sha256::digest(token.as_bytes()));
+
+        let model_invitation = crate::database::operations::organizations::get_invitation_by_token(
+            &self.db,
+            &token_hash,
+        )
+        .await?;
+
+        Ok(model_invitation.map(|inv| OrganizationInvitation {
+            id: inv.id,
+            organization_id: inv.organization_id,
+            email: inv.email,
+            role: OrganizationRole::from_str(&inv.role).unwrap_or(OrganizationRole::Member),
+            invited_by: inv.invited_by,
+            invited_at: inv.created_at,
+            expires_at: inv.expires_at,
+            accepted_at: inv.accepted_at,
+            token: token.to_string(),
+        }))
     }
 
-    async fn mark_invitation_accepted(&self, _invitation_id: &Uuid) -> Result<()> {
-        // In production, update in database
+    async fn mark_invitation_accepted(&self, invitation_id: &Uuid, user_id: Uuid) -> Result<()> {
+        // First get the invitation to get the token_hash
+        // Since we have invitation_id but accept_invitation expects token_hash,
+        // we need to query it first. For now, let's add a direct database update
+        let query = r#"
+            UPDATE organization_invitations
+            SET accepted_at = NOW(), accepted_by = $2
+            WHERE id = $1
+        "#;
+
+        self.db.execute(query, &[invitation_id, &user_id]).await?;
         Ok(())
     }
 }

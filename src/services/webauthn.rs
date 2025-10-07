@@ -62,7 +62,7 @@ impl WebAuthnService {
         let user_id = Uuid::new_v4().as_bytes().to_vec();
 
         // Create the registration challenge for database storage
-        let registration_challenge = WebauthnRegistrationChallenge {
+        let _registration_challenge = WebauthnRegistrationChallenge {
             id: Uuid::new_v4(),
             user_id: Uuid::nil(), // Would be looked up from username
             challenge: challenge_bytes.to_vec(),

@@ -52,14 +52,14 @@ fn get_jwt_secret() -> Result<Vec<u8>, String> {
         }
         return Ok(secret.into_bytes());
     }
-    
+
     // For development/testing only - should NEVER reach here in production
     #[cfg(debug_assertions)]
     {
         log::warn!("JWT_SECRET not set! Using insecure default. DO NOT USE IN PRODUCTION!");
         return Ok(b"test-secret-for-development-only-change-in-production".to_vec());
     }
-    
+
     #[cfg(not(debug_assertions))]
     {
         Err("JWT_SECRET environment variable must be set in production".to_string())

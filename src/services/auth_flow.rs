@@ -12,9 +12,11 @@
 //! - Flow state persistence and recovery
 
 use crate::error::AuthencError;
+use crate::database::Database;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 /// Authentication Flow Type
@@ -130,6 +132,12 @@ pub trait AuthenticationFlowResolver: Send + Sync {
     /// * `Ok(Vec<AuthenticationFlowModel>)` containing all available flows
     /// * `Err(AuthencError)` if flows cannot be retrieved
     async fn get_available_flows(&self) -> Result<Vec<AuthenticationFlowModel>, AuthencError>;
+
+    /// Get database connection if available
+    ///
+    /// # Returns
+    /// * `Option<&Arc<Database>>` containing the database connection if available
+    fn get_database(&self) -> Option<&Arc<Database>>;
 }
 
 /// Authentication Context
@@ -160,6 +168,7 @@ pub struct AuthenticationContext {
 /// Default implementation of authentication flow resolution
 pub struct DefaultAuthenticationFlowResolver {
     flows: HashMap<String, AuthenticationFlowModel>,
+    database: Option<Arc<Database>>,
 }
 
 impl Default for DefaultAuthenticationFlowResolver {
@@ -173,6 +182,17 @@ impl DefaultAuthenticationFlowResolver {
     pub fn new() -> Self {
         let mut resolver = Self {
             flows: HashMap::new(),
+            database: None,
+        };
+        resolver.initialize_default_flows();
+        resolver
+    }
+
+    /// Create a new default flow resolver with database connection
+    pub fn with_database(database: Arc<Database>) -> Self {
+        let mut resolver = Self {
+            flows: HashMap::new(),
+            database: Some(database),
         };
         resolver.initialize_default_flows();
         resolver
@@ -282,6 +302,14 @@ impl AuthenticationFlowResolver for DefaultAuthenticationFlowResolver {
     /// * `Err(AuthencError)` if flows cannot be retrieved
     async fn get_available_flows(&self) -> Result<Vec<AuthenticationFlowModel>, AuthencError> {
         Ok(self.flows.values().cloned().collect())
+    }
+
+    /// Get database connection if available
+    ///
+    /// # Returns
+    /// * `Option<&Arc<Database>>` containing the database connection if available
+    fn get_database(&self) -> Option<&Arc<Database>> {
+        self.database.as_ref()
     }
 }
 
@@ -496,8 +524,9 @@ impl AuthenticationManager {
                 message: format!("Flow not found: {}", session.flow_id),
             })?;
 
-        // Determine next execution
-        let next_execution = self.get_next_execution(flow, &session)?;
+        // Determine next execution (using database if available via flow_resolver)
+        let db = self.flow_resolver.get_database();
+        let next_execution = self.get_next_execution(flow, &session, db).await?;
 
         // Process the execution
         let result = self.process_execution(&next_execution, step_data).await?;
@@ -513,13 +542,54 @@ impl AuthenticationManager {
         Ok(result)
     }
 
-    fn get_next_execution(
+    async fn get_next_execution(
         &self,
         flow: &AuthenticationFlowModel,
         session: &AuthenticationSessionModel,
+        db: Option<&Arc<Database>>,
     ) -> Result<AuthenticationExecutionModel, AuthencError> {
-        // TODO: Get executions from database
-        // For now, return appropriate execution based on flow type
+        // Try to get executions from database if available
+        if let Some(database) = db {
+            match crate::database::operations::authenticators::get_flow_executions(database, flow.id).await {
+                Ok(executions) => {
+                    if !executions.is_empty() {
+                        // Get first execution or next unprocessed execution
+                        let first_exec = &executions[0];
+                        
+                        return Ok(AuthenticationExecutionModel {
+                            id: first_exec.get("id")
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| Uuid::parse_str(s).ok())
+                                .unwrap_or_else(Uuid::new_v4),
+                            flow_id: flow.id,
+                            alias: first_exec.get("authenticator_name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("Unknown Authenticator")
+                                .to_string(),
+                            description: first_exec.get("authenticator_type")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("Authentication step")
+                                .to_string(),
+                            execution_type: "authenticator".to_string(),
+                            enabled: true,
+                            priority: first_exec.get("priority")
+                                .and_then(|v| v.as_i64())
+                                .unwrap_or(0) as i32,
+                            configuration: HashMap::new(),
+                            requirements: vec![first_exec.get("requirement")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("REQUIRED")
+                                .to_string()],
+                        });
+                    }
+                }
+                Err(_) => {
+                    // Fall back to static flow if database query fails
+                }
+            }
+        }
+
+        // Fallback to static flow matching when database not available or no executions found
         let (alias, description) = match flow.flow_type {
             AuthenticationFlowType::Browser => (
                 "Username Password Form",

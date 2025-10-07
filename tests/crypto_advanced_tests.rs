@@ -59,9 +59,7 @@ mod pqc_advanced_tests {
     #[test]
     fn test_multiple_key_generations() {
         // Test that multiple key generations produce different keys
-        let keys: Vec<_> = (0..10)
-            .map(|_| mldsa::SecretKey::new().unwrap())
-            .collect();
+        let keys: Vec<_> = (0..10).map(|_| mldsa::SecretKey::new().unwrap()).collect();
 
         // All public keys should be different
         for i in 0..keys.len() {
@@ -281,7 +279,7 @@ mod shamir_advanced_tests {
         for size in [1, 2, 4, 8, 16, 32, 64, 128, 256] {
             let mut secret = vec![0u8; size];
             rng.fill_bytes(&mut secret);
-            
+
             // Ensure secret has at least some non-zero bytes (Feldman VSS works better)
             // Replace all-zero bytes with non-zero
             for byte in secret.iter_mut() {
@@ -291,16 +289,17 @@ mod shamir_advanced_tests {
             }
 
             let config = ShamirConfig::new(3, 5).unwrap();
-            
+
             // Try to generate shares, skip if it fails (rare edge case)
-            let (mut shares, commitment) = match generate_shares_with_commitments(&secret, &config) {
+            let (mut shares, commitment) = match generate_shares_with_commitments(&secret, &config)
+            {
                 Ok(result) => result,
                 Err(_) => {
                     // Very rare case where secret causes issues, skip this iteration
                     continue;
                 }
             };
-            
+
             validate_shares(&mut shares).unwrap();
 
             let recovered = reconstruct_secret_verified(&shares[..3], &commitment).unwrap();
@@ -342,8 +341,7 @@ mod shamir_advanced_tests {
             validate_shares(&mut shares).unwrap();
 
             // Test with minimum required shares
-            let recovered =
-                reconstruct_secret_verified(&shares[..threshold], &commitment).unwrap();
+            let recovered = reconstruct_secret_verified(&shares[..threshold], &commitment).unwrap();
             assert_eq!(secret.as_slice(), recovered.as_slice());
 
             // Test with more than minimum
@@ -361,8 +359,7 @@ mod shamir_advanced_tests {
         let secret = b"secret for subset testing";
         let config = ShamirConfig::new(3, 7).unwrap();
 
-        let (mut shares, commitment) =
-            generate_shares_with_commitments(secret, &config).unwrap();
+        let (mut shares, commitment) = generate_shares_with_commitments(secret, &config).unwrap();
         validate_shares(&mut shares).unwrap();
 
         // Test various combinations of 3 shares from 7
@@ -388,8 +385,7 @@ mod shamir_advanced_tests {
         let secret = b"reusable shares test";
         let config = ShamirConfig::new(3, 5).unwrap();
 
-        let (mut shares, commitment) =
-            generate_shares_with_commitments(secret, &config).unwrap();
+        let (mut shares, commitment) = generate_shares_with_commitments(secret, &config).unwrap();
         validate_shares(&mut shares).unwrap();
 
         // Reconstruct 10 times with same shares
@@ -421,10 +417,8 @@ mod shamir_advanced_tests {
         // Shares for different secrets should be different
         let config = ShamirConfig::new(3, 5).unwrap();
 
-        let (mut shares1, _) =
-            generate_shares_with_commitments(b"secret one", &config).unwrap();
-        let (mut shares2, _) =
-            generate_shares_with_commitments(b"secret two", &config).unwrap();
+        let (mut shares1, _) = generate_shares_with_commitments(b"secret one", &config).unwrap();
+        let (mut shares2, _) = generate_shares_with_commitments(b"secret two", &config).unwrap();
 
         validate_shares(&mut shares1).unwrap();
         validate_shares(&mut shares2).unwrap();
@@ -447,7 +441,11 @@ mod shamir_advanced_tests {
 
         let mut ids = HashSet::new();
         for share in &shares {
-            assert!(ids.insert(share.x()), "Duplicate share ID found: {}", share.x());
+            assert!(
+                ids.insert(share.x()),
+                "Duplicate share ID found: {}",
+                share.x()
+            );
         }
     }
 
@@ -500,8 +498,7 @@ mod shamir_advanced_tests {
                     let (mut shares, commitment) =
                         generate_shares_with_commitments(secret.as_bytes(), &config).unwrap();
                     validate_shares(&mut shares).unwrap();
-                    let recovered =
-                        reconstruct_secret_verified(&shares[..3], &commitment).unwrap();
+                    let recovered = reconstruct_secret_verified(&shares[..3], &commitment).unwrap();
                     assert_eq!(secret.as_bytes(), recovered.as_slice());
                 })
             })
@@ -554,8 +551,7 @@ mod shamir_advanced_tests {
         let secret = b"test secret";
         let config = ShamirConfig::new(3, 8).unwrap();
 
-        let (mut shares, commitment) =
-            generate_shares_with_commitments(secret, &config).unwrap();
+        let (mut shares, commitment) = generate_shares_with_commitments(secret, &config).unwrap();
         validate_shares(&mut shares).unwrap();
 
         // Try with 3, 4, 5, 6, 7, 8 shares
@@ -573,8 +569,7 @@ mod shamir_advanced_tests {
         let secret = vec![0x01u8; 32];
         let config = ShamirConfig::new(3, 5).unwrap();
 
-        let (mut shares, commitment) =
-            generate_shares_with_commitments(&secret, &config).unwrap();
+        let (mut shares, commitment) = generate_shares_with_commitments(&secret, &config).unwrap();
         validate_shares(&mut shares).unwrap();
 
         let recovered = reconstruct_secret_verified(&shares[..3], &commitment).unwrap();
@@ -587,8 +582,7 @@ mod shamir_advanced_tests {
         let secret = vec![0xFFu8; 32];
         let config = ShamirConfig::new(3, 5).unwrap();
 
-        let (mut shares, commitment) =
-            generate_shares_with_commitments(&secret, &config).unwrap();
+        let (mut shares, commitment) = generate_shares_with_commitments(&secret, &config).unwrap();
         validate_shares(&mut shares).unwrap();
 
         let recovered = reconstruct_secret_verified(&shares[..3], &commitment).unwrap();
@@ -601,8 +595,7 @@ mod shamir_advanced_tests {
         let secret = vec![0xAAu8, 0x55u8].repeat(16);
         let config = ShamirConfig::new(3, 5).unwrap();
 
-        let (mut shares, commitment) =
-            generate_shares_with_commitments(&secret, &config).unwrap();
+        let (mut shares, commitment) = generate_shares_with_commitments(&secret, &config).unwrap();
         validate_shares(&mut shares).unwrap();
 
         let recovered = reconstruct_secret_verified(&shares[..3], &commitment).unwrap();
@@ -615,8 +608,7 @@ mod shamir_advanced_tests {
         let secret = b"batch test secret";
         let config = ShamirConfig::new(3, 10).unwrap();
 
-        let (mut shares, commitment) =
-            generate_shares_with_commitments(secret, &config).unwrap();
+        let (mut shares, commitment) = generate_shares_with_commitments(secret, &config).unwrap();
         validate_shares(&mut shares).unwrap();
 
         let result = verify_shares_batch(&shares, &commitment);
@@ -629,8 +621,7 @@ mod shamir_advanced_tests {
         let secret = b"test secret";
         let config = ShamirConfig::new(3, 5).unwrap();
 
-        let (mut shares1, commitment) =
-            generate_shares_with_commitments(secret, &config).unwrap();
+        let (mut shares1, commitment) = generate_shares_with_commitments(secret, &config).unwrap();
         let mut shares2 = shares1.clone();
 
         validate_shares(&mut shares1).unwrap();

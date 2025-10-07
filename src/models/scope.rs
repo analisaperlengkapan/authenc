@@ -37,6 +37,8 @@ pub struct CreateScopeRequest {
 /// Scope update request
 #[derive(Debug, Deserialize)]
 pub struct UpdateScopeRequest {
+    /// New name for the scope
+    pub name: Option<String>,
     /// New display name for the scope
     pub display_name: Option<String>,
     /// New icon URI for the scope
@@ -104,5 +106,42 @@ impl Scope {
             self.icon_uri = Some(icon_uri);
         }
         self.updated_at = Utc::now();
+    }
+}
+
+/// Convert from database row to Scope
+impl TryFrom<tokio_postgres::Row> for Scope {
+    type Error = crate::error::AuthencError;
+
+    fn try_from(row: tokio_postgres::Row) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: row.try_get("id").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get id: {}", e))
+            })?,
+            name: row.try_get("name").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get name: {}", e))
+            })?,
+            display_name: row.try_get("display_name").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get display_name: {}", e))
+            })?,
+            icon_uri: row.try_get("icon_uri").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get icon_uri: {}", e))
+            })?,
+            realm_id: row.try_get("realm_id").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get realm_id: {}", e))
+            })?,
+            resource_server_id: row.try_get("resource_server_id").map_err(|e| {
+                crate::error::AuthencError::database(format!(
+                    "Failed to get resource_server_id: {}",
+                    e
+                ))
+            })?,
+            created_at: row.try_get("created_at").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get created_at: {}", e))
+            })?,
+            updated_at: row.try_get("updated_at").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get updated_at: {}", e))
+            })?,
+        })
     }
 }

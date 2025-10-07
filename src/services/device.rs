@@ -653,9 +653,31 @@ impl DeviceService {
     }
 
     /// Store device session information in the database
-    async fn store_session(&self, _session: &DeviceSession) -> Result<()> {
-        // TODO: Implement session storage in database
-        // For now, this is a placeholder
+    async fn store_session(&self, session: &DeviceSession) -> Result<()> {
+        use crate::database::operations as db_ops;
+
+        // Convert location to JSON if present
+        let location_json = session.location.as_ref().map(|loc| {
+            serde_json::json!({
+                "country": loc.country,
+                "city": loc.city,
+                "latitude": loc.latitude,
+                "longitude": loc.longitude
+            })
+        });
+
+        db_ops::sessions::create_device_session(
+            &self.db,
+            session.device_id,
+            session.user_id,
+            None, // user_session_id - could be linked if available
+            &session.session_id,
+            Some(&session.ip_address),
+            location_json,
+            session.risk_score,
+        )
+        .await?;
+
         Ok(())
     }
 }

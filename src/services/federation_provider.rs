@@ -95,7 +95,7 @@ impl FederationProvider for DummyFederationProvider {
             None
         }
     }
-    
+
     /// Verify password using constant-time comparison to prevent timing attacks
     ///
     /// # Security
@@ -106,11 +106,11 @@ impl FederationProvider for DummyFederationProvider {
         // Expected credentials (in production, these should be hashed)
         let expected_username = b"federated";
         let expected_password = b"federatedpass";
-        
+
         // Constant-time comparison for both username and password
         let username_match = username.as_bytes().ct_eq(expected_username);
         let password_match = password.as_bytes().ct_eq(expected_password);
-        
+
         // Both must match - using & instead of && for constant-time evaluation
         (username_match & password_match).into()
     }

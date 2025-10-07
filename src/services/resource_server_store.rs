@@ -80,76 +80,87 @@ impl ResourceServerStoreTrait for ResourceServerStore {
         request: CreateResourceServerRequest,
         realm_id: Uuid,
     ) -> Result<ResourceServer, AuthencError> {
-        // Stub implementation
-        Ok(ResourceServer {
-            id: Uuid::new_v4(),
-            client_id: request.client_id,
-            name: request.name,
-            description: request.description,
-            enabled: true,
+        crate::database::operations::resource_servers::create_resource_server(
+            &self.database,
+            request,
             realm_id,
-            policy_enforcement_mode:
-                crate::models::resource_server::PolicyEnforcementMode::Enforcing,
-            decision_strategy: crate::models::resource_server::DecisionStrategy::Unanimous,
-            allow_remote_resource_management: false,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        })
+        )
+        .await
     }
 
-    async fn get_resource_server(&self, _id: Uuid) -> Result<Option<ResourceServer>, AuthencError> {
-        // Stub implementation
-        Ok(None)
+    async fn get_resource_server(&self, id: Uuid) -> Result<Option<ResourceServer>, AuthencError> {
+        crate::database::operations::resource_servers::get_resource_server_by_id(&self.database, id)
+            .await
     }
 
     async fn get_resource_server_by_client(
         &self,
-        _client_id: &str,
-        _realm_id: Uuid,
+        client_id: &str,
+        realm_id: Uuid,
     ) -> Result<Option<ResourceServer>, AuthencError> {
-        // Stub implementation
-        Ok(None)
+        crate::database::operations::resource_servers::get_resource_server_by_client(
+            &self.database,
+            client_id,
+            realm_id,
+        )
+        .await
     }
 
     async fn get_resource_servers_by_realm(
         &self,
-        _realm_id: Uuid,
-        _first: Option<i32>,
-        _max: Option<i32>,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
     ) -> Result<Vec<ResourceServer>, AuthencError> {
-        // Stub implementation
-        Ok(Vec::new())
+        crate::database::operations::resource_servers::get_resource_servers_by_realm(
+            &self.database,
+            realm_id,
+            first,
+            max,
+        )
+        .await
     }
 
     async fn update_resource_server(
         &self,
-        _id: Uuid,
-        _request: UpdateResourceServerRequest,
+        id: Uuid,
+        request: UpdateResourceServerRequest,
     ) -> Result<ResourceServer, AuthencError> {
-        // Stub implementation
-        Err(AuthencError::resource_not_found(
-            "Resource server not found".to_string(),
-        ))
+        crate::database::operations::resource_servers::update_resource_server(
+            &self.database,
+            id,
+            request,
+        )
+        .await
     }
 
-    async fn delete_resource_server(&self, _id: Uuid) -> Result<(), AuthencError> {
-        // Stub implementation
-        Ok(())
+    async fn delete_resource_server(&self, id: Uuid) -> Result<(), AuthencError> {
+        crate::database::operations::resource_servers::delete_resource_server(&self.database, id)
+            .await
     }
 
     async fn search_resource_servers(
         &self,
-        _name: &str,
-        _realm_id: Uuid,
-        _first: Option<i32>,
-        _max: Option<i32>,
+        name: &str,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
     ) -> Result<Vec<ResourceServer>, AuthencError> {
-        // Stub implementation
-        Ok(Vec::new())
+        crate::database::operations::resource_servers::search_resource_servers(
+            &self.database,
+            name,
+            realm_id,
+            first,
+            max,
+        )
+        .await
     }
 
-    async fn count_resource_servers_by_realm(&self, _realm_id: Uuid) -> Result<i64, AuthencError> {
-        // Stub implementation
-        Ok(0)
+    async fn count_resource_servers_by_realm(&self, realm_id: Uuid) -> Result<i64, AuthencError> {
+        crate::database::operations::resource_servers::count_resource_servers_by_realm(
+            &self.database,
+            realm_id,
+        )
+        .await
     }
 }

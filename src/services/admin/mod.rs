@@ -552,21 +552,91 @@ impl AdminManager {
         Self { db }
     }
 
-    /// Generate system statistics
-    fn generate_system_stats(&self) -> SystemStats {
-        // TODO: Implement actual statistics gathering
+    /// Generate system statistics with real database queries
+    async fn generate_system_stats(&self) -> SystemStats {
+        // Integration 17: Admin Console Statistics with database verification
+        
+        // Query 1: Total users count
+        let total_users = self.db.query_raw(
+            "SELECT COUNT(*) FROM users WHERE deleted_at IS NULL",
+            &[]
+        ).await.ok()
+            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
+            .unwrap_or(0) as u64;
+        
+        // Query 2: Active users (logged in within last 30 days)
+        let active_users = self.db.query_raw(
+            "SELECT COUNT(DISTINCT user_id) FROM user_sessions WHERE last_activity > NOW() - INTERVAL '30 days'",
+            &[]
+        ).await.ok()
+            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
+            .unwrap_or(0) as u64;
+        
+        // Query 3: Total sessions count
+        let total_sessions = self.db.query_raw(
+            "SELECT COUNT(*) FROM user_sessions",
+            &[]
+        ).await.ok()
+            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
+            .unwrap_or(0) as u64;
+        
+        // Query 4: Active sessions (not expired and not revoked)
+        let active_sessions = self.db.query_raw(
+            "SELECT COUNT(*) FROM user_sessions WHERE expires_at > NOW() AND revoked = false",
+            &[]
+        ).await.ok()
+            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
+            .unwrap_or(0) as u64;
+        
+        // Query 5: Total realms
+        let total_realms = self.db.query_raw(
+            "SELECT COUNT(*) FROM realms WHERE enabled = true",
+            &[]
+        ).await.ok()
+            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
+            .unwrap_or(0) as u64;
+        
+        // Query 6: Total policies (from authorization_policies or similar)
+        let total_policies = self.db.query_raw(
+            "SELECT COUNT(*) FROM policies",
+            &[]
+        ).await.ok()
+            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
+            .unwrap_or(0) as u64;
+        
+        // Query 7: Security events today (from audit_logs)
+        let security_events_today = self.db.query_raw(
+            "SELECT COUNT(*) FROM audit_logs WHERE timestamp >= CURRENT_DATE AND event_type IN ('login', 'logout', 'access_denied', 'permission_check')",
+            &[]
+        ).await.ok()
+            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
+            .unwrap_or(0) as u64;
+        
+        // Query 8: Failed login attempts today
+        let failed_login_attempts = self.db.query_raw(
+            "SELECT COUNT(*) FROM audit_logs WHERE timestamp >= CURRENT_DATE AND event_type = 'login' AND status != 'SUCCESS'",
+            &[]
+        ).await.ok()
+            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
+            .unwrap_or(0) as u64;
+        
+        // System metrics (would come from system monitoring in production)
+        let uptime_seconds = 86400; // Placeholder: 24 hours
+        let memory_usage_mb = 512;   // Placeholder: 512 MB
+        let cpu_usage_percent = 15.5; // Placeholder: 15.5%
+        
         SystemStats {
-            total_users: 1000,
-            active_users: 150,
-            total_sessions: 200,
-            active_sessions: 180,
-            total_realms: 5,
-            total_policies: 25,
-            security_events_today: 12,
-            failed_login_attempts: 8,
-            uptime_seconds: 86400, // 24 hours
-            memory_usage_mb: 512,
-            cpu_usage_percent: 15.5,
+            total_users,
+            active_users,
+            total_sessions,
+            active_sessions,
+            total_realms,
+            total_policies,
+            security_events_today,
+            failed_login_attempts,
+            uptime_seconds,
+            memory_usage_mb,
+            cpu_usage_percent,
         }
     }
 
@@ -619,7 +689,7 @@ impl AdminManager {
 #[async_trait]
 impl AdminService for AdminManager {
     async fn get_system_stats(&self) -> Result<SystemStats, String> {
-        Ok(self.generate_system_stats())
+        Ok(self.generate_system_stats().await)
     }
 
     async fn get_users(
@@ -628,12 +698,69 @@ impl AdminService for AdminManager {
         page: u32,
         limit: u32,
     ) -> Result<UserListResponse, String> {
-        // TODO: Implement user listing with pagination and filtering by realm
-        // For now, return empty list with realm filtering placeholder
-        let _realm_filter = realm_id; // Placeholder for future implementation
+        // Integration 19: User Listing with Pagination and Realm Filtering
+        
+        let offset = page * limit;
+        
+        // Query total count first
+        let total_count_query = "SELECT COUNT(*) FROM users WHERE realm_id = $1 AND deleted_at IS NULL";
+        let total_count = self.db.query_raw(total_count_query, &[&realm_id])
+            .await
+            .map_err(|e| format!("Failed to get user count: {}", e))?
+            .first()
+            .map(|row| row.get::<_, i64>(0))
+            .unwrap_or(0) as u64;
+        
+        // Query users with pagination
+        let users_query = "SELECT id, username, email, first_name, last_name, enabled, email_verified, realm_id, created_at, last_login, login_attempts, locked_until FROM users WHERE realm_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3";
+        let rows = self.db.query_raw(users_query, &[&realm_id, &(limit as i64), &(offset as i64)])
+            .await
+            .map_err(|e| format!("Failed to get users: {}", e))?;
+        
+        let mut users = Vec::new();
+        for row in rows {
+            let id: Uuid = row.get(0);
+            let username: String = row.get(1);
+            let email: String = row.get(2);
+            let first_name: Option<String> = row.get(3);
+            let last_name: Option<String> = row.get(4);
+            let enabled: bool = row.get(5);
+            let email_verified: bool = row.get(6);
+            let user_realm_id: Uuid = row.get(7);
+            let created_at: DateTime<Utc> = row.get(8);
+            let last_login: Option<DateTime<Utc>> = row.get(9);
+            let login_attempts: i32 = row.get(10);
+            let locked_until: Option<DateTime<Utc>> = row.get(11);
+            
+            // Get roles for user (using existing get_user_roles operation)
+            let roles = crate::database::operations::roles::get_user_roles(&self.db, &id)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|r| r.name)
+                .collect();
+            
+            users.push(UserResponse {
+                id,
+                username,
+                email,
+                first_name,
+                last_name,
+                enabled,
+                email_verified,
+                realm_id: user_realm_id,
+                roles,
+                groups: vec![], // TODO: Get user groups when operation is implemented
+                created_at,
+                last_login,
+                login_attempts: login_attempts as u32,
+                locked_until,
+            });
+        }
+        
         Ok(UserListResponse {
-            users: vec![],
-            total_count: 0,
+            users,
+            total_count,
             page,
             limit,
         })
@@ -656,6 +783,13 @@ impl AdminService for AdminManager {
         // Create user in database
         match operations::users::create_user(&self.db, &create_request).await {
             Ok(user) => {
+                // Get user roles from database
+                let roles = operations::roles::get_user_roles(&self.db, &user.id)
+                    .await
+                    .unwrap_or_else(|_| vec![]);
+                
+                let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
+                
                 // Convert to admin response
                 Ok(UserResponse {
                     id: user.id,
@@ -666,8 +800,8 @@ impl AdminService for AdminManager {
                     enabled: user.enabled,
                     email_verified: user.email_verified,
                     realm_id: user.realm_id.unwrap_or_else(Uuid::new_v4),
-                    roles: vec![],  // TODO: Get user roles
-                    groups: vec![], // TODO: Get user groups
+                    roles: role_names,
+                    groups: vec![], // TODO: Get user groups (operation not implemented yet)
                     created_at: user.created_at,
                     last_login: user.last_login_at,
                     login_attempts: user.failed_login_attempts as u32,
@@ -700,6 +834,13 @@ impl AdminService for AdminManager {
         // Update user in database
         match operations::users::update_user(&self.db, *user_id, &update_request).await {
             Ok(user) => {
+                // Get user roles from database
+                let roles = operations::roles::get_user_roles(&self.db, &user.id)
+                    .await
+                    .unwrap_or_else(|_| vec![]);
+                
+                let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
+                
                 // Convert to admin response
                 Ok(UserResponse {
                     id: user.id,
@@ -710,8 +851,8 @@ impl AdminService for AdminManager {
                     enabled: user.enabled,
                     email_verified: user.email_verified,
                     realm_id: user.realm_id.unwrap_or_else(Uuid::new_v4),
-                    roles: vec![],  // TODO: Get user roles
-                    groups: vec![], // TODO: Get user groups
+                    roles: role_names,
+                    groups: vec![], // TODO: Get user groups (operation not implemented yet)
                     created_at: user.created_at,
                     last_login: user.last_login_at,
                     login_attempts: user.failed_login_attempts as u32,
@@ -789,31 +930,186 @@ impl AdminService for AdminManager {
 
     async fn get_sessions(
         &self,
-        _user_id: Option<Uuid>,
-        _page: u32,
-        _limit: u32,
+        user_id: Option<Uuid>,
+        page: u32,
+        limit: u32,
     ) -> Result<SessionListResponse, String> {
-        // TODO: Implement session listing
+        // Calculate pagination parameters
+        let offset = (page.saturating_sub(1)) * limit;
+        
+        // Build query based on whether we're filtering by user_id
+        let (query, params): (String, Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>>) = if let Some(uid) = user_id {
+            (
+                format!(
+                    r#"
+                    SELECT s.id, s.user_id, u.username, s.ip_address, s.user_agent,
+                           s.started_at, s.last_accessed, s.expires_at, s.client_id
+                    FROM user_sessions s
+                    LEFT JOIN users u ON s.user_id = u.id
+                    WHERE s.user_id = $1 AND NOT s.revoked AND s.expires_at > NOW()
+                    ORDER BY s.last_accessed DESC
+                    LIMIT $2 OFFSET $3
+                    "#
+                ),
+                vec![
+                    Box::new(uid) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
+                    Box::new(limit as i64) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
+                    Box::new(offset as i64) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
+                ],
+            )
+        } else {
+            (
+                format!(
+                    r#"
+                    SELECT s.id, s.user_id, u.username, s.ip_address, s.user_agent,
+                           s.started_at, s.last_accessed, s.expires_at, s.client_id
+                    FROM user_sessions s
+                    LEFT JOIN users u ON s.user_id = u.id
+                    WHERE NOT s.revoked AND s.expires_at > NOW()
+                    ORDER BY s.last_accessed DESC
+                    LIMIT $1 OFFSET $2
+                    "#
+                ),
+                vec![
+                    Box::new(limit as i64) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
+                    Box::new(offset as i64) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
+                ],
+            )
+        };
+
+        // Execute query
+        let rows: Vec<tokio_postgres::Row> = self.db
+            .query(
+                &query,
+                params.iter().map(|b| b.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect::<Vec<_>>().as_slice(),
+            )
+            .await
+            .map_err(|e| format!("Failed to query sessions: {}", e))?;
+
+        // Convert rows to SessionResponse
+        let mut sessions = Vec::new();
+        for row in rows {
+            sessions.push(SessionResponse {
+                id: row.get::<_, Uuid>("id").to_string(),
+                user_id: row.get("user_id"),
+                username: row.get::<_, Option<String>>("username").unwrap_or_else(|| "Unknown".to_string()),
+                ip_address: row.get::<_, Option<std::net::IpAddr>>("ip_address")
+                    .map(|ip| ip.to_string())
+                    .unwrap_or_else(|| "Unknown".to_string()),
+                user_agent: row.get::<_, Option<String>>("user_agent").unwrap_or_else(|| "Unknown".to_string()),
+                started_at: row.get("started_at"),
+                last_activity: row.get("last_accessed"),
+                expires_at: row.get("expires_at"),
+                client_id: row.get::<_, Option<Uuid>>("client_id").map(|id| id.to_string()),
+            });
+        }
+
+        // Get total count
+        let count_query = if user_id.is_some() {
+            "SELECT COUNT(*) FROM user_sessions WHERE user_id = $1 AND NOT revoked AND expires_at > NOW()"
+        } else {
+            "SELECT COUNT(*) FROM user_sessions WHERE NOT revoked AND expires_at > NOW()"
+        };
+
+        let count_params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = if let Some(uid) = user_id {
+            vec![Box::new(uid)]
+        } else {
+            vec![]
+        };
+
+        let count_row: tokio_postgres::Row = self.db
+            .query_one(
+                count_query,
+                count_params.iter().map(|b| b.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect::<Vec<_>>().as_slice(),
+            )
+            .await
+            .map_err(|e| format!("Failed to count sessions: {}", e))?;
+
+        let total_count: i64 = count_row.get(0);
+
         Ok(SessionListResponse {
-            sessions: vec![],
-            total_count: 0,
-            page: 1,
-            limit: 20,
+            sessions,
+            total_count: total_count as u64,
+            page,
+            limit,
         })
     }
 
-    async fn terminate_session(&self, _session_id: &str) -> Result<(), String> {
-        // TODO: Implement session termination
-        Err("Not implemented".to_string())
+    async fn terminate_session(&self, session_id: &str) -> Result<(), String> {
+        // Parse session_id from string to Uuid
+        let session_uuid = Uuid::parse_str(session_id)
+            .map_err(|e| format!("Invalid session ID format: {}", e))?;
+
+        // Use database operation to revoke the session
+        operations::sessions::revoke_session(&self.db, session_uuid, Some("Terminated by administrator"))
+            .await
+            .map_err(|e| format!("Failed to terminate session: {}", e))?;
+
+        Ok(())
     }
 
-    async fn get_audit_logs(&self, _filter: AuditLogFilter) -> Result<AuditLogResponse, String> {
-        // TODO: Implement audit log retrieval
+    async fn get_audit_logs(&self, filter: AuditLogFilter) -> Result<AuditLogResponse, String> {
+        // Calculate pagination
+        let offset = (filter.page.saturating_sub(1)) * filter.limit;
+        
+        // Query audit logs with filters
+        let audit_events = operations::audit::get_audit_logs(
+            &self.db,
+            filter.user_id,
+            filter.event_type.as_deref(),
+            filter.limit as i64,
+            offset as i64,
+        )
+        .await
+        .map_err(|e| format!("Failed to query audit logs: {}", e))?;
+
+        // Get total count
+        let total_count = operations::audit::get_audit_log_count(
+            &self.db,
+            filter.user_id,
+            filter.event_type.as_deref(),
+        )
+        .await
+        .map_err(|e| format!("Failed to count audit logs: {}", e))?;
+
+        // Convert AuditEvent to AuditLogEntry with username lookup
+        let mut logs = Vec::new();
+        for event in audit_events {
+            // Get username if user_id exists
+            let username = if let Some(uid) = event.user_id {
+                operations::users::get_user_by_id(&self.db, uid)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|user| user.username)
+            } else {
+                None
+            };
+
+            logs.push(AuditLogEntry {
+                id: Uuid::new_v4(), // Database doesn't return id, generate one for API response
+                timestamp: event.timestamp,
+                user_id: event.user_id,
+                username,
+                event_type: event.event_type.clone(),
+                operation_type: event.action.clone(),
+                resource_type: event.resource_type.clone().unwrap_or_else(|| "Unknown".to_string()),
+                resource_path: event.resource_id.clone().unwrap_or_else(|| "".to_string()),
+                ip_address: event.ip_address.clone().unwrap_or_else(|| "Unknown".to_string()),
+                user_agent: event.user_agent.clone().unwrap_or_else(|| "Unknown".to_string()),
+                realm_id: Uuid::nil(), // TODO: Add realm_id to audit_logs table if needed
+                client_id: event.client_id.clone(),
+                details: event.details.clone().unwrap_or_else(|| serde_json::json!({})),
+                success: event.status == "SUCCESS" || event.status == "success",
+                error_message: event.error_message.clone(),
+            });
+        }
+
         Ok(AuditLogResponse {
-            logs: vec![],
-            total_count: 0,
-            page: 1,
-            limit: 50,
+            logs,
+            total_count: total_count as u64,
+            page: filter.page,
+            limit: filter.limit,
         })
     }
 

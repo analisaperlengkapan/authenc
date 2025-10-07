@@ -49,3 +49,9 @@ pub use client::create_client_routes;
 /// Event querying API handlers for audit logs
 pub mod events;
 pub use events::create_event_routes;
+/// Authenticator management API handlers
+pub mod authenticators;
+/// Event listener management API handlers
+pub mod event_listeners;
+/// Protocol mapper management API handlers
+pub mod protocol_mappers;

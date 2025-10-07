@@ -92,28 +92,43 @@ impl AuthFlowStoreTrait for AuthFlowStore {
         Ok(flow.clone())
     }
 
-    async fn get_flow(&self, _flow_id: Uuid) -> Result<Option<AuthenticationFlowModel>> {
-        // Stub implementation - return None
-        Ok(None)
+    async fn get_flow(&self, flow_id: Uuid) -> Result<Option<AuthenticationFlowModel>> {
+        let flow_data = db_ops::get_flow(&self.database, flow_id).await?;
+        if let Some(data) = flow_data {
+            let flow: AuthenticationFlowModel = serde_json::from_value(data)
+                .map_err(|e| AuthencError::validation(format!("Invalid flow data: {}", e)))?;
+            Ok(Some(flow))
+        } else {
+            Ok(None)
+        }
     }
 
-    async fn list_flows(&self, _realm_id: Option<Uuid>) -> Result<Vec<AuthenticationFlowModel>> {
-        // Stub implementation - return empty vec
-        Ok(Vec::new())
+    async fn list_flows(&self, realm_id: Option<Uuid>) -> Result<Vec<AuthenticationFlowModel>> {
+        let flows_data = db_ops::list_flows(&self.database, realm_id).await?;
+        let mut flows = Vec::new();
+        for data in flows_data {
+            let flow: AuthenticationFlowModel = serde_json::from_value(data)
+                .map_err(|e| AuthencError::validation(format!("Invalid flow data: {}", e)))?;
+            flows.push(flow);
+        }
+        Ok(flows)
     }
 
     async fn update_flow(
         &self,
-        _flow_id: Uuid,
+        flow_id: Uuid,
         flow: &AuthenticationFlowModel,
     ) -> Result<AuthenticationFlowModel> {
-        // Stub implementation - return the flow as-is
-        Ok(flow.clone())
+        let flow_value = serde_json::to_value(flow)
+            .map_err(|e| AuthencError::validation(format!("Invalid flow data: {}", e)))?;
+        let updated_data = db_ops::update_flow(&self.database, flow_id, &flow_value).await?;
+        let updated_flow: AuthenticationFlowModel = serde_json::from_value(updated_data)
+            .map_err(|e| AuthencError::validation(format!("Invalid flow data: {}", e)))?;
+        Ok(updated_flow)
     }
 
-    async fn delete_flow(&self, _flow_id: Uuid) -> Result<()> {
-        // Stub implementation - do nothing
-        Ok(())
+    async fn delete_flow(&self, flow_id: Uuid) -> Result<()> {
+        db_ops::delete_flow(&self.database, flow_id).await
     }
 
     async fn create_execution(
@@ -136,32 +151,37 @@ impl AuthFlowStoreTrait for AuthFlowStore {
         Ok(session.clone())
     }
 
-    async fn get_session(&self, _session_id: Uuid) -> Result<Option<AuthenticationSessionModel>> {
-        // Stub implementation - return None
-        Ok(None)
+    async fn get_session(&self, session_id: Uuid) -> Result<Option<AuthenticationSessionModel>> {
+        let session_data = db_ops::get_session(&self.database, session_id).await?;
+        if let Some(data) = session_data {
+            let session: AuthenticationSessionModel = serde_json::from_value(data)
+                .map_err(|e| AuthencError::validation(format!("Invalid session data: {}", e)))?;
+            Ok(Some(session))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn update_session(
         &self,
-        _session_id: Uuid,
-        _session: &AuthenticationSessionModel,
+        session_id: Uuid,
+        session: &AuthenticationSessionModel,
     ) -> Result<()> {
-        // Stub implementation - do nothing
-        Ok(())
+        let session_value = serde_json::to_value(session)
+            .map_err(|e| AuthencError::validation(format!("Invalid session data: {}", e)))?;
+        db_ops::update_session(&self.database, session_id, &session_value).await
     }
 
     async fn complete_session(
         &self,
-        _session_id: Uuid,
-        _success: bool,
-        _error_message: Option<String>,
+        session_id: Uuid,
+        success: bool,
+        error_message: Option<String>,
     ) -> Result<()> {
-        // Stub implementation - do nothing
-        Ok(())
+        db_ops::complete_session(&self.database, session_id, success, error_message).await
     }
 
     async fn cleanup_expired_sessions(&self) -> Result<i64> {
-        // Stub implementation - return 0
-        Ok(0)
+        db_ops::cleanup_expired_sessions(&self.database).await
     }
 }

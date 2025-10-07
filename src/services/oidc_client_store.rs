@@ -18,13 +18,18 @@ impl Default for OidcClientStore {
 }
 
 impl OidcClientStore {
-    /// Create new OIDC client store (unimplemented for in-memory)
+    /// Create new OIDC client store
+    ///
+    /// # Note
+    /// This method requires a database connection. Use `with_database()` instead.
+    ///
+    /// # Panics
+    /// This method will panic if called. It exists only for backward compatibility.
     pub fn new() -> Self {
-        // This would need database parameter in production
-        unimplemented!("Database-backed OidcClientStore not implemented")
+        panic!("OidcClientStore requires database connection. Use OidcClientStore::with_database() instead.");
     }
 
-    /// Create OIDC client store with database connection
+    /// Create OIDC client store with database connection (recommended for production)
     pub fn with_database(db: Arc<Database>) -> Self {
         Self { db }
     }

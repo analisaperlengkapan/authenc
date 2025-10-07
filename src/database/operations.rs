@@ -984,6 +984,191 @@ pub mod organizations {
 
         Ok(())
     }
+
+    /// Organization domain for verification
+    #[derive(Debug, Clone)]
+    pub struct OrganizationDomain {
+        pub id: Uuid,
+        pub organization_id: Uuid,
+        pub domain: String,
+        pub verified: bool,
+        pub verification_token: Option<String>,
+        pub verification_method: String,
+        pub verified_at: Option<chrono::DateTime<Utc>>,
+        pub created_at: chrono::DateTime<Utc>,
+        pub updated_at: chrono::DateTime<Utc>,
+    }
+
+    /// Add domain to organization
+    pub async fn add_domain(
+        db: &Database,
+        organization_id: Uuid,
+        domain: &str,
+        verification_method: &str,
+    ) -> Result<OrganizationDomain> {
+        let domain_id = Uuid::new_v4();
+        let verification_token = Uuid::new_v4().to_string();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO organization_domains (
+                id, organization_id, domain, verified, verification_token,
+                verification_method, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, organization_id, domain, verified, verification_token,
+                      verification_method, verified_at, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &domain_id,
+                    &organization_id,
+                    &domain,
+                    &false,
+                    &verification_token,
+                    &verification_method,
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to add organization domain: {}", e);
+                AuthencError::database("Failed to add organization domain")
+            })?;
+
+        Ok(OrganizationDomain {
+            id: row.get(0),
+            organization_id: row.get(1),
+            domain: row.get(2),
+            verified: row.get(3),
+            verification_token: row.get(4),
+            verification_method: row.get(5),
+            verified_at: row.get(6),
+            created_at: row.get(7),
+            updated_at: row.get(8),
+        })
+    }
+
+    /// Verify organization domain
+    pub async fn verify_domain(db: &Database, domain_id: Uuid) -> Result<()> {
+        let now = Utc::now();
+
+        let query = r#"
+            UPDATE organization_domains
+            SET verified = true, verified_at = $2, updated_at = $3
+            WHERE id = $1
+        "#;
+
+        db.execute(query, &[&domain_id, &now, &now])
+            .await
+            .map_err(|e| {
+                error!("Failed to verify domain: {}", e);
+                AuthencError::database("Failed to verify domain")
+            })?;
+
+        Ok(())
+    }
+
+    /// Get organization domains
+    pub async fn get_domains(
+        db: &Database,
+        organization_id: Uuid,
+    ) -> Result<Vec<OrganizationDomain>> {
+        let query = r#"
+            SELECT id, organization_id, domain, verified, verification_token,
+                   verification_method, verified_at, created_at, updated_at
+            FROM organization_domains
+            WHERE organization_id = $1
+            ORDER BY created_at DESC
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> =
+            db.query(query, &[&organization_id]).await.map_err(|e| {
+                error!("Failed to get organization domains: {}", e);
+                AuthencError::database("Failed to get organization domains")
+            })?;
+
+        let mut domains = Vec::new();
+        for row in rows {
+            domains.push(OrganizationDomain {
+                id: row.get(0),
+                organization_id: row.get(1),
+                domain: row.get(2),
+                verified: row.get(3),
+                verification_token: row.get(4),
+                verification_method: row.get(5),
+                verified_at: row.get(6),
+                created_at: row.get(7),
+                updated_at: row.get(8),
+            });
+        }
+
+        Ok(domains)
+    }
+
+    /// Link identity provider to organization
+    pub async fn link_identity_provider(
+        db: &Database,
+        organization_id: Uuid,
+        identity_provider_id: Uuid,
+        priority: i32,
+    ) -> Result<()> {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO organization_identity_providers (
+                id, organization_id, identity_provider_id, priority, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (organization_id, identity_provider_id)
+            DO UPDATE SET priority = $4, updated_at = $6
+        "#;
+
+        db.execute(
+            query,
+            &[
+                &id,
+                &organization_id,
+                &identity_provider_id,
+                &priority,
+                &now,
+                &now,
+            ],
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to link identity provider: {}", e);
+            AuthencError::database("Failed to link identity provider")
+        })?;
+
+        Ok(())
+    }
+
+    /// Unlink identity provider from organization
+    pub async fn unlink_identity_provider(
+        db: &Database,
+        organization_id: Uuid,
+        identity_provider_id: Uuid,
+    ) -> Result<()> {
+        let query = r#"
+            DELETE FROM organization_identity_providers
+            WHERE organization_id = $1 AND identity_provider_id = $2
+        "#;
+
+        db.execute(query, &[&organization_id, &identity_provider_id])
+            .await
+            .map_err(|e| {
+                error!("Failed to unlink identity provider: {}", e);
+                AuthencError::database("Failed to unlink identity provider")
+            })?;
+
+        Ok(())
+    }
 }
 
 /// Database operations for SAML
@@ -1792,6 +1977,645 @@ pub mod users {
 
         Ok(users)
     }
+
+    /// Bulk create users
+    pub async fn bulk_create_users(
+        db: &Database,
+        users: Vec<CreateUserRequest>,
+    ) -> Result<Vec<User>> {
+        if users.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut client = db.get_connection().await?;
+        let mut transaction = client.transaction().await?;
+
+        let mut created_users = Vec::new();
+
+        for user_req in users {
+            let query = r#"
+                INSERT INTO users (
+                    username, email, email_verified, first_name, last_name,
+                    phone_number, phone_verified, password_hash, enabled,
+                    realm_id, organization_id, attributes, federated
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                RETURNING
+                    id, username, email, first_name, last_name,
+                    phone_number, phone_verified, password_hash, totp_secret,
+                    totp_backup_codes, webauthn_enabled, account_locked,
+                    account_locked_until, failed_login_attempts, last_failed_login_at,
+                    password_changed_at, password_expires_at, require_password_change,
+                    organization_id, attributes, email_verified, enabled,
+                    realm_id, federated, created_at, updated_at, deleted_at,
+                    last_login_at, login_count
+            "#;
+
+            // Hash password if provided
+            let password_hash = if let Some(password) = &user_req.password {
+                use bcrypt::{hash, DEFAULT_COST};
+                hash(password, DEFAULT_COST).map_err(|e| {
+                    crate::error::AuthencError::database(format!("Password hashing failed: {}", e))
+                })?
+            } else {
+                String::new() // Empty password hash if not provided
+            };
+
+            let attributes_json =
+                serde_json::to_string(&user_req.attributes.clone().unwrap_or_default())
+                    .map_err(|e| crate::error::AuthencError::database(e.to_string()))?;
+
+            let row = transaction
+                .query_one(
+                    query,
+                    &[
+                        &user_req.username,
+                        &user_req.email,
+                        &false, // email_verified - default false
+                        &user_req.first_name,
+                        &user_req.last_name,
+                        &user_req.phone_number,
+                        &false, // phone_verified - default false
+                        &password_hash,
+                        &true, // enabled - default true
+                        &user_req.realm_id,
+                        &user_req.organization_id,
+                        &attributes_json,
+                        &false, // federated - default false
+                    ],
+                )
+                .await?;
+
+            created_users.push(row_to_user(&row));
+        }
+
+        transaction.commit().await?;
+        Ok(created_users)
+    }
+
+    /// Bulk update users
+    pub async fn bulk_update_users(
+        db: &Database,
+        updates: Vec<(Uuid, serde_json::Value)>,
+    ) -> Result<usize> {
+        if updates.is_empty() {
+            return Ok(0);
+        }
+
+        let mut client = db.get_connection().await?;
+        let mut transaction = client.transaction().await?;
+
+        let mut updated_count = 0;
+        let now = Utc::now();
+
+        for (user_id, update_data) in updates {
+            let mut set_clauses = Vec::new();
+            let mut param_index = 2; // Start from 2 since $1 is user_id
+            let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
+                vec![Box::new(user_id)];
+
+            // Build dynamic UPDATE query based on provided fields
+            if let Some(email) = update_data.get("email").and_then(|v| v.as_str()) {
+                set_clauses.push(format!("email = ${}", param_index));
+                params.push(Box::new(email.to_string()));
+                param_index += 1;
+            }
+
+            if let Some(first_name) = update_data.get("first_name").and_then(|v| v.as_str()) {
+                set_clauses.push(format!("first_name = ${}", param_index));
+                params.push(Box::new(first_name.to_string()));
+                param_index += 1;
+            }
+
+            if let Some(last_name) = update_data.get("last_name").and_then(|v| v.as_str()) {
+                set_clauses.push(format!("last_name = ${}", param_index));
+                params.push(Box::new(last_name.to_string()));
+                param_index += 1;
+            }
+
+            if let Some(enabled) = update_data.get("enabled").and_then(|v| v.as_bool()) {
+                set_clauses.push(format!("enabled = ${}", param_index));
+                params.push(Box::new(enabled));
+                param_index += 1;
+            }
+
+            if let Some(email_verified) =
+                update_data.get("email_verified").and_then(|v| v.as_bool())
+            {
+                set_clauses.push(format!("email_verified = ${}", param_index));
+                params.push(Box::new(email_verified));
+                param_index += 1;
+            }
+
+            if set_clauses.is_empty() {
+                continue; // No fields to update
+            }
+
+            set_clauses.push(format!("updated_at = ${}", param_index));
+            params.push(Box::new(now));
+
+            let query = format!("UPDATE users SET {} WHERE id = $1", set_clauses.join(", "));
+
+            let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+                params.iter().map(|p| p.as_ref()).collect();
+
+            let affected = transaction.execute(query.as_str(), &params_refs).await?;
+            updated_count += affected as usize;
+        }
+
+        transaction.commit().await?;
+        Ok(updated_count)
+    }
+
+    /// Bulk delete users (soft delete)
+    pub async fn bulk_delete_users(db: &Database, user_ids: Vec<Uuid>) -> Result<usize> {
+        if user_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let now = Utc::now();
+        let query = r#"
+            UPDATE users
+            SET deleted_at = $1, updated_at = $1
+            WHERE id = ANY($2) AND deleted_at IS NULL
+        "#;
+
+        let count = db.execute(query, &[&now, &user_ids]).await?;
+        Ok(count as usize)
+    }
+
+    /// Bulk assign roles to users
+    pub async fn bulk_assign_roles(
+        db: &Database,
+        assignments: Vec<(Uuid, Uuid)>, // (user_id, role_id) pairs
+    ) -> Result<usize> {
+        if assignments.is_empty() {
+            return Ok(0);
+        }
+
+        let mut client = db.get_connection().await?;
+        let mut transaction = client.transaction().await?;
+
+        let query = r#"
+            INSERT INTO user_roles (user_id, role_id)
+            VALUES ($1, $2)
+            ON CONFLICT (user_id, role_id) DO NOTHING
+        "#;
+
+        let mut assigned_count = 0;
+        for (user_id, role_id) in assignments {
+            let affected = transaction.execute(query, &[&user_id, &role_id]).await?;
+            assigned_count += affected as usize;
+        }
+
+        transaction.commit().await?;
+        Ok(assigned_count)
+    }
+
+    /// Bulk remove roles from users
+    pub async fn bulk_remove_roles(
+        db: &Database,
+        removals: Vec<(Uuid, Uuid)>, // (user_id, role_id) pairs
+    ) -> Result<usize> {
+        if removals.is_empty() {
+            return Ok(0);
+        }
+
+        let mut client = db.get_connection().await?;
+        let mut transaction = client.transaction().await?;
+
+        let query = "DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2";
+
+        let mut removed_count = 0;
+        for (user_id, role_id) in removals {
+            let affected = transaction.execute(query, &[&user_id, &role_id]).await?;
+            removed_count += affected as usize;
+        }
+
+        transaction.commit().await?;
+        Ok(removed_count)
+    }
+
+    /// Export users to JSON (for backup/migration)
+    pub async fn export_users(
+        db: &Database,
+        realm_id: Option<Uuid>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let query = if realm_id.is_some() {
+            r#"
+                SELECT
+                    id, username, email, first_name, last_name,
+                    phone_number, phone_verified, email_verified,
+                    enabled, realm_id, organization_id, attributes,
+                    federated, created_at, updated_at
+                FROM users
+                WHERE realm_id = $1 AND deleted_at IS NULL
+                ORDER BY created_at ASC
+            "#
+        } else {
+            r#"
+                SELECT
+                    id, username, email, first_name, last_name,
+                    phone_number, phone_verified, email_verified,
+                    enabled, realm_id, organization_id, attributes,
+                    federated, created_at, updated_at
+                FROM users
+                WHERE deleted_at IS NULL
+                ORDER BY created_at ASC
+            "#
+        };
+
+        let rows: Vec<tokio_postgres::Row> = if let Some(rid) = realm_id {
+            db.query(query, &[&rid]).await?
+        } else {
+            db.query(query, &[]).await?
+        };
+
+        let mut users = Vec::new();
+        for row in rows {
+            users.push(serde_json::json!({
+                "id": row.get::<_, Uuid>("id"),
+                "username": row.get::<_, String>("username"),
+                "email": row.get::<_, String>("email"),
+                "first_name": row.get::<_, Option<String>>("first_name"),
+                "last_name": row.get::<_, Option<String>>("last_name"),
+                "phone_number": row.get::<_, Option<String>>("phone_number"),
+                "phone_verified": row.get::<_, bool>("phone_verified"),
+                "email_verified": row.get::<_, bool>("email_verified"),
+                "enabled": row.get::<_, bool>("enabled"),
+                "realm_id": row.get::<_, Uuid>("realm_id"),
+                "organization_id": row.get::<_, Option<Uuid>>("organization_id"),
+                "attributes": row.get::<_, Option<String>>("attributes"),
+                "federated": row.get::<_, bool>("federated"),
+                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+                "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at"),
+            }));
+        }
+
+        Ok(users)
+    }
+
+    /// Advanced user query with filtering, sorting, and pagination
+    #[allow(clippy::too_many_arguments)]
+    pub async fn query_users_advanced(
+        db: &Database,
+        realm_id: Option<Uuid>,
+        search: Option<&str>,
+        email_filter: Option<&str>,
+        enabled_filter: Option<bool>,
+        email_verified_filter: Option<bool>,
+        organization_id_filter: Option<Uuid>,
+        sort_by: Option<&str>, // "username", "email", "created_at", "last_login_at"
+        sort_order: Option<&str>, // "asc" or "desc"
+        offset: Option<i64>,
+        limit: Option<i64>,
+    ) -> Result<(Vec<serde_json::Value>, i64)> {
+        let mut where_clauses: Vec<String> = vec!["deleted_at IS NULL".to_string()];
+        let mut param_index = 1;
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+
+        // Realm filter
+        if let Some(rid) = realm_id {
+            where_clauses.push(format!("realm_id = ${}", param_index));
+            params.push(Box::new(rid));
+            param_index += 1;
+        }
+
+        // Full-text search across username, email, first_name, last_name
+        if let Some(search_term) = search {
+            if !search_term.is_empty() {
+                where_clauses.push(format!(
+                    "(username ILIKE ${} OR email ILIKE ${} OR first_name ILIKE ${} OR last_name ILIKE ${})",
+                    param_index, param_index, param_index, param_index
+                ));
+                let search_pattern = format!("%{}%", search_term);
+                params.push(Box::new(search_pattern));
+                param_index += 1;
+            }
+        }
+
+        // Email filter
+        if let Some(email_pattern) = email_filter {
+            if !email_pattern.is_empty() {
+                where_clauses.push(format!("email ILIKE ${}", param_index));
+                params.push(Box::new(format!("%{}%", email_pattern)));
+                param_index += 1;
+            }
+        }
+
+        // Enabled filter
+        if let Some(enabled) = enabled_filter {
+            where_clauses.push(format!("enabled = ${}", param_index));
+            params.push(Box::new(enabled));
+            param_index += 1;
+        }
+
+        // Email verified filter
+        if let Some(verified) = email_verified_filter {
+            where_clauses.push(format!("email_verified = ${}", param_index));
+            params.push(Box::new(verified));
+            param_index += 1;
+        }
+
+        // Organization filter
+        if let Some(org_id) = organization_id_filter {
+            where_clauses.push(format!("organization_id = ${}", param_index));
+            params.push(Box::new(org_id));
+            param_index += 1;
+        }
+
+        let where_clause = where_clauses.join(" AND ");
+
+        // Sorting
+        let sort_column = match sort_by {
+            Some("email") => "email",
+            Some("created_at") => "created_at",
+            Some("last_login_at") => "last_login_at",
+            Some("updated_at") => "updated_at",
+            _ => "username",
+        };
+
+        let sort_direction = match sort_order {
+            Some("desc") => "DESC",
+            _ => "ASC",
+        };
+
+        // Count query
+        let count_query = format!("SELECT COUNT(*) FROM users WHERE {}", where_clause);
+
+        let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params.iter().map(|p| p.as_ref()).collect();
+
+        let count_row: tokio_postgres::Row = db.query_one(&count_query, &params_refs).await?;
+        let total_count: i64 = count_row.get(0);
+
+        // Data query with pagination
+        let data_query = format!(
+            r#"
+                SELECT
+                    id, username, email, first_name, last_name,
+                    phone_number, phone_verified, email_verified,
+                    enabled, realm_id, organization_id, attributes,
+                    federated, created_at, updated_at, last_login_at, login_count
+                FROM users
+                WHERE {}
+                ORDER BY {} {}
+                LIMIT ${} OFFSET ${}
+            "#,
+            where_clause,
+            sort_column,
+            sort_direction,
+            param_index,
+            param_index + 1
+        );
+
+        let limit_val = limit.unwrap_or(20);
+        let offset_val = offset.unwrap_or(0);
+
+        let mut data_params = params;
+        data_params.push(Box::new(limit_val));
+        data_params.push(Box::new(offset_val));
+
+        let data_params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            data_params.iter().map(|p| p.as_ref()).collect();
+
+        let rows: Vec<tokio_postgres::Row> = db.query(&data_query, &data_params_refs).await?;
+
+        let mut users = Vec::new();
+        for row in rows {
+            users.push(serde_json::json!({
+                "id": row.get::<_, Uuid>("id"),
+                "username": row.get::<_, String>("username"),
+                "email": row.get::<_, String>("email"),
+                "first_name": row.get::<_, Option<String>>("first_name"),
+                "last_name": row.get::<_, Option<String>>("last_name"),
+                "phone_number": row.get::<_, Option<String>>("phone_number"),
+                "phone_verified": row.get::<_, bool>("phone_verified"),
+                "email_verified": row.get::<_, bool>("email_verified"),
+                "enabled": row.get::<_, bool>("enabled"),
+                "realm_id": row.get::<_, Uuid>("realm_id"),
+                "organization_id": row.get::<_, Option<Uuid>>("organization_id"),
+                "attributes": row.get::<_, Option<String>>("attributes"),
+                "federated": row.get::<_, bool>("federated"),
+                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+                "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at"),
+                "last_login_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("last_login_at"),
+                "login_count": row.get::<_, i32>("login_count"),
+            }));
+        }
+
+        Ok((users, total_count))
+    }
+
+    /// Full-text search users with ranking
+    pub async fn search_users_fulltext(
+        db: &Database,
+        realm_id: Uuid,
+        search_query: &str,
+        limit: Option<i64>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let query = r#"
+            SELECT
+                id, username, email, first_name, last_name,
+                phone_number, phone_verified, email_verified,
+                enabled, realm_id, organization_id, attributes,
+                federated, created_at, updated_at, last_login_at, login_count,
+                ts_rank(
+                    to_tsvector('english', 
+                        COALESCE(username, '') || ' ' || 
+                        COALESCE(email, '') || ' ' || 
+                        COALESCE(first_name, '') || ' ' || 
+                        COALESCE(last_name, '')
+                    ),
+                    plainto_tsquery('english', $2)
+                ) AS rank
+            FROM users
+            WHERE realm_id = $1 
+                AND deleted_at IS NULL
+                AND to_tsvector('english',
+                    COALESCE(username, '') || ' ' || 
+                    COALESCE(email, '') || ' ' || 
+                    COALESCE(first_name, '') || ' ' || 
+                    COALESCE(last_name, '')
+                ) @@ plainto_tsquery('english', $2)
+            ORDER BY rank DESC
+            LIMIT $3
+        "#;
+
+        let limit_val = limit.unwrap_or(20);
+        let rows: Vec<tokio_postgres::Row> = db
+            .query(query, &[&realm_id, &search_query, &limit_val])
+            .await?;
+
+        let mut users = Vec::new();
+        for row in rows {
+            users.push(serde_json::json!({
+                "id": row.get::<_, Uuid>("id"),
+                "username": row.get::<_, String>("username"),
+                "email": row.get::<_, String>("email"),
+                "first_name": row.get::<_, Option<String>>("first_name"),
+                "last_name": row.get::<_, Option<String>>("last_name"),
+                "phone_number": row.get::<_, Option<String>>("phone_number"),
+                "phone_verified": row.get::<_, bool>("phone_verified"),
+                "email_verified": row.get::<_, bool>("email_verified"),
+                "enabled": row.get::<_, bool>("enabled"),
+                "realm_id": row.get::<_, Uuid>("realm_id"),
+                "organization_id": row.get::<_, Option<Uuid>>("organization_id"),
+                "federated": row.get::<_, bool>("federated"),
+                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+                "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at"),
+                "last_login_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("last_login_at"),
+                "login_count": row.get::<_, i32>("login_count"),
+                "relevance_score": row.get::<_, f32>("rank"),
+            }));
+        }
+
+        Ok(users)
+    }
+
+    /// Get users by attribute filter (JSONB query)
+    pub async fn query_users_by_attributes(
+        db: &Database,
+        realm_id: Uuid,
+        attribute_filters: serde_json::Value,
+        limit: Option<i64>,
+    ) -> Result<Vec<serde_json::Value>> {
+        // Build JSONB containment query
+        let query = r#"
+            SELECT
+                id, username, email, first_name, last_name,
+                phone_number, phone_verified, email_verified,
+                enabled, realm_id, organization_id, attributes,
+                federated, created_at, updated_at
+            FROM users
+            WHERE realm_id = $1 
+                AND deleted_at IS NULL
+                AND attributes @> $2::jsonb
+            ORDER BY created_at DESC
+            LIMIT $3
+        "#;
+
+        let limit_val = limit.unwrap_or(100);
+        let rows: Vec<tokio_postgres::Row> = db
+            .query(
+                query,
+                &[&realm_id, &attribute_filters.to_string(), &limit_val],
+            )
+            .await?;
+
+        let mut users = Vec::new();
+        for row in rows {
+            users.push(serde_json::json!({
+                "id": row.get::<_, Uuid>("id"),
+                "username": row.get::<_, String>("username"),
+                "email": row.get::<_, String>("email"),
+                "first_name": row.get::<_, Option<String>>("first_name"),
+                "last_name": row.get::<_, Option<String>>("last_name"),
+                "phone_number": row.get::<_, Option<String>>("phone_number"),
+                "phone_verified": row.get::<_, bool>("phone_verified"),
+                "email_verified": row.get::<_, bool>("email_verified"),
+                "enabled": row.get::<_, bool>("enabled"),
+                "realm_id": row.get::<_, Uuid>("realm_id"),
+                "organization_id": row.get::<_, Option<Uuid>>("organization_id"),
+                "attributes": row.get::<_, Option<String>>("attributes"),
+                "federated": row.get::<_, bool>("federated"),
+                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+                "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at"),
+            }));
+        }
+
+        Ok(users)
+    }
+
+    /// Get user statistics for a realm
+    pub async fn get_user_statistics(db: &Database, realm_id: Uuid) -> Result<serde_json::Value> {
+        let query = r#"
+            SELECT
+                COUNT(*) as total_users,
+                COUNT(*) FILTER (WHERE enabled = true) as enabled_users,
+                COUNT(*) FILTER (WHERE enabled = false) as disabled_users,
+                COUNT(*) FILTER (WHERE email_verified = true) as verified_emails,
+                COUNT(*) FILTER (WHERE email_verified = false) as unverified_emails,
+                COUNT(*) FILTER (WHERE federated = true) as federated_users,
+                COUNT(*) FILTER (WHERE last_login_at IS NOT NULL) as users_with_login,
+                COUNT(*) FILTER (WHERE last_login_at > NOW() - INTERVAL '30 days') as active_last_30_days,
+                COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as new_users_last_7_days
+            FROM users
+            WHERE realm_id = $1 AND deleted_at IS NULL
+        "#;
+
+        let row: tokio_postgres::Row = db.query_one(query, &[&realm_id]).await?;
+
+        Ok(serde_json::json!({
+            "total_users": row.get::<_, i64>("total_users"),
+            "enabled_users": row.get::<_, i64>("enabled_users"),
+            "disabled_users": row.get::<_, i64>("disabled_users"),
+            "verified_emails": row.get::<_, i64>("verified_emails"),
+            "unverified_emails": row.get::<_, i64>("unverified_emails"),
+            "federated_users": row.get::<_, i64>("federated_users"),
+            "users_with_login": row.get::<_, i64>("users_with_login"),
+            "active_last_30_days": row.get::<_, i64>("active_last_30_days"),
+            "new_users_last_7_days": row.get::<_, i64>("new_users_last_7_days"),
+        }))
+    }
+
+    /// Import users from JSON (for backup/migration)
+    pub async fn import_users(db: &Database, users_data: Vec<serde_json::Value>) -> Result<usize> {
+        if users_data.is_empty() {
+            return Ok(0);
+        }
+
+        let mut client = db.get_connection().await?;
+        let mut transaction = client.transaction().await?;
+
+        let query = r#"
+            INSERT INTO users (
+                username, email, first_name, last_name,
+                phone_number, phone_verified, email_verified,
+                enabled, realm_id, organization_id, attributes,
+                federated
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (username, realm_id) DO UPDATE
+            SET email = EXCLUDED.email,
+                first_name = EXCLUDED.first_name,
+                last_name = EXCLUDED.last_name,
+                updated_at = NOW()
+        "#;
+
+        let mut imported_count = 0;
+        for user_data in users_data {
+            let affected = transaction
+                .execute(
+                    query,
+                    &[
+                        &user_data["username"].as_str().unwrap_or(""),
+                        &user_data["email"].as_str().unwrap_or(""),
+                        &user_data.get("first_name").and_then(|v| v.as_str()),
+                        &user_data.get("last_name").and_then(|v| v.as_str()),
+                        &user_data.get("phone_number").and_then(|v| v.as_str()),
+                        &user_data["phone_verified"].as_bool().unwrap_or(false),
+                        &user_data["email_verified"].as_bool().unwrap_or(false),
+                        &user_data["enabled"].as_bool().unwrap_or(true),
+                        &user_data["realm_id"]
+                            .as_str()
+                            .and_then(|s| Uuid::parse_str(s).ok())
+                            .unwrap_or(Uuid::nil()),
+                        &user_data
+                            .get("organization_id")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| Uuid::parse_str(s).ok()),
+                        &user_data.get("attributes").and_then(|v| v.as_str()),
+                        &user_data["federated"].as_bool().unwrap_or(false),
+                    ],
+                )
+                .await?;
+            imported_count += affected as usize;
+        }
+
+        transaction.commit().await?;
+        Ok(imported_count)
+    }
 }
 
 /// Database operations for social accounts
@@ -2079,6 +2903,347 @@ pub mod social_accounts {
     }
 }
 
+/// OAuth2 Social Provider operations (for authentication via external providers)
+pub mod oauth2_providers {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    /// Create OAuth2 provider configuration
+    pub async fn create_provider_config(
+        db: &Database,
+        realm_id: Uuid,
+        provider_name: &str,
+        alias: &str,
+        display_name: Option<&str>,
+        authorization_url: &str,
+        token_url: &str,
+        user_info_url: Option<&str>,
+        client_id: &str,
+        client_secret: &str,
+        scopes: &str,
+    ) -> Result<serde_json::Value> {
+        let query = r#"
+            INSERT INTO oauth2_provider_configs (
+                realm_id, provider_name, alias, display_name,
+                authorization_url, token_url, user_info_url,
+                client_id, client_secret, scopes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id, realm_id, provider_name, alias, enabled, created_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &realm_id,
+                    &provider_name,
+                    &alias,
+                    &display_name,
+                    &authorization_url,
+                    &token_url,
+                    &user_info_url,
+                    &client_id,
+                    &client_secret,
+                    &scopes,
+                ],
+            )
+            .await?;
+
+        Ok(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "realm_id": row.get::<_, Uuid>("realm_id"),
+            "provider_name": row.get::<_, String>("provider_name"),
+            "alias": row.get::<_, String>("alias"),
+            "enabled": row.get::<_, bool>("enabled"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at")
+        }))
+    }
+
+    /// Get OAuth2 provider config
+    pub async fn get_provider_config(
+        db: &Database,
+        config_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        let query = r#"
+            SELECT id, realm_id, provider_name, alias, display_name,
+                   authorization_url, token_url, user_info_url, jwks_url, issuer,
+                   client_id, client_secret, scopes, response_type, response_mode,
+                   pkce_enabled, pkce_method, trust_email, link_only, store_tokens,
+                   enabled, created_at, updated_at
+            FROM oauth2_provider_configs
+            WHERE id = $1
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&config_id]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+        Ok(Some(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "realm_id": row.get::<_, Uuid>("realm_id"),
+            "provider_name": row.get::<_, String>("provider_name"),
+            "alias": row.get::<_, String>("alias"),
+            "display_name": row.get::<_, Option<String>>("display_name"),
+            "authorization_url": row.get::<_, String>("authorization_url"),
+            "token_url": row.get::<_, String>("token_url"),
+            "user_info_url": row.get::<_, Option<String>>("user_info_url"),
+            "jwks_url": row.get::<_, Option<String>>("jwks_url"),
+            "issuer": row.get::<_, Option<String>>("issuer"),
+            "client_id": row.get::<_, String>("client_id"),
+            "client_secret": row.get::<_, String>("client_secret"),
+            "scopes": row.get::<_, String>("scopes"),
+            "response_type": row.get::<_, String>("response_type"),
+            "response_mode": row.get::<_, String>("response_mode"),
+            "pkce_enabled": row.get::<_, bool>("pkce_enabled"),
+            "pkce_method": row.get::<_, String>("pkce_method"),
+            "trust_email": row.get::<_, bool>("trust_email"),
+            "link_only": row.get::<_, bool>("link_only"),
+            "store_tokens": row.get::<_, bool>("store_tokens"),
+            "enabled": row.get::<_, bool>("enabled"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+        })))
+    }
+
+    /// Get provider configs for realm
+    pub async fn get_realm_provider_configs(
+        db: &Database,
+        realm_id: Uuid,
+        enabled_only: bool,
+    ) -> Result<Vec<serde_json::Value>> {
+        let query = if enabled_only {
+            r#"
+                SELECT id, realm_id, provider_name, alias, display_name,
+                       authorization_url, scopes, enabled
+                FROM oauth2_provider_configs
+                WHERE realm_id = $1 AND enabled = TRUE
+                ORDER BY provider_name ASC
+            "#
+        } else {
+            r#"
+                SELECT id, realm_id, provider_name, alias, display_name,
+                       authorization_url, scopes, enabled
+                FROM oauth2_provider_configs
+                WHERE realm_id = $1
+                ORDER BY provider_name ASC
+            "#
+        };
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&realm_id]).await?;
+
+        let mut configs = Vec::new();
+        for row in rows {
+            configs.push(serde_json::json!({
+                "id": row.get::<_, Uuid>("id"),
+                "realm_id": row.get::<_, Uuid>("realm_id"),
+                "provider_name": row.get::<_, String>("provider_name"),
+                "alias": row.get::<_, String>("alias"),
+                "display_name": row.get::<_, Option<String>>("display_name"),
+                "authorization_url": row.get::<_, String>("authorization_url"),
+                "scopes": row.get::<_, String>("scopes"),
+                "enabled": row.get::<_, bool>("enabled")
+            }));
+        }
+
+        Ok(configs)
+    }
+
+    /// Create OAuth2 state
+    pub async fn create_oauth2_state(
+        db: &Database,
+        state_token: &str,
+        provider_config_id: Uuid,
+        realm_id: Uuid,
+        redirect_uri: &str,
+        code_verifier: Option<&str>,
+        code_challenge: Option<&str>,
+        expires_in_seconds: i64,
+    ) -> Result<Uuid> {
+        let expires_at = chrono::Utc::now() + chrono::Duration::seconds(expires_in_seconds);
+
+        let query = r#"
+            INSERT INTO oauth2_states (
+                state_token, provider_config_id, realm_id, redirect_uri,
+                code_verifier, code_challenge, code_challenge_method, expires_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id
+        "#;
+
+        let code_challenge_method = if code_challenge.is_some() {
+            Some("S256")
+        } else {
+            None
+        };
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &state_token,
+                    &provider_config_id,
+                    &realm_id,
+                    &redirect_uri,
+                    &code_verifier,
+                    &code_challenge,
+                    &code_challenge_method,
+                    &expires_at,
+                ],
+            )
+            .await?;
+
+        Ok(row.get(0))
+    }
+
+    /// Get and validate OAuth2 state
+    pub async fn validate_oauth2_state(
+        db: &Database,
+        state_token: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let query = r#"
+            SELECT id, state_token, provider_config_id, realm_id, redirect_uri,
+                   code_verifier, expires_at, used
+            FROM oauth2_states
+            WHERE state_token = $1 AND expires_at > NOW() AND used = FALSE
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&state_token]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+
+        // Mark as used
+        let update_query = r#"
+            UPDATE oauth2_states
+            SET used = TRUE, used_at = NOW()
+            WHERE id = $1
+        "#;
+
+        db.execute(update_query, &[&row.get::<_, Uuid>("id")])
+            .await?;
+
+        Ok(Some(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "provider_config_id": row.get::<_, Uuid>("provider_config_id"),
+            "realm_id": row.get::<_, Uuid>("realm_id"),
+            "redirect_uri": row.get::<_, String>("redirect_uri"),
+            "code_verifier": row.get::<_, Option<String>>("code_verifier"),
+        })))
+    }
+
+    /// Record token exchange
+    pub async fn record_token_exchange(
+        db: &Database,
+        provider_config_id: Uuid,
+        user_id: Option<Uuid>,
+        authorization_code: Option<&str>,
+        access_token: Option<&str>,
+        refresh_token: Option<&str>,
+        expires_in: Option<i32>,
+        scope: Option<&str>,
+        provider_user_id: Option<&str>,
+        provider_email: Option<&str>,
+        user_info_raw: Option<serde_json::Value>,
+        success: bool,
+        error_message: Option<&str>,
+    ) -> Result<()> {
+        let access_token_hash = access_token.map(|t| {
+            let mut hasher = Sha256::new();
+            hasher.update(t.as_bytes());
+            format!("{:x}", hasher.finalize())
+        });
+
+        let refresh_token_hash = refresh_token.map(|t| {
+            let mut hasher = Sha256::new();
+            hasher.update(t.as_bytes());
+            format!("{:x}", hasher.finalize())
+        });
+
+        let query = r#"
+            INSERT INTO oauth2_token_exchanges (
+                provider_config_id, user_id, authorization_code,
+                access_token_hash, refresh_token_hash, expires_in, scope,
+                provider_user_id, provider_email, user_info_raw,
+                success, error_message
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        "#;
+
+        db.execute(
+            query,
+            &[
+                &provider_config_id,
+                &user_id,
+                &authorization_code,
+                &access_token_hash,
+                &refresh_token_hash,
+                &expires_in,
+                &scope,
+                &provider_user_id,
+                &provider_email,
+                &user_info_raw,
+                &success,
+                &error_message,
+            ],
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// Cleanup expired OAuth2 states
+    pub async fn cleanup_expired_states(db: &Database) -> Result<i64> {
+        let query = "DELETE FROM oauth2_states WHERE expires_at < NOW()";
+        let count = db.execute(query, &[]).await?;
+        Ok(count as i64)
+    }
+
+    /// Get token exchange history for user
+    pub async fn get_user_token_exchanges(
+        db: &Database,
+        user_id: Uuid,
+        limit: Option<i64>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let query = r#"
+            SELECT ote.id, ote.provider_config_id, opc.provider_name,
+                   ote.provider_user_id, ote.provider_email, ote.scope,
+                   ote.success, ote.error_message, ote.created_at
+            FROM oauth2_token_exchanges ote
+            JOIN oauth2_provider_configs opc ON ote.provider_config_id = opc.id
+            WHERE ote.user_id = $1
+            ORDER BY ote.created_at DESC
+            LIMIT $2
+        "#;
+
+        let limit_val = limit.unwrap_or(50);
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&user_id, &limit_val]).await?;
+
+        let mut exchanges = Vec::new();
+        for row in rows {
+            exchanges.push(serde_json::json!({
+                "id": row.get::<_, Uuid>("id"),
+                "provider_config_id": row.get::<_, Uuid>("provider_config_id"),
+                "provider_name": row.get::<_, String>("provider_name"),
+                "provider_user_id": row.get::<_, Option<String>>("provider_user_id"),
+                "provider_email": row.get::<_, Option<String>>("provider_email"),
+                "scope": row.get::<_, Option<String>>("scope"),
+                "success": row.get::<_, bool>("success"),
+                "error_message": row.get::<_, Option<String>>("error_message"),
+                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at")
+            }));
+        }
+
+        Ok(exchanges)
+    }
+}
+
 /// Database operations for realms
 pub mod realms {
     use crate::{
@@ -2319,6 +3484,2214 @@ pub mod realms {
             updated_at: row.get(43),
             deleted_at: row.get(44),
         }
+    }
+}
+
+/// Federated Identity Management operations (for identity brokering and linking)
+pub mod federated_identity {
+    use crate::{database::Database, error::Result};
+    use chrono::{DateTime, Duration, Utc};
+    use serde_json::Value as JsonValue;
+    use uuid::Uuid;
+
+    /// Link a user account to a federated identity provider
+    pub async fn link_federated_identity(
+        db: &Database,
+        user_id: Uuid,
+        realm_id: Uuid,
+        identity_provider_alias: &str,
+        federated_user_id: &str,
+        federated_username: Option<&str>,
+        token: Option<&str>,
+        token_expires_at: Option<DateTime<Utc>>,
+        refresh_token: Option<&str>,
+        federated_attributes: Option<&JsonValue>,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO federated_identity_links (
+                user_id, realm_id, identity_provider_alias, federated_user_id,
+                federated_username, token, token_expires_at, refresh_token,
+                federated_attributes, last_authenticated_at, authentication_count
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), 1)
+            ON CONFLICT (user_id, identity_provider_alias)
+            DO UPDATE SET
+                federated_user_id = EXCLUDED.federated_user_id,
+                federated_username = EXCLUDED.federated_username,
+                token = EXCLUDED.token,
+                token_expires_at = EXCLUDED.token_expires_at,
+                refresh_token = EXCLUDED.refresh_token,
+                federated_attributes = EXCLUDED.federated_attributes,
+                last_authenticated_at = NOW(),
+                authentication_count = federated_identity_links.authentication_count + 1,
+                updated_at = NOW()
+            RETURNING id
+        "#;
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &user_id,
+                    &realm_id,
+                    &identity_provider_alias,
+                    &federated_user_id,
+                    &federated_username,
+                    &token,
+                    &token_expires_at,
+                    &refresh_token,
+                    &federated_attributes,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Unlink a federated identity from a user account
+    pub async fn unlink_federated_identity(
+        db: &Database,
+        user_id: Uuid,
+        identity_provider_alias: &str,
+    ) -> Result<bool> {
+        let query = r#"
+            DELETE FROM federated_identity_links
+            WHERE user_id = $1 AND identity_provider_alias = $2
+        "#;
+
+        let rows_affected = db
+            .execute(query, &[&user_id, &identity_provider_alias])
+            .await?;
+        Ok(rows_affected > 0)
+    }
+
+    /// Get all federated identities for a user
+    pub async fn get_user_federated_identities(
+        db: &Database,
+        user_id: Uuid,
+    ) -> Result<Vec<JsonValue>> {
+        let query = r#"
+            SELECT 
+                id, identity_provider_alias, federated_user_id, federated_username,
+                federated_attributes, linked_at, last_authenticated_at,
+                authentication_count, token_expires_at
+            FROM federated_identity_links
+            WHERE user_id = $1
+            ORDER BY last_authenticated_at DESC
+        "#;
+
+        let rows = db.query_raw(query, &[&user_id]).await?;
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "identity_provider_alias": row.get::<_, String>(1),
+                    "federated_user_id": row.get::<_, String>(2),
+                    "federated_username": row.get::<_, Option<String>>(3),
+                    "federated_attributes": row.get::<_, Option<JsonValue>>(4),
+                    "linked_at": row.get::<_, DateTime<Utc>>(5),
+                    "last_authenticated_at": row.get::<_, Option<DateTime<Utc>>>(6),
+                    "authentication_count": row.get::<_, i32>(7),
+                    "token_expires_at": row.get::<_, Option<DateTime<Utc>>>(8),
+                })
+            })
+            .collect())
+    }
+
+    /// Find user by federated identity
+    pub async fn find_user_by_federated_identity(
+        db: &Database,
+        identity_provider_alias: &str,
+        federated_user_id: &str,
+    ) -> Result<Option<Uuid>> {
+        let query = r#"
+            SELECT user_id FROM federated_identity_links
+            WHERE identity_provider_alias = $1 AND federated_user_id = $2
+        "#;
+
+        match db
+            .query_opt(query, &[&identity_provider_alias, &federated_user_id])
+            .await?
+        {
+            Some(row) => Ok(Some(row.get(0))),
+            None => Ok(None),
+        }
+    }
+
+    /// Update federated identity tokens
+    pub async fn update_federated_tokens(
+        db: &Database,
+        user_id: Uuid,
+        identity_provider_alias: &str,
+        token: &str,
+        token_expires_at: Option<DateTime<Utc>>,
+        refresh_token: Option<&str>,
+    ) -> Result<bool> {
+        let query = r#"
+            UPDATE federated_identity_links
+            SET token = $1, token_expires_at = $2, refresh_token = $3,
+                last_authenticated_at = NOW(), authentication_count = authentication_count + 1,
+                updated_at = NOW()
+            WHERE user_id = $4 AND identity_provider_alias = $5
+        "#;
+
+        let rows_affected = db
+            .execute(
+                query,
+                &[
+                    &token,
+                    &token_expires_at,
+                    &refresh_token,
+                    &user_id,
+                    &identity_provider_alias,
+                ],
+            )
+            .await?;
+
+        Ok(rows_affected > 0)
+    }
+
+    /// Create identity provider mapper
+    pub async fn create_identity_provider_mapper(
+        db: &Database,
+        realm_id: Uuid,
+        name: &str,
+        identity_provider_alias: &str,
+        mapper_type: &str,
+        config: &JsonValue,
+        sync_mode: &str,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO identity_provider_mappers (
+                realm_id, name, identity_provider_alias, mapper_type, config, sync_mode
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
+        "#;
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &realm_id,
+                    &name,
+                    &identity_provider_alias,
+                    &mapper_type,
+                    &config,
+                    &sync_mode,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Get identity provider mappers
+    pub async fn get_identity_provider_mappers(
+        db: &Database,
+        realm_id: Uuid,
+        identity_provider_alias: Option<&str>,
+    ) -> Result<Vec<JsonValue>> {
+        let query = if identity_provider_alias.is_some() {
+            r#"
+                SELECT id, name, identity_provider_alias, mapper_type, config, sync_mode, created_at
+                FROM identity_provider_mappers
+                WHERE realm_id = $1 AND identity_provider_alias = $2
+                ORDER BY name
+            "#
+        } else {
+            r#"
+                SELECT id, name, identity_provider_alias, mapper_type, config, sync_mode, created_at
+                FROM identity_provider_mappers
+                WHERE realm_id = $1
+                ORDER BY identity_provider_alias, name
+            "#
+        };
+
+        let rows = if let Some(alias) = identity_provider_alias {
+            db.query_raw(query, &[&realm_id, &alias]).await?
+        } else {
+            db.query_raw(query, &[&realm_id]).await?
+        };
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "name": row.get::<_, String>(1),
+                    "identity_provider_alias": row.get::<_, String>(2),
+                    "mapper_type": row.get::<_, String>(3),
+                    "config": row.get::<_, JsonValue>(4),
+                    "sync_mode": row.get::<_, String>(5),
+                    "created_at": row.get::<_, DateTime<Utc>>(6),
+                })
+            })
+            .collect())
+    }
+
+    /// Create identity broker configuration
+    pub async fn create_identity_broker_config(
+        db: &Database,
+        realm_id: Uuid,
+        alias: &str,
+        display_name: Option<&str>,
+        provider_type: &str,
+        first_broker_login_flow: Option<&str>,
+        post_broker_login_flow: Option<&str>,
+        trust_email: bool,
+        store_token: bool,
+        link_only: bool,
+        config: &JsonValue,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO identity_broker_configs (
+                realm_id, alias, display_name, provider_type,
+                first_broker_login_flow, post_broker_login_flow,
+                trust_email, store_token, link_only, config
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id
+        "#;
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &realm_id,
+                    &alias,
+                    &display_name,
+                    &provider_type,
+                    &first_broker_login_flow,
+                    &post_broker_login_flow,
+                    &trust_email,
+                    &store_token,
+                    &link_only,
+                    &config,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Get identity broker configuration
+    pub async fn get_identity_broker_config(
+        db: &Database,
+        realm_id: Uuid,
+        alias: &str,
+    ) -> Result<Option<JsonValue>> {
+        let query = r#"
+            SELECT 
+                id, alias, display_name, enabled, provider_type,
+                first_broker_login_flow, post_broker_login_flow,
+                trust_email, store_token, add_read_token_role_on_create,
+                link_only, config, created_at, updated_at
+            FROM identity_broker_configs
+            WHERE realm_id = $1 AND alias = $2
+        "#;
+
+        match db.query_opt(query, &[&realm_id, &alias]).await? {
+            Some(row) => Ok(Some(serde_json::json!({
+                "id": row.get::<_, Uuid>(0),
+                "alias": row.get::<_, String>(1),
+                "display_name": row.get::<_, Option<String>>(2),
+                "enabled": row.get::<_, bool>(3),
+                "provider_type": row.get::<_, String>(4),
+                "first_broker_login_flow": row.get::<_, Option<String>>(5),
+                "post_broker_login_flow": row.get::<_, Option<String>>(6),
+                "trust_email": row.get::<_, bool>(7),
+                "store_token": row.get::<_, bool>(8),
+                "add_read_token_role_on_create": row.get::<_, bool>(9),
+                "link_only": row.get::<_, bool>(10),
+                "config": row.get::<_, JsonValue>(11),
+                "created_at": row.get::<_, DateTime<Utc>>(12),
+                "updated_at": row.get::<_, DateTime<Utc>>(13),
+            }))),
+            None => Ok(None),
+        }
+    }
+
+    /// Get all identity broker configs for realm
+    pub async fn get_realm_identity_broker_configs(
+        db: &Database,
+        realm_id: Uuid,
+        enabled_only: bool,
+    ) -> Result<Vec<JsonValue>> {
+        let query = if enabled_only {
+            r#"
+                SELECT 
+                    id, alias, display_name, enabled, provider_type,
+                    trust_email, store_token, link_only, created_at
+                FROM identity_broker_configs
+                WHERE realm_id = $1 AND enabled = TRUE
+                ORDER BY alias
+            "#
+        } else {
+            r#"
+                SELECT 
+                    id, alias, display_name, enabled, provider_type,
+                    trust_email, store_token, link_only, created_at
+                FROM identity_broker_configs
+                WHERE realm_id = $1
+                ORDER BY alias
+            "#
+        };
+
+        let rows = db.query_raw(query, &[&realm_id]).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "alias": row.get::<_, String>(1),
+                    "display_name": row.get::<_, Option<String>>(2),
+                    "enabled": row.get::<_, bool>(3),
+                    "provider_type": row.get::<_, String>(4),
+                    "trust_email": row.get::<_, bool>(5),
+                    "store_token": row.get::<_, bool>(6),
+                    "link_only": row.get::<_, bool>(7),
+                    "created_at": row.get::<_, DateTime<Utc>>(8),
+                })
+            })
+            .collect())
+    }
+
+    /// Log federated authentication attempt
+    pub async fn log_federated_authentication(
+        db: &Database,
+        user_id: Option<Uuid>,
+        realm_id: Uuid,
+        identity_provider_alias: &str,
+        federated_user_id: Option<&str>,
+        success: bool,
+        error_code: Option<&str>,
+        error_message: Option<&str>,
+        action: &str,
+        ip_address: Option<&str>,
+        user_agent: Option<&str>,
+        session_id: Option<Uuid>,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO federated_auth_log (
+                user_id, realm_id, identity_provider_alias, federated_user_id,
+                success, error_code, error_message, action,
+                ip_address, user_agent, session_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING id
+        "#;
+
+        let ip_parsed = ip_address.and_then(|ip| ip.parse::<std::net::IpAddr>().ok());
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &user_id,
+                    &realm_id,
+                    &identity_provider_alias,
+                    &federated_user_id,
+                    &success,
+                    &error_code,
+                    &error_message,
+                    &action,
+                    &ip_parsed,
+                    &user_agent,
+                    &session_id,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Create account linking request (requires user confirmation)
+    pub async fn create_account_linking_request(
+        db: &Database,
+        user_id: Uuid,
+        realm_id: Uuid,
+        identity_provider_alias: &str,
+        federated_user_id: &str,
+        federated_username: Option<&str>,
+        federated_email: Option<&str>,
+        federated_attributes: Option<&JsonValue>,
+        confirmation_token: &str,
+        expires_in_seconds: i64,
+    ) -> Result<Uuid> {
+        let expires_at = Utc::now() + Duration::seconds(expires_in_seconds);
+
+        let query = r#"
+            INSERT INTO account_linking_requests (
+                user_id, realm_id, identity_provider_alias, federated_user_id,
+                federated_username, federated_email, federated_attributes,
+                confirmation_token, expires_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id
+        "#;
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &user_id,
+                    &realm_id,
+                    &identity_provider_alias,
+                    &federated_user_id,
+                    &federated_username,
+                    &federated_email,
+                    &federated_attributes,
+                    &confirmation_token,
+                    &expires_at,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Confirm account linking request
+    pub async fn confirm_account_linking_request(
+        db: &Database,
+        confirmation_token: &str,
+        resolved_by: &str,
+    ) -> Result<Option<(Uuid, Uuid, String, String)>> {
+        // First, get the request details
+        let query = r#"
+            SELECT id, user_id, realm_id, identity_provider_alias, federated_user_id, expires_at, status
+            FROM account_linking_requests
+            WHERE confirmation_token = $1
+        "#;
+
+        match db.query_opt(query, &[&confirmation_token]).await? {
+            Some(row) => {
+                let request_id: Uuid = row.get(0);
+                let user_id: Uuid = row.get(1);
+                let realm_id: Uuid = row.get(2);
+                let identity_provider_alias: String = row.get(3);
+                let federated_user_id: String = row.get(4);
+                let expires_at: DateTime<Utc> = row.get(5);
+                let status: String = row.get(6);
+
+                // Check if expired or already resolved
+                if status != "PENDING" {
+                    return Ok(None);
+                }
+
+                if Utc::now() > expires_at {
+                    // Update status to expired
+                    let update_query = r#"
+                        UPDATE account_linking_requests
+                        SET status = 'EXPIRED', resolved_at = NOW(), resolved_by = $1
+                        WHERE id = $2
+                    "#;
+                    db.execute(update_query, &[&"SYSTEM", &request_id]).await?;
+                    return Ok(None);
+                }
+
+                // Update status to approved
+                let update_query = r#"
+                    UPDATE account_linking_requests
+                    SET status = 'APPROVED', resolved_at = NOW(), resolved_by = $1
+                    WHERE id = $2
+                "#;
+                db.execute(update_query, &[&resolved_by, &request_id])
+                    .await?;
+
+                Ok(Some((
+                    user_id,
+                    realm_id,
+                    identity_provider_alias,
+                    federated_user_id,
+                )))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Reject account linking request
+    pub async fn reject_account_linking_request(
+        db: &Database,
+        confirmation_token: &str,
+        resolved_by: &str,
+    ) -> Result<bool> {
+        let query = r#"
+            UPDATE account_linking_requests
+            SET status = 'REJECTED', resolved_at = NOW(), resolved_by = $1
+            WHERE confirmation_token = $2 AND status = 'PENDING'
+        "#;
+
+        let rows_affected = db
+            .execute(query, &[&resolved_by, &confirmation_token])
+            .await?;
+        Ok(rows_affected > 0)
+    }
+
+    /// Cleanup expired account linking requests
+    pub async fn cleanup_expired_linking_requests(db: &Database) -> Result<u64> {
+        let query = r#"
+            UPDATE account_linking_requests
+            SET status = 'EXPIRED', resolved_at = NOW(), resolved_by = 'SYSTEM'
+            WHERE status = 'PENDING' AND expires_at < NOW()
+        "#;
+
+        db.execute(query, &[]).await
+    }
+}
+
+/// Admin Console Advanced Features operations (for admin dashboard, monitoring, audit logging)
+pub mod admin_console {
+    use crate::{database::Database, error::Result};
+    use chrono::{DateTime, Duration, Utc};
+    use serde_json::Value as JsonValue;
+    use uuid::Uuid;
+
+    /// Log an admin operation for audit trail
+    #[allow(clippy::too_many_arguments)]
+    pub async fn log_admin_operation(
+        db: &Database,
+        realm_id: Uuid,
+        admin_user_id: Option<Uuid>,
+        admin_username: &str,
+        admin_ip_address: Option<&str>,
+        operation_type: &str,
+        resource_type: &str,
+        resource_id: Option<&str>,
+        resource_name: Option<&str>,
+        action: &str,
+        status: &str,
+        error_message: Option<&str>,
+        request_method: Option<&str>,
+        request_path: Option<&str>,
+        request_body: Option<&JsonValue>,
+        response_status: Option<i32>,
+        response_body: Option<&JsonValue>,
+        duration_ms: Option<i32>,
+        user_agent: Option<&str>,
+        session_id: Option<Uuid>,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO admin_audit_log (
+                realm_id, admin_user_id, admin_username, admin_ip_address,
+                operation_type, resource_type, resource_id, resource_name,
+                action, status, error_message, request_method, request_path,
+                request_body, response_status, response_body, duration_ms,
+                user_agent, session_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+            RETURNING id
+        "#;
+
+        let ip_parsed = admin_ip_address.and_then(|ip| ip.parse::<std::net::IpAddr>().ok());
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &realm_id,
+                    &admin_user_id,
+                    &admin_username,
+                    &ip_parsed,
+                    &operation_type,
+                    &resource_type,
+                    &resource_id,
+                    &resource_name,
+                    &action,
+                    &status,
+                    &error_message,
+                    &request_method,
+                    &request_path,
+                    &request_body,
+                    &response_status,
+                    &response_body,
+                    &duration_ms,
+                    &user_agent,
+                    &session_id,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Query admin audit log with filtering
+    pub async fn query_admin_audit_log(
+        db: &Database,
+        realm_id: Uuid,
+        admin_user_id: Option<Uuid>,
+        operation_type: Option<String>,
+        resource_type: Option<String>,
+        status: Option<String>,
+        from_date: Option<DateTime<Utc>>,
+        to_date: Option<DateTime<Utc>>,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<JsonValue>> {
+        let mut where_clauses = vec![String::from("realm_id = $1")];
+        let mut param_index = 2;
+
+        if admin_user_id.is_some() {
+            where_clauses.push(format!("admin_user_id = ${}", param_index));
+            param_index += 1;
+        }
+
+        if operation_type.is_some() {
+            where_clauses.push(format!("operation_type = ${}", param_index));
+            param_index += 1;
+        }
+
+        if resource_type.is_some() {
+            where_clauses.push(format!("resource_type = ${}", param_index));
+            param_index += 1;
+        }
+
+        if status.is_some() {
+            where_clauses.push(format!("status = ${}", param_index));
+            param_index += 1;
+        }
+
+        if from_date.is_some() {
+            where_clauses.push(format!("created_at >= ${}", param_index));
+            param_index += 1;
+        }
+
+        if to_date.is_some() {
+            where_clauses.push(format!("created_at <= ${}", param_index));
+            param_index += 1;
+        }
+
+        let where_clause = where_clauses.join(" AND ");
+
+        let query = format!(
+            r#"
+            SELECT 
+                id, admin_user_id, admin_username, admin_ip_address, operation_type,
+                resource_type, resource_id, resource_name, action, status,
+                error_message, duration_ms, created_at
+            FROM admin_audit_log
+            WHERE {}
+            ORDER BY created_at DESC
+            LIMIT ${} OFFSET ${}
+        "#,
+            where_clause,
+            param_index,
+            param_index + 1
+        );
+
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&realm_id];
+
+        if let Some(ref user_id) = admin_user_id {
+            params.push(user_id);
+        }
+        if let Some(ref op_type) = operation_type {
+            params.push(op_type);
+        }
+        if let Some(ref res_type) = resource_type {
+            params.push(res_type);
+        }
+        if let Some(ref st) = status {
+            params.push(st);
+        }
+        if let Some(ref from) = from_date {
+            params.push(from);
+        }
+        if let Some(ref to) = to_date {
+            params.push(to);
+        }
+
+        params.push(&limit);
+        params.push(&offset);
+
+        let rows = db.query_raw(&query, &params).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "admin_user_id": row.get::<_, Option<Uuid>>(1),
+                    "admin_username": row.get::<_, String>(2),
+                    "admin_ip_address": row.get::<_, Option<std::net::IpAddr>>(3),
+                    "operation_type": row.get::<_, String>(4),
+                    "resource_type": row.get::<_, String>(5),
+                    "resource_id": row.get::<_, Option<String>>(6),
+                    "resource_name": row.get::<_, Option<String>>(7),
+                    "action": row.get::<_, String>(8),
+                    "status": row.get::<_, String>(9),
+                    "error_message": row.get::<_, Option<String>>(10),
+                    "duration_ms": row.get::<_, Option<i32>>(11),
+                    "created_at": row.get::<_, DateTime<Utc>>(12),
+                })
+            })
+            .collect())
+    }
+
+    /// Record dashboard metric
+    pub async fn record_dashboard_metric(
+        db: &Database,
+        realm_id: Uuid,
+        metric_type: &str,
+        metric_name: &str,
+        metric_value: f64,
+        metric_unit: Option<&str>,
+        aggregation_period: &str,
+        period_start: DateTime<Utc>,
+        period_end: DateTime<Utc>,
+        metadata: Option<&JsonValue>,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO admin_dashboard_metrics (
+                realm_id, metric_type, metric_name, metric_value, metric_unit,
+                aggregation_period, period_start, period_end, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (realm_id, metric_type, metric_name, period_start)
+            DO UPDATE SET
+                metric_value = EXCLUDED.metric_value,
+                metric_unit = EXCLUDED.metric_unit,
+                period_end = EXCLUDED.period_end,
+                metadata = EXCLUDED.metadata
+            RETURNING id
+        "#;
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &realm_id,
+                    &metric_type,
+                    &metric_name,
+                    &metric_value,
+                    &metric_unit,
+                    &aggregation_period,
+                    &period_start,
+                    &period_end,
+                    &metadata,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Get dashboard metrics
+    pub async fn get_dashboard_metrics(
+        db: &Database,
+        realm_id: Uuid,
+        metric_type: Option<&str>,
+        aggregation_period: &str,
+        from_date: DateTime<Utc>,
+        to_date: DateTime<Utc>,
+    ) -> Result<Vec<JsonValue>> {
+        let query = if metric_type.is_some() {
+            r#"
+                SELECT 
+                    id, metric_type, metric_name, metric_value, metric_unit,
+                    aggregation_period, period_start, period_end, metadata, created_at
+                FROM admin_dashboard_metrics
+                WHERE realm_id = $1 AND metric_type = $2 AND aggregation_period = $3
+                    AND period_start >= $4 AND period_end <= $5
+                ORDER BY period_start
+            "#
+        } else {
+            r#"
+                SELECT 
+                    id, metric_type, metric_name, metric_value, metric_unit,
+                    aggregation_period, period_start, period_end, metadata, created_at
+                FROM admin_dashboard_metrics
+                WHERE realm_id = $1 AND aggregation_period = $2
+                    AND period_start >= $3 AND period_end <= $4
+                ORDER BY metric_type, period_start
+            "#
+        };
+
+        let rows = if let Some(m_type) = metric_type {
+            db.query_raw(
+                query,
+                &[
+                    &realm_id,
+                    &m_type,
+                    &aggregation_period,
+                    &from_date,
+                    &to_date,
+                ],
+            )
+            .await?
+        } else {
+            db.query_raw(
+                query,
+                &[&realm_id, &aggregation_period, &from_date, &to_date],
+            )
+            .await?
+        };
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "metric_type": row.get::<_, String>(1),
+                    "metric_name": row.get::<_, String>(2),
+                    "metric_value": row.get::<_, f64>(3),
+                    "metric_unit": row.get::<_, Option<String>>(4),
+                    "aggregation_period": row.get::<_, String>(5),
+                    "period_start": row.get::<_, DateTime<Utc>>(6),
+                    "period_end": row.get::<_, DateTime<Utc>>(7),
+                    "metadata": row.get::<_, Option<JsonValue>>(8),
+                    "created_at": row.get::<_, DateTime<Utc>>(9),
+                })
+            })
+            .collect())
+    }
+
+    /// Create admin console session
+    pub async fn create_admin_session(
+        db: &Database,
+        realm_id: Uuid,
+        admin_user_id: Uuid,
+        username: &str,
+        session_token: &str,
+        ip_address: Option<&str>,
+        user_agent: Option<&str>,
+        login_method: &str,
+        mfa_verified: bool,
+        expires_in_seconds: i64,
+    ) -> Result<Uuid> {
+        let expires_at = Utc::now() + Duration::seconds(expires_in_seconds);
+
+        let query = r#"
+            INSERT INTO admin_console_sessions (
+                realm_id, admin_user_id, username, session_token,
+                ip_address, user_agent, login_method, mfa_verified, expires_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id
+        "#;
+
+        let ip_parsed = ip_address.and_then(|ip| ip.parse::<std::net::IpAddr>().ok());
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &realm_id,
+                    &admin_user_id,
+                    &username,
+                    &session_token,
+                    &ip_parsed,
+                    &user_agent,
+                    &login_method,
+                    &mfa_verified,
+                    &expires_at,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Validate and update admin session
+    pub async fn validate_admin_session(
+        db: &Database,
+        session_token: &str,
+    ) -> Result<Option<JsonValue>> {
+        let query = r#"
+            UPDATE admin_console_sessions
+            SET last_activity_at = NOW()
+            WHERE session_token = $1 AND is_active = TRUE AND expires_at > NOW()
+            RETURNING id, realm_id, admin_user_id, username, mfa_verified, expires_at
+        "#;
+
+        match db.query_opt(query, &[&session_token]).await? {
+            Some(row) => Ok(Some(serde_json::json!({
+                "id": row.get::<_, Uuid>(0),
+                "realm_id": row.get::<_, Uuid>(1),
+                "admin_user_id": row.get::<_, Uuid>(2),
+                "username": row.get::<_, String>(3),
+                "mfa_verified": row.get::<_, bool>(4),
+                "expires_at": row.get::<_, DateTime<Utc>>(5),
+            }))),
+            None => Ok(None),
+        }
+    }
+
+    /// Terminate admin session
+    pub async fn terminate_admin_session(
+        db: &Database,
+        session_token: &str,
+        logout_reason: &str,
+    ) -> Result<bool> {
+        let query = r#"
+            UPDATE admin_console_sessions
+            SET is_active = FALSE, terminated_at = NOW(), logout_reason = $1
+            WHERE session_token = $2 AND is_active = TRUE
+        "#;
+
+        let rows_affected = db.execute(query, &[&logout_reason, &session_token]).await?;
+        Ok(rows_affected > 0)
+    }
+
+    /// Create admin notification
+    pub async fn create_admin_notification(
+        db: &Database,
+        realm_id: Uuid,
+        notification_type: &str,
+        title: &str,
+        message: &str,
+        target_admin_user_id: Option<Uuid>,
+        target_role: Option<&str>,
+        action_url: Option<&str>,
+        action_label: Option<&str>,
+        priority: i32,
+        expires_in_seconds: Option<i64>,
+        metadata: Option<&JsonValue>,
+    ) -> Result<Uuid> {
+        let expires_at = expires_in_seconds.map(|seconds| Utc::now() + Duration::seconds(seconds));
+
+        let query = r#"
+            INSERT INTO admin_notifications (
+                realm_id, notification_type, title, message, target_admin_user_id,
+                target_role, action_url, action_label, priority, expires_at, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING id
+        "#;
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &realm_id,
+                    &notification_type,
+                    &title,
+                    &message,
+                    &target_admin_user_id,
+                    &target_role,
+                    &action_url,
+                    &action_label,
+                    &priority,
+                    &expires_at,
+                    &metadata,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Get admin notifications
+    pub async fn get_admin_notifications(
+        db: &Database,
+        realm_id: Uuid,
+        admin_user_id: Option<Uuid>,
+        unread_only: bool,
+    ) -> Result<Vec<JsonValue>> {
+        let query = if unread_only {
+            r#"
+                SELECT 
+                    id, notification_type, title, message, action_url, action_label,
+                    priority, is_read, created_at
+                FROM admin_notifications
+                WHERE realm_id = $1 
+                    AND (target_admin_user_id = $2 OR target_admin_user_id IS NULL)
+                    AND is_read = FALSE
+                    AND (expires_at IS NULL OR expires_at > NOW())
+                ORDER BY priority ASC, created_at DESC
+            "#
+        } else {
+            r#"
+                SELECT 
+                    id, notification_type, title, message, action_url, action_label,
+                    priority, is_read, created_at
+                FROM admin_notifications
+                WHERE realm_id = $1 
+                    AND (target_admin_user_id = $2 OR target_admin_user_id IS NULL)
+                    AND (expires_at IS NULL OR expires_at > NOW())
+                ORDER BY priority ASC, created_at DESC
+            "#
+        };
+
+        let rows = db.query_raw(query, &[&realm_id, &admin_user_id]).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "notification_type": row.get::<_, String>(1),
+                    "title": row.get::<_, String>(2),
+                    "message": row.get::<_, String>(3),
+                    "action_url": row.get::<_, Option<String>>(4),
+                    "action_label": row.get::<_, Option<String>>(5),
+                    "priority": row.get::<_, i32>(6),
+                    "is_read": row.get::<_, bool>(7),
+                    "created_at": row.get::<_, DateTime<Utc>>(8),
+                })
+            })
+            .collect())
+    }
+
+    /// Mark notification as read
+    pub async fn mark_notification_read(
+        db: &Database,
+        notification_id: Uuid,
+        admin_user_id: Uuid,
+    ) -> Result<bool> {
+        let query = r#"
+            UPDATE admin_notifications
+            SET is_read = TRUE, read_at = NOW(), read_by_user_id = $1
+            WHERE id = $2
+        "#;
+
+        let rows_affected = db
+            .execute(query, &[&admin_user_id, &notification_id])
+            .await?;
+        Ok(rows_affected > 0)
+    }
+
+    /// Get or create admin console preferences
+    pub async fn get_admin_preferences(
+        db: &Database,
+        admin_user_id: Uuid,
+        realm_id: Uuid,
+    ) -> Result<JsonValue> {
+        let query = r#"
+            SELECT 
+                id, theme, language, timezone, items_per_page, compact_mode,
+                sidebar_collapsed, email_notifications, desktop_notifications,
+                notification_frequency, dashboard_layout, favorite_pages,
+                developer_mode, show_advanced_options, preferences
+            FROM admin_console_preferences
+            WHERE admin_user_id = $1 AND realm_id = $2
+        "#;
+
+        match db.query_opt(query, &[&admin_user_id, &realm_id]).await? {
+            Some(row) => Ok(serde_json::json!({
+                "id": row.get::<_, Uuid>(0),
+                "theme": row.get::<_, String>(1),
+                "language": row.get::<_, String>(2),
+                "timezone": row.get::<_, String>(3),
+                "items_per_page": row.get::<_, i32>(4),
+                "compact_mode": row.get::<_, bool>(5),
+                "sidebar_collapsed": row.get::<_, bool>(6),
+                "email_notifications": row.get::<_, bool>(7),
+                "desktop_notifications": row.get::<_, bool>(8),
+                "notification_frequency": row.get::<_, String>(9),
+                "dashboard_layout": row.get::<_, Option<JsonValue>>(10),
+                "favorite_pages": row.get::<_, Option<Vec<String>>>(11),
+                "developer_mode": row.get::<_, bool>(12),
+                "show_advanced_options": row.get::<_, bool>(13),
+                "preferences": row.get::<_, Option<JsonValue>>(14),
+            })),
+            None => {
+                // Create default preferences
+                let insert_query = r#"
+                    INSERT INTO admin_console_preferences (admin_user_id, realm_id)
+                    VALUES ($1, $2)
+                    RETURNING id
+                "#;
+                let rows = db
+                    .query_raw(insert_query, &[&admin_user_id, &realm_id])
+                    .await?;
+                let id: Uuid = rows[0].get(0);
+
+                Ok(serde_json::json!({
+                    "id": id,
+                    "theme": "light",
+                    "language": "en",
+                    "timezone": "UTC",
+                    "items_per_page": 25,
+                    "compact_mode": false,
+                    "sidebar_collapsed": false,
+                    "email_notifications": true,
+                    "desktop_notifications": true,
+                    "notification_frequency": "realtime",
+                    "dashboard_layout": null,
+                    "favorite_pages": null,
+                    "developer_mode": false,
+                    "show_advanced_options": false,
+                    "preferences": null,
+                }))
+            }
+        }
+    }
+
+    /// Update admin console preferences
+    pub async fn update_admin_preferences(
+        db: &Database,
+        admin_user_id: Uuid,
+        realm_id: Uuid,
+        preferences: &JsonValue,
+    ) -> Result<bool> {
+        let query = r#"
+            UPDATE admin_console_preferences
+            SET 
+                theme = COALESCE($3, theme),
+                language = COALESCE($4, language),
+                timezone = COALESCE($5, timezone),
+                items_per_page = COALESCE($6, items_per_page),
+                compact_mode = COALESCE($7, compact_mode),
+                sidebar_collapsed = COALESCE($8, sidebar_collapsed),
+                email_notifications = COALESCE($9, email_notifications),
+                desktop_notifications = COALESCE($10, desktop_notifications),
+                notification_frequency = COALESCE($11, notification_frequency),
+                dashboard_layout = COALESCE($12, dashboard_layout),
+                favorite_pages = COALESCE($13, favorite_pages),
+                developer_mode = COALESCE($14, developer_mode),
+                show_advanced_options = COALESCE($15, show_advanced_options),
+                preferences = COALESCE($16, preferences),
+                updated_at = NOW()
+            WHERE admin_user_id = $1 AND realm_id = $2
+        "#;
+
+        let rows_affected = db
+            .execute(
+                query,
+                &[
+                    &admin_user_id,
+                    &realm_id,
+                    &preferences.get("theme").and_then(|v| v.as_str()),
+                    &preferences.get("language").and_then(|v| v.as_str()),
+                    &preferences.get("timezone").and_then(|v| v.as_str()),
+                    &preferences
+                        .get("items_per_page")
+                        .and_then(|v| v.as_i64())
+                        .map(|v| v as i32),
+                    &preferences.get("compact_mode").and_then(|v| v.as_bool()),
+                    &preferences
+                        .get("sidebar_collapsed")
+                        .and_then(|v| v.as_bool()),
+                    &preferences
+                        .get("email_notifications")
+                        .and_then(|v| v.as_bool()),
+                    &preferences
+                        .get("desktop_notifications")
+                        .and_then(|v| v.as_bool()),
+                    &preferences
+                        .get("notification_frequency")
+                        .and_then(|v| v.as_str()),
+                    &preferences.get("dashboard_layout"),
+                    &preferences.get("favorite_pages").and_then(|v| {
+                        v.as_array().map(|arr| {
+                            arr.iter()
+                                .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                                .collect::<Vec<String>>()
+                        })
+                    }),
+                    &preferences.get("developer_mode").and_then(|v| v.as_bool()),
+                    &preferences
+                        .get("show_advanced_options")
+                        .and_then(|v| v.as_bool()),
+                    &preferences.get("preferences"),
+                ],
+            )
+            .await?;
+
+        Ok(rows_affected > 0)
+    }
+}
+
+/// Event System operations (for event-driven architecture and audit logging)
+pub mod events {
+    use crate::{database::Database, error::Result};
+    use chrono::{DateTime, Utc};
+    use serde_json::Value as JsonValue;
+    use uuid::Uuid;
+
+    /// Register an event listener
+    pub async fn register_event_listener(
+        db: &Database,
+        realm_id: Uuid,
+        name: &str,
+        listener_type: &str,
+        enabled: bool,
+        config: Option<&JsonValue>,
+        event_types: Option<Vec<String>>,
+        priority: i32,
+        is_async: bool,
+        retry_on_failure: bool,
+        max_retries: i32,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO event_listeners (
+                realm_id, name, listener_type, enabled, config,
+                event_types, priority, is_async, retry_on_failure, max_retries
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id
+        "#;
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &realm_id,
+                    &name,
+                    &listener_type,
+                    &enabled,
+                    &config,
+                    &event_types,
+                    &priority,
+                    &is_async,
+                    &retry_on_failure,
+                    &max_retries,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Get enabled event listeners for a realm
+    pub async fn get_enabled_listeners(db: &Database, realm_id: Uuid) -> Result<Vec<JsonValue>> {
+        let query = r#"
+            SELECT 
+                id, name, listener_type, config, event_types, priority,
+                is_async, retry_on_failure, max_retries
+            FROM event_listeners
+            WHERE realm_id = $1 AND enabled = TRUE
+            ORDER BY priority ASC
+        "#;
+
+        let rows = db.query_raw(query, &[&realm_id]).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "name": row.get::<_, String>(1),
+                    "listener_type": row.get::<_, String>(2),
+                    "config": row.get::<_, Option<JsonValue>>(3),
+                    "event_types": row.get::<_, Option<Vec<String>>>(4),
+                    "priority": row.get::<_, i32>(5),
+                    "is_async": row.get::<_, bool>(6),
+                    "retry_on_failure": row.get::<_, bool>(7),
+                    "max_retries": row.get::<_, i32>(8),
+                })
+            })
+            .collect())
+    }
+
+    /// Log an event
+    #[allow(clippy::too_many_arguments)]
+    pub async fn log_event(
+        db: &Database,
+        realm_id: Uuid,
+        event_type: &str,
+        event_category: &str,
+        resource_type: Option<&str>,
+        resource_id: Option<&str>,
+        resource_name: Option<&str>,
+        user_id: Option<Uuid>,
+        username: Option<&str>,
+        event_data: Option<&JsonValue>,
+        old_value: Option<&JsonValue>,
+        new_value: Option<&JsonValue>,
+        ip_address: Option<&str>,
+        user_agent: Option<&str>,
+        session_id: Option<Uuid>,
+        success: bool,
+        error_message: Option<&str>,
+        operation_id: Option<Uuid>,
+        correlation_id: Option<Uuid>,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO event_log (
+                realm_id, event_type, event_category, resource_type, resource_id,
+                resource_name, user_id, username, event_data, old_value, new_value,
+                ip_address, user_agent, session_id, success, error_message,
+                operation_id, correlation_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            RETURNING id
+        "#;
+
+        let ip_parsed = ip_address.and_then(|ip| ip.parse::<std::net::IpAddr>().ok());
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &realm_id,
+                    &event_type,
+                    &event_category,
+                    &resource_type,
+                    &resource_id,
+                    &resource_name,
+                    &user_id,
+                    &username,
+                    &event_data,
+                    &old_value,
+                    &new_value,
+                    &ip_parsed,
+                    &user_agent,
+                    &session_id,
+                    &success,
+                    &error_message,
+                    &operation_id,
+                    &correlation_id,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Query event log with filtering
+    pub async fn query_event_log(
+        db: &Database,
+        realm_id: Uuid,
+        event_category: Option<String>,
+        event_type: Option<String>,
+        resource_type: Option<String>,
+        user_id: Option<Uuid>,
+        from_date: Option<DateTime<Utc>>,
+        to_date: Option<DateTime<Utc>>,
+        success_only: Option<bool>,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<JsonValue>> {
+        let mut where_clauses = vec![String::from("realm_id = $1")];
+        let mut param_index = 2;
+
+        if event_category.is_some() {
+            where_clauses.push(format!("event_category = ${}", param_index));
+            param_index += 1;
+        }
+
+        if event_type.is_some() {
+            where_clauses.push(format!("event_type = ${}", param_index));
+            param_index += 1;
+        }
+
+        if resource_type.is_some() {
+            where_clauses.push(format!("resource_type = ${}", param_index));
+            param_index += 1;
+        }
+
+        if user_id.is_some() {
+            where_clauses.push(format!("user_id = ${}", param_index));
+            param_index += 1;
+        }
+
+        if from_date.is_some() {
+            where_clauses.push(format!("created_at >= ${}", param_index));
+            param_index += 1;
+        }
+
+        if to_date.is_some() {
+            where_clauses.push(format!("created_at <= ${}", param_index));
+            param_index += 1;
+        }
+
+        if let Some(true) = success_only {
+            where_clauses.push(String::from("success = TRUE"));
+        }
+
+        let where_clause = where_clauses.join(" AND ");
+
+        let query = format!(
+            r#"
+            SELECT 
+                id, event_type, event_category, resource_type, resource_id,
+                resource_name, user_id, username, success, error_message,
+                correlation_id, created_at
+            FROM event_log
+            WHERE {}
+            ORDER BY created_at DESC
+            LIMIT ${} OFFSET ${}
+        "#,
+            where_clause,
+            param_index,
+            param_index + 1
+        );
+
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&realm_id];
+
+        if let Some(ref cat) = event_category {
+            params.push(cat);
+        }
+        if let Some(ref et) = event_type {
+            params.push(et);
+        }
+        if let Some(ref rt) = resource_type {
+            params.push(rt);
+        }
+        if let Some(ref uid) = user_id {
+            params.push(uid);
+        }
+        if let Some(ref from) = from_date {
+            params.push(from);
+        }
+        if let Some(ref to) = to_date {
+            params.push(to);
+        }
+
+        params.push(&limit);
+        params.push(&offset);
+
+        let rows = db.query_raw(&query, &params).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "event_type": row.get::<_, String>(1),
+                    "event_category": row.get::<_, String>(2),
+                    "resource_type": row.get::<_, Option<String>>(3),
+                    "resource_id": row.get::<_, Option<String>>(4),
+                    "resource_name": row.get::<_, Option<String>>(5),
+                    "user_id": row.get::<_, Option<Uuid>>(6),
+                    "username": row.get::<_, Option<String>>(7),
+                    "success": row.get::<_, bool>(8),
+                    "error_message": row.get::<_, Option<String>>(9),
+                    "correlation_id": row.get::<_, Option<Uuid>>(10),
+                    "created_at": row.get::<_, DateTime<Utc>>(11),
+                })
+            })
+            .collect())
+    }
+
+    /// Record listener execution result
+    pub async fn record_listener_execution(
+        db: &Database,
+        event_log_id: Uuid,
+        listener_id: Uuid,
+        success: bool,
+        error_message: Option<&str>,
+        duration_ms: i32,
+        retry_count: i32,
+        next_retry_at: Option<DateTime<Utc>>,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO event_listener_executions (
+                event_log_id, listener_id, success, error_message,
+                duration_ms, retry_count, next_retry_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id
+        "#;
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &event_log_id,
+                    &listener_id,
+                    &success,
+                    &error_message,
+                    &duration_ms,
+                    &retry_count,
+                    &next_retry_at,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Register webhook listener
+    pub async fn register_webhook(
+        db: &Database,
+        listener_id: Uuid,
+        realm_id: Uuid,
+        url: &str,
+        http_method: &str,
+        auth_type: Option<&str>,
+        auth_credentials: Option<&JsonValue>,
+        custom_headers: Option<&JsonValue>,
+        payload_template: Option<&str>,
+        secret_key: Option<&str>,
+        verify_ssl: bool,
+        timeout_seconds: i32,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO event_webhooks (
+                listener_id, realm_id, url, http_method, auth_type,
+                auth_credentials, custom_headers, payload_template,
+                secret_key, verify_ssl, timeout_seconds
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING id
+        "#;
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &listener_id,
+                    &realm_id,
+                    &url,
+                    &http_method,
+                    &auth_type,
+                    &auth_credentials,
+                    &custom_headers,
+                    &payload_template,
+                    &secret_key,
+                    &verify_ssl,
+                    &timeout_seconds,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get(0))
+    }
+
+    /// Get event statistics
+    pub async fn get_event_statistics(
+        db: &Database,
+        realm_id: Uuid,
+        from_date: DateTime<Utc>,
+        to_date: DateTime<Utc>,
+    ) -> Result<JsonValue> {
+        let query = r#"
+            SELECT 
+                COUNT(*) as total_events,
+                COUNT(*) FILTER (WHERE success = TRUE) as successful_events,
+                COUNT(*) FILTER (WHERE success = FALSE) as failed_events,
+                COUNT(DISTINCT event_type) as unique_event_types,
+                COUNT(DISTINCT user_id) as unique_users,
+                COUNT(DISTINCT event_category) as unique_categories
+            FROM event_log
+            WHERE realm_id = $1 AND created_at >= $2 AND created_at <= $3
+        "#;
+
+        match db
+            .query_opt(query, &[&realm_id, &from_date, &to_date])
+            .await?
+        {
+            Some(row) => Ok(serde_json::json!({
+                "total_events": row.get::<_, i64>(0),
+                "successful_events": row.get::<_, i64>(1),
+                "failed_events": row.get::<_, i64>(2),
+                "unique_event_types": row.get::<_, i64>(3),
+                "unique_users": row.get::<_, i64>(4),
+                "unique_categories": row.get::<_, i64>(5),
+            })),
+            None => Ok(serde_json::json!({
+                "total_events": 0,
+                "successful_events": 0,
+                "failed_events": 0,
+                "unique_event_types": 0,
+                "unique_users": 0,
+                "unique_categories": 0,
+            })),
+        }
+    }
+
+    /// Get failed listener executions for retry
+    pub async fn get_failed_executions_for_retry(
+        db: &Database,
+        max_retry_count: i32,
+    ) -> Result<Vec<JsonValue>> {
+        let query = r#"
+            SELECT 
+                ele.id, ele.event_log_id, ele.listener_id, ele.retry_count,
+                el.realm_id, el.event_type, el.event_data
+            FROM event_listener_executions ele
+            JOIN event_log el ON ele.event_log_id = el.id
+            JOIN event_listeners l ON ele.listener_id = l.id
+            WHERE ele.success = FALSE 
+                AND l.retry_on_failure = TRUE
+                AND ele.retry_count < $1
+                AND (ele.next_retry_at IS NULL OR ele.next_retry_at <= NOW())
+            ORDER BY ele.next_retry_at NULLS FIRST
+            LIMIT 100
+        "#;
+
+        let rows = db.query_raw(query, &[&max_retry_count]).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "execution_id": row.get::<_, Uuid>(0),
+                    "event_log_id": row.get::<_, Uuid>(1),
+                    "listener_id": row.get::<_, Uuid>(2),
+                    "retry_count": row.get::<_, i32>(3),
+                    "realm_id": row.get::<_, Uuid>(4),
+                    "event_type": row.get::<_, String>(5),
+                    "event_data": row.get::<_, Option<JsonValue>>(6),
+                })
+            })
+            .collect())
+    }
+}
+
+/// Database operations for protocol mappers
+pub mod protocol_mappers {
+    use crate::{database::Database, error::Result};
+    use chrono::Utc;
+    use serde_json::Value as JsonValue;
+    use uuid::Uuid;
+
+    /// Create a protocol mapper
+    pub async fn create_protocol_mapper(
+        db: &Database,
+        client_id: Option<Uuid>,
+        realm_id: Uuid,
+        name: String,
+        protocol: String,
+        mapper_type: String,
+        config: JsonValue,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO protocol_mappers (id, client_id, realm_id, name, protocol, mapper_type, config, enabled, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9)
+            RETURNING id
+        "#;
+
+        let mapper_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &mapper_id,
+                    &client_id,
+                    &realm_id,
+                    &name,
+                    &protocol,
+                    &mapper_type,
+                    &config,
+                    &now,
+                    &now,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get::<_, Uuid>(0))
+    }
+
+    /// Get protocol mappers for a client
+    pub async fn get_client_mappers(
+        db: &Database,
+        client_id: Uuid,
+        protocol: Option<String>,
+    ) -> Result<Vec<JsonValue>> {
+        let mut query = String::from(
+            r#"
+            SELECT id, client_id, realm_id, name, protocol, mapper_type, config, enabled, created_at, updated_at
+            FROM protocol_mappers
+            WHERE client_id = $1 AND enabled = TRUE
+        "#,
+        );
+
+        let mut param_idx = 2;
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&client_id];
+
+        let protocol_owned;
+        if let Some(ref p) = protocol {
+            protocol_owned = p.clone();
+            query.push_str(&format!(" AND protocol = ${}", param_idx));
+            params.push(&protocol_owned);
+            param_idx += 1;
+        }
+
+        query.push_str(" ORDER BY name");
+
+        let rows = db.query_raw(&query, &params).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "client_id": row.get::<_, Option<Uuid>>(1),
+                    "realm_id": row.get::<_, Uuid>(2),
+                    "name": row.get::<_, String>(3),
+                    "protocol": row.get::<_, String>(4),
+                    "mapper_type": row.get::<_, String>(5),
+                    "config": row.get::<_, JsonValue>(6),
+                    "enabled": row.get::<_, bool>(7),
+                    "created_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
+                    "updated_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
+                })
+            })
+            .collect())
+    }
+
+    /// Get protocol mappers for a realm (not client-specific)
+    pub async fn get_realm_mappers(
+        db: &Database,
+        realm_id: Uuid,
+        protocol: Option<String>,
+    ) -> Result<Vec<JsonValue>> {
+        let mut query = String::from(
+            r#"
+            SELECT id, client_id, realm_id, name, protocol, mapper_type, config, enabled, created_at, updated_at
+            FROM protocol_mappers
+            WHERE realm_id = $1 AND client_id IS NULL AND enabled = TRUE
+        "#,
+        );
+
+        let mut param_idx = 2;
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&realm_id];
+
+        let protocol_owned;
+        if let Some(ref p) = protocol {
+            protocol_owned = p.clone();
+            query.push_str(&format!(" AND protocol = ${}", param_idx));
+            params.push(&protocol_owned);
+            param_idx += 1;
+        }
+
+        query.push_str(" ORDER BY name");
+
+        let rows = db.query_raw(&query, &params).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "client_id": row.get::<_, Option<Uuid>>(1),
+                    "realm_id": row.get::<_, Uuid>(2),
+                    "name": row.get::<_, String>(3),
+                    "protocol": row.get::<_, String>(4),
+                    "mapper_type": row.get::<_, String>(5),
+                    "config": row.get::<_, JsonValue>(6),
+                    "enabled": row.get::<_, bool>(7),
+                    "created_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
+                    "updated_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
+                })
+            })
+            .collect())
+    }
+
+    /// Update protocol mapper configuration
+    pub async fn update_mapper_config(
+        db: &Database,
+        mapper_id: Uuid,
+        config: JsonValue,
+    ) -> Result<()> {
+        let query = r#"
+            UPDATE protocol_mappers
+            SET config = $1, updated_at = $2
+            WHERE id = $3
+        "#;
+
+        let now = Utc::now();
+        db.execute(query, &[&config, &now, &mapper_id]).await?;
+
+        Ok(())
+    }
+
+    /// Enable/disable protocol mapper
+    pub async fn set_mapper_enabled(db: &Database, mapper_id: Uuid, enabled: bool) -> Result<()> {
+        let query = r#"
+            UPDATE protocol_mappers
+            SET enabled = $1, updated_at = $2
+            WHERE id = $3
+        "#;
+
+        let now = Utc::now();
+        db.execute(query, &[&enabled, &now, &mapper_id]).await?;
+
+        Ok(())
+    }
+
+    /// Delete protocol mapper
+    pub async fn delete_mapper(db: &Database, mapper_id: Uuid) -> Result<()> {
+        let query = r#"
+            DELETE FROM protocol_mappers WHERE id = $1
+        "#;
+
+        db.execute(query, &[&mapper_id]).await?;
+
+        Ok(())
+    }
+
+    /// Get mapper by ID
+    pub async fn get_mapper_by_id(db: &Database, mapper_id: Uuid) -> Result<Option<JsonValue>> {
+        let query = r#"
+            SELECT id, client_id, realm_id, name, protocol, mapper_type, config, enabled, created_at, updated_at
+            FROM protocol_mappers
+            WHERE id = $1
+        "#;
+
+        let rows = db.query_raw(query, &[&mapper_id]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+        Ok(Some(serde_json::json!({
+            "id": row.get::<_, Uuid>(0),
+            "client_id": row.get::<_, Option<Uuid>>(1),
+            "realm_id": row.get::<_, Uuid>(2),
+            "name": row.get::<_, String>(3),
+            "protocol": row.get::<_, String>(4),
+            "mapper_type": row.get::<_, String>(5),
+            "config": row.get::<_, JsonValue>(6),
+            "enabled": row.get::<_, bool>(7),
+            "created_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
+            "updated_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
+        })))
+    }
+
+    /// Get mapper statistics for a realm
+    pub async fn get_mapper_statistics(db: &Database, realm_id: Uuid) -> Result<JsonValue> {
+        let query = r#"
+            SELECT 
+                COUNT(*) FILTER (WHERE enabled = TRUE) as total_enabled,
+                COUNT(*) FILTER (WHERE enabled = FALSE) as total_disabled,
+                COUNT(DISTINCT protocol) as unique_protocols,
+                COUNT(DISTINCT mapper_type) as unique_types,
+                COUNT(*) FILTER (WHERE client_id IS NULL) as realm_level_mappers,
+                COUNT(*) FILTER (WHERE client_id IS NOT NULL) as client_level_mappers
+            FROM protocol_mappers
+            WHERE realm_id = $1
+        "#;
+
+        let rows = db.query_raw(query, &[&realm_id]).await?;
+
+        if rows.is_empty() {
+            return Ok(serde_json::json!({
+                "total_enabled": 0,
+                "total_disabled": 0,
+                "unique_protocols": 0,
+                "unique_types": 0,
+                "realm_level_mappers": 0,
+                "client_level_mappers": 0,
+            }));
+        }
+
+        let row = &rows[0];
+        Ok(serde_json::json!({
+            "total_enabled": row.get::<_, i64>(0),
+            "total_disabled": row.get::<_, i64>(1),
+            "unique_protocols": row.get::<_, i64>(2),
+            "unique_types": row.get::<_, i64>(3),
+            "realm_level_mappers": row.get::<_, i64>(4),
+            "client_level_mappers": row.get::<_, i64>(5),
+        }))
+    }
+}
+
+/// Database operations for custom authenticators
+pub mod authenticators {
+    use crate::{database::Database, error::Result};
+    use chrono::Utc;
+    use serde_json::Value as JsonValue;
+    use uuid::Uuid;
+
+    /// Register a new authenticator configuration
+    pub async fn register_authenticator(
+        db: &Database,
+        realm_id: Uuid,
+        name: String,
+        alias: String,
+        authenticator_type: String,
+        config: JsonValue,
+        priority: i32,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO authenticator_configs (id, realm_id, name, alias, authenticator_type, config, priority, enabled, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9)
+            RETURNING id
+        "#;
+
+        let authenticator_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &authenticator_id,
+                    &realm_id,
+                    &name,
+                    &alias,
+                    &authenticator_type,
+                    &config,
+                    &priority,
+                    &now,
+                    &now,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get::<_, Uuid>(0))
+    }
+
+    /// Get authenticators for a realm
+    pub async fn get_realm_authenticators(
+        db: &Database,
+        realm_id: Uuid,
+        enabled_only: bool,
+    ) -> Result<Vec<JsonValue>> {
+        let mut query = String::from(
+            r#"
+            SELECT id, realm_id, name, alias, authenticator_type, config, priority, enabled, created_at, updated_at
+            FROM authenticator_configs
+            WHERE realm_id = $1
+        "#,
+        );
+
+        if enabled_only {
+            query.push_str(" AND enabled = TRUE");
+        }
+
+        query.push_str(" ORDER BY priority ASC");
+
+        let rows = db.query_raw(&query, &[&realm_id]).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "realm_id": row.get::<_, Uuid>(1),
+                    "name": row.get::<_, String>(2),
+                    "alias": row.get::<_, String>(3),
+                    "authenticator_type": row.get::<_, String>(4),
+                    "config": row.get::<_, JsonValue>(5),
+                    "priority": row.get::<_, i32>(6),
+                    "enabled": row.get::<_, bool>(7),
+                    "created_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
+                    "updated_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
+                })
+            })
+            .collect())
+    }
+
+    /// Create authenticator execution
+    pub async fn create_execution(
+        db: &Database,
+        realm_id: Uuid,
+        flow_id: Uuid,
+        authenticator_id: Option<Uuid>,
+        requirement: String,
+        priority: i32,
+        parent_flow_id: Option<Uuid>,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO authenticator_executions (id, realm_id, flow_id, authenticator_id, requirement, priority, parent_flow_id, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id
+        "#;
+
+        let execution_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &execution_id,
+                    &realm_id,
+                    &flow_id,
+                    &authenticator_id,
+                    &requirement,
+                    &priority,
+                    &parent_flow_id,
+                    &now,
+                    &now,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get::<_, Uuid>(0))
+    }
+
+    /// Get executions for a flow
+    pub async fn get_flow_executions(db: &Database, flow_id: Uuid) -> Result<Vec<JsonValue>> {
+        let query = r#"
+            SELECT 
+                e.id, e.realm_id, e.flow_id, e.authenticator_id, e.requirement, 
+                e.priority, e.parent_flow_id, e.created_at, e.updated_at,
+                a.name as authenticator_name, a.authenticator_type
+            FROM authenticator_executions e
+            LEFT JOIN authenticator_configs a ON e.authenticator_id = a.id
+            WHERE e.flow_id = $1
+            ORDER BY e.priority ASC
+        "#;
+
+        let rows = db.query_raw(query, &[&flow_id]).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0),
+                    "realm_id": row.get::<_, Uuid>(1),
+                    "flow_id": row.get::<_, Uuid>(2),
+                    "authenticator_id": row.get::<_, Option<Uuid>>(3),
+                    "requirement": row.get::<_, String>(4),
+                    "priority": row.get::<_, i32>(5),
+                    "parent_flow_id": row.get::<_, Option<Uuid>>(6),
+                    "created_at": row.get::<_, chrono::DateTime<Utc>>(7).to_rfc3339(),
+                    "updated_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
+                    "authenticator_name": row.get::<_, Option<String>>(9),
+                    "authenticator_type": row.get::<_, Option<String>>(10),
+                })
+            })
+            .collect())
+    }
+
+    /// Record execution result
+    pub async fn record_execution_result(
+        db: &Database,
+        execution_id: Uuid,
+        session_id: Option<Uuid>,
+        user_id: Option<Uuid>,
+        status: String,
+        error_message: Option<String>,
+        duration_ms: i32,
+        attempt_count: i32,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO authenticator_execution_results (id, execution_id, session_id, user_id, status, error_message, duration_ms, attempt_count, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id
+        "#;
+
+        let result_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let rows = db
+            .query_raw(
+                query,
+                &[
+                    &result_id,
+                    &execution_id,
+                    &session_id,
+                    &user_id,
+                    &status,
+                    &error_message,
+                    &duration_ms,
+                    &attempt_count,
+                    &now,
+                ],
+            )
+            .await?;
+
+        Ok(rows[0].get::<_, Uuid>(0))
+    }
+
+    /// Update authenticator configuration
+    pub async fn update_authenticator_config(
+        db: &Database,
+        authenticator_id: Uuid,
+        config: JsonValue,
+    ) -> Result<()> {
+        let query = r#"
+            UPDATE authenticator_configs
+            SET config = $1, updated_at = $2
+            WHERE id = $3
+        "#;
+
+        let now = Utc::now();
+        db.execute(query, &[&config, &now, &authenticator_id])
+            .await?;
+
+        Ok(())
+    }
+
+    /// Enable/disable authenticator
+    pub async fn set_authenticator_enabled(
+        db: &Database,
+        authenticator_id: Uuid,
+        enabled: bool,
+    ) -> Result<()> {
+        let query = r#"
+            UPDATE authenticator_configs
+            SET enabled = $1, updated_at = $2
+            WHERE id = $3
+        "#;
+
+        let now = Utc::now();
+        db.execute(query, &[&enabled, &now, &authenticator_id])
+            .await?;
+
+        Ok(())
+    }
+
+    /// Delete authenticator
+    pub async fn delete_authenticator(db: &Database, authenticator_id: Uuid) -> Result<()> {
+        let query = r#"
+            DELETE FROM authenticator_configs WHERE id = $1
+        "#;
+
+        db.execute(query, &[&authenticator_id]).await?;
+
+        Ok(())
+    }
+
+    /// Update execution requirement
+    pub async fn update_execution_requirement(
+        db: &Database,
+        execution_id: Uuid,
+        requirement: String,
+    ) -> Result<()> {
+        let query = r#"
+            UPDATE authenticator_executions
+            SET requirement = $1, updated_at = $2
+            WHERE id = $3
+        "#;
+
+        let now = Utc::now();
+        db.execute(query, &[&requirement, &now, &execution_id])
+            .await?;
+
+        Ok(())
+    }
+
+    /// Get execution statistics
+    pub async fn get_execution_statistics(
+        db: &Database,
+        realm_id: Uuid,
+        from_date: Option<chrono::DateTime<Utc>>,
+        to_date: Option<chrono::DateTime<Utc>>,
+    ) -> Result<JsonValue> {
+        let mut query = String::from(
+            r#"
+            SELECT 
+                COUNT(*) as total_attempts,
+                COUNT(*) FILTER (WHERE status = 'SUCCESS') as successful_attempts,
+                COUNT(*) FILTER (WHERE status = 'FAILED') as failed_attempts,
+                COUNT(DISTINCT user_id) as unique_users,
+                AVG(duration_ms) as avg_duration_ms
+            FROM authenticator_execution_results r
+            JOIN authenticator_executions e ON r.execution_id = e.id
+            WHERE e.realm_id = $1
+        "#,
+        );
+
+        let mut param_idx = 2;
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&realm_id];
+
+        let from_owned;
+        let to_owned;
+
+        if let Some(ref from) = from_date {
+            from_owned = *from;
+            query.push_str(&format!(" AND r.created_at >= ${}", param_idx));
+            params.push(&from_owned);
+            param_idx += 1;
+        }
+
+        if let Some(ref to) = to_date {
+            to_owned = *to;
+            query.push_str(&format!(" AND r.created_at <= ${}", param_idx));
+            params.push(&to_owned);
+        }
+
+        let rows = db.query_raw(&query, &params).await?;
+
+        if rows.is_empty() {
+            return Ok(serde_json::json!({
+                "total_attempts": 0,
+                "successful_attempts": 0,
+                "failed_attempts": 0,
+                "unique_users": 0,
+                "avg_duration_ms": 0,
+            }));
+        }
+
+        let row = &rows[0];
+        Ok(serde_json::json!({
+            "total_attempts": row.get::<_, i64>(0),
+            "successful_attempts": row.get::<_, i64>(1),
+            "failed_attempts": row.get::<_, i64>(2),
+            "unique_users": row.get::<_, i64>(3),
+            "avg_duration_ms": row.get::<_, Option<f64>>(4).unwrap_or(0.0),
+        }))
     }
 }
 
@@ -3005,115 +6378,849 @@ pub mod federated_identities {
 /// Database operations for authentication flows
 pub mod auth_flows {
     use crate::database::Database;
-    use crate::error::Result;
+    use crate::error::{AuthencError, Result};
+    use chrono::Utc;
+    use log::error;
     use uuid::Uuid;
 
     /// Create authentication flow
-    pub async fn create_flow(
-        _db: &Database,
-        _flow: &serde_json::Value,
-    ) -> Result<serde_json::Value> {
-        // TODO: Implement
-        Ok(serde_json::json!({}))
+    pub async fn create_flow(db: &Database, flow: &serde_json::Value) -> Result<serde_json::Value> {
+        let flow_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO authentication_flows (
+                id, realm_id, alias, description, provider_id,
+                top_level, built_in, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, realm_id, alias, description, provider_id,
+                      top_level, built_in, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &flow_id,
+                    &flow
+                        .get("realm_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| Uuid::parse_str(s).ok())
+                        .flatten(),
+                    &flow.get("alias").and_then(|v| v.as_str()).unwrap_or(""),
+                    &flow.get("description").and_then(|v| v.as_str()),
+                    &flow
+                        .get("provider_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(""),
+                    &flow
+                        .get("top_level")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                    &flow
+                        .get("built_in")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to create authentication flow: {}", e);
+                AuthencError::database("Failed to create authentication flow")
+            })?;
+
+        Ok(serde_json::json!({
+            "id": row.get::<_, Uuid>(0).to_string(),
+            "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
+            "alias": row.get::<_, String>(2),
+            "description": row.get::<_, Option<String>>(3),
+            "provider_id": row.get::<_, String>(4),
+            "top_level": row.get::<_, bool>(5),
+            "built_in": row.get::<_, bool>(6),
+            "created_at": row.get::<_, chrono::DateTime<Utc>>(7).to_rfc3339(),
+            "updated_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
+        }))
     }
 
     /// Get authentication flow by ID
-    pub async fn get_flow(_db: &Database, _flow_id: Uuid) -> Result<Option<serde_json::Value>> {
-        // TODO: Implement
-        Ok(None)
+    pub async fn get_flow(db: &Database, flow_id: Uuid) -> Result<Option<serde_json::Value>> {
+        let query = r#"
+            SELECT id, realm_id, alias, description, provider_id,
+                   top_level, built_in, created_at, updated_at
+            FROM authentication_flows
+            WHERE id = $1
+        "#;
+
+        let row_opt = db.query_opt(query, &[&flow_id]).await.map_err(|e| {
+            error!("Failed to get authentication flow: {}", e);
+            AuthencError::database("Failed to get authentication flow")
+        })?;
+
+        Ok(row_opt.map(|row| {
+            serde_json::json!({
+                "id": row.get::<_, Uuid>(0).to_string(),
+                "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
+                "alias": row.get::<_, String>(2),
+                "description": row.get::<_, Option<String>>(3),
+                "provider_id": row.get::<_, String>(4),
+                "top_level": row.get::<_, bool>(5),
+                "built_in": row.get::<_, bool>(6),
+                "created_at": row.get::<_, chrono::DateTime<Utc>>(7).to_rfc3339(),
+                "updated_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
+            })
+        }))
     }
 
     /// List authentication flows
     pub async fn list_flows(
-        _db: &Database,
-        _realm_id: Option<Uuid>,
+        db: &Database,
+        realm_id: Option<Uuid>,
     ) -> Result<Vec<serde_json::Value>> {
-        // TODO: Implement
-        Ok(vec![])
+        let query = if realm_id.is_some() {
+            r#"
+                SELECT id, realm_id, alias, description, provider_id,
+                       top_level, built_in, created_at, updated_at
+                FROM authentication_flows
+                WHERE realm_id = $1
+                ORDER BY alias
+            "#
+        } else {
+            r#"
+                SELECT id, realm_id, alias, description, provider_id,
+                       top_level, built_in, created_at, updated_at
+                FROM authentication_flows
+                ORDER BY alias
+            "#
+        };
+
+        let rows: Vec<tokio_postgres::Row> = if let Some(realm_id) = realm_id {
+            db.query(query, &[&realm_id]).await
+        } else {
+            db.query(query, &[]).await
+        }
+        .map_err(|e| {
+            error!("Failed to list authentication flows: {}", e);
+            AuthencError::database("Failed to list authentication flows")
+        })?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                serde_json::json!({
+                    "id": row.get::<_, Uuid>(0).to_string(),
+                    "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
+                    "alias": row.get::<_, String>(2),
+                    "description": row.get::<_, Option<String>>(3),
+                    "provider_id": row.get::<_, String>(4),
+                    "top_level": row.get::<_, bool>(5),
+                    "built_in": row.get::<_, bool>(6),
+                    "created_at": row.get::<_, chrono::DateTime<Utc>>(7).to_rfc3339(),
+                    "updated_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
+                })
+            })
+            .collect())
     }
 
     /// Update authentication flow
     pub async fn update_flow(
-        _db: &Database,
-        _flow_id: Uuid,
-        _flow: &serde_json::Value,
+        db: &Database,
+        flow_id: Uuid,
+        flow: &serde_json::Value,
     ) -> Result<serde_json::Value> {
-        // TODO: Implement
-        Ok(serde_json::json!({}))
+        let now = Utc::now();
+
+        let query = r#"
+            UPDATE authentication_flows
+            SET alias = $2, description = $3, provider_id = $4,
+                top_level = $5, updated_at = $6
+            WHERE id = $1
+            RETURNING id, realm_id, alias, description, provider_id,
+                      top_level, built_in, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &flow_id,
+                    &flow.get("alias").and_then(|v| v.as_str()).unwrap_or(""),
+                    &flow.get("description").and_then(|v| v.as_str()),
+                    &flow
+                        .get("provider_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(""),
+                    &flow
+                        .get("top_level")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to update authentication flow: {}", e);
+                AuthencError::database("Failed to update authentication flow")
+            })?;
+
+        Ok(serde_json::json!({
+            "id": row.get::<_, Uuid>(0).to_string(),
+            "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
+            "alias": row.get::<_, String>(2),
+            "description": row.get::<_, Option<String>>(3),
+            "provider_id": row.get::<_, String>(4),
+            "top_level": row.get::<_, bool>(5),
+            "built_in": row.get::<_, bool>(6),
+            "created_at": row.get::<_, chrono::DateTime<Utc>>(7).to_rfc3339(),
+            "updated_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
+        }))
     }
 
     /// Delete authentication flow
-    pub async fn delete_flow(_db: &Database, _flow_id: Uuid) -> Result<()> {
-        // TODO: Implement
+    pub async fn delete_flow(db: &Database, flow_id: Uuid) -> Result<()> {
+        let query = "DELETE FROM authentication_flows WHERE id = $1";
+
+        db.execute(query, &[&flow_id]).await.map_err(|e| {
+            error!("Failed to delete authentication flow: {}", e);
+            AuthencError::database("Failed to delete authentication flow")
+        })?;
+
         Ok(())
     }
 
     /// Create authentication execution
     pub async fn create_execution(
-        _db: &Database,
-        _execution: &serde_json::Value,
+        db: &Database,
+        execution: &serde_json::Value,
     ) -> Result<serde_json::Value> {
-        // TODO: Implement
-        Ok(serde_json::json!({}))
+        let execution_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO authentication_executions (
+                id, flow_id, authenticator, authenticator_config,
+                authenticator_flow, requirement, priority, parent_flow,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id, flow_id, authenticator, authenticator_config,
+                      authenticator_flow, requirement, priority, parent_flow,
+                      created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &execution_id,
+                    &execution
+                        .get("flow_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| Uuid::parse_str(s).ok())
+                        .flatten(),
+                    &execution.get("authenticator").and_then(|v| v.as_str()),
+                    &execution
+                        .get("authenticator_config")
+                        .and_then(|v| v.as_str())
+                        .map(|s| Uuid::parse_str(s).ok())
+                        .flatten(),
+                    &execution
+                        .get("authenticator_flow")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                    &execution
+                        .get("requirement")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("DISABLED"),
+                    &(execution
+                        .get("priority")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0) as i32),
+                    &execution
+                        .get("parent_flow")
+                        .and_then(|v| v.as_str())
+                        .map(|s| Uuid::parse_str(s).ok())
+                        .flatten(),
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to create authentication execution: {}", e);
+                AuthencError::database("Failed to create authentication execution")
+            })?;
+
+        Ok(serde_json::json!({
+            "id": row.get::<_, Uuid>(0).to_string(),
+            "flow_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
+            "authenticator": row.get::<_, Option<String>>(2),
+            "authenticator_config": row.get::<_, Option<Uuid>>(3).map(|u| u.to_string()),
+            "authenticator_flow": row.get::<_, bool>(4),
+            "requirement": row.get::<_, String>(5),
+            "priority": row.get::<_, i32>(6),
+            "parent_flow": row.get::<_, Option<Uuid>>(7).map(|u| u.to_string()),
+            "created_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
+            "updated_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
+        }))
     }
 
     /// Create authentication session
     pub async fn create_session(
-        _db: &Database,
-        _session: &serde_json::Value,
+        db: &Database,
+        session: &serde_json::Value,
     ) -> Result<serde_json::Value> {
-        // TODO: Implement
-        Ok(serde_json::json!({}))
+        let session_id = Uuid::new_v4();
+        let now = Utc::now();
+        let expires_at = now + chrono::Duration::hours(1); // Default 1 hour expiry
+
+        let query = r#"
+            INSERT INTO authentication_sessions (
+                id, realm_id, user_id, client_id, flow_id, auth_state,
+                protocol, redirect_uri, execution_status, authentication_notes,
+                client_notes, required_actions, started_at, expires_at,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            RETURNING id, realm_id, user_id, client_id, flow_id, auth_state,
+                      protocol, redirect_uri, started_at, expires_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &session_id,
+                    &session
+                        .get("realm_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| Uuid::parse_str(s).ok())
+                        .flatten(),
+                    &session
+                        .get("user_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| Uuid::parse_str(s).ok())
+                        .flatten(),
+                    &session.get("client_id").and_then(|v| v.as_str()),
+                    &session
+                        .get("flow_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| Uuid::parse_str(s).ok())
+                        .flatten(),
+                    &session
+                        .get("auth_state")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("STARTED"),
+                    &session
+                        .get("protocol")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("openid-connect"),
+                    &session.get("redirect_uri").and_then(|v| v.as_str()),
+                    &session
+                        .get("execution_status")
+                        .unwrap_or(&serde_json::json!({})),
+                    &session
+                        .get("authentication_notes")
+                        .unwrap_or(&serde_json::json!({})),
+                    &session
+                        .get("client_notes")
+                        .unwrap_or(&serde_json::json!({})),
+                    &session
+                        .get("required_actions")
+                        .unwrap_or(&serde_json::json!([])),
+                    &now,
+                    &expires_at,
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to create authentication session: {}", e);
+                AuthencError::database("Failed to create authentication session")
+            })?;
+
+        Ok(serde_json::json!({
+            "id": row.get::<_, Uuid>(0).to_string(),
+            "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
+            "user_id": row.get::<_, Option<Uuid>>(2).map(|u| u.to_string()),
+            "client_id": row.get::<_, Option<String>>(3),
+            "flow_id": row.get::<_, Option<Uuid>>(4).map(|u| u.to_string()),
+            "auth_state": row.get::<_, String>(5),
+            "protocol": row.get::<_, String>(6),
+            "redirect_uri": row.get::<_, Option<String>>(7),
+            "started_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
+            "expires_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
+        }))
+    }
+
+    /// Get authentication session by ID
+    pub async fn get_session(db: &Database, session_id: Uuid) -> Result<Option<serde_json::Value>> {
+        let query = r#"
+            SELECT id, realm_id, user_id, client_id, flow_id, auth_state,
+                   protocol, redirect_uri, execution_status, authentication_notes,
+                   client_notes, required_actions, started_at, completed_at,
+                   expires_at, success, error_message
+            FROM authentication_sessions
+            WHERE id = $1
+        "#;
+
+        let row_opt = db.query_opt(query, &[&session_id]).await.map_err(|e| {
+            error!("Failed to get authentication session: {}", e);
+            AuthencError::database("Failed to get authentication session")
+        })?;
+
+        Ok(row_opt.map(|row| {
+            serde_json::json!({
+                "id": row.get::<_, Uuid>(0).to_string(),
+                "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
+                "user_id": row.get::<_, Option<Uuid>>(2).map(|u| u.to_string()),
+                "client_id": row.get::<_, Option<String>>(3),
+                "flow_id": row.get::<_, Option<Uuid>>(4).map(|u| u.to_string()),
+                "auth_state": row.get::<_, String>(5),
+                "protocol": row.get::<_, String>(6),
+                "redirect_uri": row.get::<_, Option<String>>(7),
+                "execution_status": row.get::<_, serde_json::Value>(8),
+                "authentication_notes": row.get::<_, serde_json::Value>(9),
+                "client_notes": row.get::<_, serde_json::Value>(10),
+                "required_actions": row.get::<_, serde_json::Value>(11),
+                "started_at": row.get::<_, chrono::DateTime<Utc>>(12).to_rfc3339(),
+                "completed_at": row.get::<_, Option<chrono::DateTime<Utc>>>(13).map(|dt| dt.to_rfc3339()),
+                "expires_at": row.get::<_, chrono::DateTime<Utc>>(14).to_rfc3339(),
+                "success": row.get::<_, Option<bool>>(15),
+                "error_message": row.get::<_, Option<String>>(16),
+            })
+        }))
+    }
+
+    /// Update authentication session
+    pub async fn update_session(
+        db: &Database,
+        session_id: Uuid,
+        session: &serde_json::Value,
+    ) -> Result<()> {
+        let now = Utc::now();
+
+        let query = r#"
+            UPDATE authentication_sessions
+            SET auth_state = $2, execution_status = $3, authentication_notes = $4,
+                client_notes = $5, required_actions = $6, updated_at = $7
+            WHERE id = $1
+        "#;
+
+        db.execute(
+            query,
+            &[
+                &session_id,
+                &session
+                    .get("auth_state")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("IN_PROGRESS"),
+                &session
+                    .get("execution_status")
+                    .unwrap_or(&serde_json::json!({})),
+                &session
+                    .get("authentication_notes")
+                    .unwrap_or(&serde_json::json!({})),
+                &session
+                    .get("client_notes")
+                    .unwrap_or(&serde_json::json!({})),
+                &session
+                    .get("required_actions")
+                    .unwrap_or(&serde_json::json!([])),
+                &now,
+            ],
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to update authentication session: {}", e);
+            AuthencError::database("Failed to update authentication session")
+        })?;
+
+        Ok(())
+    }
+
+    /// Complete authentication session
+    pub async fn complete_session(
+        db: &Database,
+        session_id: Uuid,
+        success: bool,
+        error_message: Option<String>,
+    ) -> Result<()> {
+        let now = Utc::now();
+        let auth_state = if success { "COMPLETED" } else { "FAILED" };
+
+        let query = r#"
+            UPDATE authentication_sessions
+            SET auth_state = $2, completed_at = $3, success = $4,
+                error_message = $5, updated_at = $6
+            WHERE id = $1
+        "#;
+
+        db.execute(
+            query,
+            &[
+                &session_id,
+                &auth_state,
+                &now,
+                &success,
+                &error_message,
+                &now,
+            ],
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to complete authentication session: {}", e);
+            AuthencError::database("Failed to complete authentication session")
+        })?;
+
+        Ok(())
+    }
+
+    /// Clean up expired authentication sessions
+    pub async fn cleanup_expired_sessions(db: &Database) -> Result<i64> {
+        let query = "DELETE FROM authentication_sessions WHERE expires_at < NOW()";
+
+        let rows_affected = db.execute(query, &[]).await.map_err(|e| {
+            error!("Failed to cleanup expired sessions: {}", e);
+            AuthencError::database("Failed to cleanup expired sessions")
+        })?;
+
+        Ok(rows_affected as i64)
     }
 }
 
 /// Database operations for resources
 pub mod resources {
     use crate::database::Database;
-    use crate::error::Result;
+    use crate::error::{AuthencError, Result};
+    use crate::models::resource::{CreateResourceRequest, Resource, UpdateResourceRequest};
+    use chrono::Utc;
+    use log::error;
     use uuid::Uuid;
 
-    /// Create resource
+    /// Create a new resource
     pub async fn create_resource(
-        _db: &Database,
-        _resource: &serde_json::Value,
-    ) -> Result<serde_json::Value> {
-        // TODO: Implement
-        Ok(serde_json::json!({}))
+        db: &Database,
+        request: CreateResourceRequest,
+        owner: String,
+        realm_id: Uuid,
+        resource_server_id: Uuid,
+    ) -> Result<Resource> {
+        let resource_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let uris = request.uris.unwrap_or_default();
+        let scopes = request.scopes.unwrap_or_default();
+        let attributes_json = serde_json::to_value(&request.attributes.unwrap_or_default())
+            .map_err(|e| AuthencError::validation(format!("Invalid attributes: {}", e)))?;
+
+        let query = r#"
+            INSERT INTO resources (
+                id, name, display_name, uris, icon_uri, resource_type, owner,
+                enabled, realm_id, resource_server_id, scopes, attributes,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING
+                id, name, display_name, uris, icon_uri, resource_type, owner,
+                enabled, realm_id, resource_server_id, scopes, attributes,
+                created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &resource_id,
+                    &request.name,
+                    &request.display_name,
+                    &uris,
+                    &request.icon_uri,
+                    &request.resource_type,
+                    &owner,
+                    &true, // enabled
+                    &realm_id,
+                    &resource_server_id,
+                    &scopes,
+                    &attributes_json,
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to create resource: {}", e);
+                AuthencError::database(format!("Failed to create resource: {}", e))
+            })?;
+
+        row.try_into()
     }
 
     /// Get resource by ID
-    pub async fn get_resource(
-        _db: &Database,
-        _resource_id: Uuid,
-    ) -> Result<Option<serde_json::Value>> {
-        // TODO: Implement
-        Ok(None)
+    pub async fn get_resource_by_id(db: &Database, resource_id: Uuid) -> Result<Option<Resource>> {
+        let query = r#"
+            SELECT
+                id, name, display_name, uris, icon_uri, resource_type, owner,
+                enabled, realm_id, resource_server_id, scopes, attributes,
+                created_at, updated_at
+            FROM resources
+            WHERE id = $1
+        "#;
+
+        match db.query_opt(query, &[&resource_id]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get resource: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get resource: {}",
+                    e
+                )))
+            }
+        }
     }
 
-    /// List resources
-    pub async fn list_resources(
-        _db: &Database,
-        _owner_id: Option<Uuid>,
-    ) -> Result<Vec<serde_json::Value>> {
-        // TODO: Implement
-        Ok(vec![])
+    /// Get resource by name
+    pub async fn get_resource_by_name(
+        db: &Database,
+        name: &str,
+        resource_server_id: Uuid,
+    ) -> Result<Option<Resource>> {
+        let query = r#"
+            SELECT
+                id, name, display_name, uris, icon_uri, resource_type, owner,
+                enabled, realm_id, resource_server_id, scopes, attributes,
+                created_at, updated_at
+            FROM resources
+            WHERE name = $1 AND resource_server_id = $2
+        "#;
+
+        match db.query_opt(query, &[&name, &resource_server_id]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get resource by name: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get resource by name: {}",
+                    e
+                )))
+            }
+        }
+    }
+
+    /// List resources by owner
+    pub async fn get_resources_by_owner(
+        db: &Database,
+        owner: &str,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<Resource>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+
+        let query = r#"
+            SELECT
+                id, name, display_name, uris, icon_uri, resource_type, owner,
+                enabled, realm_id, resource_server_id, scopes, attributes,
+                created_at, updated_at
+            FROM resources
+            WHERE owner = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+        "#;
+
+        let rows = db
+            .query(query, &[&owner, &(limit as i64), &(offset as i64)])
+            .await?;
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<Resource>>>()
+    }
+
+    /// List resources by resource server
+    pub async fn get_resources_by_server(
+        db: &Database,
+        resource_server_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<Resource>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+
+        let query = r#"
+            SELECT
+                id, name, display_name, uris, icon_uri, resource_type, owner,
+                enabled, realm_id, resource_server_id, scopes, attributes,
+                created_at, updated_at
+            FROM resources
+            WHERE resource_server_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+        "#;
+
+        let rows = db
+            .query(
+                query,
+                &[&resource_server_id, &(limit as i64), &(offset as i64)],
+            )
+            .await?;
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<Resource>>>()
+    }
+
+    /// List resources by realm
+    pub async fn get_resources_by_realm(
+        db: &Database,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<Resource>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+
+        let query = r#"
+            SELECT
+                id, name, display_name, uris, icon_uri, resource_type, owner,
+                enabled, realm_id, resource_server_id, scopes, attributes,
+                created_at, updated_at
+            FROM resources
+            WHERE realm_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+        "#;
+
+        let rows = db
+            .query(query, &[&realm_id, &(limit as i64), &(offset as i64)])
+            .await?;
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<Resource>>>()
     }
 
     /// Update resource
     pub async fn update_resource(
-        _db: &Database,
-        _resource_id: Uuid,
-        _resource: &serde_json::Value,
-    ) -> Result<serde_json::Value> {
-        // TODO: Implement
-        Ok(serde_json::json!({}))
+        db: &Database,
+        resource_id: Uuid,
+        request: UpdateResourceRequest,
+    ) -> Result<Resource> {
+        let now = Utc::now();
+
+        let attributes_json = request
+            .attributes
+            .map(|a| serde_json::to_value(&a))
+            .transpose()
+            .map_err(|e| AuthencError::validation(format!("Invalid attributes: {}", e)))?;
+
+        let query = r#"
+            UPDATE resources
+            SET
+                display_name = COALESCE($2, display_name),
+                uris = COALESCE($3, uris),
+                icon_uri = COALESCE($4, icon_uri),
+                resource_type = COALESCE($5, resource_type),
+                owner = COALESCE($6, owner),
+                scopes = COALESCE($7, scopes),
+                attributes = COALESCE($8, attributes),
+                updated_at = $9
+            WHERE id = $1
+            RETURNING
+                id, name, display_name, uris, icon_uri, resource_type, owner,
+                enabled, realm_id, resource_server_id, scopes, attributes,
+                created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &resource_id,
+                    &request.display_name,
+                    &request.uris,
+                    &request.icon_uri,
+                    &request.resource_type,
+                    &request.owner,
+                    &request.scopes,
+                    &attributes_json,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to update resource: {}", e);
+                AuthencError::database(format!("Failed to update resource: {}", e))
+            })?;
+
+        row.try_into()
     }
 
     /// Delete resource
-    pub async fn delete_resource(_db: &Database, _resource_id: Uuid) -> Result<()> {
-        // TODO: Implement
+    pub async fn delete_resource(db: &Database, resource_id: Uuid) -> Result<()> {
+        let query = "DELETE FROM resources WHERE id = $1";
+
+        let rows_affected = db.execute(query, &[&resource_id]).await?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found(format!(
+                "Resource {} not found",
+                resource_id
+            )));
+        }
+
         Ok(())
+    }
+
+    /// Search resources by name pattern
+    pub async fn search_resources(
+        db: &Database,
+        name_pattern: &str,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<Resource>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+        let pattern = format!("%{}%", name_pattern);
+
+        let query = r#"
+            SELECT
+                id, name, display_name, uris, icon_uri, resource_type, owner,
+                enabled, realm_id, resource_server_id, scopes, attributes,
+                created_at, updated_at
+            FROM resources
+            WHERE realm_id = $1 AND (name ILIKE $2 OR display_name ILIKE $2)
+            ORDER BY created_at DESC
+            LIMIT $3 OFFSET $4
+        "#;
+
+        let rows = db
+            .query(
+                query,
+                &[&realm_id, &pattern, &(limit as i64), &(offset as i64)],
+            )
+            .await?;
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<Resource>>>()
+    }
+
+    /// Count resources
+    pub async fn count_resources(db: &Database, resource_server_id: Uuid) -> Result<i64> {
+        let query = "SELECT COUNT(*) FROM resources WHERE resource_server_id = $1";
+
+        let row: tokio_postgres::Row = db.query_one(query, &[&resource_server_id]).await?;
+        Ok(row.get(0))
+    }
+
+    /// Count resources by owner
+    pub async fn count_resources_by_owner(db: &Database, owner: &str) -> Result<i64> {
+        let query = "SELECT COUNT(*) FROM resources WHERE owner = $1";
+
+        let row: tokio_postgres::Row = db.query_one(query, &[&owner]).await?;
+        Ok(row.get(0))
     }
 }
 use crate::{
@@ -3212,7 +7319,7 @@ pub async fn store_admin_event(db: &Database, event: &AdminEvent) -> Result<()> 
 /// Query events based on the provided query parameters
 pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event>> {
     let mut conditions = Vec::new();
-    let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+    let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
     let mut param_index = 1;
 
     // Build WHERE conditions
@@ -3295,13 +7402,18 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
     params.push(Box::new(limit as i64));
     params.push(Box::new(offset as i64));
 
-    let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-        params.iter().map(|p| p.as_ref()).collect();
+    let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params
+        .iter()
+        .map(|p| &**p as &(dyn tokio_postgres::types::ToSql + Sync))
+        .collect();
 
-    let rows: Vec<tokio_postgres::Row> = db.query(&query_sql, &param_refs).await.map_err(|e| {
-        error!("Failed to query events: {}", e);
-        AuthencError::database("Failed to query events")
-    })?;
+    let rows: Vec<tokio_postgres::Row> = db
+        .query(&query_sql, param_refs.as_slice())
+        .await
+        .map_err(|e| {
+            error!("Failed to query events: {}", e);
+            AuthencError::database("Failed to query events")
+        })?;
 
     let mut events = Vec::new();
     for row in rows {
@@ -3330,7 +7442,7 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
 /// Query admin events based on the provided query parameters
 pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Result<Vec<AdminEvent>> {
     let mut conditions = Vec::new();
-    let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+    let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
     let mut param_index = 1;
 
     // Build WHERE conditions
@@ -3420,13 +7532,18 @@ pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Resul
     params.push(Box::new(limit as i64));
     params.push(Box::new(offset as i64));
 
-    let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-        params.iter().map(|p| p.as_ref()).collect();
+    let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params
+        .iter()
+        .map(|p| &**p as &(dyn tokio_postgres::types::ToSql + Sync))
+        .collect();
 
-    let rows: Vec<tokio_postgres::Row> = db.query(&query_sql, &param_refs).await.map_err(|e| {
-        error!("Failed to query admin events: {}", e);
-        AuthencError::database("Failed to query admin events")
-    })?;
+    let rows: Vec<tokio_postgres::Row> = db
+        .query(&query_sql, param_refs.as_slice())
+        .await
+        .map_err(|e| {
+            error!("Failed to query admin events: {}", e);
+            AuthencError::database("Failed to query admin events")
+        })?;
 
     let mut events = Vec::new();
     for row in rows {
@@ -3479,4 +7596,2415 @@ pub async fn clear_old_admin_events(db: &Database, retention_days: i32) -> Resul
     })?;
 
     Ok(deleted as i64)
+}
+
+// ============================================================================
+// TOKEN MANAGEMENT OPERATIONS
+// ============================================================================
+
+pub mod tokens {
+    use crate::database::Database;
+    use crate::error::Result;
+    use chrono::{DateTime, Utc};
+    use uuid::Uuid;
+
+    /// Stored access token data
+    #[derive(Debug, Clone)]
+    pub struct AccessTokenData {
+        pub id: Uuid,
+        pub token_hash: String,
+        pub refresh_token_hash: Option<String>,
+        pub client_id: Uuid,
+        pub user_id: Option<Uuid>,
+        pub scopes: Vec<String>,
+        pub expires_at: DateTime<Utc>,
+        pub refresh_expires_at: Option<DateTime<Utc>>,
+        pub revoked: bool,
+        pub revoked_at: Option<DateTime<Utc>>,
+        pub created_at: DateTime<Utc>,
+        pub last_used_at: Option<DateTime<Utc>>,
+    }
+
+    /// Create new access token in database
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_access_token(
+        db: &Database,
+        token_hash: &str,
+        refresh_token_hash: Option<&str>,
+        client_id: Uuid,
+        user_id: Option<Uuid>,
+        scopes: Vec<String>,
+        expires_at: DateTime<Utc>,
+        refresh_expires_at: Option<DateTime<Utc>>,
+    ) -> Result<Uuid> {
+        let id = Uuid::new_v4();
+
+        let query = "
+            INSERT INTO oauth2_access_tokens (
+                id, token_hash, refresh_token_hash, client_id, user_id, scopes,
+                expires_at, refresh_expires_at, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        ";
+
+        db.execute(
+            query,
+            &[
+                &id,
+                &token_hash,
+                &refresh_token_hash,
+                &client_id,
+                &user_id,
+                &scopes,
+                &expires_at,
+                &refresh_expires_at,
+            ],
+        )
+        .await?;
+
+        Ok(id)
+    }
+
+    /// Get access token by hash
+    pub async fn get_access_token(
+        db: &Database,
+        token_hash: &str,
+    ) -> Result<Option<AccessTokenData>> {
+        let query = "
+            SELECT id, token_hash, refresh_token_hash, client_id, user_id, scopes,
+                   expires_at, refresh_expires_at, revoked, revoked_at, created_at, last_used_at
+            FROM oauth2_access_tokens
+            WHERE token_hash = $1
+        ";
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&token_hash]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+        Ok(Some(AccessTokenData {
+            id: row.get(0),
+            token_hash: row.get(1),
+            refresh_token_hash: row.get(2),
+            client_id: row.get(3),
+            user_id: row.get(4),
+            scopes: row.get(5),
+            expires_at: row.get(6),
+            refresh_expires_at: row.get(7),
+            revoked: row.get(8),
+            revoked_at: row.get(9),
+            created_at: row.get(10),
+            last_used_at: row.get(11),
+        }))
+    }
+
+    /// Get access token by refresh token hash
+    pub async fn get_token_by_refresh(
+        db: &Database,
+        refresh_token_hash: &str,
+    ) -> Result<Option<AccessTokenData>> {
+        let query = "
+            SELECT id, token_hash, refresh_token_hash, client_id, user_id, scopes,
+                   expires_at, refresh_expires_at, revoked, revoked_at, created_at, last_used_at
+            FROM oauth2_access_tokens
+            WHERE refresh_token_hash = $1
+        ";
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&refresh_token_hash]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+        Ok(Some(AccessTokenData {
+            id: row.get(0),
+            token_hash: row.get(1),
+            refresh_token_hash: row.get(2),
+            client_id: row.get(3),
+            user_id: row.get(4),
+            scopes: row.get(5),
+            expires_at: row.get(6),
+            refresh_expires_at: row.get(7),
+            revoked: row.get(8),
+            revoked_at: row.get(9),
+            created_at: row.get(10),
+            last_used_at: row.get(11),
+        }))
+    }
+
+    /// Update last_used_at timestamp for token
+    pub async fn update_token_last_used(db: &Database, token_hash: &str) -> Result<()> {
+        let query = "
+            UPDATE oauth2_access_tokens
+            SET last_used_at = NOW()
+            WHERE token_hash = $1
+        ";
+
+        db.execute(query, &[&token_hash]).await?;
+        Ok(())
+    }
+
+    /// Revoke access token
+    pub async fn revoke_access_token(db: &Database, token_hash: &str) -> Result<()> {
+        let query = "
+            UPDATE oauth2_access_tokens
+            SET revoked = true, revoked_at = NOW()
+            WHERE token_hash = $1 AND revoked = false
+        ";
+
+        db.execute(query, &[&token_hash]).await?;
+        Ok(())
+    }
+
+    /// Revoke all tokens for a user
+    pub async fn revoke_user_tokens(db: &Database, user_id: Uuid) -> Result<u64> {
+        let query = "
+            UPDATE oauth2_access_tokens
+            SET revoked = true, revoked_at = NOW()
+            WHERE user_id = $1 AND revoked = false
+        ";
+
+        let rows_affected = db.execute(query, &[&user_id]).await?;
+        Ok(rows_affected)
+    }
+
+    /// Revoke all tokens for a client
+    pub async fn revoke_client_tokens(db: &Database, client_id: Uuid) -> Result<u64> {
+        let query = "
+            UPDATE oauth2_access_tokens
+            SET revoked = true, revoked_at = NOW()
+            WHERE client_id = $1 AND revoked = false
+        ";
+
+        let rows_affected = db.execute(query, &[&client_id]).await?;
+        Ok(rows_affected)
+    }
+
+    /// Get active tokens for a user
+    pub async fn get_user_active_tokens(
+        db: &Database,
+        user_id: Uuid,
+    ) -> Result<Vec<AccessTokenData>> {
+        let query = "
+            SELECT id, token_hash, refresh_token_hash, client_id, user_id, scopes,
+                   expires_at, refresh_expires_at, revoked, revoked_at, created_at, last_used_at
+            FROM oauth2_access_tokens
+            WHERE user_id = $1
+              AND revoked = false
+              AND expires_at > NOW()
+            ORDER BY created_at DESC
+        ";
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&user_id]).await?;
+
+        let mut tokens = Vec::new();
+        for row in rows {
+            tokens.push(AccessTokenData {
+                id: row.get(0),
+                token_hash: row.get(1),
+                refresh_token_hash: row.get(2),
+                client_id: row.get(3),
+                user_id: row.get(4),
+                scopes: row.get(5),
+                expires_at: row.get(6),
+                refresh_expires_at: row.get(7),
+                revoked: row.get(8),
+                revoked_at: row.get(9),
+                created_at: row.get(10),
+                last_used_at: row.get(11),
+            });
+        }
+
+        Ok(tokens)
+    }
+
+    /// Delete expired tokens (cleanup operation)
+    pub async fn delete_expired_tokens(db: &Database) -> Result<u64> {
+        let query = "
+            DELETE FROM oauth2_access_tokens
+            WHERE expires_at < NOW()
+              AND (refresh_expires_at IS NULL OR refresh_expires_at < NOW())
+        ";
+
+        let rows_affected = db.execute(query, &[]).await?;
+        Ok(rows_affected)
+    }
+
+    /// Get token count statistics
+    pub async fn get_token_statistics(db: &Database) -> Result<TokenStatistics> {
+        let query = "
+            SELECT
+                COUNT(*) FILTER (WHERE revoked = false AND expires_at > NOW()) as active_tokens,
+                COUNT(*) FILTER (WHERE revoked = true) as revoked_tokens,
+                COUNT(*) FILTER (WHERE expires_at < NOW()) as expired_tokens,
+                COUNT(*) as total_tokens
+            FROM oauth2_access_tokens
+        ";
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[]).await?;
+        if rows.is_empty() {
+            return Ok(TokenStatistics {
+                active_tokens: 0,
+                revoked_tokens: 0,
+                expired_tokens: 0,
+                total_tokens: 0,
+            });
+        }
+
+        let row = &rows[0];
+        Ok(TokenStatistics {
+            active_tokens: row.get::<_, i64>(0) as u64,
+            revoked_tokens: row.get::<_, i64>(1) as u64,
+            expired_tokens: row.get::<_, i64>(2) as u64,
+            total_tokens: row.get::<_, i64>(3) as u64,
+        })
+    }
+
+    /// Token statistics
+    #[derive(Debug, Clone)]
+    pub struct TokenStatistics {
+        pub active_tokens: u64,
+        pub revoked_tokens: u64,
+        pub expired_tokens: u64,
+        pub total_tokens: u64,
+    }
+}
+
+/// Database operations for permission tickets
+pub mod permission_tickets {
+    use crate::database::Database;
+    use crate::error::{AuthencError, Result};
+    use crate::models::permission_ticket::{
+        CreatePermissionTicketRequest, PermissionTicket, PermissionTicketFilter,
+    };
+    use chrono::Utc;
+    use log::error;
+    use uuid::Uuid;
+
+    /// Create a new permission ticket
+    pub async fn create_permission_ticket(
+        db: &Database,
+        request: CreatePermissionTicketRequest,
+        owner: String,
+        realm_id: Uuid,
+        resource_server_id: Uuid,
+    ) -> Result<PermissionTicket> {
+        let ticket_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO permission_tickets (
+                id, resource_id, scope_id, owner, requester, granted,
+                granted_timestamp, realm_id, resource_server_id,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING
+                id, resource_id, scope_id, owner, requester, granted,
+                granted_timestamp, realm_id, resource_server_id,
+                created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &ticket_id,
+                    &request.resource_id,
+                    &request.scope_id,
+                    &owner,
+                    &request.requester,
+                    &false,                         // granted
+                    &None::<chrono::DateTime<Utc>>, // granted_timestamp
+                    &realm_id,
+                    &resource_server_id,
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to create permission ticket: {}", e);
+                AuthencError::database(format!("Failed to create permission ticket: {}", e))
+            })?;
+
+        row.try_into()
+    }
+
+    /// Get permission ticket by ID
+    pub async fn get_permission_ticket(
+        db: &Database,
+        id: Uuid,
+    ) -> Result<Option<PermissionTicket>> {
+        let query = r#"
+            SELECT
+                id, resource_id, scope_id, owner, requester, granted,
+                granted_timestamp, realm_id, resource_server_id,
+                created_at, updated_at
+            FROM permission_tickets
+            WHERE id = $1
+        "#;
+
+        match db.query_opt(query, &[&id]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get permission ticket: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get permission ticket: {}",
+                    e
+                )))
+            }
+        }
+    }
+
+    /// Get permission tickets with filters
+    pub async fn get_permission_tickets(
+        db: &Database,
+        filters: Vec<PermissionTicketFilter>,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<PermissionTicket>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+
+        let mut conditions = Vec::new();
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = Vec::new();
+        let mut param_index = 1;
+
+        for filter in &filters {
+            match filter {
+                PermissionTicketFilter::Owner(owner) => {
+                    conditions.push(format!("owner = ${}", param_index));
+                    params.push(owner);
+                    param_index += 1;
+                }
+                PermissionTicketFilter::Requester(requester) => {
+                    conditions.push(format!("requester = ${}", param_index));
+                    params.push(requester);
+                    param_index += 1;
+                }
+                PermissionTicketFilter::ResourceId(resource_id) => {
+                    conditions.push(format!("resource_id = ${}", param_index));
+                    params.push(resource_id);
+                    param_index += 1;
+                }
+                PermissionTicketFilter::Granted(granted) => {
+                    conditions.push(format!("granted = ${}", param_index));
+                    params.push(granted);
+                    param_index += 1;
+                }
+                PermissionTicketFilter::ResourceServerId(resource_server_id) => {
+                    conditions.push(format!("resource_server_id = ${}", param_index));
+                    params.push(resource_server_id);
+                    param_index += 1;
+                }
+            }
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::from("TRUE")
+        } else {
+            conditions.join(" AND ")
+        };
+
+        let limit_i64 = limit as i64;
+        let offset_i64 = offset as i64;
+
+        let query = format!(
+            r#"
+            SELECT
+                id, resource_id, scope_id, owner, requester, granted,
+                granted_timestamp, realm_id, resource_server_id,
+                created_at, updated_at
+            FROM permission_tickets
+            WHERE {}
+            ORDER BY created_at DESC
+            LIMIT ${} OFFSET ${}
+            "#,
+            where_clause,
+            param_index,
+            param_index + 1
+        );
+
+        params.push(&limit_i64);
+        params.push(&offset_i64);
+
+        let rows = db.query(&query, &params).await?;
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<PermissionTicket>>>()
+    }
+
+    /// Get granted resources for a user
+    pub async fn get_granted_resources(
+        db: &Database,
+        user_id: &str,
+        name_filter: Option<&str>,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<Uuid>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+
+        let query = if let Some(name_pattern) = name_filter {
+            let pattern = format!("%{}%", name_pattern);
+            r#"
+                SELECT DISTINCT pt.resource_id
+                FROM permission_tickets pt
+                JOIN resources r ON pt.resource_id = r.id
+                WHERE pt.requester = $1 AND pt.granted = true
+                  AND r.name ILIKE $2
+                ORDER BY pt.resource_id
+                LIMIT $3 OFFSET $4
+            "#
+        } else {
+            r#"
+                SELECT DISTINCT resource_id
+                FROM permission_tickets
+                WHERE requester = $1 AND granted = true
+                ORDER BY resource_id
+                LIMIT $2 OFFSET $3
+            "#
+        };
+
+        let rows = if name_filter.is_some() {
+            let pattern = format!("%{}%", name_filter.unwrap());
+            db.query(
+                query,
+                &[&user_id, &pattern, &(limit as i64), &(offset as i64)],
+            )
+            .await?
+        } else {
+            db.query(query, &[&user_id, &(limit as i64), &(offset as i64)])
+                .await?
+        };
+
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| row.get(0))
+            .collect())
+    }
+
+    /// Get granted owner resources
+    pub async fn get_granted_owner_resources(
+        db: &Database,
+        owner: &str,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<Uuid>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+
+        let query = r#"
+            SELECT DISTINCT resource_id
+            FROM permission_tickets
+            WHERE owner = $1 AND granted = true
+            ORDER BY resource_id
+            LIMIT $2 OFFSET $3
+        "#;
+
+        let rows = db
+            .query(query, &[&owner, &(limit as i64), &(offset as i64)])
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| row.get::<_, Uuid>(0))
+            .collect())
+    }
+
+    /// Get permission tickets for resource
+    pub async fn get_tickets_for_resource(
+        db: &Database,
+        resource_id: Uuid,
+        granted: Option<bool>,
+    ) -> Result<Vec<PermissionTicket>> {
+        let query = if let Some(granted_filter) = granted {
+            r#"
+                SELECT
+                    id, resource_id, scope_id, owner, requester, granted,
+                    granted_timestamp, realm_id, resource_server_id,
+                    created_at, updated_at
+                FROM permission_tickets
+                WHERE resource_id = $1 AND granted = $2
+                ORDER BY created_at DESC
+            "#
+        } else {
+            r#"
+                SELECT
+                    id, resource_id, scope_id, owner, requester, granted,
+                    granted_timestamp, realm_id, resource_server_id,
+                    created_at, updated_at
+                FROM permission_tickets
+                WHERE resource_id = $1
+                ORDER BY created_at DESC
+            "#
+        };
+
+        let rows = if let Some(granted_filter) = granted {
+            db.query(query, &[&resource_id, &granted_filter]).await?
+        } else {
+            db.query(query, &[&resource_id]).await?
+        };
+
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<PermissionTicket>>>()
+    }
+
+    /// Get permission tickets for requester
+    pub async fn get_tickets_for_requester(
+        db: &Database,
+        requester: &str,
+        granted: Option<bool>,
+    ) -> Result<Vec<PermissionTicket>> {
+        let query = if let Some(granted_filter) = granted {
+            r#"
+                SELECT
+                    id, resource_id, scope_id, owner, requester, granted,
+                    granted_timestamp, realm_id, resource_server_id,
+                    created_at, updated_at
+                FROM permission_tickets
+                WHERE requester = $1 AND granted = $2
+                ORDER BY created_at DESC
+            "#
+        } else {
+            r#"
+                SELECT
+                    id, resource_id, scope_id, owner, requester, granted,
+                    granted_timestamp, realm_id, resource_server_id,
+                    created_at, updated_at
+                FROM permission_tickets
+                WHERE requester = $1
+                ORDER BY created_at DESC
+            "#
+        };
+
+        let rows = if let Some(granted_filter) = granted {
+            db.query(query, &[&requester, &granted_filter]).await?
+        } else {
+            db.query(query, &[&requester]).await?
+        };
+
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<PermissionTicket>>>()
+    }
+
+    /// Grant permission ticket
+    pub async fn grant_permission_ticket(db: &Database, id: Uuid) -> Result<PermissionTicket> {
+        let now = Utc::now();
+
+        let query = r#"
+            UPDATE permission_tickets
+            SET granted = true, granted_timestamp = $2, updated_at = $3
+            WHERE id = $1
+            RETURNING
+                id, resource_id, scope_id, owner, requester, granted,
+                granted_timestamp, realm_id, resource_server_id,
+                created_at, updated_at
+        "#;
+
+        let row = db
+            .query_opt(query, &[&id, &now, &now])
+            .await
+            .map_err(|e| {
+                error!("Failed to grant permission ticket: {}", e);
+                AuthencError::database(format!("Failed to grant permission ticket: {}", e))
+            })?
+            .ok_or_else(|| {
+                AuthencError::resource_not_found(format!("Permission ticket {} not found", id))
+            })?;
+
+        row.try_into()
+    }
+
+    /// Revoke permission ticket
+    pub async fn revoke_permission_ticket(db: &Database, id: Uuid) -> Result<PermissionTicket> {
+        let now = Utc::now();
+
+        let query = r#"
+            UPDATE permission_tickets
+            SET granted = false, granted_timestamp = NULL, updated_at = $2
+            WHERE id = $1
+            RETURNING
+                id, resource_id, scope_id, owner, requester, granted,
+                granted_timestamp, realm_id, resource_server_id,
+                created_at, updated_at
+        "#;
+
+        let row = db
+            .query_opt(query, &[&id, &now])
+            .await
+            .map_err(|e| {
+                error!("Failed to revoke permission ticket: {}", e);
+                AuthencError::database(format!("Failed to revoke permission ticket: {}", e))
+            })?
+            .ok_or_else(|| {
+                AuthencError::resource_not_found(format!("Permission ticket {} not found", id))
+            })?;
+
+        row.try_into()
+    }
+
+    /// Delete permission ticket
+    pub async fn delete_permission_ticket(db: &Database, id: Uuid) -> Result<()> {
+        let query = "DELETE FROM permission_tickets WHERE id = $1";
+
+        let rows_affected = db.execute(query, &[&id]).await?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found(format!(
+                "Permission ticket {} not found",
+                id
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Count permission tickets with filters
+    pub async fn count_permission_tickets(
+        db: &Database,
+        filters: Vec<PermissionTicketFilter>,
+    ) -> Result<i64> {
+        let mut conditions = Vec::new();
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = Vec::new();
+        let mut param_index = 1;
+
+        for filter in &filters {
+            match filter {
+                PermissionTicketFilter::Owner(owner) => {
+                    conditions.push(format!("owner = ${}", param_index));
+                    params.push(owner);
+                    param_index += 1;
+                }
+                PermissionTicketFilter::Requester(requester) => {
+                    conditions.push(format!("requester = ${}", param_index));
+                    params.push(requester);
+                    param_index += 1;
+                }
+                PermissionTicketFilter::ResourceId(resource_id) => {
+                    conditions.push(format!("resource_id = ${}", param_index));
+                    params.push(resource_id);
+                    param_index += 1;
+                }
+                PermissionTicketFilter::Granted(granted) => {
+                    conditions.push(format!("granted = ${}", param_index));
+                    params.push(granted);
+                    param_index += 1;
+                }
+                PermissionTicketFilter::ResourceServerId(resource_server_id) => {
+                    conditions.push(format!("resource_server_id = ${}", param_index));
+                    params.push(resource_server_id);
+                    param_index += 1;
+                }
+            }
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::from("TRUE")
+        } else {
+            conditions.join(" AND ")
+        };
+
+        let query = format!(
+            "SELECT COUNT(*) FROM permission_tickets WHERE {}",
+            where_clause
+        );
+
+        let row: tokio_postgres::Row = db.query_one(&query, &params).await?;
+        Ok(row.get(0))
+    }
+}
+
+/// Database operations for scopes
+pub mod scopes {
+    use crate::database::Database;
+    use crate::error::{AuthencError, Result};
+    use crate::models::scope::{CreateScopeRequest, Scope, UpdateScopeRequest};
+    use chrono::Utc;
+    use log::error;
+    use uuid::Uuid;
+
+    /// Create a new scope
+    pub async fn create_scope(
+        db: &Database,
+        request: CreateScopeRequest,
+        realm_id: Uuid,
+        resource_server_id: Uuid,
+    ) -> Result<Scope> {
+        let scope_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO scopes (
+                id, name, display_name, icon_uri, realm_id, resource_server_id,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING
+                id, name, display_name, icon_uri, realm_id, resource_server_id,
+                created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &scope_id,
+                    &request.name,
+                    &request.display_name,
+                    &request.icon_uri,
+                    &realm_id,
+                    &resource_server_id,
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to create scope: {}", e);
+                AuthencError::database(format!("Failed to create scope: {}", e))
+            })?;
+
+        row.try_into()
+    }
+
+    /// Get scope by ID
+    pub async fn get_scope_by_id(db: &Database, id: Uuid) -> Result<Option<Scope>> {
+        let query = r#"
+            SELECT
+                id, name, display_name, icon_uri, realm_id, resource_server_id,
+                created_at, updated_at
+            FROM scopes
+            WHERE id = $1
+        "#;
+
+        match db.query_opt(query, &[&id]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get scope: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get scope: {}",
+                    e
+                )))
+            }
+        }
+    }
+
+    /// Get scope by name and resource server
+    pub async fn get_scope_by_name(
+        db: &Database,
+        name: &str,
+        resource_server_id: Uuid,
+    ) -> Result<Option<Scope>> {
+        let query = r#"
+            SELECT
+                id, name, display_name, icon_uri, realm_id, resource_server_id,
+                created_at, updated_at
+            FROM scopes
+            WHERE name = $1 AND resource_server_id = $2
+        "#;
+
+        match db.query_opt(query, &[&name, &resource_server_id]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get scope by name: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get scope by name: {}",
+                    e
+                )))
+            }
+        }
+    }
+
+    /// Get scopes by resource server
+    pub async fn get_scopes_by_server(
+        db: &Database,
+        resource_server_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<Scope>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+
+        let query = r#"
+            SELECT
+                id, name, display_name, icon_uri, realm_id, resource_server_id,
+                created_at, updated_at
+            FROM scopes
+            WHERE resource_server_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+        "#;
+
+        let rows = db
+            .query(
+                query,
+                &[&resource_server_id, &(limit as i64), &(offset as i64)],
+            )
+            .await?;
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<Scope>>>()
+    }
+
+    /// Get scopes by realm
+    pub async fn get_scopes_by_realm(
+        db: &Database,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<Scope>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+
+        let query = r#"
+            SELECT
+                id, name, display_name, icon_uri, realm_id, resource_server_id,
+                created_at, updated_at
+            FROM scopes
+            WHERE realm_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+        "#;
+
+        let rows = db
+            .query(query, &[&realm_id, &(limit as i64), &(offset as i64)])
+            .await?;
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<Scope>>>()
+    }
+
+    /// Update scope
+    pub async fn update_scope(
+        db: &Database,
+        id: Uuid,
+        request: UpdateScopeRequest,
+    ) -> Result<Scope> {
+        let now = Utc::now();
+
+        let query = r#"
+            UPDATE scopes
+            SET
+                name = COALESCE($2, name),
+                display_name = COALESCE($3, display_name),
+                icon_uri = COALESCE($4, icon_uri),
+                updated_at = $5
+            WHERE id = $1
+            RETURNING
+                id, name, display_name, icon_uri, realm_id, resource_server_id,
+                created_at, updated_at
+        "#;
+
+        let row = db
+            .query_opt(
+                query,
+                &[
+                    &id,
+                    &request.name,
+                    &request.display_name,
+                    &request.icon_uri,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to update scope: {}", e);
+                AuthencError::database(format!("Failed to update scope: {}", e))
+            })?
+            .ok_or_else(|| AuthencError::resource_not_found(format!("Scope {} not found", id)))?;
+
+        row.try_into()
+    }
+
+    /// Delete scope
+    pub async fn delete_scope(db: &Database, id: Uuid) -> Result<()> {
+        let query = "DELETE FROM scopes WHERE id = $1";
+
+        let rows_affected = db.execute(query, &[&id]).await?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found(format!(
+                "Scope {} not found",
+                id
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Search scopes by name
+    pub async fn search_scopes(
+        db: &Database,
+        name_pattern: &str,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<Scope>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+        let pattern = format!("%{}%", name_pattern);
+
+        let query = r#"
+            SELECT
+                id, name, display_name, icon_uri, realm_id, resource_server_id,
+                created_at, updated_at
+            FROM scopes
+            WHERE realm_id = $1 AND (name ILIKE $2 OR display_name ILIKE $2)
+            ORDER BY created_at DESC
+            LIMIT $3 OFFSET $4
+        "#;
+
+        let rows = db
+            .query(
+                query,
+                &[&realm_id, &pattern, &(limit as i64), &(offset as i64)],
+            )
+            .await?;
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<Scope>>>()
+    }
+
+    /// Count scopes by resource server
+    pub async fn count_scopes_by_server(db: &Database, resource_server_id: Uuid) -> Result<i64> {
+        let query = "SELECT COUNT(*) FROM scopes WHERE resource_server_id = $1";
+
+        let row: tokio_postgres::Row = db.query_one(query, &[&resource_server_id]).await?;
+        Ok(row.get(0))
+    }
+}
+
+/// Resource server operations
+pub mod resource_servers {
+    use crate::{
+        database::Database,
+        error::Result,
+        models::resource_server::{
+            CreateResourceServerRequest, ResourceServer, UpdateResourceServerRequest,
+        },
+    };
+    use uuid::Uuid;
+
+    /// Create a new resource server
+    pub async fn create_resource_server(
+        db: &Database,
+        request: CreateResourceServerRequest,
+        realm_id: Uuid,
+    ) -> Result<ResourceServer> {
+        let id = Uuid::new_v4();
+        let now = chrono::Utc::now();
+
+        let query = r#"
+            INSERT INTO resource_servers (
+                id, client_id, name, description, enabled, realm_id,
+                policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
+                created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING
+                id, client_id, name, description, enabled, realm_id,
+                policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
+                created_at, updated_at
+        "#;
+
+        let policy_mode = "enforcing"; // Default
+        let decision_strat = "unanimous"; // Default
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &id,
+                    &request.client_id,
+                    &request.name,
+                    &request.description,
+                    &true, // enabled by default
+                    &realm_id,
+                    &policy_mode,
+                    &decision_strat,
+                    &false, // allow_remote_resource_management default
+                    &now,
+                    &now,
+                ],
+            )
+            .await?;
+
+        row.try_into()
+    }
+
+    /// Get resource server by ID
+    pub async fn get_resource_server_by_id(
+        db: &Database,
+        id: Uuid,
+    ) -> Result<Option<ResourceServer>> {
+        let query = r#"
+            SELECT
+                id, client_id, name, description, enabled, realm_id,
+                policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
+                created_at, updated_at
+            FROM resource_servers
+            WHERE id = $1
+        "#;
+
+        match db.query_opt(query, &[&id]).await? {
+            Some(row) => Ok(Some(row.try_into()?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Get resource server by client ID and realm
+    pub async fn get_resource_server_by_client(
+        db: &Database,
+        client_id: &str,
+        realm_id: Uuid,
+    ) -> Result<Option<ResourceServer>> {
+        let query = r#"
+            SELECT
+                id, client_id, name, description, enabled, realm_id,
+                policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
+                created_at, updated_at
+            FROM resource_servers
+            WHERE client_id = $1 AND realm_id = $2
+        "#;
+
+        match db.query_opt(query, &[&client_id, &realm_id]).await? {
+            Some(row) => Ok(Some(row.try_into()?)),
+            None => Ok(None),
+        }
+    }
+
+    /// List resource servers by realm
+    pub async fn get_resource_servers_by_realm(
+        db: &Database,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<ResourceServer>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+
+        let query = r#"
+            SELECT
+                id, client_id, name, description, enabled, realm_id,
+                policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
+                created_at, updated_at
+            FROM resource_servers
+            WHERE realm_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+        "#;
+
+        let rows = db
+            .query(query, &[&realm_id, &(limit as i64), &(offset as i64)])
+            .await?;
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<ResourceServer>>>()
+    }
+
+    /// Update resource server
+    pub async fn update_resource_server(
+        db: &Database,
+        id: Uuid,
+        request: UpdateResourceServerRequest,
+    ) -> Result<ResourceServer> {
+        let now = chrono::Utc::now();
+
+        let query = r#"
+            UPDATE resource_servers
+            SET
+                name = COALESCE($2, name),
+                description = COALESCE($3, description),
+                policy_enforcement_mode = COALESCE($4, policy_enforcement_mode),
+                decision_strategy = COALESCE($5, decision_strategy),
+                allow_remote_resource_management = COALESCE($6, allow_remote_resource_management),
+                updated_at = $7
+            WHERE id = $1
+            RETURNING
+                id, client_id, name, description, enabled, realm_id,
+                policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
+                created_at, updated_at
+        "#;
+
+        let policy_mode = request.policy_enforcement_mode.as_ref().map(|m| m.as_str());
+        let decision_strat = request.decision_strategy.as_ref().map(|s| s.as_str());
+
+        match db
+            .query_opt(
+                query,
+                &[
+                    &id,
+                    &request.name,
+                    &request.description,
+                    &policy_mode,
+                    &decision_strat,
+                    &request.allow_remote_resource_management,
+                    &now,
+                ],
+            )
+            .await?
+        {
+            Some(row) => row.try_into(),
+            None => Err(crate::error::AuthencError::resource_not_found(format!(
+                "Resource server with id {} not found",
+                id
+            ))),
+        }
+    }
+
+    /// Delete resource server
+    pub async fn delete_resource_server(db: &Database, id: Uuid) -> Result<()> {
+        let query = "DELETE FROM resource_servers WHERE id = $1";
+
+        let rows_affected = db.execute(query, &[&id]).await?;
+
+        if rows_affected == 0 {
+            return Err(crate::error::AuthencError::resource_not_found(format!(
+                "Resource server with id {} not found",
+                id
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Search resource servers by name pattern
+    pub async fn search_resource_servers(
+        db: &Database,
+        name_pattern: &str,
+        realm_id: Uuid,
+        first: Option<i32>,
+        max: Option<i32>,
+    ) -> Result<Vec<ResourceServer>> {
+        let offset = first.unwrap_or(0);
+        let limit = max.unwrap_or(100);
+        let pattern = format!("%{}%", name_pattern);
+
+        let query = r#"
+            SELECT
+                id, client_id, name, description, enabled, realm_id,
+                policy_enforcement_mode, decision_strategy, allow_remote_resource_management,
+                created_at, updated_at
+            FROM resource_servers
+            WHERE realm_id = $1 AND (name ILIKE $2 OR client_id ILIKE $2)
+            ORDER BY created_at DESC
+            LIMIT $3 OFFSET $4
+        "#;
+
+        let rows = db
+            .query(
+                query,
+                &[&realm_id, &pattern, &(limit as i64), &(offset as i64)],
+            )
+            .await?;
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| row.try_into())
+            .collect::<Result<Vec<ResourceServer>>>()
+    }
+
+    /// Count resource servers by realm
+    pub async fn count_resource_servers_by_realm(db: &Database, realm_id: Uuid) -> Result<i64> {
+        let query = "SELECT COUNT(*) FROM resource_servers WHERE realm_id = $1";
+
+        let row: tokio_postgres::Row = db.query_one(query, &[&realm_id]).await?;
+        Ok(row.get(0))
+    }
+}
+
+/// Database operations for user consent management
+pub mod user_consents {
+    use crate::{
+        database::Database,
+        error::{AuthencError, Result},
+        models::{ConsentGrantRequest, UserConsent},
+    };
+    use chrono::{Duration, Utc};
+    use uuid::Uuid;
+
+    /// Grant user consent for a client
+    pub async fn grant_consent(
+        db: &Database,
+        user_id: Uuid,
+        request: &ConsentGrantRequest,
+    ) -> Result<UserConsent> {
+        let consent_id = Uuid::new_v4();
+        let granted_at = Utc::now();
+        let expires_at = request
+            .expires_in
+            .map(|secs| granted_at + Duration::seconds(secs));
+        let metadata = request
+            .metadata
+            .clone()
+            .unwrap_or_else(|| serde_json::Value::Null);
+
+        let query = r#"
+            INSERT INTO user_consents (id, user_id, client_id, scopes, granted_at, expires_at, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (user_id, client_id) 
+            DO UPDATE SET 
+                scopes = EXCLUDED.scopes,
+                granted_at = EXCLUDED.granted_at,
+                expires_at = EXCLUDED.expires_at,
+                metadata = EXCLUDED.metadata
+            RETURNING id, user_id, client_id, scopes, granted_at, expires_at, metadata
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &consent_id,
+                    &user_id,
+                    &request.client_id,
+                    &request.scopes,
+                    &granted_at,
+                    &expires_at,
+                    &metadata,
+                ],
+            )
+            .await?;
+
+        Ok(UserConsent {
+            id: row.get("id"),
+            user_id: row.get("user_id"),
+            client_id: row.get("client_id"),
+            scopes: row.get("scopes"),
+            granted_at: row.get("granted_at"),
+            expires_at: row.get("expires_at"),
+            metadata: row.get("metadata"),
+        })
+    }
+
+    /// Revoke user consent for a client
+    pub async fn revoke_consent(db: &Database, user_id: Uuid, client_id: &str) -> Result<()> {
+        let query = "DELETE FROM user_consents WHERE user_id = $1 AND client_id = $2";
+
+        let rows_affected = db.execute(query, &[&user_id, &client_id]).await?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found(format!(
+                "Consent for user {} and client {} not found",
+                user_id, client_id
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Revoke specific consent by ID
+    pub async fn revoke_consent_by_id(
+        db: &Database,
+        user_id: Uuid,
+        consent_id: Uuid,
+    ) -> Result<()> {
+        let query = "DELETE FROM user_consents WHERE id = $1 AND user_id = $2";
+
+        let rows_affected = db.execute(query, &[&consent_id, &user_id]).await?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found(format!(
+                "Consent with id {} for user {} not found",
+                consent_id, user_id
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Get all user consents
+    pub async fn get_user_consents(db: &Database, user_id: Uuid) -> Result<Vec<UserConsent>> {
+        let query = r#"
+            SELECT id, user_id, client_id, scopes, granted_at, expires_at, metadata
+            FROM user_consents
+            WHERE user_id = $1
+            AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY granted_at DESC
+        "#;
+
+        let rows = db.query(query, &[&user_id]).await?;
+
+        rows.into_iter()
+            .map(|row: tokio_postgres::Row| {
+                Ok(UserConsent {
+                    id: row.get("id"),
+                    user_id: row.get("user_id"),
+                    client_id: row.get("client_id"),
+                    scopes: row.get("scopes"),
+                    granted_at: row.get("granted_at"),
+                    expires_at: row.get("expires_at"),
+                    metadata: row.get("metadata"),
+                })
+            })
+            .collect()
+    }
+
+    /// Get specific user consent for a client
+    pub async fn get_user_consent(
+        db: &Database,
+        user_id: Uuid,
+        client_id: &str,
+    ) -> Result<Option<UserConsent>> {
+        let query = r#"
+            SELECT id, user_id, client_id, scopes, granted_at, expires_at, metadata
+            FROM user_consents
+            WHERE user_id = $1 AND client_id = $2
+            AND (expires_at IS NULL OR expires_at > NOW())
+        "#;
+
+        let row = db.query_opt(query, &[&user_id, &client_id]).await?;
+
+        Ok(row.map(|row: tokio_postgres::Row| UserConsent {
+            id: row.get("id"),
+            user_id: row.get("user_id"),
+            client_id: row.get("client_id"),
+            scopes: row.get("scopes"),
+            granted_at: row.get("granted_at"),
+            expires_at: row.get("expires_at"),
+            metadata: row.get("metadata"),
+        }))
+    }
+
+    /// Check if user has valid consent for client and scopes
+    pub async fn has_consent(
+        db: &Database,
+        user_id: Uuid,
+        client_id: &str,
+        required_scopes: &[String],
+    ) -> Result<bool> {
+        let query = r#"
+            SELECT scopes
+            FROM user_consents
+            WHERE user_id = $1 AND client_id = $2
+            AND (expires_at IS NULL OR expires_at > NOW())
+        "#;
+
+        let row = db.query_opt(query, &[&user_id, &client_id]).await?;
+
+        match row {
+            Some(row) => {
+                let granted_scopes: Vec<String> = row.get("scopes");
+                Ok(required_scopes
+                    .iter()
+                    .all(|scope| granted_scopes.contains(scope)))
+            }
+            None => Ok(false),
+        }
+    }
+
+    /// Clean up expired consents
+    pub async fn cleanup_expired_consents(db: &Database) -> Result<i64> {
+        let query = "DELETE FROM user_consents WHERE expires_at IS NOT NULL AND expires_at < NOW()";
+
+        let rows_affected = db.execute(query, &[]).await?;
+        Ok(rows_affected as i64)
+    }
+
+    /// Get consent statistics for a user
+    pub async fn get_consent_stats(db: &Database, user_id: Uuid) -> Result<serde_json::Value> {
+        let query = r#"
+            SELECT 
+                COUNT(*) as total_consents,
+                COUNT(*) FILTER (WHERE expires_at IS NULL) as permanent_consents,
+                COUNT(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at > NOW()) as temporary_consents,
+                COUNT(DISTINCT client_id) as unique_clients
+            FROM user_consents
+            WHERE user_id = $1
+        "#;
+
+        let row: tokio_postgres::Row = db.query_one(query, &[&user_id]).await?;
+
+        Ok(serde_json::json!({
+            "total_consents": row.get::<_, i64>("total_consents"),
+            "permanent_consents": row.get::<_, i64>("permanent_consents"),
+            "temporary_consents": row.get::<_, i64>("temporary_consents"),
+            "unique_clients": row.get::<_, i64>("unique_clients")
+        }))
+    }
+}
+
+/// Session management database operations
+pub mod sessions {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    /// Create a new user session
+    pub async fn create_user_session(
+        db: &Database,
+        user_id: Uuid,
+        realm_id: Uuid,
+        client_id: Option<Uuid>,
+        token: &str,
+        refresh_token: Option<&str>,
+        expires_in: i64,
+        ip_address: Option<&str>,
+        user_agent: Option<&str>,
+        authentication_method: Option<&str>,
+        protocol: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        // Hash tokens for storage
+        let token_hash = hash_token(token);
+        let refresh_token_hash = refresh_token.map(hash_token);
+
+        let expires_at = chrono::Utc::now() + chrono::Duration::seconds(expires_in);
+        let refresh_token_expires_at = refresh_token.map(|_| {
+            chrono::Utc::now() + chrono::Duration::days(30) // 30 days for refresh tokens
+        });
+
+        let query = r#"
+            INSERT INTO user_sessions (
+                user_id, realm_id, client_id,
+                token_hash, refresh_token_hash,
+                expires_at, refresh_token_expires_at,
+                ip_address, user_agent,
+                authentication_method, protocol
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING id, user_id, realm_id, client_id, started_at, expires_at,
+                      last_accessed, refresh_count, revoked, authentication_method, protocol,
+                      created_at, updated_at
+        "#;
+
+        let ip_addr: Option<std::net::IpAddr> = ip_address.and_then(|ip| ip.parse().ok());
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &user_id,
+                    &realm_id,
+                    &client_id,
+                    &token_hash,
+                    &refresh_token_hash,
+                    &expires_at,
+                    &refresh_token_expires_at,
+                    &ip_addr,
+                    &user_agent,
+                    &authentication_method,
+                    &protocol,
+                ],
+            )
+            .await?;
+
+        Ok(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "user_id": row.get::<_, Uuid>("user_id"),
+            "realm_id": row.get::<_, Uuid>("realm_id"),
+            "client_id": row.get::<_, Option<Uuid>>("client_id"),
+            "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
+            "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
+            "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_accessed"),
+            "refresh_count": row.get::<_, i32>("refresh_count"),
+            "revoked": row.get::<_, bool>("revoked"),
+            "authentication_method": row.get::<_, Option<String>>("authentication_method"),
+            "protocol": row.get::<_, Option<String>>("protocol"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+        }))
+    }
+
+    /// Get a user session by token
+    pub async fn get_session_by_token(
+        db: &Database,
+        token: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let token_hash = hash_token(token);
+
+        let query = r#"
+            SELECT id, user_id, realm_id, client_id,
+                   started_at, expires_at, last_accessed,
+                   idle_expires_at, refresh_count,
+                   refresh_token_expires_at, offline_token_expires_at,
+                   ip_address, user_agent, revoked, revoked_at, revoked_reason,
+                   authentication_method, protocol,
+                   created_at, updated_at
+            FROM user_sessions
+            WHERE token_hash = $1
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&token_hash]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row: &tokio_postgres::Row = &rows[0];
+        Ok(Some(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "user_id": row.get::<_, Uuid>("user_id"),
+            "realm_id": row.get::<_, Uuid>("realm_id"),
+            "client_id": row.get::<_, Option<Uuid>>("client_id"),
+            "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
+            "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
+            "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_accessed"),
+            "idle_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("idle_expires_at"),
+            "refresh_count": row.get::<_, i32>("refresh_count"),
+            "refresh_token_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("refresh_token_expires_at"),
+            "offline_token_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("offline_token_expires_at"),
+            "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
+            "user_agent": row.get::<_, Option<String>>("user_agent"),
+            "revoked": row.get::<_, bool>("revoked"),
+            "revoked_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("revoked_at"),
+            "revoked_reason": row.get::<_, Option<String>>("revoked_reason"),
+            "authentication_method": row.get::<_, Option<String>>("authentication_method"),
+            "protocol": row.get::<_, Option<String>>("protocol"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+        })))
+    }
+
+    /// Get all active sessions for a user
+    pub async fn get_user_sessions(db: &Database, user_id: Uuid) -> Result<Vec<serde_json::Value>> {
+        let query = r#"
+            SELECT id, user_id, realm_id, client_id,
+                   started_at, expires_at, last_accessed,
+                   refresh_count, ip_address, user_agent,
+                   authentication_method, protocol,
+                   created_at, updated_at
+            FROM user_sessions
+            WHERE user_id = $1 AND NOT revoked AND expires_at > NOW()
+            ORDER BY last_accessed DESC
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&user_id]).await?;
+
+        let mut sessions = Vec::new();
+        for row in rows {
+            sessions.push(serde_json::json!({
+                "id": row.get::<_, Uuid>("id"),
+                "user_id": row.get::<_, Uuid>("user_id"),
+                "realm_id": row.get::<_, Uuid>("realm_id"),
+                "client_id": row.get::<_, Option<Uuid>>("client_id"),
+                "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
+                "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
+                "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_accessed"),
+                "refresh_count": row.get::<_, i32>("refresh_count"),
+                "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
+                "user_agent": row.get::<_, Option<String>>("user_agent"),
+                "authentication_method": row.get::<_, Option<String>>("authentication_method"),
+                "protocol": row.get::<_, Option<String>>("protocol"),
+                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+                "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+            }));
+        }
+
+        Ok(sessions)
+    }
+
+    /// Update session last accessed time
+    pub async fn touch_session(db: &Database, session_id: Uuid) -> Result<()> {
+        let query = r#"
+            UPDATE user_sessions
+            SET last_accessed = NOW(), updated_at = NOW()
+            WHERE id = $1 AND NOT revoked
+        "#;
+
+        db.execute(query, &[&session_id]).await?;
+        Ok(())
+    }
+
+    /// Rotate refresh token
+    pub async fn rotate_refresh_token(
+        db: &Database,
+        session_id: Uuid,
+        old_refresh_token: &str,
+        new_refresh_token: &str,
+        client_ip: Option<&str>,
+        user_agent: Option<&str>,
+    ) -> Result<bool> {
+        let old_hash = hash_token(old_refresh_token);
+        let new_hash = hash_token(new_refresh_token);
+
+        // Verify old token matches
+        let verify_query = r#"
+            SELECT id FROM user_sessions
+            WHERE id = $1 AND refresh_token_hash = $2 AND NOT revoked
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> =
+            db.query(verify_query, &[&session_id, &old_hash]).await?;
+        if rows.is_empty() {
+            return Ok(false);
+        }
+
+        // Update with new token
+        let update_query = r#"
+            UPDATE user_sessions
+            SET refresh_token_hash = $1,
+                refresh_count = refresh_count + 1,
+                refresh_token_expires_at = NOW() + INTERVAL '30 days',
+                updated_at = NOW()
+            WHERE id = $2
+        "#;
+
+        db.execute(update_query, &[&new_hash, &session_id]).await?;
+
+        // Log rotation
+        let ip_addr: Option<std::net::IpAddr> = client_ip.and_then(|ip| ip.parse().ok());
+
+        let log_query = r#"
+            INSERT INTO refresh_token_history (
+                user_session_id, old_token_hash, new_token_hash,
+                client_ip, user_agent
+            )
+            VALUES ($1, $2, $3, $4, $5)
+        "#;
+
+        db.execute(
+            log_query,
+            &[&session_id, &old_hash, &new_hash, &ip_addr, &user_agent],
+        )
+        .await?;
+
+        Ok(true)
+    }
+
+    /// Revoke a session
+    pub async fn revoke_session(
+        db: &Database,
+        session_id: Uuid,
+        reason: Option<&str>,
+    ) -> Result<()> {
+        let query = r#"
+            UPDATE user_sessions
+            SET revoked = TRUE,
+                revoked_at = NOW(),
+                revoked_reason = $2,
+                updated_at = NOW()
+            WHERE id = $1
+        "#;
+
+        db.execute(query, &[&session_id, &reason]).await?;
+        Ok(())
+    }
+
+    /// Revoke all sessions for a user
+    pub async fn revoke_user_sessions(
+        db: &Database,
+        user_id: Uuid,
+        reason: Option<&str>,
+    ) -> Result<i64> {
+        let query = r#"
+            UPDATE user_sessions
+            SET revoked = TRUE,
+                revoked_at = NOW(),
+                revoked_reason = $2,
+                updated_at = NOW()
+            WHERE user_id = $1 AND NOT revoked
+        "#;
+
+        let count = db.execute(query, &[&user_id, &reason]).await?;
+        Ok(count as i64)
+    }
+
+    /// Cleanup expired sessions
+    pub async fn cleanup_expired_sessions(db: &Database) -> Result<i64> {
+        let query = r#"
+            DELETE FROM user_sessions
+            WHERE expires_at < NOW() OR (idle_expires_at IS NOT NULL AND idle_expires_at < NOW())
+        "#;
+
+        let count = db.execute(query, &[]).await?;
+        Ok(count as i64)
+    }
+
+    /// Create offline token
+    pub async fn create_offline_token(
+        db: &Database,
+        user_id: Uuid,
+        realm_id: Uuid,
+        client_id: Uuid,
+        token: &str,
+        scope: Option<&str>,
+        expires_at: Option<chrono::DateTime<chrono::Utc>>,
+        data: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value> {
+        let token_hash = hash_token(token);
+
+        let query = r#"
+            INSERT INTO offline_tokens (
+                user_id, realm_id, client_id,
+                token_hash, scope, expires_at, data
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, user_id, realm_id, client_id,
+                      created_at, expires_at, last_used_at,
+                      scope, revoked, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &user_id,
+                    &realm_id,
+                    &client_id,
+                    &token_hash,
+                    &scope,
+                    &expires_at,
+                    &data,
+                ],
+            )
+            .await?;
+
+        Ok(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "user_id": row.get::<_, Uuid>("user_id"),
+            "realm_id": row.get::<_, Uuid>("realm_id"),
+            "client_id": row.get::<_, Uuid>("client_id"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+            "expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("expires_at"),
+            "last_used_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("last_used_at"),
+            "scope": row.get::<_, Option<String>>("scope"),
+            "revoked": row.get::<_, bool>("revoked"),
+            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+        }))
+    }
+
+    /// Get offline token by token string
+    pub async fn get_offline_token(
+        db: &Database,
+        token: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let token_hash = hash_token(token);
+
+        let query = r#"
+            SELECT id, user_id, realm_id, client_id,
+                   created_at, expires_at, last_used_at,
+                   scope, data, revoked, revoked_at,
+                   created_at, updated_at
+            FROM offline_tokens
+            WHERE token_hash = $1
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&token_hash]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+        Ok(Some(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "user_id": row.get::<_, Uuid>("user_id"),
+            "realm_id": row.get::<_, Uuid>("realm_id"),
+            "client_id": row.get::<_, Uuid>("client_id"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+            "expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("expires_at"),
+            "last_used_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("last_used_at"),
+            "scope": row.get::<_, Option<String>>("scope"),
+            "data": row.get::<_, Option<serde_json::Value>>("data"),
+            "revoked": row.get::<_, bool>("revoked"),
+            "revoked_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("revoked_at"),
+            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+        })))
+    }
+
+    /// Update offline token last used time
+    pub async fn touch_offline_token(db: &Database, token_id: Uuid) -> Result<()> {
+        let query = r#"
+            UPDATE offline_tokens
+            SET last_used_at = NOW(), updated_at = NOW()
+            WHERE id = $1 AND NOT revoked
+        "#;
+
+        db.execute(query, &[&token_id]).await?;
+        Ok(())
+    }
+
+    /// Revoke offline token
+    pub async fn revoke_offline_token(db: &Database, token_id: Uuid) -> Result<()> {
+        let query = r#"
+            UPDATE offline_tokens
+            SET revoked = TRUE, revoked_at = NOW(), updated_at = NOW()
+            WHERE id = $1
+        "#;
+
+        db.execute(query, &[&token_id]).await?;
+        Ok(())
+    }
+
+    /// Create device session
+    pub async fn create_device_session(
+        db: &Database,
+        device_id: Uuid,
+        user_id: Uuid,
+        user_session_id: Option<Uuid>,
+        session_identifier: &str,
+        ip_address: Option<&str>,
+        location: Option<serde_json::Value>,
+        risk_score: f64,
+    ) -> Result<serde_json::Value> {
+        let ip_addr: Option<std::net::IpAddr> = ip_address.and_then(|ip| ip.parse().ok());
+
+        let query = r#"
+            INSERT INTO device_sessions (
+                device_id, user_id, user_session_id,
+                session_identifier, ip_address, location, risk_score
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, device_id, user_id, user_session_id,
+                      session_identifier, started_at, last_activity,
+                      ip_address, location, risk_score, risk_factors,
+                      is_active, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &device_id,
+                    &user_id,
+                    &user_session_id,
+                    &session_identifier,
+                    &ip_addr,
+                    &location,
+                    &risk_score,
+                ],
+            )
+            .await?;
+
+        Ok(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "device_id": row.get::<_, Uuid>("device_id"),
+            "user_id": row.get::<_, Uuid>("user_id"),
+            "user_session_id": row.get::<_, Option<Uuid>>("user_session_id"),
+            "session_identifier": row.get::<_, String>("session_identifier"),
+            "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
+            "last_activity": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity"),
+            "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
+            "location": row.get::<_, Option<serde_json::Value>>("location"),
+            "risk_score": row.get::<_, f64>("risk_score"),
+            "risk_factors": row.get::<_, Option<serde_json::Value>>("risk_factors"),
+            "is_active": row.get::<_, bool>("is_active"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+        }))
+    }
+
+    /// Update device session activity
+    pub async fn update_device_session_activity(
+        db: &Database,
+        session_id: Uuid,
+        risk_score: Option<f64>,
+        risk_factors: Option<serde_json::Value>,
+    ) -> Result<()> {
+        let query = if risk_score.is_some() && risk_factors.is_some() {
+            r#"
+                UPDATE device_sessions
+                SET last_activity = NOW(),
+                    risk_score = $2,
+                    risk_factors = $3,
+                    updated_at = NOW()
+                WHERE id = $1 AND is_active
+            "#
+        } else {
+            r#"
+                UPDATE device_sessions
+                SET last_activity = NOW(), updated_at = NOW()
+                WHERE id = $1 AND is_active
+            "#
+        };
+
+        if let (Some(score), Some(factors)) = (risk_score, risk_factors) {
+            db.execute(query, &[&session_id, &score, &factors]).await?;
+        } else {
+            db.execute(query, &[&session_id]).await?;
+        }
+
+        Ok(())
+    }
+
+    /// End device session
+    pub async fn end_device_session(db: &Database, session_id: Uuid) -> Result<()> {
+        let query = r#"
+            UPDATE device_sessions
+            SET is_active = FALSE,
+                ended_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+        "#;
+
+        db.execute(query, &[&session_id]).await?;
+        Ok(())
+    }
+
+    /// Get active device sessions for a user
+    pub async fn get_user_device_sessions(
+        db: &Database,
+        user_id: Uuid,
+    ) -> Result<Vec<serde_json::Value>> {
+        let query = r#"
+            SELECT id, device_id, user_id, user_session_id,
+                   session_identifier, started_at, last_activity,
+                   ip_address, location, risk_score, risk_factors,
+                   is_active, created_at, updated_at
+            FROM device_sessions
+            WHERE user_id = $1 AND is_active
+            ORDER BY last_activity DESC
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&user_id]).await?;
+
+        let mut sessions = Vec::new();
+        for row in rows {
+            sessions.push(serde_json::json!({
+                "id": row.get::<_, Uuid>("id"),
+                "device_id": row.get::<_, Uuid>("device_id"),
+                "user_id": row.get::<_, Uuid>("user_id"),
+                "user_session_id": row.get::<_, Option<Uuid>>("user_session_id"),
+                "session_identifier": row.get::<_, String>("session_identifier"),
+                "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
+                "last_activity": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity"),
+                "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
+                "location": row.get::<_, Option<serde_json::Value>>("location"),
+                "risk_score": row.get::<_, f64>("risk_score"),
+                "risk_factors": row.get::<_, Option<serde_json::Value>>("risk_factors"),
+                "is_active": row.get::<_, bool>("is_active"),
+                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+                "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+            }));
+        }
+
+        Ok(sessions)
+    }
+
+    /// Helper function to hash tokens using SHA256
+    fn hash_token(token: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(token.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+}
+
+/// Theme customization database operations
+pub mod themes {
+    use super::*;
+
+    /// Create a custom theme
+    pub async fn create_theme(
+        db: &Database,
+        realm_id: Uuid,
+        name: &str,
+        theme_type: &str,
+        parent_theme: Option<&str>,
+        css_content: Option<&str>,
+        css_variables: Option<serde_json::Value>,
+        description: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let query = r#"
+            INSERT INTO custom_themes (
+                realm_id, name, theme_type, parent_theme,
+                css_content, css_variables, description
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, realm_id, name, theme_type, parent_theme,
+                      is_active, is_default, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &realm_id,
+                    &name,
+                    &theme_type,
+                    &parent_theme,
+                    &css_content,
+                    &css_variables,
+                    &description,
+                ],
+            )
+            .await?;
+
+        Ok(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "realm_id": row.get::<_, Uuid>("realm_id"),
+            "name": row.get::<_, String>("name"),
+            "theme_type": row.get::<_, String>("theme_type"),
+            "parent_theme": row.get::<_, Option<String>>("parent_theme"),
+            "is_active": row.get::<_, bool>("is_active"),
+            "is_default": row.get::<_, bool>("is_default"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+        }))
+    }
+
+    /// Get theme by ID
+    pub async fn get_theme(db: &Database, theme_id: Uuid) -> Result<Option<serde_json::Value>> {
+        let query = r#"
+            SELECT id, realm_id, name, theme_type, parent_theme,
+                   css_content, css_variables, templates, resources, messages,
+                   description, version, author, is_active, is_default,
+                   created_at, updated_at
+            FROM custom_themes
+            WHERE id = $1
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&theme_id]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+        Ok(Some(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "realm_id": row.get::<_, Uuid>("realm_id"),
+            "name": row.get::<_, String>("name"),
+            "theme_type": row.get::<_, String>("theme_type"),
+            "parent_theme": row.get::<_, Option<String>>("parent_theme"),
+            "css_content": row.get::<_, Option<String>>("css_content"),
+            "css_variables": row.get::<_, Option<serde_json::Value>>("css_variables"),
+            "templates": row.get::<_, Option<serde_json::Value>>("templates"),
+            "resources": row.get::<_, Option<serde_json::Value>>("resources"),
+            "messages": row.get::<_, Option<serde_json::Value>>("messages"),
+            "description": row.get::<_, Option<String>>("description"),
+            "version": row.get::<_, Option<String>>("version"),
+            "author": row.get::<_, Option<String>>("author"),
+            "is_active": row.get::<_, bool>("is_active"),
+            "is_default": row.get::<_, bool>("is_default"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+        })))
+    }
+
+    /// Get themes for a realm
+    pub async fn get_realm_themes(
+        db: &Database,
+        realm_id: Uuid,
+        theme_type: Option<&str>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let query = if theme_type.is_some() {
+            r#"
+                SELECT id, realm_id, name, theme_type, parent_theme,
+                       description, is_active, is_default,
+                       created_at, updated_at
+                FROM custom_themes
+                WHERE realm_id = $1 AND theme_type = $2
+                ORDER BY name ASC
+            "#
+        } else {
+            r#"
+                SELECT id, realm_id, name, theme_type, parent_theme,
+                       description, is_active, is_default,
+                       created_at, updated_at
+                FROM custom_themes
+                WHERE realm_id = $1
+                ORDER BY theme_type ASC, name ASC
+            "#
+        };
+
+        let rows: Vec<tokio_postgres::Row> = if let Some(ttype) = theme_type {
+            db.query(query, &[&realm_id, &ttype]).await?
+        } else {
+            db.query(query, &[&realm_id]).await?
+        };
+
+        let mut themes = Vec::new();
+        for row in rows {
+            themes.push(serde_json::json!({
+                "id": row.get::<_, Uuid>("id"),
+                "realm_id": row.get::<_, Uuid>("realm_id"),
+                "name": row.get::<_, String>("name"),
+                "theme_type": row.get::<_, String>("theme_type"),
+                "parent_theme": row.get::<_, Option<String>>("parent_theme"),
+                "description": row.get::<_, Option<String>>("description"),
+                "is_active": row.get::<_, bool>("is_active"),
+                "is_default": row.get::<_, bool>("is_default"),
+                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+                "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+            }));
+        }
+
+        Ok(themes)
+    }
+
+    /// Update theme
+    pub async fn update_theme(
+        db: &Database,
+        theme_id: Uuid,
+        updates: serde_json::Value,
+    ) -> Result<()> {
+        let now = chrono::Utc::now();
+        let mut set_clauses = Vec::new();
+        let mut param_index = 2;
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
+            vec![Box::new(theme_id)];
+
+        if let Some(name) = updates.get("name").and_then(|v| v.as_str()) {
+            set_clauses.push(format!("name = ${}", param_index));
+            params.push(Box::new(name.to_string()));
+            param_index += 1;
+        }
+
+        if let Some(css_content) = updates.get("css_content").and_then(|v| v.as_str()) {
+            set_clauses.push(format!("css_content = ${}", param_index));
+            params.push(Box::new(css_content.to_string()));
+            param_index += 1;
+        }
+
+        if let Some(css_variables) = updates.get("css_variables") {
+            set_clauses.push(format!("css_variables = ${}", param_index));
+            params.push(Box::new(css_variables.clone()));
+            param_index += 1;
+        }
+
+        if let Some(templates) = updates.get("templates") {
+            set_clauses.push(format!("templates = ${}", param_index));
+            params.push(Box::new(templates.clone()));
+            param_index += 1;
+        }
+
+        if let Some(messages) = updates.get("messages") {
+            set_clauses.push(format!("messages = ${}", param_index));
+            params.push(Box::new(messages.clone()));
+            param_index += 1;
+        }
+
+        if set_clauses.is_empty() {
+            return Ok(());
+        }
+
+        set_clauses.push(format!("updated_at = ${}", param_index));
+        params.push(Box::new(now));
+
+        let query = format!(
+            "UPDATE custom_themes SET {} WHERE id = $1",
+            set_clauses.join(", ")
+        );
+
+        let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params.iter().map(|p| p.as_ref()).collect();
+
+        db.execute(&query, &params_refs).await?;
+        Ok(())
+    }
+
+    /// Activate theme
+    pub async fn activate_theme(db: &Database, theme_id: Uuid) -> Result<()> {
+        let now = chrono::Utc::now();
+
+        // Deactivate other themes of same type in same realm
+        let deactivate_query = r#"
+            UPDATE custom_themes
+            SET is_active = FALSE, updated_at = $1
+            WHERE realm_id = (SELECT realm_id FROM custom_themes WHERE id = $2)
+                AND theme_type = (SELECT theme_type FROM custom_themes WHERE id = $2)
+                AND id != $2
+        "#;
+
+        db.execute(deactivate_query, &[&now, &theme_id]).await?;
+
+        // Activate the selected theme
+        let activate_query = r#"
+            UPDATE custom_themes
+            SET is_active = TRUE, updated_at = $1
+            WHERE id = $2
+        "#;
+
+        db.execute(activate_query, &[&now, &theme_id]).await?;
+        Ok(())
+    }
+
+    /// Delete theme
+    pub async fn delete_theme(db: &Database, theme_id: Uuid) -> Result<()> {
+        let query = "DELETE FROM custom_themes WHERE id = $1";
+        db.execute(query, &[&theme_id]).await?;
+        Ok(())
+    }
+
+    /// Add theme resource
+    pub async fn add_theme_resource(
+        db: &Database,
+        theme_id: Uuid,
+        resource_name: &str,
+        resource_type: &str,
+        mime_type: Option<&str>,
+        content_url: Option<&str>,
+        content_data: Option<&[u8]>,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO theme_resources (
+                theme_id, resource_name, resource_type,
+                mime_type, content_url, content_data, content_size
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (theme_id, resource_name) 
+            DO UPDATE SET
+                resource_type = EXCLUDED.resource_type,
+                mime_type = EXCLUDED.mime_type,
+                content_url = EXCLUDED.content_url,
+                content_data = EXCLUDED.content_data,
+                content_size = EXCLUDED.content_size,
+                updated_at = NOW()
+            RETURNING id
+        "#;
+
+        let content_size = content_data.map(|d| d.len() as i64);
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &theme_id,
+                    &resource_name,
+                    &resource_type,
+                    &mime_type,
+                    &content_url,
+                    &content_data,
+                    &content_size,
+                ],
+            )
+            .await?;
+
+        Ok(row.get(0))
+    }
+
+    /// Get theme resource
+    pub async fn get_theme_resource(
+        db: &Database,
+        theme_id: Uuid,
+        resource_name: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let query = r#"
+            SELECT id, theme_id, resource_name, resource_type,
+                   mime_type, content_url, content_size,
+                   created_at, updated_at
+            FROM theme_resources
+            WHERE theme_id = $1 AND resource_name = $2
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&theme_id, &resource_name]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+        Ok(Some(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "theme_id": row.get::<_, Uuid>("theme_id"),
+            "resource_name": row.get::<_, String>("resource_name"),
+            "resource_type": row.get::<_, String>("resource_type"),
+            "mime_type": row.get::<_, Option<String>>("mime_type"),
+            "content_url": row.get::<_, Option<String>>("content_url"),
+            "content_size": row.get::<_, Option<i64>>("content_size"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+        })))
+    }
+
+    /// Add or update theme template
+    pub async fn save_theme_template(
+        db: &Database,
+        theme_id: Uuid,
+        template_name: &str,
+        template_type: &str,
+        content: &str,
+    ) -> Result<Uuid> {
+        let query = r#"
+            INSERT INTO theme_templates (
+                theme_id, template_name, template_type, content
+            )
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (theme_id, template_name)
+            DO UPDATE SET
+                content = EXCLUDED.content,
+                version = theme_templates.version + 1,
+                updated_at = NOW()
+            RETURNING id
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[&theme_id, &template_name, &template_type, &content],
+            )
+            .await?;
+
+        Ok(row.get(0))
+    }
+
+    /// Get theme template
+    pub async fn get_theme_template(
+        db: &Database,
+        theme_id: Uuid,
+        template_name: &str,
+    ) -> Result<Option<String>> {
+        let query = r#"
+            SELECT content
+            FROM theme_templates
+            WHERE theme_id = $1 AND template_name = $2
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&theme_id, &template_name]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(rows[0].get(0)))
+    }
+
+    /// Set realm theme for specific type
+    pub async fn set_realm_theme(
+        db: &Database,
+        realm_id: Uuid,
+        theme_type: &str,
+        theme_id: Uuid,
+    ) -> Result<()> {
+        let column_name = match theme_type {
+            "login" => "login_theme_id",
+            "account" => "account_theme_id",
+            "admin" => "admin_theme_id",
+            "email" => "email_theme_id",
+            _ => return Err(crate::error::AuthencError::validation("Invalid theme type")),
+        };
+
+        let query = format!(
+            r#"
+                INSERT INTO realm_theme_settings (realm_id, {})
+                VALUES ($1, $2)
+                ON CONFLICT (realm_id)
+                DO UPDATE SET {} = EXCLUDED.{}, updated_at = NOW()
+            "#,
+            column_name, column_name, column_name
+        );
+
+        db.execute(&query, &[&realm_id, &theme_id]).await?;
+        Ok(())
+    }
+
+    /// Get active realm themes
+    pub async fn get_realm_active_themes(
+        db: &Database,
+        realm_id: Uuid,
+    ) -> Result<serde_json::Value> {
+        let query = r#"
+            SELECT login_theme_id, account_theme_id, admin_theme_id, email_theme_id
+            FROM realm_theme_settings
+            WHERE realm_id = $1
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&realm_id]).await?;
+
+        if rows.is_empty() {
+            return Ok(serde_json::json!({}));
+        }
+
+        let row = &rows[0];
+        Ok(serde_json::json!({
+            "login_theme_id": row.get::<_, Option<Uuid>>("login_theme_id"),
+            "account_theme_id": row.get::<_, Option<Uuid>>("account_theme_id"),
+            "admin_theme_id": row.get::<_, Option<Uuid>>("admin_theme_id"),
+            "email_theme_id": row.get::<_, Option<Uuid>>("email_theme_id")
+        }))
+    }
 }

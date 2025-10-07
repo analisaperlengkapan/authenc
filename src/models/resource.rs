@@ -194,3 +194,64 @@ impl Resource {
         self.updated_at = Utc::now();
     }
 }
+
+/// Convert from database row to Resource
+impl TryFrom<tokio_postgres::Row> for Resource {
+    type Error = crate::error::AuthencError;
+
+    fn try_from(row: tokio_postgres::Row) -> Result<Self, Self::Error> {
+        // Get JSON attributes and convert to HashMap
+        let attributes_json: serde_json::Value = row.try_get("attributes").map_err(|e| {
+            crate::error::AuthencError::database(format!("Failed to get attributes: {}", e))
+        })?;
+
+        let attributes: std::collections::HashMap<String, Vec<String>> =
+            serde_json::from_value(attributes_json).unwrap_or_default();
+
+        Ok(Self {
+            id: row.try_get("id").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get id: {}", e))
+            })?,
+            name: row.try_get("name").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get name: {}", e))
+            })?,
+            display_name: row.try_get("display_name").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get display_name: {}", e))
+            })?,
+            uris: row.try_get("uris").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get uris: {}", e))
+            })?,
+            icon_uri: row.try_get("icon_uri").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get icon_uri: {}", e))
+            })?,
+            resource_type: row.try_get("resource_type").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get resource_type: {}", e))
+            })?,
+            owner: row.try_get("owner").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get owner: {}", e))
+            })?,
+            enabled: row.try_get("enabled").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get enabled: {}", e))
+            })?,
+            realm_id: row.try_get("realm_id").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get realm_id: {}", e))
+            })?,
+            resource_server_id: row.try_get("resource_server_id").map_err(|e| {
+                crate::error::AuthencError::database(format!(
+                    "Failed to get resource_server_id: {}",
+                    e
+                ))
+            })?,
+            scopes: row.try_get("scopes").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get scopes: {}", e))
+            })?,
+            attributes,
+            created_at: row.try_get("created_at").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get created_at: {}", e))
+            })?,
+            updated_at: row.try_get("updated_at").map_err(|e| {
+                crate::error::AuthencError::database(format!("Failed to get updated_at: {}", e))
+            })?,
+        })
+    }
+}

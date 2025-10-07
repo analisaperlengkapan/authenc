@@ -56,6 +56,18 @@ pub mod services;
 /// Secret management and vault operations
 pub mod vault;
 
+// Event system
+/// Event-driven architecture for audit logging and integrations
+pub mod events;
+
+// Protocol extensions
+/// Protocol mapper extensions for OIDC and SAML claim/attribute mapping
+pub mod protocol;
+
+// Custom authenticators
+/// Custom authenticator support for extensible authentication flows
+pub mod authenticator;
+
 // SPI architecture
 /// Service Provider Interface framework for extensibility
 pub mod spi;

@@ -21,6 +21,8 @@ pub mod pqc;
 pub mod sdjwt;
 /// Shamir Secret Sharing for distributed key management
 pub mod shamir;
+/// XML Digital Signature (XMLDSig) implementation for SAML
+pub mod xmldsig;
 
 // Re-exports for convenience
 pub use aes_gcm::*;
