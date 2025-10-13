@@ -2,11 +2,11 @@ use crate::database::Database;
 use crate::models::user::JITUserProvisioningResponse;
 use crate::services::broker::{ExternalUser, IdentityBrokerRegistry, IdentityProviderType};
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post, put},
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

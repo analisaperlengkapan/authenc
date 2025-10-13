@@ -1,8 +1,8 @@
 use axum::{
+    Router,
     extract::{Json, Path, Query, State},
     http::StatusCode,
     routing::{delete, get, post, put},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;

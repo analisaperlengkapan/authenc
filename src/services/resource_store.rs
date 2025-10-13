@@ -1,10 +1,8 @@
-use async_trait::async_trait;
-use chrono::Utc;
-use serde_json;
+use crate::database::Database;
 use std::sync::Arc;
 use uuid::Uuid;
+use async_trait::async_trait;
 
-use crate::database::Database;
 use crate::error::AuthencError;
 use crate::models::resource::{CreateResourceRequest, Resource, UpdateResourceRequest};
 

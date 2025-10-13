@@ -1,5 +1,5 @@
-use futures_util::stream::StreamExt;
 use futures_util::TryStreamExt;
+use futures_util::stream::StreamExt;
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
 use k8s_openapi::api::core::v1::{ConfigMap, Service, ServiceSpec};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding};

@@ -432,7 +432,7 @@ impl<S: PARStorage> PARAuthorizationHandler<S> {
 
 /// PAR Middleware for Axum
 pub mod middleware {
-    use axum::{extract::State, http::StatusCode, response::Json, Router};
+    use axum::{Router, extract::State, http::StatusCode, response::Json};
     use serde::Deserialize;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -607,9 +607,11 @@ mod tests {
             .unwrap();
 
         // Verify response
-        assert!(response
-            .request_uri
-            .starts_with("urn:ietf:params:oauth:request_uri:"));
+        assert!(
+            response
+                .request_uri
+                .starts_with("urn:ietf:params:oauth:request_uri:")
+        );
         assert_eq!(response.expires_in, 600);
 
         // Retrieve request

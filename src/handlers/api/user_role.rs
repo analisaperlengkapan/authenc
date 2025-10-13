@@ -4,10 +4,10 @@ use crate::handlers::api::auth_bearer::AuthBearer;
 use crate::models::events::{AuthDetails, OperationType, ResourceType};
 use crate::services::events::AdminEventBuilder;
 use axum::{
+    Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{delete, post},
-    Router,
 };
 use std::sync::Arc;
 use uuid::Uuid;

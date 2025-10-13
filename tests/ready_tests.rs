@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, response::Json, routing::get, Router};
+use axum::{Router, http::StatusCode, response::Json, routing::get};
 use serde_json::json;
 use tower::ServiceExt;
 

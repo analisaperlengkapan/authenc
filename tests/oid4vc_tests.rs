@@ -20,9 +20,11 @@ mod tests {
         // Test that we can get issuer metadata (this verifies the manager was created properly)
         let metadata = manager.get_issuer_metadata().await.unwrap();
         assert_eq!(metadata.credential_issuer, "https://example.com");
-        assert!(metadata
-            .credentials_supported
-            .contains_key("UniversityDegreeCredential"));
+        assert!(
+            metadata
+                .credentials_supported
+                .contains_key("UniversityDegreeCredential")
+        );
     }
 
     #[tokio::test]
@@ -279,18 +281,22 @@ mod tests {
         let metadata = result.unwrap();
 
         assert_eq!(metadata.credential_issuer, "https://example.com");
-        assert!(metadata
-            .authorization_servers
-            .contains(&"https://example.com".to_string()));
+        assert!(
+            metadata
+                .authorization_servers
+                .contains(&"https://example.com".to_string())
+        );
         assert_eq!(
             metadata.credential_endpoint,
             "https://example.com/credentials"
         );
         assert!(metadata.batch_credential_endpoint.is_some());
         assert!(metadata.deferred_credential_endpoint.is_some());
-        assert!(metadata
-            .credentials_supported
-            .contains_key("UniversityDegreeCredential"));
+        assert!(
+            metadata
+                .credentials_supported
+                .contains_key("UniversityDegreeCredential")
+        );
     }
 
     #[tokio::test]

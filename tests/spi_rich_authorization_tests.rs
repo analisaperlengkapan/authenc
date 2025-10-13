@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use authenc::spi::{rich_authorization::*, ProviderFactory, Spi};
+    use authenc::spi::{ProviderFactory, Spi, rich_authorization::*};
     use chrono::Utc;
     use std::collections::HashMap;
     use uuid::Uuid;

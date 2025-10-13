@@ -1,9 +1,9 @@
 use axum::{
+    Router,
     extract::{Query, State},
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
 use serde_json::json;
 use std::collections::HashMap;

@@ -1,10 +1,10 @@
 use base64ct::{Base64UrlUnpadded, Encoding};
 use once_cell::sync::Lazy;
 use p256::{
-    ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey},
+    PublicKey, SecretKey,
+    ecdsa::{Signature, SigningKey, VerifyingKey, signature::Signer, signature::Verifier},
     elliptic_curve::sec1::ToEncodedPoint,
     pkcs8::{EncodePrivateKey, EncodePublicKey},
-    PublicKey, SecretKey,
 };
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};

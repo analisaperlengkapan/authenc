@@ -1,9 +1,9 @@
 use axum::{
+    Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::Json,
     routing::{delete, get, post, put},
-    Router,
 };
 use std::sync::Arc;
 

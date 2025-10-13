@@ -1,16 +1,16 @@
 use axum::{
+    Router,
     body::Body,
     extract::{Path, State},
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::time::{sleep, Duration, Instant};
+use tokio::time::{Duration, Instant, sleep};
 use uuid::Uuid;
 
 // Shared test state for monitoring tests

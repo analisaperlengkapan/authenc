@@ -1,6 +1,6 @@
 use authenc::config::DatabaseConfig;
-use authenc::database::operations::users;
 use authenc::database::Database;
+use authenc::database::operations::users;
 use authenc::models::webauthn::*;
 use authenc::services::webauthn::*;
 use base64ct::{Base64UrlUnpadded, Encoding};

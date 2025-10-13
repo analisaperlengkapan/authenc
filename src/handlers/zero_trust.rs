@@ -1,9 +1,9 @@
 use axum::{
+    Router,
     extract::{Query, State},
     http::StatusCode,
     response::Json,
     routing::{get, post, put},
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

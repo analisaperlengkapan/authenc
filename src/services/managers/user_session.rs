@@ -79,7 +79,7 @@ pub trait UserSessionManager: Send + Sync {
 
     /// Create client session for user session
     async fn create_client_session(&self, user_session_id: &str, client_id: &str)
-        -> Result<String>;
+    -> Result<String>;
 
     /// Get client session
     async fn get_client_session(

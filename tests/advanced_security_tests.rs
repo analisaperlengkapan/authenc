@@ -3,15 +3,15 @@ use authenc::database::Database;
 use authenc::services::anomaly_detector::*;
 use authenc::services::brute_force_protector::*;
 use axum::{
+    Router,
     extract::{Json, Path, Query, State},
     http::StatusCode,
     response::Json as JsonResponse,
     routing::{delete, get, post, put},
-    Router,
 };
 use axum_test::TestServer;
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -248,10 +248,12 @@ async fn test_brute_force_attack_detection() {
 
     let body: Value = response.json();
     assert!(body["detected_attacks"].as_array().unwrap().len() >= 1);
-    assert!(body["blocked_ips"]
-        .as_array()
-        .unwrap()
-        .contains(&Value::String(test_ip.to_string())));
+    assert!(
+        body["blocked_ips"]
+            .as_array()
+            .unwrap()
+            .contains(&Value::String(test_ip.to_string()))
+    );
 
     // Manually block an IP
     let block_data = json!({

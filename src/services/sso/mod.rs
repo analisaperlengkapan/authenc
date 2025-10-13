@@ -14,9 +14,11 @@
 //! - Session timeout and lifecycle management
 
 pub mod cookie;
-pub mod session;
 pub mod service;
+pub mod session;
 
 pub use cookie::SsoCookieManager;
+pub use service::{
+    DefaultSsoService, SsoCallbackRequest, SsoInitiateRequest, SsoProvider, SsoService,
+};
 pub use session::{SsoSession, SsoSessionManager};
-pub use service::{SsoService, DefaultSsoService, SsoProvider, SsoInitiateRequest, SsoCallbackRequest};

@@ -2,7 +2,7 @@
 //!
 //! Provides a web-based admin interface for managing users, roles, realms, etc.
 
-use axum::{extract::State, http::StatusCode, response::Html, Router};
+use axum::{Router, extract::State, http::StatusCode, response::Html};
 use std::sync::Arc;
 
 use crate::app::AppState;

@@ -4,13 +4,13 @@ use axum::{
     http::{Response, StatusCode},
     middleware::Next,
 };
-use base64::{engine::general_purpose, Engine as _};
-use rand::{thread_rng, Rng};
+use base64::{Engine as _, engine::general_purpose};
+use rand::{Rng, thread_rng};
 use std::sync::Arc;
 use tracing::{debug, warn};
 
 /// Configuration for CSRF protection
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize)]
 pub struct CsrfConfig {
     /// Whether CSRF protection is enabled
     pub enabled: bool,
@@ -133,12 +133,12 @@ pub fn generate_csrf_token_response(state: &CsrfState) -> (String, String) {
 mod tests {
     use super::*;
     use axum::{
+        Router,
         body::Body,
         extract::Request,
         http::{Method, StatusCode},
         middleware::from_fn,
         routing::{get, post},
-        Router,
     };
     use tower::ServiceExt;
 

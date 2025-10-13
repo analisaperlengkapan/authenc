@@ -2,19 +2,19 @@
 // Testing all major API endpoints with various scenarios
 
 use axum::{
+    Router,
     body::Body,
     extract::{Json, Path, Query, State},
-    http::{header, Method, Request, StatusCode},
+    http::{Method, Request, StatusCode, header},
     middleware,
     response::Json as AxumJson,
     routing::{delete, get, post, put},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use uuid::Uuid;
 
 // Shared test state for API tests

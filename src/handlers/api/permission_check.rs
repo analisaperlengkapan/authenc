@@ -2,11 +2,11 @@ use crate::app::AppState;
 use crate::database::operations;
 use crate::handlers::api::auth_bearer::AuthBearer;
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::get,
-    Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;

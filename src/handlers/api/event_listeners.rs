@@ -3,14 +3,14 @@
 //! REST API for event listener management and webhook configuration
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
-use serde::{Deserialize};
-use serde_json::{json, Value as JsonValue};
+use serde::Deserialize;
+use serde_json::{Value as JsonValue, json};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -142,7 +142,7 @@ pub async fn get_event_statistics(
     // Use defaults if dates not provided (last 30 days)
     let from = from_date.unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(30));
     let to = to_date.unwrap_or_else(chrono::Utc::now);
-    
+
     let stats = event_ops::get_event_statistics(db, realm_id, from, to).await?;
 
     Ok(Json(stats))
@@ -265,7 +265,13 @@ pub fn create_event_listener_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/:realm/event-log", get(query_event_log))
         .route("/:realm/event-statistics", get(get_event_statistics))
-        .route("/:realm/event-listeners", post(register_listener).get(list_listeners))
+        .route(
+            "/:realm/event-listeners",
+            post(register_listener).get(list_listeners),
+        )
         .route("/:realm/event-webhooks", post(register_webhook))
-        .route("/:realm/event-failed-executions", get(get_failed_executions))
+        .route(
+            "/:realm/event-failed-executions",
+            get(get_failed_executions),
+        )
 }

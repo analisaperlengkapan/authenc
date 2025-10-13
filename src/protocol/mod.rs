@@ -4,7 +4,7 @@
 //! Supports user attributes, roles, groups, and hardcoded values.
 
 use async_trait::async_trait;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -53,7 +53,7 @@ pub trait ProtocolMapper: Send + Sync {
 
     /// Apply mapping to context and return claims/attributes
     async fn map(&self, context: &MapperContext)
-        -> Result<HashMap<String, JsonValue>, MapperError>;
+    -> Result<HashMap<String, JsonValue>, MapperError>;
 
     /// Validate mapper configuration
     fn validate_config(&self, config: &JsonValue) -> Result<(), MapperError>;

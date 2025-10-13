@@ -47,7 +47,10 @@ impl GroupStore {
         let group = Group {
             id: Uuid::new_v4(),
             name: name.to_owned(),
+            path: format!("/{}", name), // Root level group
+            parent_id: None,
             description,
+            attributes: serde_json::json!({}),
             realm_id,
             created_at: now,
             updated_at: now,

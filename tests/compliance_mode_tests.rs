@@ -76,28 +76,34 @@ mod tests {
         let mut context = HashMap::new();
         context.insert("consent_obtained".to_string(), serde_json::json!(true));
 
-        assert!(service
-            .validate_operation("data_processing", &context)
-            .await
-            .is_ok());
+        assert!(
+            service
+                .validate_operation("data_processing", &context)
+                .await
+                .is_ok()
+        );
 
         // Test invalid data processing without consent
         let mut context = HashMap::new();
         context.insert("consent_obtained".to_string(), serde_json::json!(false));
 
-        assert!(service
-            .validate_operation("data_processing", &context)
-            .await
-            .is_err());
+        assert!(
+            service
+                .validate_operation("data_processing", &context)
+                .await
+                .is_err()
+        );
 
         // Test data retention validation
         let mut context = HashMap::new();
         context.insert("data_age_days".to_string(), serde_json::json!(3000)); // Over 7 years
 
-        assert!(service
-            .validate_operation("data_retention", &context)
-            .await
-            .is_err());
+        assert!(
+            service
+                .validate_operation("data_retention", &context)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -115,19 +121,23 @@ mod tests {
         let mut context = HashMap::new();
         context.insert("authorized_access".to_string(), serde_json::json!(false));
 
-        assert!(service
-            .validate_operation("phi_access", &context)
-            .await
-            .is_err());
+        assert!(
+            service
+                .validate_operation("phi_access", &context)
+                .await
+                .is_err()
+        );
 
         // Test unencrypted PHI storage
         let mut context = HashMap::new();
         context.insert("encrypted".to_string(), serde_json::json!(false));
 
-        assert!(service
-            .validate_operation("phi_storage", &context)
-            .await
-            .is_err());
+        assert!(
+            service
+                .validate_operation("phi_storage", &context)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -167,10 +177,12 @@ mod tests {
             serde_json::json!(true),
         );
 
-        assert!(service
-            .validate_operation("financial_transaction", &context)
-            .await
-            .is_err());
+        assert!(
+            service
+                .validate_operation("financial_transaction", &context)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

@@ -277,32 +277,44 @@ mod tests {
     #[test]
     fn test_should_log_as_error() {
         // Test which errors should be logged as errors vs warnings
-        assert!(AuthencError::DatabaseError {
-            message: "".to_string()
-        }
-        .should_log_as_error());
-        assert!(AuthencError::ConfigurationError {
-            message: "".to_string()
-        }
-        .should_log_as_error());
-        assert!(AuthencError::ExternalServiceError {
-            service: "".to_string()
-        }
-        .should_log_as_error());
-        assert!(AuthencError::InternalError {
-            message: "".to_string()
-        }
-        .should_log_as_error());
+        assert!(
+            AuthencError::DatabaseError {
+                message: "".to_string()
+            }
+            .should_log_as_error()
+        );
+        assert!(
+            AuthencError::ConfigurationError {
+                message: "".to_string()
+            }
+            .should_log_as_error()
+        );
+        assert!(
+            AuthencError::ExternalServiceError {
+                service: "".to_string()
+            }
+            .should_log_as_error()
+        );
+        assert!(
+            AuthencError::InternalError {
+                message: "".to_string()
+            }
+            .should_log_as_error()
+        );
         assert!(AuthencError::CryptographicError.should_log_as_error());
         assert!(AuthencError::ServiceUnavailable.should_log_as_error());
-        assert!(AuthencError::Unauthorized {
-            message: "".to_string()
-        }
-        .should_log_as_error());
-        assert!(AuthencError::Forbidden {
-            message: "".to_string()
-        }
-        .should_log_as_error());
+        assert!(
+            AuthencError::Unauthorized {
+                message: "".to_string()
+            }
+            .should_log_as_error()
+        );
+        assert!(
+            AuthencError::Forbidden {
+                message: "".to_string()
+            }
+            .should_log_as_error()
+        );
 
         // These should NOT be logged as errors (logged as warnings)
         assert!(!AuthencError::AuthenticationFailed.should_log_as_error());
@@ -311,40 +323,56 @@ mod tests {
         assert!(!AuthencError::TokenExpired.should_log_as_error());
         assert!(!AuthencError::InvalidToken.should_log_as_error());
         assert!(!AuthencError::AccountLocked.should_log_as_error());
-        assert!(!AuthencError::ValidationError {
-            message: "".to_string()
-        }
-        .should_log_as_error());
-        assert!(!AuthencError::MissingField {
-            field: "".to_string()
-        }
-        .should_log_as_error());
-        assert!(!AuthencError::InvalidFormat {
-            field: "".to_string()
-        }
-        .should_log_as_error());
+        assert!(
+            !AuthencError::ValidationError {
+                message: "".to_string()
+            }
+            .should_log_as_error()
+        );
+        assert!(
+            !AuthencError::MissingField {
+                field: "".to_string()
+            }
+            .should_log_as_error()
+        );
+        assert!(
+            !AuthencError::InvalidFormat {
+                field: "".to_string()
+            }
+            .should_log_as_error()
+        );
         assert!(!AuthencError::UserNotFound.should_log_as_error());
-        assert!(!AuthencError::ResourceNotFound {
-            resource: "".to_string()
-        }
-        .should_log_as_error());
-        assert!(!AuthencError::ResourceExists {
-            resource: "".to_string()
-        }
-        .should_log_as_error());
-        assert!(!AuthencError::ResourceConflict {
-            resource: "".to_string()
-        }
-        .should_log_as_error());
+        assert!(
+            !AuthencError::ResourceNotFound {
+                resource: "".to_string()
+            }
+            .should_log_as_error()
+        );
+        assert!(
+            !AuthencError::ResourceExists {
+                resource: "".to_string()
+            }
+            .should_log_as_error()
+        );
+        assert!(
+            !AuthencError::ResourceConflict {
+                resource: "".to_string()
+            }
+            .should_log_as_error()
+        );
         assert!(!AuthencError::RateLimitExceeded.should_log_as_error());
-        assert!(!AuthencError::SerializationError {
-            message: "".to_string()
-        }
-        .should_log_as_error());
-        assert!(!AuthencError::NetworkError {
-            message: "".to_string()
-        }
-        .should_log_as_error());
+        assert!(
+            !AuthencError::SerializationError {
+                message: "".to_string()
+            }
+            .should_log_as_error()
+        );
+        assert!(
+            !AuthencError::NetworkError {
+                message: "".to_string()
+            }
+            .should_log_as_error()
+        );
     }
 
     #[test]

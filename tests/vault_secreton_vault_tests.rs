@@ -1,7 +1,7 @@
 //! Integration test for SecretonVault
 
-use authenc::vault::secreton_vault::{SecretonClient, SecretonVault};
 use authenc::vault::Vault;
+use authenc::vault::secreton_vault::{SecretonClient, SecretonVault};
 use std::env;
 
 #[tokio::test]

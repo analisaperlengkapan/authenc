@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::{Request, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     middleware::{self, Next},
     response::Response,
 };
@@ -127,10 +127,10 @@ pub fn auth_layer(secret: &str) -> impl tower::Layer<axum::Router> + Clone + Sen
 #[cfg(test)]
 mod tests {
     use axum::{
+        Router,
         body::Body,
         http::{Request, StatusCode},
         routing::get,
-        Router,
     };
     use tower::ServiceExt;
 

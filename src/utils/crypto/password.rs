@@ -1,4 +1,4 @@
-use argon2::{password_hash::SaltString, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::SaltString};
 use rand::rngs::OsRng;
 
 /// Hash a password using Argon2 for secure storage

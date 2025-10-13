@@ -4,11 +4,11 @@ use crate::handlers::api::auth_bearer::AuthBearer;
 use crate::models::user::{self, User};
 use crate::services::stores::user_store::UserStoreTrait;
 use axum::{
+    Router,
     extract::{Path, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, patch, post, put},
-    Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;

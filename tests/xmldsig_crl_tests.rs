@@ -6,7 +6,7 @@ use openssl::asn1::Asn1Time;
 use openssl::hash::MessageDigest;
 use openssl::pkey::{PKey, Private};
 use openssl::rsa::Rsa;
-use openssl::x509::{X509Builder, X509Extension, X509NameBuilder, X509};
+use openssl::x509::{X509, X509Builder, X509Extension, X509NameBuilder};
 use std::time::Duration;
 
 // Helper: Create a test CA key pair

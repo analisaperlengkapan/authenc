@@ -1,11 +1,11 @@
 // Komprehensif unit test untuk Authence
 
 use axum::{
+    Router,
     body::Body,
     extract::{Form, Json, Path, Query},
     http::{HeaderMap, Response, StatusCode},
     response::IntoResponse,
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;
@@ -525,7 +525,7 @@ async fn test_sessions_list_empty_for_unknown_user() {
 #[tokio::test]
 async fn test_oidc_id_token_generation_and_decode() {
     use authenc::crypto::ed25519_keys::ED25519_KEYPAIR;
-    use authenc::handlers::oidc_ed25519::{generate_ed25519_jwt, OidcIdTokenClaims};
+    use authenc::handlers::oidc_ed25519::{OidcIdTokenClaims, generate_ed25519_jwt};
     use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 
     // Generate a token

@@ -190,8 +190,9 @@ impl AuthenticationManager for DefaultAuthenticationManager {
             .await?;
 
         // Load user from database
-        let user_opt = crate::database::operations::users::get_user_by_username(&self.database, username)
-            .await?;
+        let user_opt =
+            crate::database::operations::users::get_user_by_username(&self.database, username)
+                .await?;
 
         // Check if user exists and password is valid
         let (success, error_message) = if let Some(ref u) = user_opt {
@@ -206,7 +207,10 @@ impl AuthenticationManager for DefaultAuthenticationManager {
                 }
             } else {
                 // No password hash stored (federated user or passwordless)
-                (false, Some("Password authentication not available for this user".to_string()))
+                (
+                    false,
+                    Some("Password authentication not available for this user".to_string()),
+                )
             }
         } else {
             (false, Some("Invalid username or password".to_string()))

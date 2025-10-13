@@ -6,8 +6,8 @@ use authenc::config::DatabaseConfig;
 use authenc::crypto::xmldsig::*;
 use authenc::database::Database;
 use authenc::services::federation::{
-    saml::SamlIdentityProvider, AuthRequest, AuthResponse, IdentityProvider,
-    IdentityProviderConfig, IdentityProviderType,
+    AuthRequest, AuthResponse, IdentityProvider, IdentityProviderConfig, IdentityProviderType,
+    saml::SamlIdentityProvider,
 };
 use base64::Engine;
 use openssl::asn1::Asn1Time;
@@ -17,7 +17,7 @@ use openssl::pkey::{PKey, Private};
 use openssl::rsa::Rsa;
 use openssl::sign::Signer;
 use openssl::x509::extension::{BasicConstraints, KeyUsage, SubjectKeyIdentifier};
-use openssl::x509::{X509Builder, X509NameBuilder, X509};
+use openssl::x509::{X509, X509Builder, X509NameBuilder};
 use std::collections::HashMap;
 use std::fs;
 use std::sync::Arc;

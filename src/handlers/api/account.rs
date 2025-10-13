@@ -1,9 +1,9 @@
 use axum::{
+    Router,
     extract::{Extension, Path, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::{Json, Response},
     routing::{delete, get, post, put},
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -425,7 +425,7 @@ pub async fn setup_totp(
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     // Generate TOTP secret
-    use rand::{rngs::OsRng, RngCore};
+    use rand::{RngCore, rngs::OsRng};
     let mut rng = OsRng;
     let mut secret_bytes = [0u8; 32];
     rng.fill_bytes(&mut secret_bytes);

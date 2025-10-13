@@ -45,7 +45,7 @@ impl CryptoMonitor {
     /// Add random delay to RSA operations to mitigate timing attacks
     pub async fn add_random_delay() {
         use rand::Rng;
-        use tokio::time::{sleep, Duration};
+        use tokio::time::{Duration, sleep};
 
         let mut rng = rand::thread_rng();
         let delay_ms = rng.gen_range(1..=5); // 1-5ms random delay

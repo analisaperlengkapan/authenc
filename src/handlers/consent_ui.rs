@@ -1,8 +1,8 @@
 use axum::{
+    Router,
     extract::{Extension, Form, Query, State},
     response::{Html, IntoResponse, Redirect},
     routing::{delete, get},
-    Router,
 };
 
 use serde::{Deserialize, Serialize};

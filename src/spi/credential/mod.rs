@@ -566,7 +566,7 @@ impl CredentialProvider for OTPCredentialProvider {
             // Generate a random secret key for TOTP
             use rand::Rng;
             let secret: String = (0..32)
-                .map(|_| format!("{:02x}", rand::thread_rng().gen::<u8>()))
+                .map(|_| format!("{:02x}", rand::thread_rng().r#gen::<u8>()))
                 .collect();
             credential.credential_data = Some(secret);
         }

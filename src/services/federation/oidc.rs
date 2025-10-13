@@ -1,11 +1,11 @@
 // OpenID Connect (OIDC) Identity Provider Implementation
 // Supports OIDC Authorization Code Flow with PKCE
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono;
 use dashmap::DashMap;
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

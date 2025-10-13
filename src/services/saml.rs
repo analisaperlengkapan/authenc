@@ -3,7 +3,7 @@ use crate::error::{AuthencError, Result};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::Utc;
 use quick_xml::de::from_str as xml_from_str;
-use ring::signature::{UnparsedPublicKey, RSA_PKCS1_2048_8192_SHA256};
+use ring::signature::{RSA_PKCS1_2048_8192_SHA256, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -565,8 +565,8 @@ impl SamlService {
     }
 
     fn deflate_compress(&self, data: &str) -> Result<Vec<u8>> {
-        use flate2::write::DeflateEncoder;
         use flate2::Compression;
+        use flate2::write::DeflateEncoder;
         use std::io::Write;
 
         let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());

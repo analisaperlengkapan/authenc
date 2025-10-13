@@ -1,6 +1,6 @@
+use crate::AuthencError;
 use crate::database::Database;
 use crate::error::Result;
-use crate::AuthencError;
 use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -22,7 +22,9 @@ impl OidcCodeStore {
     /// # Panics
     /// This method will panic if called. It exists only for backward compatibility.
     pub fn new(_ttl_secs: u64) -> Self {
-        panic!("OidcCodeStore requires database connection. Use OidcCodeStore::with_database() instead.");
+        panic!(
+            "OidcCodeStore requires database connection. Use OidcCodeStore::with_database() instead."
+        );
     }
 
     /// Create OIDC code store with database connection and TTL (recommended for production)

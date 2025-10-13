@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use authenc::spi::{organization::*, Spi};
+    use authenc::spi::{Spi, organization::*};
     use uuid::Uuid;
 
     #[test]

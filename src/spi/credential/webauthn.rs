@@ -8,7 +8,7 @@ use super::{
 };
 use crate::error::{AuthencError as Error, Result};
 use async_trait::async_trait;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -113,7 +113,7 @@ impl WebAuthnCredentialProvider {
     pub fn generate_challenge(&self) -> Result<String> {
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        let challenge_bytes: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
+        let challenge_bytes: Vec<u8> = (0..32).map(|_| rng.r#gen()).collect();
         Ok(URL_SAFE_NO_PAD.encode(&challenge_bytes))
     }
 

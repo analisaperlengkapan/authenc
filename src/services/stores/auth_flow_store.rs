@@ -8,7 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    database::{operations::auth_flows as db_ops, Database},
+    database::{Database, operations::auth_flows as db_ops},
     error::{AuthencError, Result},
     services::auth_flow::{
         AuthenticationExecutionModel, AuthenticationFlowModel, AuthenticationSessionModel,

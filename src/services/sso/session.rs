@@ -274,7 +274,9 @@ impl SsoSessionManager for DefaultSsoSessionManager {
     async fn set_attribute(&self, session_id: &str, key: &str, value: &str) -> Result<()> {
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(session_id) {
-            session.attributes.insert(key.to_string(), value.to_string());
+            session
+                .attributes
+                .insert(key.to_string(), value.to_string());
         }
         Ok(())
     }
@@ -319,14 +321,8 @@ mod tests {
         let manager = DefaultSsoSessionManager::new();
         let session = manager
             .create_session(
-                "user123",
-                "realm456",
-                "oidc",
-                -1, // Expired immediately
-                36000,
-                false,
-                None,
-                None,
+                "user123", "realm456", "oidc", -1, // Expired immediately
+                36000, false, None, None,
             )
             .await
             .unwrap();
@@ -339,7 +335,9 @@ mod tests {
     async fn test_client_session_management() {
         let manager = DefaultSsoSessionManager::new();
         let session = manager
-            .create_session("user123", "realm456", "oidc", 1800, 36000, false, None, None)
+            .create_session(
+                "user123", "realm456", "oidc", 1800, 36000, false, None, None,
+            )
             .await
             .unwrap();
 

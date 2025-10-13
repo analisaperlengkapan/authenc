@@ -61,6 +61,7 @@ pub use audit::*;
 pub use client_registration::*;
 pub use consent::*;
 pub use device::*;
+pub use group::*;
 pub use oauth2::*;
 pub use organization::*;
 pub use permission::Permission;

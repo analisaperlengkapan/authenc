@@ -91,23 +91,23 @@ pub mod timeout_axum;
 
 // Re-export middleware types for easier access
 pub use rate_limit_axum::{
-    rate_limit_layer, rate_limit_middleware, RateLimitConfig, RateLimitLayer, RateLimitMiddleware,
-    RateLimiterState,
+    RateLimitConfig, RateLimitLayer, RateLimitMiddleware, RateLimiterState, rate_limit_layer,
+    rate_limit_middleware,
 };
 
-pub use compression_axum::{compression_middleware, ContentEncoding};
+pub use compression_axum::{ContentEncoding, compression_middleware};
 pub use cors_axum::{cors_layer, cors_middleware};
 pub use csrf_protection_axum::{
-    csrf_protection_middleware, generate_csrf_token_response, CsrfConfig, CsrfState,
+    CsrfConfig, CsrfState, csrf_protection_middleware, generate_csrf_token_response,
 };
-pub use input_validation_axum::{input_validation_middleware, InputValidationConfig};
+pub use input_validation_axum::{InputValidationConfig, input_validation_middleware};
 pub use security_headers_axum::security_headers_middleware;
 pub use security_monitoring_axum::{
-    security_monitoring_middleware, SecurityMonitoringConfig, SecurityMonitoringState,
+    SecurityMonitoringConfig, SecurityMonitoringState, security_monitoring_middleware,
 };
 pub use timeout_axum::{TimeoutLayer, TimeoutMiddleware};
 
 // Re-exports for convenience
-pub use auth_middleware_axum::{auth_middleware, AuthState};
+pub use auth_middleware_axum::{AuthState, auth_middleware};
 
-pub use rbac_axum::{rbac_middleware, RbacLayer};
+pub use rbac_axum::{RbacLayer, rbac_middleware};

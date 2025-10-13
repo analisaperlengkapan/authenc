@@ -26,7 +26,9 @@ impl OidcClientStore {
     /// # Panics
     /// This method will panic if called. It exists only for backward compatibility.
     pub fn new() -> Self {
-        panic!("OidcClientStore requires database connection. Use OidcClientStore::with_database() instead.");
+        panic!(
+            "OidcClientStore requires database connection. Use OidcClientStore::with_database() instead."
+        );
     }
 
     /// Create OIDC client store with database connection (recommended for production)

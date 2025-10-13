@@ -3,19 +3,19 @@
 //! HTTP endpoints for Single Sign-On (SSO) operations.
 
 use axum::{
+    Router,
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json, Redirect},
     routing::{get, post},
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::app::AppState;
-use crate::services::sso::{SsoCallbackRequest, SsoInitiateRequest, SsoProvider};
 use crate::services::sso::service::SsoLogoutRequest;
+use crate::services::sso::{SsoCallbackRequest, SsoInitiateRequest, SsoProvider};
 
 /// SSO login initiation query parameters
 #[derive(Debug, Deserialize)]
@@ -92,7 +92,7 @@ async fn initiate_sso_login(
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid provider"})),
-            ))
+            ));
         }
     };
 
@@ -130,7 +130,7 @@ async fn handle_sso_callback(
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid provider"})),
-            ))
+            ));
         }
     };
 
@@ -199,16 +199,21 @@ async fn handle_sso_logout(
                 match state.sso_service.logout(logout_request).await {
                     Ok(redirect_uri) => {
                         // Generate cookie deletion header
-                        let delete_cookie = state.sso_cookie_manager.generate_delete_cookie_header();
+                        let delete_cookie =
+                            state.sso_cookie_manager.generate_delete_cookie_header();
 
                         let mut headers = HeaderMap::new();
                         headers.insert(
                             "Set-Cookie",
-                            delete_cookie.parse().unwrap_or_else(|_| "".parse().unwrap()),
+                            delete_cookie
+                                .parse()
+                                .unwrap_or_else(|_| "".parse().unwrap()),
                         );
                         headers.insert(
                             "Location",
-                            redirect_uri.parse().unwrap_or_else(|_| "/".parse().unwrap()),
+                            redirect_uri
+                                .parse()
+                                .unwrap_or_else(|_| "/".parse().unwrap()),
                         );
 
                         Ok((StatusCode::FOUND, headers))
@@ -225,7 +230,9 @@ async fn handle_sso_logout(
                 let mut headers = HeaderMap::new();
                 headers.insert(
                     "Set-Cookie",
-                    delete_cookie.parse().unwrap_or_else(|_| "".parse().unwrap()),
+                    delete_cookie
+                        .parse()
+                        .unwrap_or_else(|_| "".parse().unwrap()),
                 );
                 headers.insert("Location", "/".parse().unwrap());
 
@@ -332,7 +339,9 @@ async fn get_user_sessions(
                     }
                     Err(e) => Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(serde_json::json!({"error": format!("Failed to get sessions: {}", e)})),
+                        Json(
+                            serde_json::json!({"error": format!("Failed to get sessions: {}", e)}),
+                        ),
                     )),
                 }
             }

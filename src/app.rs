@@ -180,7 +180,8 @@ impl AppState {
         ));
 
         // Initialize SSO session manager
-        let sso_session_manager = Arc::new(crate::services::sso::session::DefaultSsoSessionManager::new());
+        let sso_session_manager =
+            Arc::new(crate::services::sso::session::DefaultSsoSessionManager::new());
 
         // Initialize SSO service
         let sso_service: Arc<dyn crate::services::sso::SsoService> =
@@ -203,7 +204,10 @@ impl AppState {
                 ) {
                     Ok(sink) => Arc::new(sink),
                     Err(e) => {
-                        tracing::warn!("Failed to initialize Kafka audit log sink: {}. Falling back to PostgreSQL sink.", e);
+                        tracing::warn!(
+                            "Failed to initialize Kafka audit log sink: {}. Falling back to PostgreSQL sink.",
+                            e
+                        );
                         Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new(
                             (*audit_log_store).clone(),
                         ))
@@ -261,7 +265,10 @@ impl AppState {
                             );
                         }
                         Err(e) => {
-                            tracing::warn!("Failed to initialize Kafka event listener: {}. Event streaming disabled.", e);
+                            tracing::warn!(
+                                "Failed to initialize Kafka event listener: {}. Event streaming disabled.",
+                                e
+                            );
                         }
                     }
                 }

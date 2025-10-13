@@ -92,10 +92,10 @@ pub fn create_health_routes() -> axum::Router<Arc<Database>> {
 mod tests {
     use super::*;
     use axum::{
+        Router,
         body::Body,
         http::{Request, StatusCode},
         routing::get,
-        Router,
     };
     use http_body_util::BodyExt;
     use serde_json::Value;

@@ -14,8 +14,8 @@
 
 #[cfg(feature = "quantum")]
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
 };
 #[cfg(feature = "quantum")]
 use ed25519_dalek::{self, Signer, SigningKey, Verifier, VerifyingKey};
@@ -1121,14 +1121,16 @@ mod tests_quantum {
         let (ed25519_sig, mldsa_sig) =
             hybrid::sign_hybrid(message, &ed25519_sk, &mldsa_sk).unwrap();
 
-        assert!(hybrid::verify_hybrid(
-            wrong_message,
-            &ed25519_sig,
-            &mldsa_sig,
-            &ed25519_pk,
-            &mldsa_pk
-        )
-        .is_err());
+        assert!(
+            hybrid::verify_hybrid(
+                wrong_message,
+                &ed25519_sig,
+                &mldsa_sig,
+                &ed25519_pk,
+                &mldsa_pk
+            )
+            .is_err()
+        );
     }
 
     #[test]

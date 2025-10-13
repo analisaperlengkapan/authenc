@@ -1,7 +1,7 @@
 // SAML Security Validator - Integrates XMLDSig validation with SAML authentication
 // Provides comprehensive security validation: XML structure, signatures, certificates, revocation
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use openssl::x509::X509;
 use std::sync::{Arc, Mutex};
 

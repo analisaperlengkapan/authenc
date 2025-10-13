@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
-use crate::database::operations as db_ops;
 use crate::database::Database;
+use crate::database::operations as db_ops;
 use crate::error::AuthencError;
 use crate::models::session::Session;
 

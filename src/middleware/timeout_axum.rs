@@ -118,7 +118,7 @@ mod tests {
         body::Body,
         extract::Request,
         http::StatusCode,
-        routing::{get, Router},
+        routing::{Router, get},
     };
     use std::time::Duration;
     use tokio::time::sleep;

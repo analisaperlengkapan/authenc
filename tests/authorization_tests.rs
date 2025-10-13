@@ -2,10 +2,10 @@
 // Testing role-based access control, permissions, policies, and access management
 
 use axum::{
+    Router,
     extract::{Json, State},
     http::StatusCode,
     routing::{get, post},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;

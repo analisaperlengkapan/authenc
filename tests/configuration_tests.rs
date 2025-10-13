@@ -2,10 +2,10 @@
 // Testing configuration loading, validation, hot-reloading, and environment handling
 
 use axum::{
+    Router,
     extract::{Json, State},
     http::StatusCode,
     routing::{get, post},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;
@@ -144,10 +144,12 @@ async fn test_configuration_validation_and_schema() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body["schema"]["required"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("server")));
+    assert!(
+        body["schema"]["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("server"))
+    );
 }
 
 #[tokio::test]
@@ -281,9 +283,11 @@ async fn test_environment_variable_handling() {
 
     let body: serde_json::Value = response.json();
     assert_eq!(body["required_vars_present"], true);
-    assert!(body["environment_variables"]["DATABASE_URL"]
-        .as_str()
-        .is_some());
+    assert!(
+        body["environment_variables"]["DATABASE_URL"]
+            .as_str()
+            .is_some()
+    );
 
     // Validate environment variables
     let response = server.post("/config/env/validate").json(&json!({})).await;
@@ -347,10 +351,12 @@ async fn test_configuration_backup_and_restore() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body["backup_id"]
-        .as_str()
-        .unwrap()
-        .starts_with("config_backup_"));
+    assert!(
+        body["backup_id"]
+            .as_str()
+            .unwrap()
+            .starts_with("config_backup_")
+    );
 
     // List configuration backups
     let response = server.get("/config/backups").await;

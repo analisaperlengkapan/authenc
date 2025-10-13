@@ -2,11 +2,11 @@
 // Tests for security vulnerabilities, penetration testing, and edge cases
 
 use axum::{
+    Router,
     extract::{Json, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::get,
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;

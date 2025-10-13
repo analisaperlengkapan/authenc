@@ -3,14 +3,14 @@
 //! REST API for OIDC/SAML protocol mapper management
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, post, put},
-    Json, Router,
+    routing::{get, post},
 };
-use serde::{Deserialize};
-use serde_json::{json, Value as JsonValue};
+use serde::Deserialize;
+use serde_json::{Value as JsonValue, json};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -104,7 +104,9 @@ pub async fn get_mapper(
 
     match mapper {
         Some(m) => Ok(Json(m)),
-        None => Err(AuthencError::resource_not_found("Protocol mapper not found")),
+        None => Err(AuthencError::resource_not_found(
+            "Protocol mapper not found",
+        )),
     }
 }
 
@@ -209,8 +211,17 @@ pub async fn get_mapper_statistics(
 /// Create router for protocol mapper API endpoints
 pub fn create_protocol_mapper_routes() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/:realm/clients/:client_id/mappers", post(create_client_mapper).get(list_client_mappers))
-        .route("/:realm/clients/:client_id/mappers/:mapper_id", get(get_mapper).put(update_mapper).delete(delete_mapper))
-        .route("/:realm/mappers", post(create_realm_mapper).get(list_realm_mappers))
+        .route(
+            "/:realm/clients/:client_id/mappers",
+            post(create_client_mapper).get(list_client_mappers),
+        )
+        .route(
+            "/:realm/clients/:client_id/mappers/:mapper_id",
+            get(get_mapper).put(update_mapper).delete(delete_mapper),
+        )
+        .route(
+            "/:realm/mappers",
+            post(create_realm_mapper).get(list_realm_mappers),
+        )
         .route("/:realm/mapper-statistics", get(get_mapper_statistics))
 }

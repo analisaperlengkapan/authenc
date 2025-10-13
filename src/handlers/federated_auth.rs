@@ -5,7 +5,7 @@ use crate::services::admin::AdminService;
 use crate::services::federation::jit_provisioning::{
     DefaultJITProvisioningService, JITProvisioningService,
 };
-use axum::{extract::State, response::Json, routing::post, Router};
+use axum::{Router, extract::State, response::Json, routing::post};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;

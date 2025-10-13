@@ -3,14 +3,14 @@
 //! REST API for custom authenticator configuration and flow management
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, post, put},
-    Json, Router,
+    routing::{get, post, put},
 };
-use serde::{Deserialize};
-use serde_json::{json, Value as JsonValue};
+use serde::Deserialize;
+use serde_json::{Value as JsonValue, json};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -260,9 +260,24 @@ pub async fn get_execution_statistics(
 /// Create router for authenticator API endpoints
 pub fn create_authenticator_routes() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/:realm/authenticators", post(register_authenticator).get(list_authenticators))
-        .route("/:realm/authenticators/:authenticator_id", put(update_authenticator).delete(delete_authenticator))
-        .route("/:realm/authentication-flows/:flow_id/executions", post(create_execution).get(list_flow_executions))
-        .route("/:realm/authentication-flows/:flow_id/executions/:execution_id", put(update_execution))
-        .route("/:realm/execution-statistics", get(get_execution_statistics))
+        .route(
+            "/:realm/authenticators",
+            post(register_authenticator).get(list_authenticators),
+        )
+        .route(
+            "/:realm/authenticators/:authenticator_id",
+            put(update_authenticator).delete(delete_authenticator),
+        )
+        .route(
+            "/:realm/authentication-flows/:flow_id/executions",
+            post(create_execution).get(list_flow_executions),
+        )
+        .route(
+            "/:realm/authentication-flows/:flow_id/executions/:execution_id",
+            put(update_execution),
+        )
+        .route(
+            "/:realm/execution-statistics",
+            get(get_execution_statistics),
+        )
 }

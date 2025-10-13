@@ -1,6 +1,6 @@
 use authenc::config::DatabaseConfig;
-use authenc::database::operations as db_ops;
 use authenc::database::Database;
+use authenc::database::operations as db_ops;
 use authenc::models::user::CreateUserRequest;
 use uuid::Uuid;
 

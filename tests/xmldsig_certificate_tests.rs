@@ -9,7 +9,7 @@ use openssl::pkey::{PKey, Private};
 use openssl::rsa::Rsa;
 use openssl::x509::extension::{BasicConstraints, KeyUsage, SubjectKeyIdentifier};
 use openssl::x509::store::X509StoreBuilder;
-use openssl::x509::{X509Builder, X509NameBuilder, X509};
+use openssl::x509::{X509, X509Builder, X509NameBuilder};
 
 /// Helper: Create a self-signed root CA certificate
 fn create_root_ca() -> (X509, PKey<Private>) {

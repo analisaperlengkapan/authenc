@@ -2,10 +2,10 @@
 // Testing penetration scenarios, compliance frameworks, security monitoring, and audit trails
 
 use axum::{
+    Router,
     extract::{Json, State},
     http::StatusCode,
     routing::{get, post},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;

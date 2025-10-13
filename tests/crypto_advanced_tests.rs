@@ -267,8 +267,8 @@ mod pqc_advanced_tests {
 #[cfg(test)]
 mod shamir_advanced_tests {
     use authenc::crypto::shamir::*;
-    use rand::rngs::OsRng;
     use rand::RngCore;
+    use rand::rngs::OsRng;
     use std::collections::HashSet;
 
     #[test]

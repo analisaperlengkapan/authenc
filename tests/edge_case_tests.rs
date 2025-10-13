@@ -1,8 +1,8 @@
 use axum::{
+    Router,
     extract::{Json, Path, Query, State},
     http::StatusCode,
     routing::{get, post},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;
@@ -351,11 +351,12 @@ async fn test_extreme_values_and_limits() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body
-        .get("error")
-        .and_then(|e| e.as_str())
-        .unwrap_or("")
-        .contains("Batch size exceeds maximum"));
+    assert!(
+        body.get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("")
+            .contains("Batch size exceeds maximum")
+    );
 
     // Test valid batch
     let batch_data = json!({"users": [

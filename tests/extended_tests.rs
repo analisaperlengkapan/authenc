@@ -5,10 +5,10 @@
 extern crate lazy_static;
 
 use axum::{
+    Router,
     body::Body,
     extract::{Json, Path, Query},
-    http::{header, HeaderMap, Response, StatusCode},
-    Router,
+    http::{HeaderMap, Response, StatusCode, header},
 };
 use axum_test::TestServer;
 use chrono;
@@ -640,9 +640,11 @@ async fn test_cors_headers() {
     // Test GET request with CORS
     let response = server.get("/api/v1/test/cors").await;
     assert_eq!(response.status_code(), StatusCode::OK);
-    assert!(response
-        .headers()
-        .contains_key("access-control-allow-origin"));
+    assert!(
+        response
+            .headers()
+            .contains_key("access-control-allow-origin")
+    );
 
     // Test OPTIONS request
     let response = server

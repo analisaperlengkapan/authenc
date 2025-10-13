@@ -1,4 +1,4 @@
-use crate::crypto::ed25519_keys::{get_ed25519_jwk, ED25519_KEYPAIR};
+use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
 use crate::error::AuthencError;
 use crate::utils::crypto_monitor::CryptoMonitor;
 use axum::{
@@ -395,9 +395,11 @@ mod tests {
 
         let discovery = result.unwrap().0;
         assert_eq!(discovery["issuer"], "http://localhost:8080/v1");
-        assert!(discovery["id_token_signing_alg_values_supported"]
-            .as_array()
-            .unwrap()
-            .contains(&serde_json::Value::String("EdDSA".to_string())));
+        assert!(
+            discovery["id_token_signing_alg_values_supported"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::Value::String("EdDSA".to_string()))
+        );
     }
 }

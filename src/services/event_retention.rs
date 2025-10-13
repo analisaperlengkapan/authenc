@@ -1,6 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
 use std::sync::Arc;
-use tokio::time::{interval, Duration as TokioDuration};
+use tokio::time::{Duration as TokioDuration, interval};
 
 use crate::config::EventsConfig;
 use crate::database::Database;

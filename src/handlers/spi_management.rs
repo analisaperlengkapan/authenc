@@ -6,11 +6,11 @@
 
 use crate::app::AppState;
 use axum::{
+    Router,
     extract::{Path, State},
     http::StatusCode,
     response::Json,
     routing::{get, post, put},
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -238,7 +238,7 @@ pub async fn get_spi_info(
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "SPI not found"})),
-            ))
+            ));
         }
     };
 
@@ -307,7 +307,7 @@ pub async fn list_spi_providers(
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "SPI not found"})),
-            ))
+            ));
         }
     };
 
@@ -422,7 +422,7 @@ pub async fn update_provider_config(
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "SPI not found"})),
-            ))
+            ));
         }
     };
 

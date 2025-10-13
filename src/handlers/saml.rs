@@ -8,10 +8,10 @@ use crate::services::federation::jit_provisioning::{
 use crate::services::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
 use async_trait::async_trait;
 use axum::{
+    Router,
     extract::{Query, State},
     response::{Html, Redirect},
     routing::{get, post},
-    Router,
 };
 use std::sync::Arc;
 

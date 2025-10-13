@@ -79,7 +79,7 @@ impl OtpCredentialProvider {
     pub fn generate_secret(&self) -> String {
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        let bytes: Vec<u8> = (0..20).map(|_| rng.gen()).collect();
+        let bytes: Vec<u8> = (0..20).map(|_| rng.r#gen()).collect();
         base32::encode(base32::Alphabet::RFC4648 { padding: false }, &bytes)
     }
 
@@ -318,9 +318,11 @@ mod tests {
 
         // Verify the code
         assert_eq!(code.len(), 6);
-        assert!(provider
-            .verify_totp(&secret, &code, OtpAlgorithm::HmacSha1, 6, 30)
-            .unwrap());
+        assert!(
+            provider
+                .verify_totp(&secret, &code, OtpAlgorithm::HmacSha1, 6, 30)
+                .unwrap()
+        );
     }
 
     #[test]

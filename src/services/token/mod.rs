@@ -1,6 +1,6 @@
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
-use crate::models::token::{CreateTokenRequest, JwtClaims, Token, TokenResponse, TokenType};
+use crate::models::token::TokenResponse;
 use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -276,7 +276,7 @@ impl TokenManager {
         use base64::Engine;
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        let random_bytes: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
+        let random_bytes: Vec<u8> = (0..32).map(|_| rng.r#gen()).collect();
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&random_bytes)
     }
 

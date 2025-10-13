@@ -170,9 +170,11 @@ mod tests {
 
         assert_eq!(security_profile.name, "FIPS-140-3-Compliant");
         assert_eq!(security_profile.fips_level, FipsLevel::Level3);
-        assert!(security_profile
-            .approved_algorithms
-            .contains(&"AES-256-GCM".to_string()));
+        assert!(
+            security_profile
+                .approved_algorithms
+                .contains(&"AES-256-GCM".to_string())
+        );
         assert_eq!(security_profile.security_strength, 256);
         assert!(security_profile.requirements.len() > 0);
     }

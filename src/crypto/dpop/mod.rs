@@ -16,7 +16,7 @@ use base64ct::Encoding;
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 // Use public types from ed25519_keys module
@@ -77,7 +77,7 @@ impl DPoPProof {
         let mut rng = rand::thread_rng();
 
         // Generate unique JWT ID
-        let jti_bytes: [u8; 16] = rng.gen();
+        let jti_bytes: [u8; 16] = rng.r#gen();
         let jti = hex::encode(jti_bytes);
 
         // Create JWK from public key
@@ -320,7 +320,7 @@ impl DPoPNonceManager {
     pub fn generate_nonce(&self) -> String {
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        let nonce_bytes: [u8; 32] = rng.gen();
+        let nonce_bytes: [u8; 32] = rng.r#gen();
         base64ct::Base64UrlUnpadded::encode_string(&nonce_bytes)
     }
 
@@ -570,10 +570,12 @@ mod tests {
         );
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("HTTP method mismatch"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("HTTP method mismatch")
+        );
     }
 
     #[test]

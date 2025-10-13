@@ -8,9 +8,23 @@ use crate::{
 };
 
 /// Database connection pool manager
-#[derive(Clone, Debug)] // Derive Clone for easy sharing across handlers
+#[derive(Clone)] // Derive Clone for easy sharing across handlers
 pub struct Database {
     pool: Pool,
+    /// Prepared statement cache for improved performance
+    prepared_cache: PreparedStatementCache,
+}
+
+impl std::fmt::Debug for Database {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Database")
+            .field("pool", &"Pool")
+            .field(
+                "prepared_cache",
+                &format!("{} cached statements", self.prepared_cache.len()),
+            )
+            .finish()
+    }
 }
 
 impl Database {
@@ -22,12 +36,7 @@ impl Database {
             user: Some(config.username.clone()),
             password: Some(config.password.clone()),
             dbname: Some(config.database.clone()),
-            pool: Some(deadpool_postgres::PoolConfig {
-                max_size: config.max_connections as usize,
-                timeouts: deadpool_postgres::Timeouts::wait_millis(
-                    config.connection_timeout * 1000,
-                ),
-            }),
+            pool: Some(deadpool_postgres::PoolConfig::default()),
             ..Default::default()
         };
 
@@ -43,7 +52,10 @@ impl Database {
                     "✅ Database connection established to {}:{}/{}",
                     config.host, config.port, config.database
                 );
-                Ok(Self { pool })
+                Ok(Self {
+                    pool,
+                    prepared_cache: PreparedStatementCache::new(1000),
+                })
             }
             Err(e) => {
                 error!("Failed to connect to database: {}", e);
@@ -223,7 +235,78 @@ impl Database {
             .build()
             .expect("Failed to create mock database pool");
 
-        Self { pool }
+        Self {
+            pool,
+            prepared_cache: PreparedStatementCache::new(1),
+        }
+    }
+
+    /// Execute work within a transaction
+    ///
+    /// The provided closure receives the client and can perform multiple operations.
+    /// The transaction is automatically committed if the closure succeeds, or rolled back on error.
+    pub async fn with_transaction<F, R>(&self, f: F) -> Result<R>
+    where
+        F: for<'a> FnOnce(
+            &'a deadpool_postgres::Client,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<R>> + Send + 'a>,
+        >,
+        R: Send,
+    {
+        let mut client = self.get_connection().await?;
+
+        // Begin transaction
+        client.execute("BEGIN", &[]).await.map_err(|e| {
+            error!("Failed to begin transaction: {}", e);
+            AuthencError::database(format!("Failed to begin transaction: {}", e))
+        })?;
+
+        match f(&client).await {
+            Ok(result) => {
+                client.execute("COMMIT", &[]).await.map_err(|e| {
+                    error!("Failed to commit transaction: {}", e);
+                    AuthencError::database(format!("Failed to commit transaction: {}", e))
+                })?;
+                Ok(result)
+            }
+            Err(e) => {
+                let _ = client.execute("ROLLBACK", &[]).await;
+                Err(e)
+            }
+        }
+    }
+
+    /// Get the prepared statement cache
+    pub fn prepared_cache(&self) -> &PreparedStatementCache {
+        &self.prepared_cache
+    }
+
+    /// Get cache statistics
+    pub fn cache_stats(&self) -> CacheStats {
+        self.prepared_cache.stats()
+    }
+
+    /// Execute batch operations
+    ///
+    /// The provided closure receives a BatchOperations builder for bulk inserts, updates, deletes.
+    pub async fn with_batch_operations<F, R>(&self, f: F) -> Result<R>
+    where
+        F: for<'a> FnOnce(
+            BatchOperations<'a>,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<R>> + Send + 'a>,
+        >,
+        R: Send,
+    {
+        let client = self.get_connection().await?;
+        let batch_ops = BatchOperations::new(&client);
+        f(batch_ops).await
+    }
+
+    /// Clear prepared statement cache (useful for schema changes)
+    pub fn clear_prepared_cache(&self) {
+        self.prepared_cache.clear();
     }
 }
 
@@ -243,3 +326,21 @@ pub mod migrations;
 pub mod operations;
 /// Database module exports
 pub mod queries;
+
+/// Transaction management for Keycloak-like transaction semantics
+pub mod transaction;
+
+/// Prepared statement caching for improved performance
+pub mod prepared_cache;
+
+/// Batch operations for efficient bulk database operations
+pub mod batch;
+
+/// Advanced connection pool configuration
+pub mod pool_config;
+
+// Re-export commonly used types
+pub use batch::{BatchInsertable, BatchOperations, BatchUpdateable};
+pub use pool_config::{PoolConfigBuilder, PoolHealth};
+pub use prepared_cache::{CacheStats, PreparedStatementCache};
+pub use transaction::{DatabaseTransaction, IsolationLevel, TransactionManager};

@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::error::{AuthencError, Result};
 use crate::database::Database;
+use crate::error::{AuthencError, Result};
 use crate::models::realm::Realm;
 
 use super::cookie::SsoCookieManager;
@@ -264,11 +264,7 @@ impl SsoService for DefaultSsoService {
             .ok_or_else(|| AuthencError::unauthorized("Session not found"))?;
 
         // Check if session is expired
-        if self
-            .session_manager
-            .is_expired(&session.session_id)
-            .await?
-        {
+        if self.session_manager.is_expired(&session.session_id).await? {
             return Err(AuthencError::unauthorized("Session expired"));
         }
 
@@ -333,10 +329,12 @@ mod tests {
 
         // Create mock database (in real code, use actual database)
         // For testing, we'll skip database operations
-        
+
         // This test demonstrates the flow without database dependency
         let session = session_manager
-            .create_session("user123", "realm456", "oidc", 1800, 36000, false, None, None)
+            .create_session(
+                "user123", "realm456", "oidc", 1800, 36000, false, None, None,
+            )
             .await
             .unwrap();
 

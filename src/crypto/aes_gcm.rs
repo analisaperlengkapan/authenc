@@ -1,8 +1,8 @@
 use crate::error::{AuthencError, Result};
 use crate::utils::crypto_monitor::CryptoMonitor;
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
     Aes256Gcm, Key, Nonce,
+    aead::{Aead, KeyInit, OsRng},
 };
 use base64ct::{Base64UrlUnpadded, Encoding};
 use rand::RngCore;

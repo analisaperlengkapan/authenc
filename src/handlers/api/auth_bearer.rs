@@ -2,7 +2,7 @@ use crate::utils::crypto::jwt::{self, Claims};
 use axum::http::request::Parts;
 use axum::{
     extract::FromRequestParts,
-    http::{header, StatusCode},
+    http::{StatusCode, header},
 };
 
 /// Authentication bearer token extractor for Axum

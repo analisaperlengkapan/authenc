@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use authenc::models::user::User;
+use authenc::spi::ProviderFactory;
 use authenc::spi::authenticator::{
     AuthenticationContext, AuthenticationFlowType, Authenticator, AuthenticatorConfig,
     AuthenticatorProvider, AuthenticatorType, DefaultAuthenticatorProvider,
     DefaultAuthenticatorProviderFactory, OTPAuthenticator, UsernamePasswordAuthenticator,
 };
-use authenc::spi::ProviderFactory;
 use uuid::Uuid;
 
 /// Mock user for testing

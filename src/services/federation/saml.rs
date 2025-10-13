@@ -2,15 +2,15 @@
 // Supports SAML 2.0 Web Browser SSO Profile with full signature validation
 
 use crate::database::Database;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use openssl::hash::MessageDigest;
 use openssl::pkey::PKey;
 use openssl::sign::Verifier;
 use openssl::x509::X509;
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -87,7 +87,10 @@ impl SamlIdentityProvider {
                     Some(validator)
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to create SAML security validator: {}. Continuing without enhanced security.", e);
+                    tracing::warn!(
+                        "Failed to create SAML security validator: {}. Continuing without enhanced security.",
+                        e
+                    );
                     None
                 }
             }

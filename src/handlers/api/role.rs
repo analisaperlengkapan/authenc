@@ -4,11 +4,11 @@ use crate::models::events::{OperationType, ResourceType};
 use crate::models::role::Role;
 use crate::services::events::AdminEventBuilder;
 use axum::{
+    Router,
     extract::{Path, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post},
-    Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;

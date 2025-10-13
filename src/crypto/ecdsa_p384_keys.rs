@@ -1,9 +1,9 @@
 use base64ct::{Base64UrlUnpadded, Encoding};
 use once_cell::sync::Lazy;
 use p384::{
-    ecdsa::{signature::Signer, signature::Verifier, SigningKey, VerifyingKey},
-    elliptic_curve::sec1::ToEncodedPoint,
     PublicKey,
+    ecdsa::{SigningKey, VerifyingKey, signature::Signer, signature::Verifier},
+    elliptic_curve::sec1::ToEncodedPoint,
 };
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};

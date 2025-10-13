@@ -353,38 +353,44 @@ impl AuthorizationManager {
         config: &PolicyConfig,
     ) -> Decision {
         use chrono::{Datelike, Timelike, Utc};
-        
+
         let now = Utc::now();
         let current_hour = now.hour();
         let current_day = now.weekday().num_days_from_monday(); // 0=Monday, 6=Sunday
-        
+
         // Check conditions for time windows
         for condition in &config.conditions {
             if condition.condition_type == "time_window" {
                 // Check start_hour and end_hour
                 if let (Some(start), Some(end)) = (
-                    condition.config.get("start_hour").and_then(|s| s.parse::<u32>().ok()),
-                    condition.config.get("end_hour").and_then(|s| s.parse::<u32>().ok()),
+                    condition
+                        .config
+                        .get("start_hour")
+                        .and_then(|s| s.parse::<u32>().ok()),
+                    condition
+                        .config
+                        .get("end_hour")
+                        .and_then(|s| s.parse::<u32>().ok()),
                 ) {
                     if current_hour < start || current_hour >= end {
                         return Decision::Deny;
                     }
                 }
-                
+
                 // Check allowed_days (comma-separated: "0,1,2,3,4" for Mon-Fri)
                 if let Some(days_str) = condition.config.get("allowed_days") {
                     let allowed_days: Vec<u32> = days_str
                         .split(',')
                         .filter_map(|s| s.trim().parse().ok())
                         .collect();
-                    
+
                     if !allowed_days.is_empty() && !allowed_days.contains(&current_day) {
                         return Decision::Deny;
                     }
                 }
             }
         }
-        
+
         // Check environment context for explicit time constraints
         if let Some(requested_time) = context.environment.get("requested_time") {
             if let Ok(timestamp) = requested_time.parse::<i64>() {
@@ -393,7 +399,7 @@ impl AuthorizationManager {
                 }
             }
         }
-        
+
         Decision::Permit
     }
 
@@ -404,23 +410,26 @@ impl AuthorizationManager {
         config: &PolicyConfig,
     ) -> Decision {
         // Get user location from context
-        let user_location = context.environment.get("location")
+        let user_location = context
+            .environment
+            .get("location")
             .or_else(|| context.environment.get("country"))
             .or_else(|| context.environment.get("ip_address"));
-        
+
         if user_location.is_none() {
             // No location data available - deny by default for location-based policy
             return Decision::Deny;
         }
-        
+
         let location = user_location.unwrap();
-        
+
         // Check conditions for allowed/denied locations
         for condition in &config.conditions {
             match condition.condition_type.as_str() {
                 "allowed_locations" => {
                     if let Some(allowed) = condition.config.get("locations") {
-                        let allowed_list: Vec<&str> = allowed.split(',').map(|s| s.trim()).collect();
+                        let allowed_list: Vec<&str> =
+                            allowed.split(',').map(|s| s.trim()).collect();
                         if !allowed_list.iter().any(|&loc| location.contains(loc)) {
                             return Decision::Deny;
                         }
@@ -461,7 +470,7 @@ impl AuthorizationManager {
                 _ => {}
             }
         }
-        
+
         Decision::Permit
     }
 
@@ -473,12 +482,17 @@ impl AuthorizationManager {
     ) -> Decision {
         // Calculate overall risk score from various factors
         let mut risk_score = 0;
-        
+
         // Check for anomalous behavior indicators in environment
-        if context.environment.get("anomaly_detected").map(|v| v == "true").unwrap_or(false) {
+        if context
+            .environment
+            .get("anomaly_detected")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+        {
             risk_score += 50;
         }
-        
+
         // Check device trust level
         if let Some(device_trust) = context.environment.get("device_trust_level") {
             match device_trust.as_str() {
@@ -490,32 +504,47 @@ impl AuthorizationManager {
         } else {
             risk_score += 15; // No device info = moderate risk
         }
-        
+
         // Check login patterns (new location, new device, unusual time)
-        if context.environment.get("new_location").map(|v| v == "true").unwrap_or(false) {
+        if context
+            .environment
+            .get("new_location")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+        {
             risk_score += 15;
         }
-        if context.environment.get("new_device").map(|v| v == "true").unwrap_or(false) {
+        if context
+            .environment
+            .get("new_device")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+        {
             risk_score += 15;
         }
-        if context.environment.get("unusual_time").map(|v| v == "true").unwrap_or(false) {
+        if context
+            .environment
+            .get("unusual_time")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+        {
             risk_score += 10;
         }
-        
+
         // Check IP reputation
         if let Some(ip_risk) = context.environment.get("ip_risk_score") {
             if let Ok(score) = ip_risk.parse::<i32>() {
                 risk_score += score;
             }
         }
-        
+
         // Check authentication strength
         if let Some(mfa_status) = context.environment.get("mfa_enabled") {
             if mfa_status == "false" {
                 risk_score += 20; // No MFA = higher risk
             }
         }
-        
+
         // Check conditions for risk threshold
         for condition in &config.conditions {
             if condition.condition_type == "risk_threshold" {
@@ -526,13 +555,18 @@ impl AuthorizationManager {
                         }
                     }
                 }
-                
+
                 // Check if step-up authentication is required
                 if let Some(step_up) = condition.config.get("require_step_up") {
                     if step_up == "true" && risk_score > 30 {
                         // In production, would trigger step-up auth flow
                         // For now, deny if risk is elevated and step-up not completed
-                        if context.environment.get("step_up_completed").map(|v| v == "true").unwrap_or(false) {
+                        if context
+                            .environment
+                            .get("step_up_completed")
+                            .map(|v| v == "true")
+                            .unwrap_or(false)
+                        {
                             return Decision::Permit;
                         } else {
                             return Decision::Deny;
@@ -541,7 +575,7 @@ impl AuthorizationManager {
                 }
             }
         }
-        
+
         // Default permit if risk is acceptable
         if risk_score < 50 {
             Decision::Permit

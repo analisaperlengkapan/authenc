@@ -2,11 +2,11 @@ use crate::app::AppState;
 use crate::models::events::{AdminEvent, Event};
 use crate::services::event_retention::{RetentionCleanupResult, RetentionStats};
 use axum::{
+    Router,
     extract::{Query, State},
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;

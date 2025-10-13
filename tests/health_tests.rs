@@ -1,6 +1,6 @@
-use authenc::app::ApplicationBuilder;
 use authenc::AppConfig;
-use axum::{http::StatusCode, routing::get, Router};
+use authenc::app::ApplicationBuilder;
+use axum::{Router, http::StatusCode, routing::get};
 use tower::ServiceExt;
 
 #[tokio::test]

@@ -7,8 +7,8 @@ use uuid::Uuid;
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_token_generation() {
     // Test basic token generation
-    let config = authenc::config::AuthencConfig::default();
-    let db = Arc::new(Database::new(&config).await.unwrap());
+    let config = authenc::config::AppConfig::default();
+    let db = Arc::new(Database::new(&config.database).await.unwrap());
     let token_manager = TokenManager::new(db);
 
     let user_id = Uuid::new_v4();
@@ -29,8 +29,8 @@ async fn test_token_generation() {
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_token_validation() {
     // Test token validation
-    let config = authenc::config::AuthencConfig::default();
-    let db = Arc::new(Database::new(&config).await.unwrap());
+    let config = authenc::config::AppConfig::default();
+    let db = Arc::new(Database::new(&config.database).await.unwrap());
     let token_manager = TokenManager::new(db);
 
     let user_id = Uuid::new_v4();
@@ -63,8 +63,8 @@ async fn test_token_validation() {
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_token_refresh() {
     // Test refresh token flow
-    let config = authenc::config::AuthencConfig::default();
-    let db = Arc::new(Database::new(&config).await.unwrap());
+    let config = authenc::config::AppConfig::default();
+    let db = Arc::new(Database::new(&config.database).await.unwrap());
     let token_manager = TokenManager::new(db);
 
     let user_id = Uuid::new_v4();
@@ -96,8 +96,8 @@ async fn test_token_refresh() {
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_token_revocation() {
     // Test token revocation
-    let config = authenc::config::AuthencConfig::default();
-    let db = Arc::new(Database::new(&config).await.unwrap());
+    let config = authenc::config::AppConfig::default();
+    let db = Arc::new(Database::new(&config.database).await.unwrap());
     let token_manager = TokenManager::new(db);
 
     let user_id = Uuid::new_v4();
@@ -126,8 +126,8 @@ async fn test_token_revocation() {
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_revoke_user_tokens() {
     // Test revoking all tokens for a user
-    let config = authenc::config::AuthencConfig::default();
-    let db = Arc::new(Database::new(&config).await.unwrap());
+    let config = authenc::config::AppConfig::default();
+    let db = Arc::new(Database::new(&config.database).await.unwrap());
     let token_manager = TokenManager::new(db);
 
     let user_id = Uuid::new_v4();
@@ -152,8 +152,8 @@ async fn test_revoke_user_tokens() {
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_token_introspection() {
     // Test RFC 7662 token introspection
-    let config = authenc::config::AuthencConfig::default();
-    let db = Arc::new(Database::new(&config).await.unwrap());
+    let config = authenc::config::AppConfig::default();
+    let db = Arc::new(Database::new(&config.database).await.unwrap());
     let token_manager = TokenManager::new(db);
 
     let user_id = Uuid::new_v4();
@@ -186,8 +186,8 @@ async fn test_token_introspection() {
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_introspect_invalid_token() {
     // Test introspecting an invalid token
-    let config = authenc::config::AuthencConfig::default();
-    let db = Arc::new(Database::new(&config).await.unwrap());
+    let config = authenc::config::AppConfig::default();
+    let db = Arc::new(Database::new(&config.database).await.unwrap());
     let token_manager = TokenManager::new(db);
 
     let introspection = token_manager
@@ -204,8 +204,8 @@ async fn test_introspect_invalid_token() {
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_token_rotation() {
     // Test refresh token rotation (security feature)
-    let config = authenc::config::AuthencConfig::default();
-    let db = Arc::new(Database::new(&config).await.unwrap());
+    let config = authenc::config::AppConfig::default();
+    let db = Arc::new(Database::new(&config.database).await.unwrap());
     let token_manager = TokenManager::with_config(db, 3600, 2592000, true); // Enable rotation
 
     let user_id = Uuid::new_v4();
@@ -239,8 +239,8 @@ async fn test_token_rotation() {
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_get_user_active_tokens() {
     // Test retrieving all active tokens for a user
-    let config = authenc::config::AuthencConfig::default();
-    let db = Arc::new(Database::new(&config).await.unwrap());
+    let config = authenc::config::AppConfig::default();
+    let db = Arc::new(Database::new(&config.database).await.unwrap());
     let token_manager = TokenManager::new(db);
 
     let user_id = Uuid::new_v4();
@@ -269,8 +269,8 @@ async fn test_get_user_active_tokens() {
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_cleanup_expired_tokens() {
     // Test cleanup of expired tokens
-    let config = authenc::config::AuthencConfig::default();
-    let db = Arc::new(Database::new(&config).await.unwrap());
+    let config = authenc::config::AppConfig::default();
+    let db = Arc::new(Database::new(&config.database).await.unwrap());
     let token_manager = TokenManager::new(db);
 
     // Note: This test would require manually expiring tokens or waiting
@@ -282,7 +282,7 @@ async fn test_cleanup_expired_tokens() {
 #[test]
 fn test_token_hash_consistency() {
     // Test that token hashing is consistent
-    let config = authenc::config::AuthencConfig::default();
+    let config = authenc::config::AppConfig::default();
     let db = Arc::new(unsafe { std::mem::zeroed() }); // Mock database for unit test
     let token_manager = TokenManager::new(db);
 

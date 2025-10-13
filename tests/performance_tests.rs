@@ -2,9 +2,9 @@
 // Tests for performance benchmarks, load handling, and stress testing
 
 use axum::{
+    Router,
     extract::{Json, Path, Query},
     http::StatusCode,
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;

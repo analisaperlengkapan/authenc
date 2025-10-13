@@ -1,5 +1,5 @@
-use crate::error::Result;
 use crate::AuthencError;
+use crate::error::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;

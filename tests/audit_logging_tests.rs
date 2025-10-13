@@ -2,10 +2,10 @@
 // Testing comprehensive audit trails, compliance logging, and security event monitoring
 
 use axum::{
-    extract::{Json, State},
-    http::{header::HeaderMap, StatusCode},
-    routing::{get, post},
     Router,
+    extract::{Json, State},
+    http::{StatusCode, header::HeaderMap},
+    routing::{get, post},
 };
 use axum_test::TestServer;
 use serde_json::json;
@@ -1126,7 +1126,9 @@ async fn test_audit_trail_and_retention_policies() {
 
     let body: serde_json::Value = response.json();
     assert_eq!(body["dry_run"], true);
-    assert!(body["results"]["audit_logs"]["expired_count"]
-        .as_u64()
-        .is_some());
+    assert!(
+        body["results"]["audit_logs"]["expired_count"]
+            .as_u64()
+            .is_some()
+    );
 }

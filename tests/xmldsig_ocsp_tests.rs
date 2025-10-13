@@ -35,8 +35,8 @@ fn test_ocsp_extract_url_not_implemented() {
     use openssl::hash::MessageDigest;
     use openssl::pkey::PKey;
     use openssl::rsa::Rsa;
-    use openssl::x509::X509NameBuilder;
     use openssl::x509::X509;
+    use openssl::x509::X509NameBuilder;
 
     let client = OcspClient::new().unwrap();
 
@@ -66,10 +66,12 @@ fn test_ocsp_extract_url_not_implemented() {
     // OCSP URL extraction not yet implemented
     let result = client.extract_ocsp_url(&cert);
     assert!(result.is_err(), "Should return error - not yet implemented");
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("not yet implemented"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("not yet implemented")
+    );
 }
 
 #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
@@ -118,8 +120,8 @@ fn test_ocsp_check_status_no_url() {
     use openssl::hash::MessageDigest;
     use openssl::pkey::PKey;
     use openssl::rsa::Rsa;
-    use openssl::x509::X509NameBuilder;
     use openssl::x509::X509;
+    use openssl::x509::X509NameBuilder;
 
     let mut client = OcspClient::new().unwrap();
 

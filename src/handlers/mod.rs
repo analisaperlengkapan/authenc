@@ -1,8 +1,8 @@
 // Re-export axum router for convenience
 use axum::{
+    Router,
     response::Html,
     routing::{get, post},
-    Router,
 };
 use std::sync::Arc;
 
@@ -48,8 +48,8 @@ pub mod admin;
 // Temporarily disabled API module due to Actix-web migration issues
 /// REST API handlers for authentication and authorization services
 pub mod api; // Uncommented - contains Axum handlers
-             // Temporarily disabled due to Axum migration issues
-             // pub mod authorization;
+// Temporarily disabled due to Axum migration issues
+// pub mod authorization;
 /// Identity broker handlers for external authentication providers
 pub mod broker;
 /// OAuth 2.0 Dynamic Client Registration (RFC 7591/7592)

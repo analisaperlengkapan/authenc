@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::Request,
-    http::{header, HeaderValue, Method, Response},
+    http::{HeaderValue, Method, Response, header},
     middleware::Next,
 };
 use std::time::Duration;
@@ -78,7 +78,7 @@ pub async fn cors_middleware(request: Request<Body>, next: Next) -> Response<Bod
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::Body, extract::Request, http::StatusCode, routing::get, Router};
+    use axum::{Router, body::Body, extract::Request, http::StatusCode, routing::get};
     use tower::ServiceExt;
 
     #[tokio::test]
@@ -363,9 +363,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-        assert!(response
-            .headers()
-            .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN));
+        assert!(
+            response
+                .headers()
+                .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+        );
 
         // Test error response
         let response = app
@@ -380,8 +382,10 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         // CORS headers should still be added to error responses
-        assert!(response
-            .headers()
-            .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN));
+        assert!(
+            response
+                .headers()
+                .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+        );
     }
 }

@@ -493,8 +493,10 @@ mod tests {
 
         // Test registry access
         let registry = manager.registry();
-        assert!(registry
-            .get_factories::<MockFactory, MockProvider>("nonexistent")
-            .is_err());
+        assert!(
+            registry
+                .get_factories::<MockFactory, MockProvider>("nonexistent")
+                .is_err()
+        );
     }
 }

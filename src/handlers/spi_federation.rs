@@ -7,11 +7,11 @@ use crate::app::AppState;
 use crate::spi::ldap_federation::LdapFederationProvider;
 use crate::spi::social::SocialProvider;
 use axum::{
+    Router,
     extract::{Query, State},
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

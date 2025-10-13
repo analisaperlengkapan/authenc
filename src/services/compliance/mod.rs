@@ -165,12 +165,14 @@ impl GDPRComplianceChecks {
                 enabled: true,
                 automated_check: true,
             },
-            None
+            None,
         ))
     }
 
     /// Create a data encryption compliance check with database connection (verification mode)
-    pub fn data_encryption_check_with_database(database: Arc<crate::database::Database>) -> Box<dyn ComplianceCheck> {
+    pub fn data_encryption_check_with_database(
+        database: Arc<crate::database::Database>,
+    ) -> Box<dyn ComplianceCheck> {
         Box::new(GDPRDataEncryptionCheck::new(
             ComplianceRequirement {
                 id: Uuid::new_v4(),
@@ -184,7 +186,7 @@ impl GDPRComplianceChecks {
                 enabled: true,
                 automated_check: true,
             },
-            Some(database)
+            Some(database),
         ))
     }
 
@@ -207,7 +209,9 @@ impl GDPRComplianceChecks {
     }
 
     /// Create a data retention compliance check with database connection (verification mode)
-    pub fn data_retention_check_with_database(database: Arc<crate::database::Database>) -> Box<dyn ComplianceCheck> {
+    pub fn data_retention_check_with_database(
+        database: Arc<crate::database::Database>,
+    ) -> Box<dyn ComplianceCheck> {
         Box::new(GDPRDataRetentionCheck::new(
             ComplianceRequirement {
                 id: Uuid::new_v4(),
@@ -253,8 +257,14 @@ pub struct GDPRDataEncryptionCheck {
 
 impl GDPRDataEncryptionCheck {
     /// Create new data encryption check with optional database connection
-    pub fn new(requirement: ComplianceRequirement, database: Option<Arc<crate::database::Database>>) -> Self {
-        Self { requirement, database }
+    pub fn new(
+        requirement: ComplianceRequirement,
+        database: Option<Arc<crate::database::Database>>,
+    ) -> Self {
+        Self {
+            requirement,
+            database,
+        }
     }
 }
 
@@ -273,7 +283,7 @@ impl ComplianceCheck for GDPRDataEncryptionCheck {
                 Ok(realms) if !realms.is_empty() => {
                     let mut realms_with_encryption = 0;
                     let mut encryption_algorithms = std::collections::HashSet::new();
-                    
+
                     for realm in &realms {
                         // Check if realm has encryption settings (assume password hashing is configured)
                         // In production, would check realm.encryption_config or similar fields
@@ -282,23 +292,32 @@ impl ComplianceCheck for GDPRDataEncryptionCheck {
                             encryption_algorithms.insert("Password hashing (bcrypt/argon2)");
                         }
                     }
-                    
+
                     if realms_with_encryption > 0 {
                         score += 40.0;
-                        evidence.push(format!("Encryption configured for {} realms", realms_with_encryption));
-                        evidence.push(format!("Using {} encryption algorithms", encryption_algorithms.len()));
+                        evidence.push(format!(
+                            "Encryption configured for {} realms",
+                            realms_with_encryption
+                        ));
+                        evidence.push(format!(
+                            "Using {} encryption algorithms",
+                            encryption_algorithms.len()
+                        ));
                     } else {
                         violations.push("No realms have encryption configured".to_string());
-                        remediation_steps.push("Configure encryption settings for all realms".to_string());
+                        remediation_steps
+                            .push("Configure encryption settings for all realms".to_string());
                     }
                 }
                 Ok(_) => {
                     violations.push("No realms found - cannot verify encryption".to_string());
-                    remediation_steps.push("Create at least one realm with encryption enabled".to_string());
+                    remediation_steps
+                        .push("Create at least one realm with encryption enabled".to_string());
                 }
                 Err(e) => {
                     violations.push(format!("Failed to query realms: {}", e));
-                    remediation_steps.push("Check database connectivity and realms table".to_string());
+                    remediation_steps
+                        .push("Check database connectivity and realms table".to_string());
                 }
             }
 
@@ -312,21 +331,36 @@ impl ComplianceCheck for GDPRDataEncryptionCheck {
             // Verify that users have password_hash field set (not plaintext)
             match crate::database::operations::users::get_all_users(db).await {
                 Ok(users) if !users.is_empty() => {
-                    let hashed_passwords = users.iter()
-                        .filter(|u| u.password_hash.is_some() && !u.password_hash.as_ref().unwrap().is_empty())
+                    let hashed_passwords = users
+                        .iter()
+                        .filter(|u| {
+                            u.password_hash.is_some()
+                                && !u.password_hash.as_ref().unwrap().is_empty()
+                        })
                         .count();
-                    
+
                     if hashed_passwords > 0 {
                         score += 15.0;
-                        evidence.push(format!("{} users have hashed passwords (not plaintext)", hashed_passwords));
+                        evidence.push(format!(
+                            "{} users have hashed passwords (not plaintext)",
+                            hashed_passwords
+                        ));
                     } else {
-                        violations.push("No users have hashed passwords - possible plaintext storage".to_string());
-                        remediation_steps.push("Ensure all passwords are hashed with bcrypt or argon2".to_string());
+                        violations.push(
+                            "No users have hashed passwords - possible plaintext storage"
+                                .to_string(),
+                        );
+                        remediation_steps.push(
+                            "Ensure all passwords are hashed with bcrypt or argon2".to_string(),
+                        );
                     }
                 }
                 Ok(_) => {
                     // No users yet - not a violation
-                    evidence.push("No users found - password hashing will be enforced on creation".to_string());
+                    evidence.push(
+                        "No users found - password hashing will be enforced on creation"
+                            .to_string(),
+                    );
                 }
                 Err(e) => {
                     violations.push(format!("Failed to verify password hashing: {}", e));
@@ -339,7 +373,8 @@ impl ComplianceCheck for GDPRDataEncryptionCheck {
             evidence.push("Tokens signed with cryptographic keys (JWT/HMAC)".to_string());
             evidence.push("Session data encrypted in database".to_string());
         } else {
-            violations.push("Database connection not available for encryption verification".to_string());
+            violations
+                .push("Database connection not available for encryption verification".to_string());
             remediation_steps.push("Provide database connection to compliance check".to_string());
         }
 
@@ -376,8 +411,14 @@ pub struct GDPRDataRetentionCheck {
 
 impl GDPRDataRetentionCheck {
     /// Create new data retention check with optional database connection
-    pub fn new(requirement: ComplianceRequirement, database: Option<Arc<crate::database::Database>>) -> Self {
-        Self { requirement, database }
+    pub fn new(
+        requirement: ComplianceRequirement,
+        database: Option<Arc<crate::database::Database>>,
+    ) -> Self {
+        Self {
+            requirement,
+            database,
+        }
     }
 }
 
@@ -392,28 +433,43 @@ impl ComplianceCheck for GDPRDataRetentionCheck {
         // Check data retention mechanisms
         if let Some(db) = &self.database {
             use chrono::{Duration, Utc};
-            
+
             // Test 1: Check audit logs are being cleaned up (40 points)
             // Verify old audit logs (> 90 days) have been removed
             match crate::database::operations::audit::get_audit_log_count(db, None, None).await {
                 Ok(total_count) => {
                     // Check for very old logs (> 90 days ago)
-                    let ninety_days_ago = (Utc::now() - Duration::days(90)).format("%Y-%m-%d %H:%M:%S%.3f").to_string();
-                    
+                    let ninety_days_ago = (Utc::now() - Duration::days(90))
+                        .format("%Y-%m-%d %H:%M:%S%.3f")
+                        .to_string();
+
                     // In production, would query count of logs older than 90 days
                     // For now, check if total count suggests cleanup is happening
                     if total_count < 100000 {
                         score += 40.0;
-                        evidence.push(format!("Audit log retention enforced: {} total records (reasonable size)", total_count));
-                        evidence.push("Old audit logs appear to be cleaned up (total count under threshold)".to_string());
+                        evidence.push(format!(
+                            "Audit log retention enforced: {} total records (reasonable size)",
+                            total_count
+                        ));
+                        evidence.push(
+                            "Old audit logs appear to be cleaned up (total count under threshold)"
+                                .to_string(),
+                        );
                     } else {
-                        violations.push(format!("Audit logs may not be cleaned up: {} records (exceeds 100K threshold)", total_count));
-                        remediation_steps.push("Implement automatic cleanup of audit logs older than 90 days".to_string());
+                        violations.push(format!(
+                            "Audit logs may not be cleaned up: {} records (exceeds 100K threshold)",
+                            total_count
+                        ));
+                        remediation_steps.push(
+                            "Implement automatic cleanup of audit logs older than 90 days"
+                                .to_string(),
+                        );
                     }
                 }
                 Err(e) => {
                     violations.push(format!("Failed to query audit log count: {}", e));
-                    remediation_steps.push("Check database audit_logs table accessibility".to_string());
+                    remediation_steps
+                        .push("Check database audit_logs table accessibility".to_string());
                 }
             }
 
@@ -449,15 +505,21 @@ impl ComplianceCheck for GDPRDataRetentionCheck {
                 Ok(users) => {
                     // Check if deleted_at field exists and is used (in models)
                     score += 15.0;
-                    evidence.push(format!("User data retention operational: {} active users", users.len()));
-                    evidence.push("Soft delete with deleted_at field available for GDPR erasure".to_string());
+                    evidence.push(format!(
+                        "User data retention operational: {} active users",
+                        users.len()
+                    ));
+                    evidence.push(
+                        "Soft delete with deleted_at field available for GDPR erasure".to_string(),
+                    );
                 }
                 Err(e) => {
                     violations.push(format!("Failed to verify user deletion capability: {}", e));
                 }
             }
         } else {
-            violations.push("Database connection not available for retention verification".to_string());
+            violations
+                .push("Database connection not available for retention verification".to_string());
             remediation_steps.push("Provide database connection to compliance check".to_string());
         }
 
@@ -575,12 +637,14 @@ impl HIPAAComplianceChecks {
                 enabled: true,
                 automated_check: true,
             },
-            None
+            None,
         ))
     }
 
     /// Create an access control compliance check with database connection (verification mode)
-    pub fn access_control_check_with_database(database: Arc<crate::database::Database>) -> Box<dyn ComplianceCheck> {
+    pub fn access_control_check_with_database(
+        database: Arc<crate::database::Database>,
+    ) -> Box<dyn ComplianceCheck> {
         Box::new(HIPAAAccessControlCheck::new(
             ComplianceRequirement {
                 id: Uuid::new_v4(),
@@ -595,12 +659,12 @@ impl HIPAAComplianceChecks {
                 enabled: true,
                 automated_check: true,
             },
-            Some(database)
+            Some(database),
         ))
     }
 
     /// Create an audit controls compliance check for HIPAA
-    /// 
+    ///
     /// Use `audit_controls_check_with_database()` to enable actual verification
     pub fn audit_controls_check() -> Box<dyn ComplianceCheck> {
         Box::new(HIPAAAuditControlsCheck::new(
@@ -620,7 +684,9 @@ impl HIPAAComplianceChecks {
     }
 
     /// Create an audit controls compliance check for HIPAA with database verification
-    pub fn audit_controls_check_with_database(database: Arc<crate::database::Database>) -> Box<dyn ComplianceCheck> {
+    pub fn audit_controls_check_with_database(
+        database: Arc<crate::database::Database>,
+    ) -> Box<dyn ComplianceCheck> {
         Box::new(HIPAAAuditControlsCheck::new(
             ComplianceRequirement {
                 id: Uuid::new_v4(),
@@ -646,8 +712,14 @@ pub struct HIPAAAccessControlCheck {
 
 impl HIPAAAccessControlCheck {
     /// Create new access control check with optional database connection
-    pub fn new(requirement: ComplianceRequirement, database: Option<Arc<crate::database::Database>>) -> Self {
-        Self { requirement, database }
+    pub fn new(
+        requirement: ComplianceRequirement,
+        database: Option<Arc<crate::database::Database>>,
+    ) -> Self {
+        Self {
+            requirement,
+            database,
+        }
     }
 }
 
@@ -666,40 +738,63 @@ impl ComplianceCheck for HIPAAAccessControlCheck {
             match crate::database::operations::realms::list_realms(db).await {
                 Ok(realms) if !realms.is_empty() => {
                     let realm_id = realms[0].id;
-                    
+
                     // Query roles for this realm
-                    match crate::database::operations::roles::list_roles_by_realm(db, &realm_id).await {
+                    match crate::database::operations::roles::list_roles_by_realm(db, &realm_id)
+                        .await
+                    {
                         Ok(roles) if !roles.is_empty() => {
                             score += 40.0;
-                            evidence.push(format!("RBAC system operational with {} roles defined", roles.len()));
-                            
+                            evidence.push(format!(
+                                "RBAC system operational with {} roles defined",
+                                roles.len()
+                            ));
+
                             // Check for standard role types
-                            let has_admin = roles.iter().any(|r| r.name.to_lowercase().contains("admin"));
-                            let has_user = roles.iter().any(|r| r.name.to_lowercase().contains("user"));
-                            
+                            let has_admin = roles
+                                .iter()
+                                .any(|r| r.name.to_lowercase().contains("admin"));
+                            let has_user =
+                                roles.iter().any(|r| r.name.to_lowercase().contains("user"));
+
                             if has_admin {
                                 score += 15.0;
-                                evidence.push("Administrative roles defined for privileged access".to_string());
+                                evidence.push(
+                                    "Administrative roles defined for privileged access"
+                                        .to_string(),
+                                );
                             } else {
                                 violations.push("No administrative roles found - may lack privileged access control".to_string());
-                                remediation_steps.push("Define administrative roles for system management".to_string());
+                                remediation_steps.push(
+                                    "Define administrative roles for system management".to_string(),
+                                );
                             }
-                            
+
                             if has_user {
                                 score += 15.0;
-                                evidence.push("Standard user roles defined for regular access".to_string());
+                                evidence.push(
+                                    "Standard user roles defined for regular access".to_string(),
+                                );
                             } else {
                                 violations.push("No standard user roles found".to_string());
-                                remediation_steps.push("Define user roles for regular access control".to_string());
+                                remediation_steps.push(
+                                    "Define user roles for regular access control".to_string(),
+                                );
                             }
                         }
                         Ok(_) => {
-                            violations.push("No roles defined in the system - RBAC not configured".to_string());
-                            remediation_steps.push("Configure roles to enable role-based access control".to_string());
+                            violations.push(
+                                "No roles defined in the system - RBAC not configured".to_string(),
+                            );
+                            remediation_steps.push(
+                                "Configure roles to enable role-based access control".to_string(),
+                            );
                         }
                         Err(e) => {
                             violations.push(format!("Failed to query roles: {}", e));
-                            remediation_steps.push("Check database connectivity and roles table schema".to_string());
+                            remediation_steps.push(
+                                "Check database connectivity and roles table schema".to_string(),
+                            );
                         }
                     }
                 }
@@ -709,7 +804,8 @@ impl ComplianceCheck for HIPAAAccessControlCheck {
                 }
                 Err(e) => {
                     violations.push(format!("Failed to query realms: {}", e));
-                    remediation_steps.push("Check database connectivity and realms table".to_string());
+                    remediation_steps
+                        .push("Check database connectivity and realms table".to_string());
                 }
             }
 
@@ -721,7 +817,9 @@ impl ComplianceCheck for HIPAAAccessControlCheck {
                     let mut total_role_assignments = 0;
 
                     for user in users.iter().take(5) {
-                        if let Ok(user_roles) = crate::database::operations::roles::get_user_roles(db, &user.id).await {
+                        if let Ok(user_roles) =
+                            crate::database::operations::roles::get_user_roles(db, &user.id).await
+                        {
                             if !user_roles.is_empty() {
                                 users_with_roles += 1;
                                 total_role_assignments += user_roles.len();
@@ -734,13 +832,20 @@ impl ComplianceCheck for HIPAAAccessControlCheck {
                         evidence.push(format!("User-role assignments functional: {} users have {} total role assignments", 
                             users_with_roles, total_role_assignments));
                     } else {
-                        violations.push("No user-role assignments found - users may lack proper access control".to_string());
-                        remediation_steps.push("Assign roles to users to enable access control".to_string());
+                        violations.push(
+                            "No user-role assignments found - users may lack proper access control"
+                                .to_string(),
+                        );
+                        remediation_steps
+                            .push("Assign roles to users to enable access control".to_string());
                     }
                 }
                 Ok(_) => {
                     // No users yet, but RBAC infrastructure might still be valid
-                    evidence.push("No users found - RBAC infrastructure present but not yet in use".to_string());
+                    evidence.push(
+                        "No users found - RBAC infrastructure present but not yet in use"
+                            .to_string(),
+                    );
                 }
                 Err(e) => {
                     violations.push(format!("Failed to query users: {}", e));
@@ -784,8 +889,14 @@ pub struct HIPAAAuditControlsCheck {
 
 impl HIPAAAuditControlsCheck {
     /// Create new audit controls check with optional database connection
-    pub fn new(requirement: ComplianceRequirement, database: Option<Arc<crate::database::Database>>) -> Self {
-        Self { requirement, database }
+    pub fn new(
+        requirement: ComplianceRequirement,
+        database: Option<Arc<crate::database::Database>>,
+    ) -> Self {
+        Self {
+            requirement,
+            database,
+        }
     }
 }
 
@@ -803,15 +914,25 @@ impl ComplianceCheck for HIPAAAuditControlsCheck {
             match crate::database::operations::audit::get_audit_log_count(db, None, None).await {
                 Ok(count) if count > 0 => {
                     score += 40.0;
-                    evidence.push(format!("Audit logging system is operational with {} total audit records", count));
+                    evidence.push(format!(
+                        "Audit logging system is operational with {} total audit records",
+                        count
+                    ));
                 }
                 Ok(_) => {
-                    violations.push("No audit log entries found - audit logging may not be working".to_string());
-                    remediation_steps.push("Verify audit logging is properly configured and events are being captured".to_string());
+                    violations.push(
+                        "No audit log entries found - audit logging may not be working".to_string(),
+                    );
+                    remediation_steps.push(
+                        "Verify audit logging is properly configured and events are being captured"
+                            .to_string(),
+                    );
                 }
                 Err(e) => {
                     violations.push(format!("Failed to query audit logs: {}", e));
-                    remediation_steps.push("Check database connectivity and audit_logs table schema".to_string());
+                    remediation_steps.push(
+                        "Check database connectivity and audit_logs table schema".to_string(),
+                    );
                 }
             }
 
@@ -819,32 +940,46 @@ impl ComplianceCheck for HIPAAAuditControlsCheck {
             match crate::database::operations::audit::get_audit_logs(db, None, None, 100, 0).await {
                 Ok(logs) if !logs.is_empty() => {
                     score += 30.0;
-                    let unique_event_types: std::collections::HashSet<_> = logs.iter().map(|l| &l.event_type).collect();
-                    evidence.push(format!("Capturing {} different event types in audit logs", unique_event_types.len()));
-                    
+                    let unique_event_types: std::collections::HashSet<_> =
+                        logs.iter().map(|l| &l.event_type).collect();
+                    evidence.push(format!(
+                        "Capturing {} different event types in audit logs",
+                        unique_event_types.len()
+                    ));
+
                     // Check for critical event types
-                    let has_auth_events = logs.iter().any(|l| l.event_type.contains("login") || l.event_type.contains("auth"));
+                    let has_auth_events = logs
+                        .iter()
+                        .any(|l| l.event_type.contains("login") || l.event_type.contains("auth"));
                     if has_auth_events {
                         score += 15.0;
                         evidence.push("Authentication events are being audited".to_string());
                     } else {
-                        violations.push("No authentication events found in recent audit logs".to_string());
-                        remediation_steps.push("Ensure authentication events are being logged".to_string());
+                        violations.push(
+                            "No authentication events found in recent audit logs".to_string(),
+                        );
+                        remediation_steps
+                            .push("Ensure authentication events are being logged".to_string());
                     }
-                    
+
                     // Check for data access events
-                    let has_access_events = logs.iter().any(|l| l.action.contains("read") || l.action.contains("access"));
+                    let has_access_events = logs
+                        .iter()
+                        .any(|l| l.action.contains("read") || l.action.contains("access"));
                     if has_access_events {
                         score += 15.0;
                         evidence.push("Data access events are being audited".to_string());
                     } else {
-                        violations.push("No data access events found in recent audit logs".to_string());
-                        remediation_steps.push("Ensure data access operations are being logged".to_string());
+                        violations
+                            .push("No data access events found in recent audit logs".to_string());
+                        remediation_steps
+                            .push("Ensure data access operations are being logged".to_string());
                     }
                 }
                 Ok(_) => {
                     violations.push("No recent audit log entries found".to_string());
-                    remediation_steps.push("Verify audit events are being generated and captured".to_string());
+                    remediation_steps
+                        .push("Verify audit events are being generated and captured".to_string());
                 }
                 Err(e) => {
                     violations.push(format!("Failed to retrieve audit logs: {}", e));
@@ -1079,43 +1214,46 @@ impl DataSubjectRightsService {
     ) -> Result<DataAccessResponse> {
         // GDPR Article 15: Right to Access
         // Collect all personal data for the user from various sources
-        
+
         let mut data_collection: HashMap<String, String> = HashMap::new();
-        
+
         // Note: This is a comprehensive data access implementation
         // In production, you would query actual databases
         // For now, we create a structured response format
-        
+
         // 1. User Profile Data (would come from database)
         data_collection.insert(
             "user_profile".to_string(),
-            format!("User ID: {}, Profile data including name, email, attributes (from users table)", user_id)
+            format!(
+                "User ID: {}, Profile data including name, email, attributes (from users table)",
+                user_id
+            ),
         );
-        
+
         // 2. Consent Records (would come from consent_store)
         data_collection.insert(
             "consents".to_string(),
-            "All consent records: granted/revoked by user with scopes and timestamps".to_string()
+            "All consent records: granted/revoked by user with scopes and timestamps".to_string(),
         );
-        
+
         // 3. Audit Logs (would come from audit_logs table)
         data_collection.insert(
             "audit_logs".to_string(),
-            "Authentication events, data access events, and all user activities".to_string()
+            "Authentication events, data access events, and all user activities".to_string(),
         );
-        
+
         // 4. Session Data (would come from user_sessions table)
         data_collection.insert(
             "sessions".to_string(),
-            "Active and historical sessions with IP addresses and device information".to_string()
+            "Active and historical sessions with IP addresses and device information".to_string(),
         );
-        
+
         // 5. Role and Group Memberships (would come from roles/groups tables)
         data_collection.insert(
             "roles_and_groups".to_string(),
-            "Role assignments and group memberships".to_string()
+            "Role assignments and group memberships".to_string(),
         );
-        
+
         // 6. Metadata
         data_collection.insert(
             "metadata".to_string(),
@@ -1133,8 +1271,12 @@ impl DataSubjectRightsService {
                 framework: ComplianceFramework::GDPR,
                 requirement_id: "Article 15".to_string(),
                 user_id: Some(user_id.to_string()),
-                details: format!("Data access request {} for user {} - {} data categories collected", 
-                    request_id, user_id, data_collection.len()),
+                details: format!(
+                    "Data access request {} for user {} - {} data categories collected",
+                    request_id,
+                    user_id,
+                    data_collection.len()
+                ),
                 timestamp: Utc::now(),
             })
             .await?;
@@ -1156,19 +1298,19 @@ impl DataSubjectRightsService {
     ) -> Result<()> {
         // GDPR Article 16: Right to Rectification
         // Update inaccurate or incomplete personal data
-        
+
         if corrections.is_empty() {
             anyhow::bail!("No corrections provided for rectification request");
         }
-        
+
         // In production, this would:
         // 1. Validate corrections against schema
         // 2. Update user profile fields in database
         // 3. Update related records (e.g., consents if email changed)
         // 4. Notify affected systems of the changes
-        
+
         let corrected_fields: Vec<String> = corrections.keys().cloned().collect();
-        
+
         // Log the rectification request with details
         self.audit_service
             .log_compliance_event(&ComplianceEvent {
@@ -1178,8 +1320,8 @@ impl DataSubjectRightsService {
                 user_id: Some(user_id.to_string()),
                 details: format!(
                     "Data rectification request {} for user {} - {} fields to be corrected: {}",
-                    request_id, 
-                    user_id, 
+                    request_id,
+                    user_id,
                     corrected_fields.len(),
                     corrected_fields.join(", ")
                 ),
@@ -1191,7 +1333,7 @@ impl DataSubjectRightsService {
         // - operations::users::update_user(db, user_id, corrections).await?;
         // - Propagate changes to related tables
         // - Generate confirmation report
-        
+
         Ok(())
     }
 
@@ -1199,7 +1341,7 @@ impl DataSubjectRightsService {
     pub async fn handle_data_erasure_request(&self, user_id: &str, request_id: &str) -> Result<()> {
         // GDPR Article 17: Right to Erasure ("Right to be Forgotten")
         // Delete or anonymize personal data with exceptions for legal obligations
-        
+
         // In production, this would implement:
         // 1. Check for legal retention requirements (e.g., financial records, audit logs)
         // 2. Soft delete user account (set deleted_at timestamp)
@@ -1207,16 +1349,16 @@ impl DataSubjectRightsService {
         // 4. Delete data that can be removed (sessions, temporary data)
         // 5. Revoke all active sessions and tokens
         // 6. Remove from third-party systems
-        
+
         let erasure_actions = vec![
             "User account marked for deletion with deleted_at timestamp",
             "Active sessions and tokens revoked",
             "Personal identifiers anonymized in audit logs (retained for legal compliance)",
             "Consent records retained with anonymized user_id for proof of consent",
             "Session data and temporary caches cleared",
-            "User profile data removed except legally required fields"
+            "User profile data removed except legally required fields",
         ];
-        
+
         // Log the erasure request with comprehensive details
         self.audit_service
             .log_compliance_event(&ComplianceEvent {
@@ -1240,7 +1382,7 @@ impl DataSubjectRightsService {
         // - operations::audit::anonymize_user_in_logs(db, user_id).await?;
         // - operations::consents::mark_user_deleted(db, user_id).await?;
         // - Notify external systems of deletion
-        
+
         Ok(())
     }
 }

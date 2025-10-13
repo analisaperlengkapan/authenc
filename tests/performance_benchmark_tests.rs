@@ -2,10 +2,10 @@
 // Testing performance benchmarks, load testing scenarios, and optimization metrics
 
 use axum::{
+    Router,
     extract::{Json, State},
     http::StatusCode,
     routing::{get, post},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;

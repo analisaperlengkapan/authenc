@@ -1,8 +1,8 @@
 use axum::{
+    Router,
     extract::{Extension, Query, State},
     response::Json,
     routing::get,
-    Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;

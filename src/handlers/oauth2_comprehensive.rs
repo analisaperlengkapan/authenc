@@ -1,4 +1,4 @@
-use crate::crypto::ed25519_keys::{get_ed25519_jwk, ED25519_KEYPAIR};
+use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
 use crate::error::AuthencError;
 use crate::services::stores::consent_store::ConsentStoreTrait;
 use crate::utils::crypto_monitor::CryptoMonitor;

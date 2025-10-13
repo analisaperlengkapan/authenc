@@ -656,12 +656,14 @@ async fn test_zero_trust_audit_logging() {
     assert_eq!(audit_event.status, "WARNING");
     assert!(audit_event.user_id.is_some());
     assert!(audit_event.details.is_some());
-    assert!(audit_event
-        .details
-        .as_ref()
-        .unwrap()
-        .as_object()
-        .unwrap()
-        .contains_key("location"));
+    assert!(
+        audit_event
+            .details
+            .as_ref()
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .contains_key("location")
+    );
     assert!(audit_event.timestamp <= Utc::now());
 }

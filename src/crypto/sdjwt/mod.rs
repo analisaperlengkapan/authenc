@@ -15,7 +15,7 @@ use crate::error::AuthencError;
 use base64ct::{Base64UrlUnpadded, Encoding};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 
@@ -37,7 +37,7 @@ impl SdJwtSalt {
     pub fn new() -> Self {
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        let salt_bytes: [u8; 32] = rng.gen();
+        let salt_bytes: [u8; 32] = rng.r#gen();
         let salt = Base64UrlUnpadded::encode_string(&salt_bytes);
 
         Self { salt }

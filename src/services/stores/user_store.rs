@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::database::{operations, Database};
+use crate::database::{Database, operations};
 use crate::error::AuthencError;
 use crate::models::user::{CreateUserRequest, UpdateUserRequest, User};
 

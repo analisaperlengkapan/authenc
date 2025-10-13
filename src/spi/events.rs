@@ -471,7 +471,7 @@ impl DefaultEventProvider {
     pub fn add_listener(&mut self, listener: Box<dyn EventListenerProvider>) {
         self.listeners.push(listener);
     }
-    
+
     /// Convert SPI EventType to Model EventType
     fn convert_event_type(spi_type: EventType) -> crate::models::events::EventType {
         use crate::models::events::EventType as ModelEventType;
@@ -493,7 +493,7 @@ impl DefaultEventProvider {
             _ => ModelEventType::Login, // Default fallback for types not in model
         }
     }
-    
+
     /// Convert Model EventType to SPI EventType
     fn convert_model_event_type(model_type: crate::models::events::EventType) -> EventType {
         use crate::models::events::EventType as ModelEventType;
@@ -515,9 +515,11 @@ impl DefaultEventProvider {
             _ => EventType::Login, // Default fallback
         }
     }
-    
+
     /// Convert SPI AdminEventOperationType to Model OperationType
-    fn convert_admin_operation_type(spi_type: AdminEventOperationType) -> crate::models::events::OperationType {
+    fn convert_admin_operation_type(
+        spi_type: AdminEventOperationType,
+    ) -> crate::models::events::OperationType {
         use crate::models::events::OperationType as ModelOperationType;
         match spi_type {
             AdminEventOperationType::Create => ModelOperationType::Create,
@@ -526,9 +528,11 @@ impl DefaultEventProvider {
             AdminEventOperationType::Action => ModelOperationType::Action,
         }
     }
-    
+
     /// Convert Model OperationType to SPI AdminEventOperationType
-    fn convert_model_admin_operation_type(model_type: crate::models::events::OperationType) -> AdminEventOperationType {
+    fn convert_model_admin_operation_type(
+        model_type: crate::models::events::OperationType,
+    ) -> AdminEventOperationType {
         use crate::models::events::OperationType as ModelOperationType;
         match model_type {
             ModelOperationType::Create => AdminEventOperationType::Create,
@@ -584,7 +588,7 @@ impl EventStoreProvider for DefaultEventProvider {
                 error: event.error.clone(),
                 details: event.details.clone(),
             };
-            
+
             crate::database::operations::store_event(db, &model_event)
                 .await
                 .map_err(|e| EventError::StorageError(e.to_string()))?;
@@ -612,7 +616,7 @@ impl EventStoreProvider for DefaultEventProvider {
                 representation: event.representation.clone(),
                 error: event.error.clone(),
             };
-            
+
             crate::database::operations::store_admin_event(db, &model_event)
                 .await
                 .map_err(|e| EventError::StorageError(e.to_string()))?;
@@ -626,7 +630,7 @@ impl EventStoreProvider for DefaultEventProvider {
             let model_events = crate::database::operations::query_events(db, &query)
                 .await
                 .map_err(|e| EventError::StorageError(e.to_string()))?;
-            
+
             // Convert Model Events back to SPI Events
             let mut spi_events = Vec::new();
             for me in model_events {
@@ -644,7 +648,7 @@ impl EventStoreProvider for DefaultEventProvider {
                     details: me.details,
                 });
             }
-            
+
             Ok(spi_events)
         } else {
             Ok(Vec::new())
@@ -660,7 +664,7 @@ impl EventStoreProvider for DefaultEventProvider {
             let model_events = crate::database::operations::query_admin_events(db, &query)
                 .await
                 .map_err(|e| EventError::StorageError(e.to_string()))?;
-            
+
             // Convert Model AdminEvents back to SPI AdminEvents
             let mut spi_events = Vec::new();
             for me in model_events {
@@ -680,7 +684,7 @@ impl EventStoreProvider for DefaultEventProvider {
                     error: me.error,
                 });
             }
-            
+
             Ok(spi_events)
         } else {
             Ok(Vec::new())

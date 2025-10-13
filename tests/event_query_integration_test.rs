@@ -6,10 +6,10 @@ use authenc::spi::events::*;
 async fn test_event_provider_without_database() {
     // Create provider without database connection
     let provider = DefaultEventProvider::new_without_database();
-    
+
     // Test that provider can be created (database field is private, so we just verify creation)
     // assert!(provider.database.is_none()); // Cannot access private field
-    
+
     // Test query_events returns empty when no database
     let query = EventQuery {
         realm_id: Some("test".to_string()),
@@ -22,11 +22,11 @@ async fn test_event_provider_without_database() {
         max_results: None,
         first_result: None,
     };
-    
+
     let result = provider.query_events(query).await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap().len(), 0);
-    
+
     // Test query_admin_events returns empty when no database
     let admin_query = AdminEventQuery {
         realm_id: Some("test".to_string()),
@@ -39,7 +39,7 @@ async fn test_event_provider_without_database() {
         max_results: None,
         first_result: None,
     };
-    
+
     let admin_result = provider.query_admin_events(admin_query).await;
     assert!(admin_result.is_ok());
     assert_eq!(admin_result.unwrap().len(), 0);
@@ -49,9 +49,9 @@ async fn test_event_provider_without_database() {
 async fn test_event_storage_without_database() {
     use chrono::Utc;
     use std::collections::HashMap;
-    
+
     let provider = DefaultEventProvider::new_without_database();
-    
+
     // Test store_event succeeds even without database (no-op)
     let event = Event {
         id: "test-1".to_string(),
@@ -66,10 +66,10 @@ async fn test_event_storage_without_database() {
         error: None,
         details: HashMap::new(),
     };
-    
+
     let result = provider.store_event(event).await;
     assert!(result.is_ok());
-    
+
     // Test store_admin_event succeeds even without database (no-op)
     let admin_event = AdminEvent {
         id: "admin-1".to_string(),
@@ -86,7 +86,7 @@ async fn test_event_storage_without_database() {
         representation: None,
         error: None,
     };
-    
+
     let admin_result = provider.store_admin_event(admin_event).await;
     assert!(admin_result.is_ok());
 }
@@ -96,7 +96,7 @@ async fn test_event_storage_without_database() {
 #[tokio::test]
 async fn test_send_safety() {
     let provider = DefaultEventProvider::new_without_database();
-    
+
     // Spawn on a separate thread to verify Send bound
     let handle = tokio::spawn(async move {
         let query = EventQuery {
@@ -110,10 +110,10 @@ async fn test_send_safety() {
             max_results: None,
             first_result: None,
         };
-        
+
         provider.query_events(query).await
     });
-    
+
     let result = handle.await;
     assert!(result.is_ok());
     assert!(result.unwrap().is_ok());

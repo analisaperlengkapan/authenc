@@ -94,12 +94,11 @@ pub use tracing::{debug, error, info, warn};
 // Framework-specific re-exports
 #[cfg(feature = "axum")]
 pub use axum::{
-    body,
+    Router, body,
     extract::{self, Json, Path, Query},
-    http::{self, header, HeaderMap, StatusCode},
+    http::{self, HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
-    Router,
 };
 
 /// Application state shared across all requests

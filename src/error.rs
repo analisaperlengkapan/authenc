@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde_json::json;
 use thiserror::Error;
@@ -240,6 +240,20 @@ impl AuthencError {
     pub fn forbidden<T: Into<String>>(message: T) -> Self {
         Self::Forbidden {
             message: message.into(),
+        }
+    }
+
+    /// Create a not found error
+    pub fn not_found<T: Into<String>>(message: T) -> Self {
+        Self::ResourceNotFound {
+            resource: message.into(),
+        }
+    }
+
+    /// Create a conflict error
+    pub fn conflict<T: Into<String>>(message: T) -> Self {
+        Self::ValidationError {
+            message: format!("Conflict: {}", message.into()),
         }
     }
 

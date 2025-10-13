@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::AuthencError;
 use crate::models::events::{Event, EventType};
 use crate::services::compliance::{ComplianceFramework, GDPRComplianceChecks};
 use crate::services::events::EventManager;
-use crate::AuthencError;
 
 /// Trait for event management in compliance mode
 #[async_trait::async_trait]

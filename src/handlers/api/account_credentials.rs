@@ -1,9 +1,9 @@
 use axum::{
+    Router,
     extract::{Extension, Path, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post, put},
-    Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -185,7 +185,7 @@ pub async fn setup_totp(
 
     // Generate a new TOTP secret
     use rand::Rng;
-    let secret_bytes: Vec<u8> = (0..32).map(|_| rand::thread_rng().gen()).collect();
+    let secret_bytes: Vec<u8> = (0..32).map(|_| rand::thread_rng().r#gen()).collect();
     let secret = base32::encode(base32::Alphabet::RFC4648 { padding: false }, &secret_bytes);
 
     // Store the secret temporarily (will be confirmed in verify_totp_setup)

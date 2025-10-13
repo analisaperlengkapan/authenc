@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use authenc::models::user::*;
     use authenc::models::User;
+    use authenc::models::user::*;
     use chrono::{DateTime, Duration, Utc};
     use serde_json::json;
     use uuid::Uuid;

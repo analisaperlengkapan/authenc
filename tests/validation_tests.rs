@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
+use authenc::spi::ProviderFactory;
 use authenc::spi::validation::{
     CompositeValidatorProvider, DefaultValidationProviderFactory, ValidationContext,
     ValidationError, ValidationResult, ValidatorConfigProperty, ValidatorPropertyType,
     ValidatorProvider, ValidatorProviderFactory,
 };
-use authenc::spi::ProviderFactory;
 
 /// Mock validation provider for testing custom scenarios
 #[derive(Debug)]

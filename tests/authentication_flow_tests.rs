@@ -2,10 +2,10 @@
 // Testing comprehensive authentication workflows, MFA, token management, and security flows
 
 use axum::{
+    Router,
     extract::{Json, State},
     http::StatusCode,
     routing::{get, post},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;

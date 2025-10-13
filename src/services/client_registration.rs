@@ -82,7 +82,7 @@ impl DefaultClientRegistrationService {
     fn generate_client_secret(&self) -> String {
         // Generate a secure random client secret
         use rand::distributions::Alphanumeric;
-        use rand::{thread_rng, Rng};
+        use rand::{Rng, thread_rng};
 
         thread_rng()
             .sample_iter(&Alphanumeric)
@@ -95,7 +95,7 @@ impl DefaultClientRegistrationService {
     fn generate_registration_access_token(&self) -> String {
         // Generate a secure random token
         use rand::distributions::Alphanumeric;
-        use rand::{thread_rng, Rng};
+        use rand::{Rng, thread_rng};
 
         thread_rng()
             .sample_iter(&Alphanumeric)

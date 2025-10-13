@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::Request,
-    http::{header, Response, StatusCode},
+    http::{Response, StatusCode, header},
     middleware::Next,
 };
 use regex::Regex;
@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 /// Configuration for input validation middleware
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize)]
 pub struct InputValidationConfig {
     /// Whether to enable input validation
     pub enabled: bool,
@@ -190,10 +190,10 @@ fn has_request_body(request: &Request) -> bool {
 mod tests {
     use super::*;
     use axum::{
+        Router,
         body::Body,
         http::{Request, StatusCode},
         routing::get,
-        Router,
     };
     use tower::ServiceExt;
 
@@ -553,12 +553,16 @@ mod tests {
         assert_eq!(config.max_request_body_size, 1024 * 1024);
         assert!(config.block_suspicious_patterns);
         assert!(config.validate_content_type);
-        assert!(config
-            .allowed_content_types
-            .contains(&"application/json".to_string()));
-        assert!(config
-            .allowed_content_types
-            .contains(&"text/plain".to_string()));
+        assert!(
+            config
+                .allowed_content_types
+                .contains(&"application/json".to_string())
+        );
+        assert!(
+            config
+                .allowed_content_types
+                .contains(&"text/plain".to_string())
+        );
     }
 
     #[test]

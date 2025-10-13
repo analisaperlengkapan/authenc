@@ -328,11 +328,11 @@ where
 mod tests {
     use super::*;
     use axum::{
+        Router,
         body::Body,
         extract::ConnectInfo,
         http::{Request, StatusCode},
         routing::get,
-        Router,
     };
     use tower::{Service, ServiceExt};
 

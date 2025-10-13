@@ -8,11 +8,11 @@ use crate::services::admin::{
     UserListResponse, UserResponse,
 };
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post, put},
-    Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;

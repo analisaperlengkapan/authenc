@@ -1,11 +1,11 @@
 use crate::app::AppState;
 use crate::models::realm::{CreateRealmRequest, RealmResponse, UpdateRealmRequest};
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post, put},
-    Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;

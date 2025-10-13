@@ -1,13 +1,13 @@
 use axum::{
     body::Body,
     extract::Request,
-    http::{header, HeaderValue, Response, StatusCode},
+    http::{HeaderValue, Response, StatusCode, header},
     middleware::Next,
     response::IntoResponse,
 };
 use flate2::{
-    write::{DeflateEncoder, GzEncoder},
     Compression,
+    write::{DeflateEncoder, GzEncoder},
 };
 use std::io::Write;
 use tokio::task::spawn_blocking;
@@ -144,7 +144,7 @@ mod tests {
         body::Body,
         extract::Request,
         http::StatusCode,
-        routing::{get, Router},
+        routing::{Router, get},
     };
     use tower::ServiceExt;
 

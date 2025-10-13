@@ -11,8 +11,8 @@
 //! - Authentication session management
 //! - Flow state persistence and recovery
 
-use crate::error::AuthencError;
 use crate::database::Database;
+use crate::error::AuthencError;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -550,36 +550,47 @@ impl AuthenticationManager {
     ) -> Result<AuthenticationExecutionModel, AuthencError> {
         // Try to get executions from database if available
         if let Some(database) = db {
-            match crate::database::operations::authenticators::get_flow_executions(database, flow.id).await {
+            match crate::database::operations::authenticators::get_flow_executions(
+                database, flow.id,
+            )
+            .await
+            {
                 Ok(executions) => {
                     if !executions.is_empty() {
                         // Get first execution or next unprocessed execution
                         let first_exec = &executions[0];
-                        
+
                         return Ok(AuthenticationExecutionModel {
-                            id: first_exec.get("id")
+                            id: first_exec
+                                .get("id")
                                 .and_then(|v| v.as_str())
                                 .and_then(|s| Uuid::parse_str(s).ok())
                                 .unwrap_or_else(Uuid::new_v4),
                             flow_id: flow.id,
-                            alias: first_exec.get("authenticator_name")
+                            alias: first_exec
+                                .get("authenticator_name")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("Unknown Authenticator")
                                 .to_string(),
-                            description: first_exec.get("authenticator_type")
+                            description: first_exec
+                                .get("authenticator_type")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("Authentication step")
                                 .to_string(),
                             execution_type: "authenticator".to_string(),
                             enabled: true,
-                            priority: first_exec.get("priority")
+                            priority: first_exec
+                                .get("priority")
                                 .and_then(|v| v.as_i64())
                                 .unwrap_or(0) as i32,
                             configuration: HashMap::new(),
-                            requirements: vec![first_exec.get("requirement")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("REQUIRED")
-                                .to_string()],
+                            requirements: vec![
+                                first_exec
+                                    .get("requirement")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("REQUIRED")
+                                    .to_string(),
+                            ],
                         });
                     }
                 }

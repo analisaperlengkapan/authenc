@@ -1,6 +1,6 @@
+use authenc::AppConfig;
 use authenc::app::AppState;
 use authenc::services::stores::user_store::UserStoreTrait;
-use authenc::AppConfig;
 use std::sync::Arc;
 
 #[tokio::test]

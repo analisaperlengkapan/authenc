@@ -2,10 +2,10 @@
 // Testing user lifecycle management, profiles, account operations, and user administration
 
 use axum::{
+    Router,
     extract::{Json, State},
     http::StatusCode,
     routing::{delete, get, post, put},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;

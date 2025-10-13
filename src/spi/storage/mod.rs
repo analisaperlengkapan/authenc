@@ -144,7 +144,7 @@ pub trait GroupStorageProvider: StorageProvider {
 
     /// Search groups
     async fn search_groups(&self, query: &str, context: &StorageQueryContext)
-        -> Result<Vec<Group>>;
+    -> Result<Vec<Group>>;
 
     /// Count groups
     async fn count_groups(&self, context: &StorageQueryContext) -> Result<i64>;

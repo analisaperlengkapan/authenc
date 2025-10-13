@@ -1,5 +1,5 @@
 use axum::{extract::State, http::StatusCode, response::Json};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 use crate::database::Database;

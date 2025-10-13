@@ -10,8 +10,12 @@ fn default_config_sane() {
 
 #[test]
 fn env_override_port() {
-    env::set_var("PORT", "9090");
+    unsafe {
+        std::env::set_var("PORT", "9090");
+    }
     let cfg = AppConfig::from_env().unwrap();
     assert_eq!(cfg.server.port, 9090);
-    env::remove_var("PORT");
+    unsafe {
+        std::env::remove_var("PORT");
+    }
 }

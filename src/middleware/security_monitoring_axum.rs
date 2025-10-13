@@ -242,7 +242,7 @@ fn detect_suspicious_activity(request: &Request<Body>, _ip: &str) -> Vec<String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::Body, extract::Request, routing::get, Router};
+    use axum::{Router, body::Body, extract::Request, routing::get};
     use tower::ServiceExt;
 
     #[tokio::test]

@@ -37,9 +37,11 @@ mod tests {
         assert_eq!(provider.get_base_url(), "/admin");
         assert_eq!(provider.get_theme(), "keycloak");
         assert_eq!(provider.get_locale(), "en");
-        assert!(provider
-            .get_supported_features()
-            .contains(&AdminConsoleFeature::Users));
+        assert!(
+            provider
+                .get_supported_features()
+                .contains(&AdminConsoleFeature::Users)
+        );
     }
 
     #[tokio::test]

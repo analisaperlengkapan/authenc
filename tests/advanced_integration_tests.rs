@@ -1,12 +1,12 @@
 use axum::{
+    Router,
     extract::{Json, Path, Query, State},
     http::StatusCode,
     response::Json as JsonResponse,
     routing::{delete, get, post, put},
-    Router,
 };
 use axum_test::TestServer;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -343,14 +343,18 @@ async fn test_external_service_integration() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: Value = response.json();
-    assert!(body["breakers"]
-        .as_object()
-        .unwrap()
-        .contains_key("email_service"));
-    assert!(body["breakers"]
-        .as_object()
-        .unwrap()
-        .contains_key("payment_gateway"));
+    assert!(
+        body["breakers"]
+            .as_object()
+            .unwrap()
+            .contains_key("email_service")
+    );
+    assert!(
+        body["breakers"]
+            .as_object()
+            .unwrap()
+            .contains_key("payment_gateway")
+    );
 }
 
 #[tokio::test]

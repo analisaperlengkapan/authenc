@@ -4,10 +4,10 @@ use crate::services::device::{
     DeviceRegistrationRequest, DeviceService, DeviceUpdateRequest, TrustEvaluationContext,
 };
 use axum::{
+    Router,
     extract::{Path, Query, State},
     response::Json,
     routing::{delete, get, post, put},
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

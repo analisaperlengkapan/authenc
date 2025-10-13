@@ -1,17 +1,17 @@
 use axum::{
+    Router,
     body::Body,
     extract::{Path, Query, State},
-    http::{header, Method, Request, StatusCode},
+    http::{Method, Request, StatusCode, header},
     middleware,
     response::Json,
     routing::{delete, get, post, put},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::time::{sleep, Duration, Instant};
+use tokio::time::{Duration, Instant, sleep};
 use uuid::Uuid;
 
 // Shared test state for end-to-end tests
@@ -1056,8 +1056,10 @@ async fn test_data_consistency_under_load() {
     let body: serde_json::Value = response.json();
     assert_eq!(body["profile"]["email"], "loadtest@example.com");
     // Name should be from the last update operation
-    assert!(body["profile"]["name"]
-        .as_str()
-        .unwrap()
-        .starts_with("Updated Load Test User"));
+    assert!(
+        body["profile"]["name"]
+            .as_str()
+            .unwrap()
+            .starts_with("Updated Load Test User")
+    );
 }

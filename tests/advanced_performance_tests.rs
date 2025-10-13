@@ -1,12 +1,12 @@
 use axum::{
+    Router,
     extract::{Json, Path, Query, State},
     http::StatusCode,
     response::Json as JsonResponse,
     routing::{delete, get, post, put},
-    Router,
 };
 use axum_test::TestServer;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};

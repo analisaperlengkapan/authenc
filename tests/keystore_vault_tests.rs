@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use authenc::vault::keystore_vault::*;
     use authenc::vault::Vault;
+    use authenc::vault::keystore_vault::*;
 
     #[test]
     fn test_keystore_vault_creation() {

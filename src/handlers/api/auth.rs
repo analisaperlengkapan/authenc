@@ -1,7 +1,7 @@
 use crate::error::AuthencError;
 use crate::services::stores::user_store::UserStoreTrait;
 use crate::utils::jwt;
-use axum::{extract::State, response::Json, routing::post, Router};
+use axum::{Router, extract::State, response::Json, routing::post};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;

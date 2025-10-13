@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
+use authenc::spi::ProviderFactory;
 use authenc::spi::userprofile::{
     AttributeType, AttributeValidation, DefaultUserProfileProvider,
     DefaultUserProfileProviderFactory, UserProfileAttribute, UserProfileContext, UserProfileError,
     UserProfileGroup, UserProfileMetadata, UserProfileProvider, UserProfileProviderFactory,
     UserProfileValidationResult,
 };
-use authenc::spi::ProviderFactory;
 
 /// Mock user profile provider for testing custom scenarios
 #[derive(Debug)]
@@ -239,9 +239,11 @@ mod tests {
 
         assert!(!result.is_valid);
         assert!(result.errors.contains_key("username"));
-        assert!(result.errors["username"]
-            .iter()
-            .any(|e| e.contains("Minimum length")));
+        assert!(
+            result.errors["username"]
+                .iter()
+                .any(|e| e.contains("Minimum length"))
+        );
 
         // Test valid length
         invalid_attributes.insert("username".to_string(), vec!["abc".to_string()]); // Exactly min 3
@@ -270,9 +272,11 @@ mod tests {
 
         assert!(!result.is_valid);
         assert!(result.errors.contains_key("email"));
-        assert!(result.errors["email"]
-            .iter()
-            .any(|e| e.contains("Invalid email format")));
+        assert!(
+            result.errors["email"]
+                .iter()
+                .any(|e| e.contains("Invalid email format"))
+        );
 
         // Test valid email
         invalid_attributes.insert("email".to_string(), vec!["valid@example.com".to_string()]);

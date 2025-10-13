@@ -7,8 +7,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::{AuthencError as Error, Result};
-use crate::models::user::UserProfile;
 use crate::models::User;
+use crate::models::user::UserProfile;
 use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
 
 /// SPI for LDAP and Active Directory federation

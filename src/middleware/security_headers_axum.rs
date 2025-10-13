@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::Request,
-    http::{header, HeaderValue, Response},
+    http::{HeaderValue, Response, header},
     middleware::Next,
 };
 
@@ -114,7 +114,7 @@ mod tests {
         body::Body,
         extract::Request,
         http::StatusCode,
-        routing::{get, Router},
+        routing::{Router, get},
     };
     use tower::ServiceExt;
 
@@ -228,9 +228,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        assert!(response
-            .headers()
-            .contains_key(header::STRICT_TRANSPORT_SECURITY));
+        assert!(
+            response
+                .headers()
+                .contains_key(header::STRICT_TRANSPORT_SECURITY)
+        );
 
         // Test text response
         let response = app
@@ -248,9 +250,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        assert!(response
-            .headers()
-            .contains_key(header::CONTENT_SECURITY_POLICY));
+        assert!(
+            response
+                .headers()
+                .contains_key(header::CONTENT_SECURITY_POLICY)
+        );
 
         // Test error response
         let response = app
@@ -264,9 +268,11 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         // Security headers should still be added to error responses
-        assert!(response
-            .headers()
-            .contains_key(header::STRICT_TRANSPORT_SECURITY));
+        assert!(
+            response
+                .headers()
+                .contains_key(header::STRICT_TRANSPORT_SECURITY)
+        );
     }
 
     #[tokio::test]

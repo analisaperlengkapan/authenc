@@ -153,12 +153,11 @@ impl SsoCookieManager {
     }
 
     /// Generate Set-Cookie header value
-    pub fn generate_set_cookie_header(
-        &self,
-        cookie_value: &str,
-        max_age_seconds: i64,
-    ) -> String {
-        let mut header = format!("{}={}; Path={}", self.cookie_name, cookie_value, self.cookie_path);
+    pub fn generate_set_cookie_header(&self, cookie_value: &str, max_age_seconds: i64) -> String {
+        let mut header = format!(
+            "{}={}; Path={}",
+            self.cookie_name, cookie_value, self.cookie_path
+        );
 
         if let Some(ref domain) = self.cookie_domain {
             header.push_str(&format!("; Domain={}", domain));
@@ -242,7 +241,7 @@ mod tests {
     #[test]
     fn test_invalid_signature() {
         use base64ct::{Base64, Encoding};
-        
+
         let secret = b"test-secret-key-at-least-32-bytes-long!!";
         let manager = SsoCookieManager::new(secret, "AUTHENC_SSO", None, true);
 
@@ -253,12 +252,12 @@ mod tests {
         // Tamper with the cookie by modifying the data part but keeping signature
         let parts: Vec<&str> = cookie_value.split('.').collect();
         let mut data_bytes = Base64::decode_vec(parts[0]).unwrap();
-        
+
         // Corrupt a byte in the JSON data
         if !data_bytes.is_empty() {
             data_bytes[0] ^= 0xFF; // Flip all bits in first byte
         }
-        
+
         let tampered_data = Base64::encode_string(&data_bytes);
         let tampered = format!("{}.{}", tampered_data, parts[1]);
 
@@ -269,7 +268,8 @@ mod tests {
     #[test]
     fn test_set_cookie_header() {
         let secret = b"test-secret-key-at-least-32-bytes-long!!";
-        let manager = SsoCookieManager::new(secret, "AUTHENC_SSO", Some("example.com".to_string()), true);
+        let manager =
+            SsoCookieManager::new(secret, "AUTHENC_SSO", Some("example.com".to_string()), true);
 
         let cookie_value = "test-value";
         let header = manager.generate_set_cookie_header(cookie_value, 3600);

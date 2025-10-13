@@ -2,7 +2,7 @@
 
 extern crate authenc;
 
-use authenc::vault::{file_vault::FileVault, Vault};
+use authenc::vault::{Vault, file_vault::FileVault};
 use std::fs;
 
 #[tokio::test]

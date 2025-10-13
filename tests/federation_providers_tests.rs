@@ -4,8 +4,8 @@
 use authenc::config::DatabaseConfig;
 use authenc::database::Database;
 use authenc::services::federation::{
-    oidc::OidcIdentityProvider, saml::SamlIdentityProvider, AuthRequest, IdentityProvider,
-    IdentityProviderConfig, IdentityProviderType,
+    AuthRequest, IdentityProvider, IdentityProviderConfig, IdentityProviderType,
+    oidc::OidcIdentityProvider, saml::SamlIdentityProvider,
 };
 use std::collections::HashMap;
 use std::sync::Arc;

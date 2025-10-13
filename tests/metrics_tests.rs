@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, response::IntoResponse, routing::get, Router};
+use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
 use tower::ServiceExt;
 
 async fn metrics() -> impl IntoResponse {

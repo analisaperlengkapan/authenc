@@ -3,7 +3,7 @@
 //! This module provides the Axum-specific implementation for running
 //! the Authenc authentication service as an HTTP server.
 
-use axum::{extract::State, Router};
+use axum::{Router, extract::State};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::signal;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
@@ -15,8 +15,8 @@ use crate::{
     handlers::create_router,
     middleware::rate_limit_axum::{RateLimitConfig, RateLimitLayer, RateLimiterState},
     middleware::{
-        csrf_protection_axum::{csrf_protection_middleware, CsrfConfig, CsrfState},
-        input_validation_axum::{input_validation_middleware, InputValidationConfig},
+        csrf_protection_axum::{CsrfConfig, CsrfState, csrf_protection_middleware},
+        input_validation_axum::{InputValidationConfig, input_validation_middleware},
         security_headers_axum::security_headers_middleware,
         timeout_axum::timeout_middleware,
     },

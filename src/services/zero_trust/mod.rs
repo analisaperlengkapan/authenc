@@ -214,7 +214,7 @@ pub trait ContinuousAuthService: Send + Sync {
 
     /// Handle suspicious activity
     async fn handle_suspicious_activity(&self, activity: &SuspiciousActivity)
-        -> Result<(), String>;
+    -> Result<(), String>;
 }
 
 /// Suspicious activity report
@@ -561,9 +561,7 @@ impl ContinuousAuthService for ZeroTrustManager {
         // Generate device fingerprint from device characteristics
         let device_fingerprint = format!(
             "fp_{}_{}_{}",
-            device_info.user_agent,
-            device_info.ip_address,
-            device_info.os
+            device_info.user_agent, device_info.ip_address, device_info.os
         );
 
         // Calculate trust level based on device characteristics
@@ -583,7 +581,8 @@ impl ContinuousAuthService for ZeroTrustManager {
         }
 
         // Check browser security (from user agent)
-        if device_info.user_agent.contains("Chrome/") || device_info.user_agent.contains("Firefox/") {
+        if device_info.user_agent.contains("Chrome/") || device_info.user_agent.contains("Firefox/")
+        {
             trust_score += 20;
         } else if device_info.user_agent.contains("Safari/") {
             trust_score += 15;
@@ -601,9 +600,10 @@ impl ContinuousAuthService for ZeroTrustManager {
         }
 
         // Check if IP is from known safe range
-        if !device_info.ip_address.starts_with("10.") 
+        if !device_info.ip_address.starts_with("10.")
             && !device_info.ip_address.starts_with("192.168.")
-            && !device_info.ip_address.starts_with("172.") {
+            && !device_info.ip_address.starts_with("172.")
+        {
             // Public IP, slightly higher risk
             trust_score += 5;
         } else {
@@ -684,12 +684,12 @@ impl ContinuousAuthService for ZeroTrustManager {
     async fn verify_session(&self, session_id: &str) -> Result<bool, String> {
         // Integration 20: Zero Trust Session Verification
         // This integrates device trust evaluation, anomaly detection, and geolocation risk assessment
-        // Note: In production, this would query session from database. Here we demonstrate 
+        // Note: In production, this would query session from database. Here we demonstrate
         // the risk assessment integration logic using the existing zero trust components.
-        
+
         // Step 1: Check if we have cached device trust for this session
         let device_trust = self.device_trust_store.get(session_id);
-        
+
         // Step 2: Evaluate device trust
         let device_risk = if let Some(trust) = device_trust {
             match trust.trust_level {
@@ -703,7 +703,7 @@ impl ContinuousAuthService for ZeroTrustManager {
             // No device trust info - elevated risk
             0.5
         };
-        
+
         // Step 3: Calculate behavioral risk using anomaly detector if available
         let behavioral_risk = if let Some(ref _detector) = self.anomaly_detector {
             // In production, would use detector.is_new_ip() and other checks
@@ -713,18 +713,21 @@ impl ContinuousAuthService for ZeroTrustManager {
             // No anomaly detector - use medium risk
             0.3
         };
-        
+
         // Step 4: Calculate location risk (placeholder - would use IP geolocation in production)
         let location_risk = 0.2; // Default low-medium risk
-        
+
         // Step 5: Combine risk scores with weighted average
         // Weights: device 40%, behavioral 30%, location 30%
         let combined_risk = (device_risk * 0.4) + (behavioral_risk * 0.3) + (location_risk * 0.3);
-        
+
         // Step 6: Verify based on risk threshold
         // Risk threshold: 0.0-0.3 = safe, 0.3-0.6 = elevated, 0.6-1.0 = high risk
         if combined_risk > 0.6 {
-            Err(format!("Session verification failed: high risk detected (score: {:.2})", combined_risk))
+            Err(format!(
+                "Session verification failed: high risk detected (score: {:.2})",
+                combined_risk
+            ))
         } else if combined_risk > 0.3 {
             // Elevated risk - may require additional verification
             // Returning Ok(false) indicates verification passed but with caution
@@ -741,7 +744,7 @@ impl ContinuousAuthService for ZeroTrustManager {
     ) -> Result<(), String> {
         // Integration 21: Zero Trust Suspicious Activity Handler
         // This implements automated security response based on activity risk scores
-        
+
         // Step 1: Categorize severity based on risk score
         let severity = match activity.risk_score {
             score if score >= 0.8 => "CRITICAL",
@@ -749,7 +752,7 @@ impl ContinuousAuthService for ZeroTrustManager {
             score if score >= 0.3 => "MEDIUM",
             _ => "LOW",
         };
-        
+
         // Step 2: Log suspicious activity with detailed information
         eprintln!(
             "[SECURITY ALERT - {}] Suspicious activity detected:\n\
@@ -769,12 +772,12 @@ impl ContinuousAuthService for ZeroTrustManager {
             activity.timestamp,
             activity.details
         );
-        
+
         // Step 3: Update device trust based on severity
         if let Some(mut device_trust) = self.device_trust_store.get(&activity.session_id).cloned() {
             // Save old trust level before modification
             let old_trust_level = device_trust.trust_level.clone();
-            
+
             // Downgrade trust level based on risk score
             let new_trust_level = match activity.risk_score {
                 score if score >= 0.8 => TrustLevel::None,
@@ -791,20 +794,18 @@ impl ContinuousAuthService for ZeroTrustManager {
                 }
                 _ => old_trust_level.clone(), // Keep current level for low risk
             };
-            
+
             device_trust.trust_level = new_trust_level.clone();
             device_trust.last_seen = Utc::now();
-            
+
             // Update the store (would need mutable access in production)
             // For now, log the intended update
             eprintln!(
                 "[SECURITY ACTION] Device trust updated for session {}: {:?} -> {:?}",
-                activity.session_id,
-                old_trust_level,
-                new_trust_level
+                activity.session_id, old_trust_level, new_trust_level
             );
         }
-        
+
         // Step 4: Take action based on severity level
         match severity {
             "CRITICAL" => {

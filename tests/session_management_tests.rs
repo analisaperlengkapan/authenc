@@ -2,10 +2,10 @@
 // Testing session lifecycle, security, concurrent sessions, and session policies
 
 use axum::{
-    extract::{Json, State},
-    http::{header::HeaderMap, StatusCode},
-    routing::{delete, get, post},
     Router,
+    extract::{Json, State},
+    http::{StatusCode, header::HeaderMap},
+    routing::{delete, get, post},
 };
 use axum_test::TestServer;
 use serde_json::json;

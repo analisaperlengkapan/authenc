@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use authenc::vault::kms_vault::*;
     use authenc::vault::Vault;
+    use authenc::vault::kms_vault::*;
 
     #[test]
     fn test_kms_vault_creation() {

@@ -1,8 +1,8 @@
 use axum::{
+    Router,
     extract::{Json, State},
     http::StatusCode,
     routing::{get, post},
-    Router,
 };
 use axum_test::TestServer;
 use serde_json::json;
@@ -534,10 +534,12 @@ async fn test_federation_error_handling() {
     assert_eq!(response.status_code(), StatusCode::OK);
     let error_json: serde_json::Value = response.json();
     assert_eq!(error_json["error"], "invalid_token");
-    assert!(error_json["error_description"]
-        .as_str()
-        .unwrap()
-        .contains("invalid"));
+    assert!(
+        error_json["error_description"]
+            .as_str()
+            .unwrap()
+            .contains("invalid")
+    );
 
     // Test expired token error
     let response = server
@@ -548,8 +550,10 @@ async fn test_federation_error_handling() {
     assert_eq!(response.status_code(), StatusCode::OK);
     let error_json: serde_json::Value = response.json();
     assert_eq!(error_json["error"], "expired_token");
-    assert!(error_json["error_description"]
-        .as_str()
-        .unwrap()
-        .contains("expired"));
+    assert!(
+        error_json["error_description"]
+            .as_str()
+            .unwrap()
+            .contains("expired")
+    );
 }

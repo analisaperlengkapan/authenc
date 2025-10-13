@@ -1,5 +1,5 @@
 use std::{
-    future::{ready, Future},
+    future::{Future, ready},
     pin::Pin,
     task::{Context, Poll},
 };
@@ -233,10 +233,10 @@ impl<S> tower::Layer<S> for RequireRoleLayer {
 mod tests {
     use super::*;
     use axum::{
+        Router,
         body::Body,
         http::{Request, StatusCode},
         routing::get,
-        Router,
     };
     use tower::ServiceExt;
 
