@@ -42,24 +42,31 @@ pub type Result<T> = std::result::Result<T, PqcError>;
 /// Errors that can occur during PQC operations
 #[derive(Debug, thiserror::Error)]
 pub enum PqcError {
+    /// Invalid key format or corrupted key data
     #[error("Invalid key format or corrupted key data")]
     InvalidKey,
 
+    /// Invalid signature format or corrupted signature
     #[error("Invalid signature format or corrupted signature")]
     InvalidSignature,
 
+    /// Signature verification failed
     #[error("Signature verification failed")]
     VerificationFailed,
 
+    /// Key generation failed
     #[error("Key generation failed")]
     KeyGenerationFailed,
 
+    /// Encryption/decryption operation failed
     #[error("Encryption/decryption operation failed")]
     CryptoOperationFailed,
 
+    /// Invalid input parameters
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
+    /// Feature not available error for when quantum cryptography is not enabled
     #[error("Feature not available: quantum cryptography requires 'quantum' feature flag")]
     FeatureNotAvailable,
 }
@@ -741,107 +748,139 @@ pub mod hybrid {
 
 // Non-quantum feature stubs
 #[cfg(not(feature = "quantum"))]
+/// ML-DSA signature scheme (stub implementation when quantum feature is disabled)
 pub mod mldsa {
     use super::*;
+    /// ML-DSA public key
     pub struct PublicKey;
+    /// ML-DSA secret key
     pub struct SecretKey;
+    /// ML-DSA signature
     pub struct Signature;
 
     impl PublicKey {
+        /// Create public key from byte representation (stub)
         pub fn from_bytes(_bytes: &[u8]) -> Result<Self> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Get byte representation of public key (stub)
         pub fn as_bytes(&self) -> &[u8] {
             &[]
         }
+        /// Verify signature against message (stub)
         pub fn verify(&self, _message: &[u8], _signature: &Signature) -> Result<()> {
             Err(PqcError::FeatureNotAvailable)
         }
     }
 
     impl SecretKey {
+        /// Generate new key pair (stub)
         pub fn new() -> Result<(PublicKey, SecretKey)> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Create secret key from byte representation (stub)
         pub fn from_bytes(_bytes: &[u8]) -> Result<Self> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Get byte representation of secret key (stub)
         pub fn as_bytes(&self) -> Vec<u8> {
             Vec::new()
         }
+        /// Sign message (stub)
         pub fn sign(&self, _message: &[u8]) -> Result<Signature> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Get corresponding public key (stub)
         pub fn public_key(&self) -> PublicKey {
             PublicKey
         }
     }
 
     impl Signature {
+        /// Create signature from byte representation (stub)
         pub fn from_bytes(_bytes: &[u8]) -> Result<Self> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Get byte representation of signature (stub)
         pub fn as_bytes(&self) -> &[u8] {
             &[]
         }
     }
 
+    /// Get key sizes for ML-DSA (stub)
     pub fn key_sizes() -> (usize, usize, usize) {
         (0, 0, 0)
     }
 }
 
 #[cfg(not(feature = "quantum"))]
+/// ML-KEM (Kyber) key encapsulation fallback when quantum feature is disabled
 pub mod mlkem {
     use super::*;
+    /// ML-KEM public key placeholder
     pub struct PublicKey;
+    /// ML-KEM secret key placeholder
     pub struct SecretKey;
+    /// ML-KEM ciphertext placeholder
     pub struct Ciphertext;
+    /// ML-KEM shared secret placeholder
     pub struct SharedSecret;
 
     impl PublicKey {
+        /// Create public key from bytes (unavailable without quantum feature)
         pub fn from_bytes(_bytes: &[u8]) -> Result<Self> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Export public key as bytes (unavailable without quantum feature)
         pub fn as_bytes(&self) -> &[u8] {
             &[]
         }
+        /// Encapsulate shared secret (unavailable without quantum feature)
         pub fn encapsulate(&self) -> Result<(Ciphertext, SharedSecret)> {
             Err(PqcError::FeatureNotAvailable)
         }
     }
 
     impl SecretKey {
+        /// Generate new key pair (unavailable without quantum feature)
         pub fn new() -> Result<(PublicKey, SecretKey)> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Create secret key from bytes (unavailable without quantum feature)
         pub fn from_bytes(_bytes: &[u8]) -> Result<Self> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Export secret key as bytes (unavailable without quantum feature)
         pub fn as_bytes(&self) -> Vec<u8> {
             Vec::new()
         }
+        /// Decapsulate shared secret (unavailable without quantum feature)
         pub fn decapsulate(&self, _ciphertext: &Ciphertext) -> Result<SharedSecret> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Get corresponding public key (unavailable without quantum feature)
         pub fn public_key(&self) -> PublicKey {
             PublicKey
         }
     }
 
     impl Ciphertext {
+        /// Create ciphertext from bytes (unavailable without quantum feature)
         pub fn from_bytes(_bytes: &[u8]) -> Result<Self> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Export ciphertext as bytes (unavailable without quantum feature)
         pub fn as_bytes(&self) -> &[u8] {
             &[]
         }
     }
 
     impl SharedSecret {
+        /// Create shared secret from bytes (unavailable without quantum feature)
         pub fn from_bytes(_bytes: &[u8]) -> Result<Self> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Export shared secret as bytes (unavailable without quantum feature)
         pub fn as_bytes(&self) -> &[u8] {
             &[]
         }
@@ -855,68 +894,87 @@ pub mod mlkem {
 
     impl Eq for SharedSecret {}
 
+    /// Get key sizes for ML-KEM (stub)
     pub fn key_sizes() -> (usize, usize, usize, usize) {
         (0, 0, 0, 0)
     }
 }
 
 #[cfg(not(feature = "quantum"))]
+/// FALCON compact signature fallback when quantum feature is disabled
 pub mod falcon {
     use super::*;
+    /// FALCON public key placeholder
     pub struct PublicKey;
+    /// FALCON secret key placeholder
     pub struct SecretKey;
+    /// FALCON signature placeholder
     pub struct Signature;
 
     impl PublicKey {
+        /// Create public key from bytes (unavailable without quantum feature)
         pub fn from_bytes(_bytes: &[u8]) -> Result<Self> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Export public key as bytes (unavailable without quantum feature)
         pub fn as_bytes(&self) -> &[u8] {
             &[]
         }
+        /// Verify signature (unavailable without quantum feature)
         pub fn verify(&self, _message: &[u8], _signature: &Signature) -> Result<()> {
             Err(PqcError::FeatureNotAvailable)
         }
     }
 
     impl SecretKey {
+        /// Generate new key pair (unavailable without quantum feature)
         pub fn new() -> Result<(PublicKey, SecretKey)> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Create secret key from bytes (unavailable without quantum feature)
         pub fn from_bytes(_bytes: &[u8]) -> Result<Self> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Export secret key as bytes (unavailable without quantum feature)
         pub fn as_bytes(&self) -> Vec<u8> {
             Vec::new()
         }
+        /// Sign message (unavailable without quantum feature)
         pub fn sign(&self, _message: &[u8]) -> Result<Signature> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Get corresponding public key (unavailable without quantum feature)
         pub fn public_key(&self) -> PublicKey {
             PublicKey
         }
     }
 
     impl Signature {
+        /// Create signature from byte representation (stub)
         pub fn from_bytes(_bytes: &[u8]) -> Result<Self> {
             Err(PqcError::FeatureNotAvailable)
         }
+        /// Get byte representation of signature (stub)
         pub fn as_bytes(&self) -> &[u8] {
             &[]
         }
     }
 
+    /// Get FALCON key sizes (unavailable without quantum feature)
     pub fn key_sizes() -> (usize, usize, usize) {
         (0, 0, 0)
     }
 }
 
 #[cfg(not(feature = "quantum"))]
+/// Hybrid cryptography utilities fallback when quantum feature is disabled
 pub mod hybrid {
     use super::*;
+    /// Perform hybrid key exchange (unavailable without quantum feature)
     pub fn key_exchange(_pk: &mlkem::PublicKey) -> Result<(mlkem::Ciphertext, Vec<u8>)> {
         Err(PqcError::FeatureNotAvailable)
     }
+    /// Encrypt with hybrid cryptography (unavailable without quantum feature)
     pub fn encrypt_hybrid(
         _pk: &mlkem::PublicKey,
         _plaintext: &[u8],
@@ -924,6 +982,7 @@ pub mod hybrid {
     ) -> Result<(mlkem::Ciphertext, Vec<u8>)> {
         Err(PqcError::FeatureNotAvailable)
     }
+    /// Decrypt with hybrid cryptography (unavailable without quantum feature)
     pub fn decrypt_hybrid(
         _sk: &mlkem::SecretKey,
         _ct: &mlkem::Ciphertext,

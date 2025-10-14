@@ -311,6 +311,7 @@ pub mod groups {
     }
 
     /// Add user to group
+    /// Add user to group with optional expiration and attributes
     pub async fn add_user_to_group(
         db: &Database,
         user_id: Uuid,
@@ -481,6 +482,7 @@ pub mod devices {
     use uuid::Uuid;
 
     /// Register a new device in the database
+    /// Register a new device for a user
     pub async fn register_device(
         db: &Database,
         user_id: Uuid,
@@ -552,6 +554,7 @@ pub mod devices {
     }
 
     /// Update device trust score
+    /// Update device trust score with evaluation factors
     pub async fn update_trust_score(
         db: &Database,
         device_id: Uuid,
@@ -596,6 +599,7 @@ pub mod devices {
         Ok(())
     }
 
+    /// Update device last seen timestamp
     /// Update device last seen timestamp
     pub async fn update_last_seen(db: &Database, device_id: Uuid) -> Result<()> {
         let now = Utc::now();
@@ -1459,14 +1463,23 @@ pub mod organizations {
     /// Organization domain for verification
     #[derive(Debug, Clone)]
     pub struct OrganizationDomain {
+        /// Unique identifier for the organization domain
         pub id: Uuid,
+        /// ID of the organization this domain belongs to
         pub organization_id: Uuid,
+        /// The domain name (e.g., "example.com")
         pub domain: String,
+        /// Whether the domain has been verified
         pub verified: bool,
+        /// Token used for domain verification
         pub verification_token: Option<String>,
+        /// Method used for domain verification
         pub verification_method: String,
+        /// Timestamp when the domain was verified
         pub verified_at: Option<chrono::DateTime<Utc>>,
+        /// Timestamp when the domain was created
         pub created_at: chrono::DateTime<Utc>,
+        /// Timestamp when the domain was last updated
         pub updated_at: chrono::DateTime<Utc>,
     }
 
@@ -2459,7 +2472,7 @@ pub mod users {
         }
 
         let mut client = db.get_connection().await?;
-        let mut transaction = client.transaction().await?;
+        let transaction = client.transaction().await?;
 
         let mut created_users = Vec::new();
 
@@ -2534,7 +2547,7 @@ pub mod users {
         }
 
         let mut client = db.get_connection().await?;
-        let mut transaction = client.transaction().await?;
+        let transaction = client.transaction().await?;
 
         let mut updated_count = 0;
         let now = Utc::now();
@@ -2625,7 +2638,7 @@ pub mod users {
         }
 
         let mut client = db.get_connection().await?;
-        let mut transaction = client.transaction().await?;
+        let transaction = client.transaction().await?;
 
         let query = r#"
             INSERT INTO user_roles (user_id, role_id)
@@ -2653,7 +2666,7 @@ pub mod users {
         }
 
         let mut client = db.get_connection().await?;
-        let mut transaction = client.transaction().await?;
+        let transaction = client.transaction().await?;
 
         let query = "DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2";
 
@@ -3037,7 +3050,7 @@ pub mod users {
         }
 
         let mut client = db.get_connection().await?;
-        let mut transaction = client.transaction().await?;
+        let transaction = client.transaction().await?;
 
         let query = r#"
             INSERT INTO users (
@@ -8073,6 +8086,7 @@ pub async fn clear_old_admin_events(db: &Database, retention_days: i32) -> Resul
 // TOKEN MANAGEMENT OPERATIONS
 // ============================================================================
 
+/// Database operations for OAuth2 token management
 pub mod tokens {
     use crate::database::Database;
     use crate::error::Result;
@@ -8082,17 +8096,29 @@ pub mod tokens {
     /// Stored access token data
     #[derive(Debug, Clone)]
     pub struct AccessTokenData {
+        /// Unique identifier for the access token
         pub id: Uuid,
+        /// Hash of the access token
         pub token_hash: String,
+        /// Hash of the associated refresh token
         pub refresh_token_hash: Option<String>,
+        /// ID of the OAuth client
         pub client_id: Uuid,
+        /// ID of the user (None for client credentials flow)
         pub user_id: Option<Uuid>,
+        /// OAuth scopes granted to the token
         pub scopes: Vec<String>,
+        /// Expiration timestamp of the token
         pub expires_at: DateTime<Utc>,
+        /// Expiration timestamp of the refresh token
         pub refresh_expires_at: Option<DateTime<Utc>>,
+        /// Whether the token has been revoked
         pub revoked: bool,
+        /// Timestamp when the token was revoked
         pub revoked_at: Option<DateTime<Utc>>,
+        /// Timestamp when the token was created
         pub created_at: DateTime<Utc>,
+        /// Timestamp when the token was last used
         pub last_used_at: Option<DateTime<Utc>>,
     }
 
@@ -8336,9 +8362,13 @@ pub mod tokens {
     /// Token statistics
     #[derive(Debug, Clone)]
     pub struct TokenStatistics {
+        /// Number of currently active tokens
         pub active_tokens: u64,
+        /// Number of revoked tokens
         pub revoked_tokens: u64,
+        /// Number of expired tokens
         pub expired_tokens: u64,
+        /// Total number of tokens
         pub total_tokens: u64,
     }
 }

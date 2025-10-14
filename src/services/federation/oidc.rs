@@ -3,7 +3,6 @@
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use chrono;
 use dashmap::DashMap;
 use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use reqwest::Client;
@@ -461,6 +460,7 @@ impl IdentityProvider for OidcIdentityProvider {
 /// OIDC Discovery document
 #[derive(Debug, Deserialize)]
 struct OidcDiscovery {
+    #[allow(dead_code)]
     issuer: String,
     token_endpoint: String,
     userinfo_endpoint: String,
@@ -472,6 +472,7 @@ struct OidcDiscovery {
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
     access_token: String,
+    #[allow(dead_code)]
     token_type: String,
     expires_in: i64,
     refresh_token: Option<String>,
@@ -479,7 +480,7 @@ struct TokenResponse {
 }
 
 /// ID Token claims (JWT payload)
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct IdTokenClaims {
     /// Subject (user ID)
     sub: String,
@@ -531,6 +532,7 @@ struct JwkKey {
     /// Key ID
     kid: String,
     /// Algorithm
+    #[allow(dead_code)]
     alg: Option<String>,
     /// RSA modulus
     n: Option<String>,

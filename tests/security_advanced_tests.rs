@@ -245,7 +245,7 @@ async fn test_compliance_frameworks() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body["total_violations"].as_u64().unwrap() >= 0);
+    assert!(body["total_violations"].as_u64().is_some());
 
     // Get framework-specific report
     let response = server.get("/security/compliance/report/gdpr").await;
@@ -321,7 +321,7 @@ async fn test_security_monitoring_and_alerts() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body["total_alerts"].as_u64().unwrap() >= 0);
+    assert!(body["total_alerts"].as_u64().is_some());
 
     // Get active threats
     let response = server.get("/security/monitoring/threats").await;
@@ -405,7 +405,7 @@ async fn test_audit_trail_and_logging() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body["total_events"].as_u64().unwrap() >= 0);
+    assert!(body["total_events"].as_u64().is_some());
 
     // Search audit events
     let search_query = json!({"user": "admin", "action": "login"});
@@ -416,14 +416,14 @@ async fn test_audit_trail_and_logging() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body["result_count"].as_u64().unwrap() >= 0);
+    assert!(body["result_count"].as_u64().is_some());
 
     // Export audit logs
     let response = server.post("/security/audit/export").json(&json!({})).await;
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body["record_count"].as_u64().unwrap() >= 0);
+    assert!(body["record_count"].as_u64().is_some());
 }
 
 #[tokio::test]
@@ -491,7 +491,7 @@ async fn test_security_incident_response() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body["active_incidents"].as_array().unwrap().len() >= 0);
+    assert!(body["active_incidents"].as_array().is_some());
 
     // Respond to incident
     let response = server
@@ -511,5 +511,5 @@ async fn test_security_incident_response() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body["total_incidents"].as_u64().unwrap() >= 0);
+    assert!(body["total_incidents"].as_u64().is_some());
 }

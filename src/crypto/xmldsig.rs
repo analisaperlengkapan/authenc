@@ -31,6 +31,7 @@ pub enum CanonicalizationMethod {
 }
 
 impl CanonicalizationMethod {
+    /// Create canonicalization method from URI string
     pub fn from_uri(uri: &str) -> Result<Self> {
         match uri {
             "http://www.w3.org/TR/2001/REC-xml-c14n-20010315" => Ok(Self::C14n),
@@ -49,12 +50,16 @@ impl CanonicalizationMethod {
 /// Supported digest methods
 #[derive(Debug, Clone, PartialEq)]
 pub enum DigestMethod {
+    /// SHA-256 digest algorithm
     Sha256,
+    /// SHA-384 digest algorithm
     Sha384,
+    /// SHA-512 digest algorithm
     Sha512,
 }
 
 impl DigestMethod {
+    /// Create digest method from URI string
     pub fn from_uri(uri: &str) -> Result<Self> {
         match uri {
             "http://www.w3.org/2001/04/xmlenc#sha256" => Ok(Self::Sha256),
@@ -68,6 +73,7 @@ impl DigestMethod {
         }
     }
 
+    /// Convert to OpenSSL MessageDigest
     pub fn to_message_digest(&self) -> MessageDigest {
         match self {
             Self::Sha256 => MessageDigest::sha256(),
@@ -80,12 +86,16 @@ impl DigestMethod {
 /// Supported signature methods
 #[derive(Debug, Clone, PartialEq)]
 pub enum SignatureMethod {
+    /// RSA with SHA-256
     RsaSha256,
+    /// RSA with SHA-384
     RsaSha384,
+    /// RSA with SHA-512
     RsaSha512,
 }
 
 impl SignatureMethod {
+    /// Create signature method from URI string
     pub fn from_uri(uri: &str) -> Result<Self> {
         match uri {
             "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" => Ok(Self::RsaSha256),
@@ -99,6 +109,7 @@ impl SignatureMethod {
         }
     }
 
+    /// Convert to OpenSSL MessageDigest for the signature's hash algorithm
     pub fn to_message_digest(&self) -> MessageDigest {
         match self {
             Self::RsaSha256 => MessageDigest::sha256(),
@@ -111,32 +122,44 @@ impl SignatureMethod {
 /// Reference element from SignedInfo
 #[derive(Debug, Clone)]
 pub struct Reference {
+    /// URI of the referenced data (empty string for enveloped signature)
     pub uri: String,
+    /// Digest algorithm used
     pub digest_method: DigestMethod,
+    /// Computed digest value
     pub digest_value: Vec<u8>,
+    /// List of transform algorithms applied before digesting
     pub transforms: Vec<String>,
 }
 
 /// SignedInfo element
 #[derive(Debug, Clone)]
 pub struct SignedInfo {
+    /// Canonicalization method applied to SignedInfo
     pub canonicalization_method: CanonicalizationMethod,
+    /// Signature algorithm used
     pub signature_method: SignatureMethod,
+    /// List of references to signed data
     pub references: Vec<Reference>,
+    /// Raw XML content for canonicalization
     pub raw_xml: String, // Store raw XML for canonicalization
 }
 
 /// KeyInfo element (simplified - only X509 certificate support)
 #[derive(Debug, Clone)]
 pub struct KeyInfo {
+    /// Base64-encoded X.509 certificate
     pub x509_certificate: Option<String>,
 }
 
 /// Complete XML Signature structure
 #[derive(Debug, Clone)]
 pub struct XmlSignature {
+    /// SignedInfo element containing signature parameters
     pub signed_info: SignedInfo,
+    /// Base64-encoded signature value
     pub signature_value: Vec<u8>,
+    /// Key information for signature verification
     pub key_info: Option<KeyInfo>,
 }
 
@@ -147,27 +170,39 @@ impl XmlSignature {
         reader.trim_text(true);
 
         let mut buf = Vec::new();
+        // Whether we're currently parsing a Signature element
         let mut in_signature = false;
+        // Whether we're currently parsing a SignedInfo element
         let mut in_signed_info = false;
+        // Whether we're currently parsing a Reference element
         let mut in_reference = false;
+        // Whether we're currently parsing a SignatureValue element
         let mut in_signature_value = false;
+        // Whether we're currently parsing a KeyInfo element
         let mut in_key_info = false;
+        // Whether we're currently parsing an X509Certificate element
         let mut in_x509_cert = false;
 
         let mut signed_info_xml = String::new();
         let mut signature_value = String::new();
         let mut x509_cert = String::new();
 
+        // Canonicalization method algorithm URI
         let mut c14n_method = String::new();
+        // Signature method algorithm URI
         let mut sig_method = String::new();
+        // Current reference being parsed
         let mut current_ref = Reference {
             uri: String::new(),
             digest_method: DigestMethod::Sha256,
             digest_value: Vec::new(),
             transforms: Vec::new(),
         };
+        // List of all references found
         let mut references = Vec::new();
+        // Digest method algorithm URI for current reference
         let mut digest_method_uri = String::new();
+        // Digest value text for current reference
         let mut digest_value_text = String::new();
 
         loop {
@@ -613,25 +648,36 @@ mod tests {
 /// Certificate validation result
 #[derive(Debug, Clone, PartialEq)]
 pub enum CertificateValidationResult {
+    /// Certificate is valid and trusted
     Valid,
+    /// Certificate has expired
     Expired,
+    /// Certificate is not yet valid (issued in the future)
     NotYetValid,
+    /// Certificate has been revoked
     Revoked,
+    /// Certificate chain is invalid
     ChainInvalid,
+    /// Root certificate is not trusted
     UntrustedRoot,
 }
 
 /// Certificate revocation status (simple version for validation results)
 #[derive(Debug, Clone, PartialEq)]
 pub enum SimpleRevocationStatus {
+    /// Certificate has not been revoked
     NotRevoked,
+    /// Certificate has been revoked
     Revoked,
+    /// Revocation status is unknown
     Unknown,
 }
 
 /// Certificate validator with trust store and CRL support
 pub struct CertificateValidator {
+    /// X.509 trust store for certificate validation
     trust_store: X509Store,
+    /// Whether to check certificate expiration dates
     pub enable_expiration_check: bool,
 }
 
@@ -796,6 +842,7 @@ impl CertificateValidator {
     }
 
     /// Validate certificate with optional revocation checking
+    /// Validate certificate with revocation checking using CRL
     pub fn validate_with_revocation(
         &self,
         cert: &X509,
@@ -920,6 +967,7 @@ impl Default for XmlSecurityLimits {
 
 /// XML Security Validator to prevent XML bombs and signature wrapping attacks
 pub struct XmlSecurityValidator {
+    /// Security limits for XML processing
     pub limits: XmlSecurityLimits,
 }
 
@@ -1137,7 +1185,9 @@ pub enum RevocationStatus {
     NotRevoked,
     /// Certificate is revoked
     Revoked {
+        /// Reason for revocation (if available)
         reason: Option<String>,
+        /// Date when certificate was revoked
         revocation_date: Option<SystemTime>,
     },
     /// Revocation status unknown (CRL unavailable, no CRL distribution point, etc.)
@@ -1453,13 +1503,16 @@ mod certificate_tests {
 // ============================================================================
 
 /// OCSP certificate status
+/// OCSP response status for certificate revocation checking
 #[derive(Debug, Clone, PartialEq)]
 pub enum OcspStatus {
     /// Certificate is valid and not revoked
     Good,
     /// Certificate has been revoked
     Revoked {
+        /// Reason for revocation (if provided by OCSP response)
         reason: Option<String>,
+        /// Time when certificate was revoked
         revocation_time: Option<SystemTime>,
     },
     /// Certificate status is unknown

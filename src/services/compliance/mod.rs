@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::error::AuthencError;
 use crate::services::stores::ConsentStore;
 
 /// Enhanced compliance module with SOC 2/3, ISO 27001, etc. (SUPERIOR TO KEYCLOAK)

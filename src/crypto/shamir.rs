@@ -196,18 +196,22 @@ impl Default for Commitment {
 }
 
 impl Commitment {
+    /// Get the protocol version
     pub fn version(&self) -> u8 {
         self.version
     }
 
+    /// Get the threshold number of shares required for reconstruction
     pub fn threshold(&self) -> usize {
         self.threshold
     }
 
+    /// Get the total number of shares generated
     pub fn num_shares(&self) -> usize {
         self.num_shares
     }
 
+    /// Get the length of the original secret in bytes
     pub fn secret_len(&self) -> usize {
         self.secret_len
     }
@@ -344,40 +348,62 @@ impl Commitment {
     }
 }
 
+/// Errors that can occur during Shamir secret sharing operations
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ShamirError {
+    /// Not enough shares provided to reconstruct the secret
     #[error("Insufficient shares for reconstruction")]
-    InsufficientShares { threshold: usize, provided: usize },
+    InsufficientShares {
+        /// Required threshold of shares
+        threshold: usize,
+        /// Number of shares actually provided
+        provided: usize,
+    },
+    /// Share data is malformed or corrupted
     #[error("Invalid share format or corrupted data")]
     InvalidShare,
+    /// Share index is invalid, out of range, or duplicate
     #[error("Share index out of valid range or duplicate")]
     InvalidShareIndex,
+    /// Secret exceeds maximum allowed size
     #[error("Secret too large")]
     SecretTooLarge,
+    /// Secret cannot be empty
     #[error("Secret cannot be empty")]
     EmptySecret,
+    /// Threshold value is invalid (must be >= 2 and <= number of shares)
     #[error("Invalid threshold value")]
     InvalidThreshold,
+    /// Number of shares is invalid (must be >= threshold and <= MAX_SHARES)
     #[error("Invalid number of shares")]
     InvalidShareCount,
+    /// Cryptographic verification of share failed
     #[error("Share verification failed")]
     ShareVerificationFailed,
+    /// Integrity check of commitment data failed
     #[error("Commitment integrity check failed")]
     IntegrityCheckFailed,
+    /// Protocol version is not supported
     #[error("Unsupported protocol version")]
     UnsupportedVersion(u8),
+    /// Error during serialization or deserialization
     #[error("Serialization/deserialization error")]
     SerializationError,
+    /// Share has not been validated yet
     #[error("Share not validated")]
     ShareNotValidated,
+    /// Commitment data is invalid or corrupted
     #[error("Invalid commitment data")]
     InvalidCommitment,
+    /// Commitment data exceeds maximum allowed size
     #[error("Commitment data too large")]
     CommitmentTooLarge,
+    /// Operation rate limit exceeded
     #[error("Rate limit exceeded")]
     RateLimitExceeded,
 }
 
+/// Result type alias for Shamir operations
 pub type Result<T> = std::result::Result<T, ShamirError>;
 
 /// Simple in-memory rate limiter for verification operations
@@ -439,10 +465,12 @@ impl VerificationRateLimiter {
     }
 }
 
-/// Configuration untuk share generation
+/// Configuration for Shamir secret sharing operations
 #[derive(Debug, Clone)]
 pub struct ShamirConfig {
+    /// Number of shares required to reconstruct the secret (threshold)
     pub threshold: usize,
+    /// Total number of shares to generate
     pub num_shares: usize,
 }
 
@@ -661,7 +689,17 @@ fn lagrange_interpolate(points: &[(Scalar, Scalar)]) -> Result<Scalar> {
     Ok(result)
 }
 
-/// Reconstruct secret from shares
+/// Reconstruct the original secret from a sufficient number of shares
+///
+/// # Arguments
+/// * `shares` - The shares to use for reconstruction
+/// * `threshold` - Number of shares required (must match original threshold)
+///
+/// # Returns
+/// The reconstructed secret as bytes
+///
+/// # Errors
+/// Returns error if insufficient shares provided or validation fails
 pub fn reconstruct_secret(shares: &[Share], threshold: usize) -> Result<Vec<u8>> {
     // Validate inputs
     if threshold < 2 || threshold > MAX_THRESHOLD {

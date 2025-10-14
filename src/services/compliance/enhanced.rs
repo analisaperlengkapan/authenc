@@ -37,23 +37,36 @@ pub enum ComplianceStandard {
 /// Compliance control result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplianceControlResult {
+    /// Unique identifier for the control
     pub control_id: String,
+    /// Human-readable name of the control
     pub control_name: String,
+    /// Compliance standard this control belongs to
     pub standard: ComplianceStandard,
+    /// Category or domain of the control
     pub category: String,
+    /// Current implementation status
     pub status: ControlStatus,
+    /// Evidence of implementation (documents, test results, etc.)
     pub evidence: Vec<String>,
+    /// When this control was last checked
     pub last_checked: DateTime<Utc>,
+    /// When this control should be reviewed next
     pub next_review: DateTime<Utc>,
+    /// Person or team responsible for this control
     pub owner: String,
 }
 
 /// Control implementation status
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ControlStatus {
+    /// Control is fully implemented and operational
     Implemented,
+    /// Control is partially implemented with some gaps
     PartiallyImplemented,
+    /// Control is not implemented
     NotImplemented,
+    /// Control is not applicable to this system
     NotApplicable,
 }
 
@@ -61,6 +74,7 @@ pub enum ControlStatus {
 pub mod soc2 {
     use super::*;
 
+    /// Get SOC 2 Type II Trust Service Criteria controls
     pub fn get_trust_service_criteria() -> Vec<ComplianceControlResult> {
         vec![
             // Security (CC) Controls
@@ -241,6 +255,7 @@ pub mod soc2 {
 pub mod iso27001 {
     use super::*;
 
+    /// Get ISO 27001 compliance controls
     pub fn get_controls() -> Vec<ComplianceControlResult> {
         vec![
             ComplianceControlResult {
@@ -326,6 +341,7 @@ pub mod iso27001 {
 pub mod gdpr {
     use super::*;
 
+    /// Get GDPR compliance controls
     pub fn get_controls() -> Vec<ComplianceControlResult> {
         vec![
             ComplianceControlResult {
@@ -422,10 +438,12 @@ pub mod gdpr {
 
 /// Compliance Manager
 pub struct ComplianceManager {
+    /// Map of compliance standards to their control results
     controls: HashMap<ComplianceStandard, Vec<ComplianceControlResult>>,
 }
 
 impl ComplianceManager {
+    /// Create a new compliance manager with all standard controls loaded
     pub fn new() -> Self {
         let mut controls = HashMap::new();
 
@@ -439,6 +457,7 @@ impl ComplianceManager {
         Self { controls }
     }
 
+    /// Calculate compliance score as percentage for a given standard
     pub fn get_compliance_score(&self, standard: ComplianceStandard) -> f64 {
         if let Some(controls) = self.controls.get(&standard) {
             let total = controls.len() as f64;
@@ -453,10 +472,12 @@ impl ComplianceManager {
         }
     }
 
+    /// Check if a standard is fully compliant (100% score)
     pub fn is_compliant(&self, standard: ComplianceStandard) -> bool {
         self.get_compliance_score(standard) >= 100.0
     }
 
+    /// Generate a detailed compliance report for a given standard
     pub fn generate_compliance_report(&self, standard: ComplianceStandard) -> ComplianceReport {
         let controls = self.controls.get(&standard).cloned().unwrap_or_default();
 
@@ -497,14 +518,23 @@ impl Default for ComplianceManager {
 /// Compliance report
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplianceReport {
+    /// The compliance standard this report covers
     pub standard: ComplianceStandard,
+    /// Total number of controls in this standard
     pub total_controls: usize,
+    /// Number of fully implemented controls
     pub implemented: usize,
+    /// Number of partially implemented controls
     pub partially_implemented: usize,
+    /// Number of not implemented controls
     pub not_implemented: usize,
+    /// Compliance score as percentage (0-100)
     pub compliance_score: f64,
+    /// Whether the standard is fully compliant
     pub is_compliant: bool,
+    /// When this report was generated
     pub generated_at: DateTime<Utc>,
+    /// Detailed results for each control
     pub controls: Vec<ComplianceControlResult>,
 }
 

@@ -173,9 +173,9 @@ impl ClusterCommunication for InMemoryClusterCommunication {
 /// JGroups-based cluster communication
 pub struct JGroupsClusterCommunication {
     /// Name of the JGroups channel
-    channel_name: String,
+    _channel_name: String,
     /// Message queue for incoming messages
-    message_queue: Arc<RwLock<Vec<(String, Vec<u8>)>>>,
+    _message_queue: Arc<RwLock<Vec<(String, Vec<u8>)>>>,
     /// Sender for outgoing messages
     outgoing_tx: mpsc::UnboundedSender<(Option<String>, Vec<u8>)>,
     /// Receiver for incoming messages
@@ -206,8 +206,8 @@ impl JGroupsClusterCommunication {
         });
 
         Self {
-            channel_name,
-            message_queue: Arc::new(RwLock::new(Vec::new())),
+            _channel_name: channel_name,
+            _message_queue: Arc::new(RwLock::new(Vec::new())),
             outgoing_tx,
             incoming_rx: Arc::new(RwLock::new(incoming_rx)),
         }
@@ -350,9 +350,9 @@ pub struct RaftConsensus {
     /// Log entries
     log: Arc<RwLock<Vec<RaftLogEntry>>>,
     /// Commit index
-    commit_index: Arc<RwLock<u64>>,
+    _commit_index: Arc<RwLock<u64>>,
     /// Last applied index
-    last_applied: Arc<RwLock<u64>>,
+    _last_applied: Arc<RwLock<u64>>,
     /// Current state
     state: Arc<RwLock<RaftState>>,
     /// Election timeout
@@ -363,7 +363,7 @@ pub struct RaftConsensus {
 
 #[derive(Debug, Clone)]
 struct RaftLogEntry {
-    term: u64,
+    _term: u64,
     command: Vec<u8>,
 }
 
@@ -383,11 +383,11 @@ impl RaftConsensus {
             current_term: Arc::new(RwLock::new(0)),
             voted_for: Arc::new(RwLock::new(None)),
             log: Arc::new(RwLock::new(vec![RaftLogEntry {
-                term: 0,
+                _term: 0,
                 command: vec![],
             }])),
-            commit_index: Arc::new(RwLock::new(0)),
-            last_applied: Arc::new(RwLock::new(0)),
+            _commit_index: Arc::new(RwLock::new(0)),
+            _last_applied: Arc::new(RwLock::new(0)),
             state: Arc::new(RwLock::new(RaftState::Follower)),
             election_timeout: Duration::from_millis(150 + rand::random::<u64>() % 150),
             heartbeat_interval: Duration::from_millis(50),
@@ -422,7 +422,7 @@ impl RaftConsensus {
     async fn start_election(&self) {
         let mut current_term = self.current_term.write().await;
         *current_term += 1;
-        let term = *current_term;
+        let _term = *current_term;
 
         let mut voted_for = self.voted_for.write().await;
         *voted_for = Some(self.node_id.clone());
@@ -450,7 +450,7 @@ impl RaftConsensus {
 
 #[async_trait]
 impl DistributedConsensus for RaftConsensus {
-    async fn propose(&self, key: &str, value: &[u8]) -> Result<bool> {
+    async fn propose(&self, _key: &str, value: &[u8]) -> Result<bool> {
         let state = self.state.read().await;
         if *state != RaftState::Leader {
             return Ok(false);
@@ -459,7 +459,7 @@ impl DistributedConsensus for RaftConsensus {
         let current_term = *self.current_term.read().await;
         let mut log = self.log.write().await;
         log.push(RaftLogEntry {
-            term: current_term,
+            _term: current_term,
             command: value.to_vec(),
         });
 
@@ -467,7 +467,7 @@ impl DistributedConsensus for RaftConsensus {
         Ok(true)
     }
 
-    async fn get_consensus_value(&self, key: &str) -> Result<Option<Vec<u8>>> {
+    async fn get_consensus_value(&self, _key: &str) -> Result<Option<Vec<u8>>> {
         let log = self.log.read().await;
         if log.len() > 1 {
             Ok(Some(log.last().unwrap().command.clone()))
@@ -1214,7 +1214,7 @@ impl NodeHealthMonitor {
                 let now = chrono::Utc::now();
                 let mut health = node_health.write().await;
 
-                for (node_id, status) in health.iter_mut() {
+                for (_node_id, status) in health.iter_mut() {
                     let elapsed = now.signed_duration_since(status.last_heartbeat);
                     if elapsed > chrono::Duration::from_std(timeout_threshold).unwrap() {
                         status.is_healthy = false;

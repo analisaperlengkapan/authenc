@@ -296,7 +296,7 @@ async fn test_memory_usage_under_load() {
     let body: Value = response.json();
     assert!(body["total_memory_mb"].as_f64().unwrap() > 0.0);
     assert!(body["peak_memory_mb"].as_f64().unwrap() > 0.0);
-    assert!(body["gc_cycles"].as_u64().unwrap() >= 0);
+    assert!(body["gc_cycles"].as_u64().is_some());
 
     // Test cache invalidation under load
     let response = server

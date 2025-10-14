@@ -107,18 +107,18 @@ impl EventListenerProvider for LoggingEventListener {
 /// Email event listener that sends email notifications for important events
 pub struct EmailEventListener {
     // In a real implementation, this would hold SMTP configuration
-    smtp_server: String,
-    smtp_username: String,
-    smtp_password: String,
+    _smtp_server: String,
+    _smtp_username: String,
+    _smtp_password: String,
 }
 
 impl EmailEventListener {
     /// Create a new email event listener
     pub fn new(smtp_server: String, smtp_username: String, smtp_password: String) -> Self {
         Self {
-            smtp_server,
-            smtp_username,
-            smtp_password,
+            _smtp_server: smtp_server,
+            _smtp_username: smtp_username,
+            _smtp_password: smtp_password,
         }
     }
 }

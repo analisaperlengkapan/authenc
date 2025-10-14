@@ -10,7 +10,6 @@ use crate::error::{AuthencError as Error, Result};
 use async_trait::async_trait;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// WebAuthn credential type identifier
 pub const WEBAUTHN_CREDENTIAL_TYPE: &str = "webauthn";

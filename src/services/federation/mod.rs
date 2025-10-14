@@ -8,8 +8,11 @@ use uuid::Uuid;
 use crate::database::Database;
 
 // SAML and OIDC provider implementations
+/// OIDC identity provider implementation
 pub mod oidc;
+/// SAML identity provider implementation
 pub mod saml;
+/// SAML security utilities
 pub mod saml_security;
 
 use oidc::OidcIdentityProvider;

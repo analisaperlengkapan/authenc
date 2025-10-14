@@ -65,6 +65,7 @@ pub struct Ed25519JwtHeader {
 /// - Audience validation prevents token misuse
 /// - Subject uniquely identifies the user
 /// - Claims are signed and cannot be modified
+#[derive(Clone)]
 pub struct OidcIdTokenClaims {
     /// Issuer identifier (token issuer)
     pub iss: String,

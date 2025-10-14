@@ -188,41 +188,67 @@ pub async fn create_execution(
 
 // Request/Response structures
 
+/// Request to create a new authentication flow
 #[derive(Deserialize)]
 pub struct CreateFlowRequest {
+    /// Unique alias for the authentication flow
     pub alias: String,
+    /// Description of the authentication flow
     pub description: String,
+    /// Type of authentication flow
     pub flow_type: String,
+    /// Whether the flow is enabled
     pub enabled: Option<bool>,
+    /// Priority order for execution
     pub priority: Option<i32>,
 }
 
+/// Request to update an existing authentication flow
 #[derive(Deserialize)]
 pub struct UpdateFlowRequest {
+    /// Updated alias for the authentication flow
     pub alias: Option<String>,
+    /// Updated description of the authentication flow
     pub description: Option<String>,
+    /// Updated enabled status
     pub enabled: Option<bool>,
+    /// Updated priority order
     pub priority: Option<i32>,
 }
 
+/// Request to create a new authentication execution
 #[derive(Deserialize)]
 pub struct CreateExecutionRequest {
+    /// Unique alias for the execution
     pub alias: String,
+    /// Description of the execution
     pub description: String,
+    /// Type of execution
     pub execution_type: String,
+    /// Whether the execution is enabled
     pub enabled: Option<bool>,
+    /// Priority order for execution
     pub priority: Option<i32>,
+    /// Configuration parameters
     pub configuration: Option<std::collections::HashMap<String, String>>,
+    /// Required execution dependencies
     pub requirements: Option<Vec<String>>,
 }
 
+/// Response containing authentication flow information
 #[derive(Serialize)]
 pub struct AuthenticationFlowResponse {
+    /// Unique identifier of the authentication flow
     pub id: String,
+    /// Unique alias of the authentication flow
     pub alias: String,
+    /// Description of the authentication flow
     pub description: String,
+    /// Type of authentication flow
     pub flow_type: String,
+    /// Whether the flow is enabled
     pub enabled: bool,
+    /// Priority order for execution
     pub priority: i32,
 }
 
@@ -247,15 +273,24 @@ impl From<AuthenticationFlowModel> for AuthenticationFlowResponse {
     }
 }
 
+/// Response containing authentication execution information
 #[derive(Serialize)]
 pub struct AuthenticationExecutionResponse {
+    /// Unique identifier of the execution
     pub id: String,
+    /// Unique alias of the execution
     pub alias: String,
+    /// Description of the execution
     pub description: String,
+    /// Type of authentication execution
     pub execution_type: String,
+    /// Whether the execution is enabled
     pub enabled: bool,
+    /// Priority order for execution
     pub priority: i32,
+    /// Configuration parameters
     pub configuration: std::collections::HashMap<String, String>,
+    /// Required execution dependencies
     pub requirements: Vec<String>,
 }
 

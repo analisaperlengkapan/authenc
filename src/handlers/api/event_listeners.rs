@@ -23,42 +23,69 @@ use crate::{
 /// Query parameters for event log
 #[derive(Debug, Deserialize)]
 pub struct EventLogQueryParams {
+    /// Filter by event category
     pub event_category: Option<String>,
+    /// Filter by specific event type
     pub event_type: Option<String>,
+    /// Filter by resource type
     pub resource_type: Option<String>,
+    /// Filter by user ID
     pub user_id: Option<Uuid>,
+    /// Start date for filtering (ISO 8601 format)
     pub from_date: Option<String>,
+    /// End date for filtering (ISO 8601 format)
     pub to_date: Option<String>,
+    /// Return only successful events
     pub success_only: Option<bool>,
+    /// Pagination offset
     pub offset: Option<i64>,
+    /// Maximum number of results to return
     pub limit: Option<i64>,
 }
 
 /// Event listener registration request
 #[derive(Debug, Deserialize)]
 pub struct RegisterListenerRequest {
+    /// Name of the event listener
     pub name: String,
+    /// Type of event listener
     pub listener_type: String,
+    /// Configuration parameters
     pub config: JsonValue,
+    /// Types of events to listen for
     pub event_types: Option<Vec<String>>,
+    /// Priority order for execution
     pub priority: Option<i32>,
+    /// Whether to process events asynchronously
     pub is_async: Option<bool>,
+    /// Whether to retry on failure
     pub retry_on_failure: Option<bool>,
+    /// Maximum number of retry attempts
     pub max_retries: Option<i32>,
 }
 
 /// Webhook registration request
 #[derive(Debug, Deserialize)]
 pub struct RegisterWebhookRequest {
+    /// ID of the parent event listener
     pub listener_id: Uuid,
+    /// Webhook URL endpoint
     pub url: String,
+    /// HTTP method for the webhook
     pub http_method: String,
+    /// Authentication type
     pub auth_type: Option<String>,
+    /// Authentication credentials
     pub auth_credentials: Option<JsonValue>,
+    /// Custom HTTP headers
     pub custom_headers: Option<JsonValue>,
+    /// Template for webhook payload
     pub payload_template: Option<String>,
+    /// Secret key for webhook verification
     pub secret_key: Option<String>,
+    /// Whether to verify SSL certificates
     pub verify_ssl: Option<bool>,
+    /// Timeout in seconds for webhook requests
     pub timeout_seconds: Option<i32>,
 }
 

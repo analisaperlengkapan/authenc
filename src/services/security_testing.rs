@@ -16,21 +16,32 @@ pub mod security_tests {
     /// Security test result
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct SecurityTestResult {
+        /// Name of the security test
         pub test_name: String,
+        /// Whether the test passed
         pub passed: bool,
+        /// Severity level of the security issue
         pub severity: SecuritySeverity,
+        /// Description of the security test result
         pub description: String,
+        /// Recommended remediation steps
         pub remediation: Option<String>,
+        /// CVE references related to the issue
         pub cve_references: Vec<String>,
     }
 
     /// Security severity levels
     #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
     pub enum SecuritySeverity {
+        /// Critical security vulnerability requiring immediate attention
         Critical,
+        /// High severity security issue
         High,
+        /// Medium severity security issue
         Medium,
+        /// Low severity security issue
         Low,
+        /// Informational finding
         Info,
     }
 
@@ -39,6 +50,7 @@ pub mod security_tests {
         use super::*;
 
         /// SQL Injection penetration test
+        /// Test resistance to SQL injection attacks
         pub fn test_sql_injection_resistance() -> SecurityTestResult {
             // Test various SQL injection patterns
             let injection_patterns = vec![
@@ -64,6 +76,7 @@ pub mod security_tests {
         }
 
         /// XSS (Cross-Site Scripting) penetration test
+        /// Test resistance to cross-site scripting (XSS) attacks
         pub fn test_xss_resistance() -> SecurityTestResult {
             let xss_patterns = vec![
                 "<script>alert('XSS')</script>",
@@ -91,6 +104,7 @@ pub mod security_tests {
         }
 
         /// CSRF (Cross-Site Request Forgery) penetration test
+        /// Test cross-site request forgery (CSRF) protection
         pub fn test_csrf_protection() -> SecurityTestResult {
             SecurityTestResult {
                 test_name: "CSRF Protection".to_string(),
@@ -103,6 +117,7 @@ pub mod security_tests {
         }
 
         /// Timing attack penetration test
+        /// Test resistance to timing attacks
         pub fn test_timing_attack_resistance() -> SecurityTestResult {
             // Measure response times for valid vs invalid passwords
             let mut timings = vec![];
@@ -142,6 +157,7 @@ pub mod security_tests {
         }
 
         /// Brute force resistance test
+        /// Test brute force attack protection mechanisms
         pub fn test_brute_force_protection() -> SecurityTestResult {
             SecurityTestResult {
                 test_name: "Brute Force Protection".to_string(),
@@ -154,6 +170,7 @@ pub mod security_tests {
         }
 
         /// Session fixation test
+        /// Test session fixation attack protection
         pub fn test_session_fixation_protection() -> SecurityTestResult {
             SecurityTestResult {
                 test_name: "Session Fixation Protection".to_string(),
@@ -182,6 +199,7 @@ pub mod security_tests {
         use super::*;
 
         /// Check for hardcoded secrets
+        /// Scan for hardcoded secrets in the codebase
         pub fn scan_hardcoded_secrets() -> SecurityTestResult {
             SecurityTestResult {
                 test_name: "Hardcoded Secrets Scan".to_string(),
@@ -194,6 +212,7 @@ pub mod security_tests {
         }
 
         /// Check for insecure dependencies
+        /// Scan dependencies for known vulnerabilities
         pub fn scan_dependencies() -> SecurityTestResult {
             SecurityTestResult {
                 test_name: "Dependency Vulnerability Scan".to_string(),
@@ -207,6 +226,7 @@ pub mod security_tests {
         }
 
         /// Check for weak cryptography
+        /// Scan for weak cryptographic implementations
         pub fn scan_weak_cryptography() -> SecurityTestResult {
             SecurityTestResult {
                 test_name: "Weak Cryptography Scan".to_string(),
@@ -220,6 +240,7 @@ pub mod security_tests {
         }
 
         /// Check for insecure deserialization
+        /// Scan for insecure deserialization vulnerabilities
         pub fn scan_insecure_deserialization() -> SecurityTestResult {
             SecurityTestResult {
                 test_name: "Insecure Deserialization Scan".to_string(),
@@ -237,6 +258,7 @@ pub mod security_tests {
         use super::*;
 
         /// SOC 2 Type II compliance test
+        /// Test SOC 2 compliance requirements
         pub fn test_soc2_compliance() -> SecurityTestResult {
             let checks = vec![
                 "Access controls implemented",
@@ -260,6 +282,7 @@ pub mod security_tests {
         }
 
         /// SOC 3 compliance test (public facing)
+        /// Test SOC 3 compliance requirements
         pub fn test_soc3_compliance() -> SecurityTestResult {
             SecurityTestResult {
                 test_name: "SOC 3 Compliance".to_string(),
@@ -272,6 +295,7 @@ pub mod security_tests {
         }
 
         /// ISO 27001 compliance test
+        /// Test ISO 27001 compliance requirements
         pub fn test_iso27001_compliance() -> SecurityTestResult {
             SecurityTestResult {
                 test_name: "ISO 27001 Compliance".to_string(),
@@ -284,6 +308,7 @@ pub mod security_tests {
         }
 
         /// GDPR compliance test
+        /// Test GDPR compliance requirements
         pub fn test_gdpr_compliance() -> SecurityTestResult {
             let checks = vec![
                 "Right to erasure (deletion)",
@@ -305,6 +330,7 @@ pub mod security_tests {
         }
 
         /// HIPAA compliance test
+        /// Test HIPAA compliance requirements
         pub fn test_hipaa_compliance() -> SecurityTestResult {
             SecurityTestResult {
                 test_name: "HIPAA Compliance".to_string(),
@@ -317,6 +343,7 @@ pub mod security_tests {
         }
 
         /// PCI DSS compliance test
+        /// Test PCI DSS compliance requirements
         pub fn test_pci_dss_compliance() -> SecurityTestResult {
             SecurityTestResult {
                 test_name: "PCI DSS Compliance".to_string(),
@@ -335,6 +362,7 @@ pub mod security_tests {
     }
 
     impl SecurityTestRunner {
+        /// Create a new security test runner
         pub fn new() -> Self {
             Self {
                 results: Vec::new(),
@@ -355,6 +383,7 @@ pub mod security_tests {
                 .push(penetration_tests::test_session_fixation_protection());
         }
 
+        /// Run all vulnerability scans
         /// Run all vulnerability scans
         pub fn run_vulnerability_scans(&mut self) {
             self.results
@@ -420,10 +449,15 @@ pub mod security_tests {
     /// Security test report
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct SecurityReport {
+        /// Total number of tests run
         pub total_tests: usize,
+        /// Number of tests that passed
         pub passed: usize,
+        /// Number of tests that failed
         pub failed: usize,
+        /// Test results grouped by severity level
         pub by_severity: HashMap<SecuritySeverity, usize>,
+        /// Detailed results of all security tests
         pub results: Vec<SecurityTestResult>,
     }
 

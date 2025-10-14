@@ -23,46 +23,62 @@ use crate::{
 /// Register authenticator request
 #[derive(Debug, Deserialize)]
 pub struct RegisterAuthenticatorRequest {
+    /// Name of the authenticator
     pub name: String,
+    /// Unique alias for the authenticator
     pub alias: String,
-    pub authenticator_type: String, // "username-password", "otp", "conditional", etc.
+    /// Type of authenticator (username-password, otp, conditional, etc.)
+    pub authenticator_type: String,
+    /// Configuration parameters for the authenticator
     pub config: JsonValue,
+    /// Priority order for execution
     pub priority: Option<i32>,
 }
 
 /// Update authenticator request
 #[derive(Debug, Deserialize)]
 pub struct UpdateAuthenticatorRequest {
+    /// Updated configuration parameters
     pub config: Option<JsonValue>,
+    /// Updated enabled status
     pub enabled: Option<bool>,
 }
 
 /// Create execution request
 #[derive(Debug, Deserialize)]
 pub struct CreateExecutionRequest {
+    /// ID of the authentication flow
     pub flow_id: Uuid,
+    /// ID of the authenticator to execute
     pub authenticator_id: Option<Uuid>,
-    pub requirement: String, // "REQUIRED", "ALTERNATIVE", "DISABLED", "CONDITIONAL"
+    /// Requirement level (REQUIRED, ALTERNATIVE, DISABLED, CONDITIONAL)
+    pub requirement: String,
+    /// Priority order for execution
     pub priority: i32,
+    /// ID of the parent flow
     pub parent_flow_id: Option<Uuid>,
 }
 
 /// Update execution request
 #[derive(Debug, Deserialize)]
 pub struct UpdateExecutionRequest {
+    /// Updated requirement level
     pub requirement: String,
 }
 
 /// Query parameters for authenticator listing
 #[derive(Debug, Deserialize)]
 pub struct AuthenticatorQueryParams {
+    /// Whether to return only enabled authenticators
     pub enabled_only: Option<bool>,
 }
 
 /// Query parameters for statistics
 #[derive(Debug, Deserialize)]
 pub struct StatisticsQueryParams {
+    /// Start date for statistics (ISO 8601 format)
     pub from_date: Option<String>,
+    /// End date for statistics (ISO 8601 format)
     pub to_date: Option<String>,
 }
 

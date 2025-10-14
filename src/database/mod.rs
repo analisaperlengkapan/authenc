@@ -254,7 +254,7 @@ impl Database {
         >,
         R: Send,
     {
-        let mut client = self.get_connection().await?;
+        let client = self.get_connection().await?;
 
         // Begin transaction
         client.execute("BEGIN", &[]).await.map_err(|e| {

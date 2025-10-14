@@ -14,7 +14,6 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use sha2::{Sha256, Sha512};
-use std::collections::HashMap;
 
 /// OTP credential type identifier
 pub const OTP_CREDENTIAL_TYPE: &str = "otp";
@@ -31,6 +30,7 @@ pub enum OtpAlgorithm {
 }
 
 impl OtpAlgorithm {
+    /// Convert algorithm to string representation
     pub fn as_str(&self) -> &'static str {
         match self {
             OtpAlgorithm::HmacSha1 => "HmacSHA1",
@@ -58,20 +58,20 @@ pub struct OtpCredentialData {
 /// OTP credential provider
 pub struct OtpCredentialProvider {
     /// Default algorithm for new OTP credentials
-    default_algorithm: OtpAlgorithm,
+    _default_algorithm: OtpAlgorithm,
     /// Default number of digits
-    default_digits: u32,
+    _default_digits: u32,
     /// Default time period
-    default_period: u32,
+    _default_period: u32,
 }
 
 impl OtpCredentialProvider {
     /// Create a new OTP credential provider with default settings
     pub fn new() -> Self {
         Self {
-            default_algorithm: OtpAlgorithm::HmacSha1,
-            default_digits: 6,
-            default_period: 30,
+            _default_algorithm: OtpAlgorithm::HmacSha1,
+            _default_digits: 6,
+            _default_period: 30,
         }
     }
 

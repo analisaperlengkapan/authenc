@@ -6,8 +6,8 @@ use openssl::x509::X509;
 use std::sync::{Arc, Mutex};
 
 use crate::crypto::xmldsig::{
-    CertificateValidationResult, CertificateValidator, CrlManager, OcspClient, OcspStatus,
-    RevocationStatus, XmlSecurityLimits, XmlSecurityValidator, XmlSignature,
+    CertificateValidationResult, CertificateValidator, CrlManager, OcspClient, RevocationStatus,
+    XmlSecurityLimits, XmlSecurityValidator, XmlSignature,
 };
 
 /// SAML Security Configuration

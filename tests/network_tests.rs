@@ -397,7 +397,7 @@ async fn test_network_monitoring_and_alerts() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body["alert_count"].as_u64().unwrap() >= 0);
+    assert!(body["alert_count"].as_u64().is_some());
 
     // Get monitoring thresholds
     let response = server.get("/network/thresholds").await;

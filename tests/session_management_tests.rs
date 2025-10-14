@@ -714,7 +714,7 @@ async fn test_refresh_tokens_and_rotation() {
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let body: serde_json::Value = response.json();
-    assert!(body["tokens_revoked"].as_u64().unwrap() >= 0);
+    assert!(body["tokens_revoked"].as_u64().is_some());
 }
 
 #[tokio::test]

@@ -1,3 +1,8 @@
+//! Authenc Enterprise Identity Management Platform
+//!
+//! A secure, scalable identity management platform built with Rust,
+//! featuring OAuth2/OIDC, SAML federation, WebAuthn, and advanced cryptography.
+
 use anyhow::Result;
 use authenc::{app::ApplicationBuilder, config::AppConfig};
 

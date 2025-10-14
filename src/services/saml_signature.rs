@@ -1,11 +1,7 @@
 // SAML Signature and Storage Implementation
 // Provides XML digital signature support and database storage for SAML requests/responses.
 
-use crate::{
-    database::Database,
-    error::{AuthencError, Result},
-};
-use base64::{Engine, engine::general_purpose::STANDARD};
+use crate::{database::Database, error::Result};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -13,16 +9,27 @@ use uuid::Uuid;
 /// SAML request/response storage model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlMessage {
+    /// Unique identifier for the SAML message
     pub id: Uuid,
+    /// SAML message ID from the XML
     pub saml_id: String,
+    /// Type of SAML message (request/response)
     pub message_type: String,
+    /// SAML issuer entity ID
     pub issuer: String,
+    /// SAML destination URL
     pub destination: String,
+    /// Raw XML content of the SAML message
     pub xml_content: String,
+    /// XML digital signature if present
     pub signature: Option<String>,
+    /// When the message was created
     pub created_at: DateTime<Utc>,
+    /// When the message expires
     pub expires_at: DateTime<Utc>,
+    /// Associated session identifier
     pub session_id: Option<String>,
+    /// SAML relay state parameter
     pub relay_state: Option<String>,
 }
 
