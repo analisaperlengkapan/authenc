@@ -20,3 +20,14 @@ jobs:
         run: cargo build --workspace --all-targets --release
       - name: Run tests
         run: cargo test --workspace --all-targets
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Lint (clippy)
+        run: cargo clippy --all -- -D warnings
+      - name: Check formatting
+        run: cargo fmt --all -- --check
