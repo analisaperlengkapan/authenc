@@ -1,220 +1,234 @@
 # Contributing to Authenc
 
-Thank you for your interest in contributing to Authenc! We welcome contributions from developers of all skill levels.
+Thank you for your interest in contributing to Authenc! We welcome contributions from developers of all skill levels and backgrounds.
 
-## 🚀 Development Roadmap Overview
-
-Authenc is currently in an exciting phase of development with a clear 3-phase roadmap:
-
-### Phase 1 (Q3 2025): Database & Security Foundation 🔴 CRITICAL
-- **Database Integration**: PostgreSQL persistence for all services
-- **Security Hardening**: Production-ready security infrastructure
-- **Performance Optimization**: Enterprise-grade performance tuning
-
-### Phase 2 (Q4 2025): Enterprise Features 🟡 HIGH
-- **Social Login**: 10+ OAuth2/OIDC providers
-- **LDAP/AD Integration**: Enterprise directory support
-- **Fine-grained Authorization**: RGAC with UMA 2.0
-- **Clustering & HA**: Production clustering capabilities
-
-### Phase 3 (Q1 2026): UI & Integration 🟢 MEDIUM
-- **Web Admin UI**: Complete administrative interface
-- **Account Management UI**: Self-service user interface
-- **Kubernetes Operator**: Cloud-native deployment
-- **Advanced Monitoring**: Enterprise observability
-
-## 🎯 Current Development Focus
-
-### Immediate Priorities (Phase 1)
-We're currently focused on **Database Integration & Security Hardening**. Here's how you can contribute:
-
-#### Database Integration Tasks
-- Implement PostgreSQL operations for device management
-- Add WebAuthn credential storage with encryption
-- Create OAuth2 token persistence layer
-- Build organization and user data persistence
-- Develop SAML federation configuration storage
-
-#### Security Hardening Tasks
-- Implement comprehensive security headers middleware
-- Add distributed rate limiting with Redis
-- Create secure session management
-- Build CSRF protection mechanisms
-- Develop input validation and sanitization
-
-### Getting Involved in Current Phase
-1. **Check existing issues** labeled `phase-1` or `database-integration`
-2. **Focus on test coverage** - we need comprehensive tests for all database operations
-3. **Security review** - all database operations must be secure by design
-4. **Documentation** - document all new database schemas and operations
-
-### Future Phase Opportunities
-- **Phase 2**: Social login providers, LDAP integration, clustering
-- **Phase 3**: React/TypeScript UI development, Kubernetes operator
-
-## 🛠 Development Setup
+## Development Setup
 
 ### Prerequisites
-- Rust 1.75+ (latest stable)
-- PostgreSQL 12+ (for database integration)
-- Redis 6+ (for caching and rate limiting)
+
+- Rust 1.90 or later
+- PostgreSQL 13+
 - Git
 
-### Local Development
+### Getting Started
+
+1. Fork the repository on GitHub
+2. Clone your fork:
 ```bash
-# Clone the repository
-git clone https://github.com/cipherce/authenc.git
+git clone https://github.com/your-username/authenc.git
 cd authenc
+```
+
+3. Set up the development environment:
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Set up database
+createdb authenc_dev
 
 # Install dependencies
 cargo build
+```
 
-# Run tests
+4. Run tests to ensure everything works:
+```bash
 cargo test
-
-# Run with development config
-cargo run
-
-# Check code quality
-cargo clippy
-cargo fmt --check
-
-# Security audit
-cargo audit
 ```
 
-## 📝 Contribution Guidelines
+## Development Workflow
 
-### Code Standards
-- **Follow Rust idioms**: Use `cargo clippy` and `cargo fmt`
-- **Write tests**: All new functionality must include tests
-- **Document your code**: Add doc comments for public APIs
-- **Security first**: Security-related changes require extra scrutiny
-- **Modular design**: Maintain separation of concerns
+### 1. Choose an Issue
 
-### Security Requirements
-- **Security audit mandatory**: All changes must pass `cargo audit` and `cargo deny check`
-- **No unsafe code**: Contributions introducing unsafe blocks require security review
-- **Cryptography changes**: Require additional security review and testing
-- **License compliance**: All new dependencies must use OSI-approved licenses
-- **Vulnerability testing**: Security-related changes need comprehensive testing
+- Check [GitHub Issues](https://github.com/analisaperlengkapan/authenc/issues) for open tasks
+- Look for issues labeled `good first issue` or `help wanted`
+- Comment on the issue to indicate you're working on it
 
-### Testing Requirements
-- **Unit tests** for individual functions and modules
-- **Integration tests** for API endpoints and middleware
-- **Security tests** for authentication and authorization features
-- All tests must pass: `cargo test`
-- No decrease in test coverage
+### 2. Create a Branch
 
-### Commit Guidelines
-- **Clear commit messages**: Use descriptive, concise commit messages
-- **Atomic commits**: One logical change per commit
-- **Conventional commits** preferred:
-  ```
-  feat: add TOTP authentication support
-  fix: resolve rate limiter memory leak
-  docs: update API documentation
-  test: add security middleware tests
-  ```
-
-### Pull Request Process
-
-1. **Update documentation** if needed
-2. **Add/update tests** for your changes
-3. **Ensure CI passes**: All tests and checks must pass
-4. **Write clear PR description**:
-   - What changes were made?
-   - Why were they necessary?
-   - How were they tested?
-5. **Link related issues** if applicable
-6. **Request review** from maintainers
-
-## 🎯 Types of Contributions
-
-### 🐛 Bug Reports
-- Use GitHub Issues with the "bug" label
-- Include steps to reproduce
-- Provide system information (OS, Rust version)
-- Include error messages and logs
-
-### ✨ Feature Requests
-- Use GitHub Issues with the "enhancement" label
-- Describe the use case and expected behavior
-- Consider backward compatibility
-
-### 📚 Documentation
-- API documentation improvements
-- Code examples and tutorials
-- README updates
-- Architecture documentation
-
-### 🔒 Security
-- Security issues should be reported privately to: security@cipherce.com
-- Follow responsible disclosure practices
-- Security fixes are high priority
-
-## 🏗 Architecture Guidelines
-
-### Code Organization
-```
-src/
-├── app.rs              # Application builder and configuration
-├── config.rs           # Configuration management
-├── error.rs            # Error types and handling
-├── handlers/           # HTTP request handlers
-├── middleware/         # Security and utility middleware
-├── models/             # Data models and schemas
-├── services/           # Business logic and data access
-└── utils/              # Shared utility functions
+```bash
+git checkout -b feature/your-feature-name
+# or
+git checkout -b fix/issue-number-description
 ```
 
-### Key Principles
-- **Security by default**: All endpoints should be secure by default
-- **Configuration driven**: Use environment variables for configuration
-- **Testable**: Write code that's easy to test
-- **Error handling**: Comprehensive error handling with proper logging
-- **Performance**: Consider performance implications of changes
+### 3. Make Changes
 
-## 🔍 Code Review Process
+- Follow Rust best practices and idioms
+- Add tests for new functionality
+- Update documentation as needed
+- Ensure code compiles and tests pass
 
-1. **Automated checks**: CI/CD pipeline runs tests and lints
-2. **Maintainer review**: At least one maintainer must approve
-3. **Community feedback**: Other contributors may provide input
-4. **Iterative improvement**: Address feedback in new commits
-5. **Merge**: Maintainers merge approved PRs
+### 4. Commit Changes
 
-## 📋 Checklist for Contributors
+```bash
+# Stage your changes
+git add .
 
-Before submitting a PR, ensure:
+# Commit with a clear message
+git commit -m "feat: add new authentication method
 
-- [ ] Code follows Rust best practices (`cargo clippy` passes)
-- [ ] Code is properly formatted (`cargo fmt`)
-- [ ] All tests pass (`cargo test`)
-- [ ] New functionality includes tests
-- [ ] Documentation is updated if needed
-- [ ] CHANGELOG.md is updated for significant changes
-- [ ] No sensitive information is committed
-- [ ] Branch is up to date with main
+- Implement OAuth2 device flow
+- Add device code generation
+- Update API documentation
+- Add comprehensive tests"
+```
 
-## 🏷 Issue Labels
+### 5. Push and Create Pull Request
 
-- `bug` - Something isn't working
-- `enhancement` - New feature or improvement
-- `documentation` - Documentation improvements
-- `security` - Security-related issues
-- `good first issue` - Good for newcomers
-- `help wanted` - Extra attention needed
+```bash
+# Push your branch
+git push origin feature/your-feature-name
 
-## 💬 Communication
+# Create a pull request on GitHub
+```
 
-- **GitHub Issues**: Bug reports and feature requests
-- **GitHub Discussions**: Questions and community discussion
-- **Email**: security@cipherce.com for security issues
+## Code Standards
 
-## 📄 License
+### Rust Guidelines
 
-By contributing to Authenc, you agree that your contributions will be licensed under the MIT License.
+- Follow the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
+- Use `cargo clippy` to check for common mistakes
+- Format code with `cargo fmt`
+- Write comprehensive documentation for public APIs
+- Prefer `Result` over panics for error handling
 
----
+### Commit Messages
 
-Thank you for contributing to Authenc! Your efforts help make authentication and authorization more secure and accessible for everyone.
+Follow [Conventional Commits](https://conventionalcommits.org/) format:
+
+```
+type(scope): description
+
+[optional body]
+
+[optional footer]
+```
+
+Types:
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation
+- `style`: Code style changes
+- `refactor`: Code refactoring
+- `test`: Testing
+- `chore`: Maintenance
+
+### Testing
+
+- Write unit tests for all public functions
+- Add integration tests for API endpoints
+- Include edge cases and error conditions
+- Aim for high test coverage (>80%)
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_user_creation() {
+        // Test implementation
+    }
+}
+```
+
+## Architecture Guidelines
+
+### Service Provider Interface (SPI)
+
+Authenc uses SPI for extensibility. When adding new providers:
+
+1. Implement the appropriate SPI trait
+2. Register the provider in the SPI manager
+3. Add configuration options
+4. Write tests
+5. Update documentation
+
+### Database Operations
+
+- Use the existing store pattern for data access
+- Implement proper error handling
+- Add database migrations for schema changes
+- Ensure thread safety with Arc/RwLock where needed
+
+### Security Considerations
+
+- Never log sensitive information
+- Use secure random number generation
+- Implement proper input validation
+- Follow OWASP guidelines
+- Consider timing attacks in cryptographic operations
+
+## Areas for Contribution
+
+### High Priority
+
+- **Social Login Providers**: Implement OAuth2/OIDC integrations (Google, GitHub, Microsoft)
+- **LDAP/Active Directory**: Enterprise directory federation
+- **Web Admin UI**: React/Vue.js administration interface
+- **Documentation**: API docs, tutorials, deployment guides
+
+### Medium Priority
+
+- **Performance Optimization**: Database query optimization, caching
+- **Monitoring**: Metrics collection, alerting, dashboards
+- **Testing**: Additional test coverage, integration tests
+- **Security**: Vulnerability assessments, security hardening
+
+### Good First Issues
+
+- Documentation improvements
+- Test coverage enhancements
+- Code refactoring and cleanup
+- Minor bug fixes
+- UI/UX improvements
+
+## Pull Request Process
+
+1. **Ensure CI Passes**: All tests must pass, code must compile
+2. **Code Review**: At least one maintainer must review
+3. **Documentation**: Update relevant docs for API changes
+4. **Changelog**: Add entry to CHANGELOG.md for user-facing changes
+
+### PR Template
+
+Please use this template for pull requests:
+
+```markdown
+## Description
+Brief description of the changes
+
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+
+## Testing
+- [ ] Unit tests added/updated
+- [ ] Integration tests added/updated
+- [ ] Manual testing performed
+
+## Checklist
+- [ ] Code compiles without warnings
+- [ ] Tests pass
+- [ ] Documentation updated
+- [ ] Changelog updated (if applicable)
+```
+
+## Community
+
+- **Discussions**: Use [GitHub Discussions](https://github.com/analisaperlengkapan/authenc/discussions) for questions
+- **Issues**: Report bugs and request features via [GitHub Issues](https://github.com/analisaperlengkapan/authenc/issues)
+- **Code of Conduct**: Please follow our [Code of Conduct](CODE_OF_CONDUCT.md)
+
+## Recognition
+
+Contributors will be recognized in:
+- CHANGELOG.md for significant contributions
+- GitHub's contributor insights
+- Release notes
+- Project documentation
+
+Thank you for contributing to Authenc! 🎉
