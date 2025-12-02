@@ -18,29 +18,34 @@ async fn account_console_handler() -> Html<&'static str> {
 /// Consent UI handlers for user consent management
 pub mod consent_ui;
 /// Health check handlers for Axum web framework
-pub mod health_axum;
+pub mod health;
 /// JWT token handling with Ed25519 signatures for enhanced security
 pub mod jwt_ed25519;
 /// Comprehensive OAuth2 implementation with PKCE and security features
 pub mod oauth2_comprehensive;
 /// OIDC identity provider with Ed25519 JWT signing (secure replacement for RSA)
 pub mod oidc_ed25519;
-pub use health_axum::create_health_routes;
+pub use health::create_health_routes;
 
-// Legacy Actix handlers (temporarily disabled during migration)
-// mod audit;
-// mod group;
-/// Legacy health handlers (replaced by health_axum)
-mod health;
-// mod oidc_client;
+// Migrated handlers (Actix -> Axum)
+/// Audit log handlers for querying and exporting audit logs
+pub mod audit;
+/// Group management handlers
+pub mod group;
+/// OIDC client management handlers
+pub mod oidc_client;
 /// Legacy OIDC JWT handlers with RSA (deprecated - use oidc_ed25519)
 pub mod oidc_jwt;
 /// OIDC cryptographic key management
 pub mod oidc_keys;
-// mod oidc_provider;
-// mod session;
-// mod totp;
-// mod totp_verify;
+/// OIDC provider handlers (Legacy RSA-based, for backward compatibility)
+pub mod oidc_provider;
+/// Session management handlers
+pub mod session;
+/// TOTP (Time-based One-Time Password) handlers
+pub mod totp;
+/// TOTP verification handlers
+pub mod totp_verify;
 
 // Advanced Services Handlers
 /// Administrative API endpoints for system management
@@ -130,9 +135,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .with_state(oauth2_state.clone());
 
     let mut router = Router::new()
-        .route("/health", get(health_axum::health))
-        .route("/ready", get(health_axum::ready))
-        .route("/live", get(health_axum::live))
+        .route("/health", get(health::health))
+        .route("/ready", get(health::ready))
+        .route("/live", get(health::live))
         // OAuth2 authorization endpoint (accessible without auth)
         .nest(
             "/oauth2",
@@ -365,7 +370,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_endpoint() {
-        use crate::handlers::health_axum::health;
+        use crate::handlers::health::health;
 
         let response = health().await;
 

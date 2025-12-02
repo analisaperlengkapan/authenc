@@ -66,6 +66,7 @@ impl EcdsaP521Jwk {
 }
 
 /// Sign JWT with ECDSA P-521
+#[allow(deprecated)] // TODO: Upgrade to generic-array 1.x when p521 updates
 pub fn sign_jwt_p521(header: &str, payload: &str) -> Result<String, String> {
     use base64ct::{Base64UrlUnpadded, Encoding};
     use p521::ecdsa::Signature;

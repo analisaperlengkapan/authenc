@@ -383,10 +383,11 @@ impl HsmVault for HashiCorpVault {
         data: &[u8],
         algorithm: &str,
     ) -> Result<Vec<u8>, VaultError> {
+        use base64::Engine;
         let path = format!("transit/sign/{}/{}", key_id, algorithm);
 
         let payload = serde_json::json!({
-            "input": base64::encode(data),
+            "input": base64::engine::general_purpose::STANDARD.encode(data),
         });
 
         let req = self
@@ -402,7 +403,7 @@ impl HsmVault for HashiCorpVault {
                             .and_then(|d| d.get("signature"))
                             .and_then(|s| s.as_str())
                         {
-                            return base64::decode(signature)
+                            return base64::engine::general_purpose::STANDARD.decode(signature)
                                 .map_err(|e| VaultError::InvalidFormat(e.to_string()));
                         }
                     }
@@ -414,10 +415,11 @@ impl HsmVault for HashiCorpVault {
     }
 
     async fn hsm_encrypt(&self, key_id: &str, plaintext: &[u8]) -> Result<Vec<u8>, VaultError> {
+        use base64::Engine;
         let path = format!("transit/encrypt/{}", key_id);
 
         let payload = serde_json::json!({
-            "plaintext": base64::encode(plaintext),
+            "plaintext": base64::engine::general_purpose::STANDARD.encode(plaintext),
         });
 
         let req = self
@@ -444,6 +446,7 @@ impl HsmVault for HashiCorpVault {
     }
 
     async fn hsm_decrypt(&self, key_id: &str, ciphertext: &[u8]) -> Result<Vec<u8>, VaultError> {
+        use base64::Engine;
         let path = format!("transit/decrypt/{}", key_id);
 
         let ciphertext_str = String::from_utf8_lossy(ciphertext);
@@ -464,7 +467,7 @@ impl HsmVault for HashiCorpVault {
                             .and_then(|d| d.get("plaintext"))
                             .and_then(|p| p.as_str())
                         {
-                            return base64::decode(plaintext)
+                            return base64::engine::general_purpose::STANDARD.decode(plaintext)
                                 .map_err(|e| VaultError::InvalidFormat(e.to_string()));
                         }
                     }

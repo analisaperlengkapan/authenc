@@ -646,7 +646,8 @@ impl FipsKeyStoreManager {
 
         let encrypted = aes_service.encrypt(secret.as_bytes())?;
         let encrypted_json = serde_json::to_string(&encrypted)?;
-        let encrypted_b64 = base64::encode(encrypted_json.as_bytes());
+        use base64::Engine;
+        let encrypted_b64 = base64::engine::general_purpose::STANDARD.encode(encrypted_json.as_bytes());
 
         secrets.insert(alias.to_string(), encrypted_b64);
 
@@ -672,7 +673,8 @@ impl FipsKeyStoreManager {
 
         if let Some(encrypted_b64) = secrets.get(alias) {
             // Decrypt the secret
-            let encrypted_json_bytes = base64::decode(encrypted_b64)?;
+            use base64::Engine;
+            let encrypted_json_bytes = base64::engine::general_purpose::STANDARD.decode(encrypted_b64)?;
             let encrypted_json = String::from_utf8(encrypted_json_bytes)?;
 
             use crate::crypto::aes_gcm::{AesGcmService, EncryptedData};

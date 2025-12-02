@@ -1,27 +1,330 @@
+//! OIDC Provider handlers for Axum
+//!
+//! This module provides OIDC provider endpoints using Ed25519 signatures.
+//! Ed25519 provides better security and performance compared to RSA.
+//!
+//! NOTE: RSA support has been removed due to security vulnerabilities
+//! (RUSTSEC-2023-0071). All JWT signing uses Ed25519 (EdDSA).
+
+use crate::crypto::ed25519_keys::{get_ed25519_jwk, ED25519_KEYPAIR};
+use crate::handlers::oidc_ed25519::OidcIdTokenClaims;
 use crate::models::audit_log::AuditLog;
+use crate::services::oidc_client_store::OidcClientStore;
+use crate::services::oidc_code_store::OidcCodeStore;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
-use crate::services::user_store::UserStore;
-// TODO: Migrate to Axum - temporarily commented out
+use crate::services::stores::user_store::UserStore;
+use axum::{
+    extract::{Query, State},
+    http::{HeaderMap, StatusCode},
+    response::{Html, IntoResponse, Json, Redirect, Response},
+    routing::{get, post},
+    Form, Router,
+};
+use axum_extra::extract::CookieJar;
+use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::Utc;
-use rsa::pkcs8::EncodePublicKey;
-#[get("/oidc/login")]
-pub async fn oidc_login(query: web::Query<OidcAuthorizeQuery>) -> impl Responder {
-    // Stub login form, on submit set cookie and redirect to authorize with original params
+use ed25519_dalek::{Signature, Signer, Verifier};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+/// JWT header for Ed25519 signed tokens
+#[derive(Debug, Serialize, Deserialize)]
+struct Ed25519JwtHeader {
+    /// Algorithm (EdDSA)
+    pub alg: String,
+    /// Token type (JWT)
+    pub typ: String,
+    /// Key ID
+    pub kid: String,
+}
+
+/// Generate an Ed25519 signed ID token
+///
+/// Creates a JWT token signed with Ed25519 for OIDC ID tokens and access tokens.
+fn generate_ed25519_id_token(
+    sub: &str,
+    aud: &str,
+    email: Option<&str>,
+    name: Option<&str>,
+    role: Option<&str>,
+) -> String {
+    let now = Utc::now().timestamp();
+
+    let header = Ed25519JwtHeader {
+        alg: "EdDSA".to_string(),
+        typ: "JWT".to_string(),
+        kid: "authence-ed25519-key".to_string(),
+    };
+
+    let claims = OidcIdTokenClaims {
+        iss: "http://localhost:8080/v1".to_string(),
+        sub: sub.to_string(),
+        aud: aud.to_string(),
+        exp: now + 3600,
+        iat: now,
+        email: email.map(|e| e.to_string()),
+        name: name.map(|n| n.to_string()),
+        role: role.map(|r| r.to_string()),
+    };
+
+    // Encode header and payload
+    let header_json = serde_json::to_string(&header).unwrap();
+    let claims_json = serde_json::to_string(&claims).unwrap();
+
+    let header_b64 = Base64UrlUnpadded::encode_string(header_json.as_bytes());
+    let payload_b64 = Base64UrlUnpadded::encode_string(claims_json.as_bytes());
+
+    // Create signing input
+    let signing_input = format!("{}.{}", header_b64, payload_b64);
+
+    // Sign with Ed25519
+    let signature: Signature = ED25519_KEYPAIR.sign(signing_input.as_bytes());
+    let signature_b64 = Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
+
+    format!("{}.{}", signing_input, signature_b64)
+}
+
+/// Verify an Ed25519 signed JWT and extract claims
+///
+/// Validates the JWT signature using Ed25519 and returns the claims if valid.
+fn verify_ed25519_jwt(token: &str) -> Result<OidcIdTokenClaims, &'static str> {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return Err("Invalid token format");
+    }
+
+    let header_b64 = parts[0];
+    let payload_b64 = parts[1];
+    let signature_b64 = parts[2];
+
+    // Verify signature
+    let signing_input = format!("{}.{}", header_b64, payload_b64);
+    let signature_bytes = Base64UrlUnpadded::decode_vec(signature_b64)
+        .map_err(|_| "Invalid signature encoding")?;
+    
+    if signature_bytes.len() != 64 {
+        return Err("Invalid signature length");
+    }
+
+    let signature = Signature::from_slice(&signature_bytes)
+        .map_err(|_| "Invalid signature format")?;
+
+    // Get public key from keypair
+    let public_key = ED25519_KEYPAIR.verifying_key();
+    public_key
+        .verify(signing_input.as_bytes(), &signature)
+        .map_err(|_| "Signature verification failed")?;
+
+    // Decode and parse claims
+    let claims_bytes = Base64UrlUnpadded::decode_vec(payload_b64)
+        .map_err(|_| "Invalid payload encoding")?;
+    let claims: OidcIdTokenClaims = serde_json::from_slice(&claims_bytes)
+        .map_err(|_| "Invalid claims format")?;
+
+    // Verify expiration
+    let now = Utc::now().timestamp();
+    if claims.exp < now {
+        return Err("Token expired");
+    }
+
+    Ok(claims)
+}
+
+/// State for OIDC provider handlers
+pub struct OidcProviderState {
+    /// Code store for authorization codes
+    pub code_store: Arc<OidcCodeStore>,
+    /// Client store for client validation
+    pub client_store: Arc<OidcClientStore>,
+    /// User store for user lookup
+    pub user_store: Arc<UserStore>,
+    /// Audit log store for logging
+    pub audit_log_store: Arc<PgAuditLogStore>,
+}
+
+impl OidcProviderState {
+    /// Create new OIDC provider state
+    pub fn new(
+        code_store: Arc<OidcCodeStore>,
+        client_store: Arc<OidcClientStore>,
+        user_store: Arc<UserStore>,
+        audit_log_store: Arc<PgAuditLogStore>,
+    ) -> Self {
+        Self {
+            code_store,
+            client_store,
+            user_store,
+            audit_log_store,
+        }
+    }
+}
+
+/// OIDC Authorization query parameters
+#[derive(Debug, Deserialize)]
+pub struct OidcAuthorizeQuery {
+    /// Client identifier
+    pub client_id: String,
+    /// Redirect URI after authorization
+    pub redirect_uri: String,
+    /// Response type (code, id_token, token id_token)
+    pub response_type: String,
+    /// Requested scopes
+    pub scope: Option<String>,
+    /// State parameter for CSRF protection
+    pub state: Option<String>,
+}
+
+/// OIDC Login form data
+#[derive(Debug, Deserialize)]
+pub struct OidcLoginForm {
+    /// Client ID
+    pub client_id: String,
+    /// Redirect URI
+    pub redirect_uri: String,
+    /// Response type
+    pub response_type: String,
+    /// Scope
+    pub scope: Option<String>,
+    /// State
+    pub state: Option<String>,
+    /// Username
+    pub username: String,
+    /// Password
+    pub password: String,
+}
+
+/// OIDC Token request
+#[derive(Debug, Deserialize)]
+pub struct OidcTokenRequest {
+    /// Grant type (authorization_code)
+    pub grant_type: String,
+    /// Authorization code
+    pub code: String,
+    /// Redirect URI (must match authorization request)
+    pub redirect_uri: String,
+    /// Client ID
+    pub client_id: String,
+    /// Client secret
+    pub client_secret: Option<String>,
+}
+
+/// OIDC Token response
+#[derive(Debug, Serialize)]
+pub struct OidcTokenResponse {
+    /// Access token
+    pub access_token: String,
+    /// ID token
+    pub id_token: String,
+    /// Token type
+    pub token_type: String,
+    /// Token expiration in seconds
+    pub expires_in: u64,
+}
+
+/// OIDC Discovery response
+#[derive(Debug, Serialize)]
+pub struct OidcDiscoveryResponse {
+    /// Issuer URL
+    pub issuer: String,
+    /// Authorization endpoint
+    pub authorization_endpoint: String,
+    /// Token endpoint
+    pub token_endpoint: String,
+    /// Userinfo endpoint
+    pub userinfo_endpoint: String,
+    /// JWKS URI
+    pub jwks_uri: String,
+    /// Supported response types
+    pub response_types_supported: Vec<String>,
+    /// Supported subject types
+    pub subject_types_supported: Vec<String>,
+    /// Supported ID token signing algorithms
+    pub id_token_signing_alg_values_supported: Vec<String>,
+    /// Supported scopes
+    pub scopes_supported: Vec<String>,
+    /// Supported token endpoint auth methods
+    pub token_endpoint_auth_methods_supported: Vec<String>,
+}
+
+/// OIDC Userinfo response
+#[derive(Debug, Serialize)]
+pub struct OidcUserinfoResponse {
+    /// Subject identifier
+    pub sub: String,
+    /// User email
+    pub email: String,
+    /// User name
+    pub name: String,
+}
+
+/// Error response
+#[derive(Debug, Serialize)]
+pub struct ErrorResponse {
+    /// Error code
+    pub error: String,
+    /// Error description
+    pub error_description: Option<String>,
+}
+
+/// OIDC Discovery endpoint
+///
+/// GET /.well-known/openid-configuration
+pub async fn oidc_discovery() -> Json<OidcDiscoveryResponse> {
+    Json(OidcDiscoveryResponse {
+        issuer: "http://localhost:8080/v1".to_string(),
+        authorization_endpoint: "http://localhost:8080/v1/oidc/authorize".to_string(),
+        token_endpoint: "http://localhost:8080/v1/oidc/token".to_string(),
+        userinfo_endpoint: "http://localhost:8080/v1/oidc/userinfo".to_string(),
+        jwks_uri: "http://localhost:8080/v1/oidc/jwks".to_string(),
+        response_types_supported: vec![
+            "code".to_string(),
+            "id_token".to_string(),
+            "token id_token".to_string(),
+        ],
+        subject_types_supported: vec!["public".to_string()],
+        id_token_signing_alg_values_supported: vec!["EdDSA".to_string()],
+        scopes_supported: vec![
+            "openid".to_string(),
+            "profile".to_string(),
+            "email".to_string(),
+        ],
+        token_endpoint_auth_methods_supported: vec!["client_secret_basic".to_string()],
+    })
+}
+
+/// OIDC Login form
+///
+/// GET /oidc/login
+pub async fn oidc_login(Query(query): Query<OidcAuthorizeQuery>) -> Html<String> {
     let html = format!(
         r#"
-        <html><body>
-        <h2>OIDC Login</h2>
-        <form method='post' action='/v1/oidc/login'>
-            <input type='hidden' name='client_id' value='{}'/>
-            <input type='hidden' name='redirect_uri' value='{}'/>
-            <input type='hidden' name='response_type' value='{}'/>
-            <input type='hidden' name='scope' value='{}'/>
-            <input type='hidden' name='state' value='{}'/>
-            Username: <input name='username'/><br/>
-            Password: <input name='password' type='password'/><br/>
-            <input type='submit' value='Login'/>
-        </form>
-        </body></html>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>OIDC Login</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; max-width: 400px; margin: 50px auto; padding: 20px; }}
+                h2 {{ color: #333; }}
+                form {{ display: flex; flex-direction: column; gap: 15px; }}
+                input {{ padding: 10px; border: 1px solid #ccc; border-radius: 4px; }}
+                input[type="submit"] {{ background-color: #007bff; color: white; cursor: pointer; }}
+                input[type="submit"]:hover {{ background-color: #0056b3; }}
+            </style>
+        </head>
+        <body>
+            <h2>OIDC Login</h2>
+            <form method="post" action="/v1/oidc/login">
+                <input type="hidden" name="client_id" value="{}"/>
+                <input type="hidden" name="redirect_uri" value="{}"/>
+                <input type="hidden" name="response_type" value="{}"/>
+                <input type="hidden" name="scope" value="{}"/>
+                <input type="hidden" name="state" value="{}"/>
+                <input name="username" placeholder="Username" required/>
+                <input name="password" type="password" placeholder="Password" required/>
+                <input type="submit" value="Login"/>
+            </form>
+        </body>
+        </html>
     "#,
         query.client_id,
         query.redirect_uri,
@@ -29,137 +332,145 @@ pub async fn oidc_login(query: web::Query<OidcAuthorizeQuery>) -> impl Responder
         query.scope.clone().unwrap_or_default(),
         query.state.clone().unwrap_or_default()
     );
-    HttpResponse::Ok().content_type("text/html").body(html)
+    Html(html)
 }
 
-#[post("/oidc/login")]
+/// OIDC Login POST handler
+///
+/// POST /oidc/login
 pub async fn oidc_login_post(
-    form: web::Form<OidcAuthorizeQuery>,
-    user_store: web::Data<UserStore>,
-    audit_log_store: web::Data<PgAuditLogStore>,
-) -> impl Responder {
-    // Render login form with username/password fields
-    let username = form.scope.clone().unwrap_or_default(); // overload for username (for demo, should use real struct)
-    let password = form.state.clone().unwrap_or_default(); // overload for password (for demo)
-                                                           // Actually, username/password should be in a separate struct, but for demo, use scope/state
-    let user = if let Some(user) = user_store.get_by_username(&username) {
-        user
-    } else {
-        return HttpResponse::Unauthorized().body("Invalid credentials");
-    };
-    let mut status = "success".to_string();
-    let mut detail = None;
-    let mut resp = None;
-    let password_ok = match user_store.verify_password(&username, &password) {
-        Ok(ok) => ok,
+    State(state): State<Arc<OidcProviderState>>,
+    Form(form): Form<OidcLoginForm>,
+) -> Response {
+    use crate::services::stores::user_store::UserStoreTrait;
+    use crate::utils::crypto::password::verify_password;
+
+    // Verify user credentials
+    let user = match state.user_store.get_user_by_username(&form.username).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            let _ = state
+                .audit_log_store
+                .add_log(&AuditLog {
+                    timestamp: Utc::now(),
+                    event: "oidc_login".to_string(),
+                    user_id: None,
+                    client_id: Some(form.client_id.clone()),
+                    status: "failure".to_string(),
+                    detail: Some("User not found".to_string()),
+                })
+                .await;
+            return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response();
+        }
         Err(e) => {
-            return HttpResponse::InternalServerError().body(format!("User store error: {e}"));
+            tracing::error!("User store error: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Authentication error").into_response();
         }
     };
+
+    // Verify password using the password hash from user
+    let password_hash = match &user.password_hash {
+        Some(hash) => hash,
+        None => {
+            tracing::error!("User has no password hash");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Authentication error").into_response();
+        }
+    };
+    let password_ok = match verify_password(password_hash, &form.password) {
+        Ok(ok) => ok,
+        Err(e) => {
+            tracing::error!("Password verification error: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Authentication error").into_response();
+        }
+    };
+
     if !password_ok {
-        status = "failure".to_string();
-        detail = Some("Invalid credentials".to_string());
-        resp = Some(HttpResponse::Unauthorized().body("Invalid credentials"));
+        let _ = state
+            .audit_log_store
+            .add_log(&AuditLog {
+                timestamp: Utc::now(),
+                event: "oidc_login".to_string(),
+                user_id: Some(user.id.to_string()),
+                client_id: Some(form.client_id.clone()),
+                status: "failure".to_string(),
+                detail: Some("Invalid password".to_string()),
+            })
+            .await;
+        return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response();
     }
+
     let user_id = user.id.to_string();
-    if resp.is_none() {
-        // TODO: Migrate to Axum - temporarily commented out
-        // let mut r = Response::builder().status(StatusCode::FOUND);
-        let uri = format!(
-            "/v1/oidc/authorize?client_id={}&redirect_uri={}&response_type={}&scope={}&state={}",
-            form.client_id,
-            form.redirect_uri,
-            form.response_type,
-            form.scope.clone().unwrap_or_default(),
-            form.state.clone().unwrap_or_default()
-        );
-        r.append_header((
-            "Set-Cookie",
-            format!("auth_user_id={}; Path=/; HttpOnly", user_id),
-        ));
-        r.append_header(("Location", uri));
-        resp = Some(r.finish());
-    }
-    let _ = audit_log_store
+
+    // Log successful login
+    let _ = state
+        .audit_log_store
         .add_log(&AuditLog {
             timestamp: Utc::now(),
             event: "oidc_login".to_string(),
             user_id: Some(user_id.clone()),
             client_id: Some(form.client_id.clone()),
-            status,
-            detail,
+            status: "success".to_string(),
+            detail: None,
         })
         .await;
-    resp.unwrap_or_else(|| HttpResponse::InternalServerError().body("No response generated"))
-}
-use crate::handlers::oidc_jwt::generate_id_token;
-use crate::services::oidc_client_store::OidcClientStore;
-use crate::services::oidc_code_store::OidcCodeStore;
-// TODO: Migrate to Axum - temporarily commented out
-// TODO: Migrate to Axum - temporarily commented out
-use rsa::traits::PublicKeyParts;
-use serde::Deserialize;
 
-#[get("/.well-known/openid-configuration")]
-pub async fn oidc_discovery() -> impl Responder {
-    HttpResponse::Ok().json(serde_json::json!({
-        "issuer": "http://localhost:8080/v1",
-        "authorization_endpoint": "http://localhost:8080/v1/oidc/authorize",
-        "token_endpoint": "http://localhost:8080/v1/oidc/token",
-        "userinfo_endpoint": "http://localhost:8080/v1/oidc/userinfo",
-        "jwks_uri": "http://localhost:8080/v1/oidc/jwks",
-        "response_types_supported": ["code", "id_token", "token id_token"],
-        "subject_types_supported": ["public"],
-        "id_token_signing_alg_values_supported": ["RS256"],
-        "scopes_supported": ["openid", "profile", "email"],
-        "token_endpoint_auth_methods_supported": ["client_secret_basic"],
-    }))
+    // Build redirect URL to authorization endpoint
+    let uri = format!(
+        "/v1/oidc/authorize?client_id={}&redirect_uri={}&response_type={}&scope={}&state={}",
+        form.client_id,
+        form.redirect_uri,
+        form.response_type,
+        form.scope.unwrap_or_default(),
+        form.state.unwrap_or_default()
+    );
+
+    // Set cookie and redirect
+    Response::builder()
+        .status(StatusCode::FOUND)
+        .header(
+            "Set-Cookie",
+            format!("auth_user_id={}; Path=/; HttpOnly; SameSite=Lax", user_id),
+        )
+        .header("Location", uri)
+        .body(axum::body::Body::empty())
+        .unwrap()
 }
 
-// Stub endpoints for OIDC
-
-#[derive(Deserialize)]
-pub struct OidcAuthorizeQuery {
-    pub client_id: String,
-    pub redirect_uri: String,
-    pub response_type: String,
-    pub scope: Option<String>,
-    pub state: Option<String>,
-}
-
-#[get("/oidc/authorize")]
+/// OIDC Authorization endpoint
+///
+/// GET /oidc/authorize
 pub async fn oidc_authorize(
-    query: web::Query<OidcAuthorizeQuery>,
-    code_store: web::Data<OidcCodeStore>,
-    client_store: web::Data<OidcClientStore>,
-    req: HttpRequest,
-    audit_log_store: web::Data<PgAuditLogStore>,
-) -> impl Responder {
-    // Validate client_id and redirect_uri from registry
-    let client = match client_store.get(&query.client_id) {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = audit_log_store
+    State(state): State<Arc<OidcProviderState>>,
+    Query(query): Query<OidcAuthorizeQuery>,
+    jar: CookieJar,
+) -> Response {
+    // Validate client
+    let client = match state.client_store.get(&query.client_id).await {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            let _ = state
+                .audit_log_store
                 .add_log(&AuditLog {
                     timestamp: Utc::now(),
                     event: "oidc_authorize".to_string(),
                     user_id: None,
                     client_id: Some(query.client_id.clone()),
                     status: "failure".to_string(),
-                    detail: Some(format!("Client store error: {e}")),
+                    detail: Some("Client not found".to_string()),
                 })
                 .await;
-            return HttpResponse::InternalServerError().body(format!("Client store error: {e}"));
+            return (StatusCode::BAD_REQUEST, "Invalid client_id").into_response();
+        }
+        Err(e) => {
+            tracing::error!("Client store error: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Client store error").into_response();
         }
     };
-    if client.is_none()
-        || !client.as_ref().map(|c| c.enabled).unwrap_or(false)
-        || !client
-            .as_ref()
-            .map(|c| c.redirect_uris.contains(&query.redirect_uri))
-            .unwrap_or(false)
-    {
-        let _ = audit_log_store
+
+    // Check if client is enabled and redirect_uri is valid
+    if !client.enabled || !client.redirect_uris.contains(&query.redirect_uri) {
+        let _ = state
+            .audit_log_store
             .add_log(&AuditLog {
                 timestamp: Utc::now(),
                 event: "oidc_authorize".to_string(),
@@ -169,138 +480,162 @@ pub async fn oidc_authorize(
                 detail: Some("Invalid client_id or redirect_uri".to_string()),
             })
             .await;
-        return HttpResponse::BadRequest().body("Invalid client_id or redirect_uri");
+        return (StatusCode::BAD_REQUEST, "Invalid client_id or redirect_uri").into_response();
     }
-    // Check login session (cookie)
-    let user_id_cookie = req.cookie("auth_user_id").map(|c| c.value().to_string());
-    if user_id_cookie.is_none() {
-        // Redirect to login with original params
-        let uri = format!(
-            "/v1/oidc/login?client_id={}&redirect_uri={}&response_type={}&scope={}&state={}",
-            query.client_id,
-            query.redirect_uri,
-            query.response_type,
-            query.scope.clone().unwrap_or_default(),
-            query.state.clone().unwrap_or_default()
-        );
-        return HttpResponse::Found()
-            .append_header(("Location", uri))
-            .finish();
-    }
-    let user_id = match user_id_cookie {
-        Some(uid) => uid,
+
+    // Check for user session cookie
+    let user_id = match jar.get("auth_user_id") {
+        Some(cookie) => cookie.value().to_string(),
         None => {
-            return HttpResponse::InternalServerError().body("Missing user_id cookie after check")
+            // Redirect to login
+            let uri = format!(
+                "/v1/oidc/login?client_id={}&redirect_uri={}&response_type={}&scope={}&state={}",
+                query.client_id,
+                query.redirect_uri,
+                query.response_type,
+                query.scope.clone().unwrap_or_default(),
+                query.state.clone().unwrap_or_default()
+            );
+            return Redirect::to(&uri).into_response();
         }
     };
-    // Consent screen logic (stub): show consent if prompt=consent
-    let prompt = query.scope.as_deref().unwrap_or("");
-    if prompt.contains("consent") {
+
+    // Check for consent prompt
+    let scope = query.scope.as_deref().unwrap_or("");
+    if scope.contains("consent") {
         let html = format!(
             r#"
-            <html><body>
-            <h2>Consent Required</h2>
-            <form method='get' action='/v1/oidc/authorize'>
-                <input type='hidden' name='client_id' value='{}'/>
-                <input type='hidden' name='redirect_uri' value='{}'/>
-                <input type='hidden' name='response_type' value='{}'/>
-                <input type='hidden' name='scope' value='{}'/>
-                <input type='hidden' name='state' value='{}'/>
-                <input type='submit' value='Approve'/>
-            </form>
-            </body></html>
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Consent Required</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; max-width: 400px; margin: 50px auto; padding: 20px; }}
+                    h2 {{ color: #333; }}
+                    input[type="submit"] {{ padding: 10px 20px; background-color: #28a745; color: white; border: none; cursor: pointer; border-radius: 4px; }}
+                </style>
+            </head>
+            <body>
+                <h2>Consent Required</h2>
+                <p>Application <strong>{}</strong> is requesting access to your account.</p>
+                <form method="get" action="/v1/oidc/authorize">
+                    <input type="hidden" name="client_id" value="{}"/>
+                    <input type="hidden" name="redirect_uri" value="{}"/>
+                    <input type="hidden" name="response_type" value="{}"/>
+                    <input type="hidden" name="scope" value="openid profile email"/>
+                    <input type="hidden" name="state" value="{}"/>
+                    <input type="submit" value="Approve"/>
+                </form>
+            </body>
+            </html>
         "#,
+            client.name,
             query.client_id,
             query.redirect_uri,
             query.response_type,
-            query.scope.clone().unwrap_or_default(),
             query.state.clone().unwrap_or_default()
         );
-        return HttpResponse::Ok().content_type("text/html").body(html);
+        return Html(html).into_response();
     }
-    // Issue code after consent
+
+    // Issue authorization code
     let code = uuid::Uuid::new_v4().to_string();
-    let user_id_for_log = user_id.clone();
-    if let Err(e) = code_store.insert(code.clone(), query.client_id.clone(), user_id) {
-        return HttpResponse::InternalServerError().body(format!("Code store error: {e}"));
+    let scopes = query
+        .scope
+        .clone()
+        .map(|s| s.split_whitespace().map(String::from).collect())
+        .unwrap_or_else(|| vec!["openid".to_string()]);
+    
+    if let Err(e) = state
+        .code_store
+        .insert(
+            code.clone(),
+            query.client_id.clone(),
+            user_id.clone(),
+            query.redirect_uri.clone(),
+            scopes,
+            None, // code_challenge
+            None, // code_challenge_method
+        )
+        .await
+    {
+        tracing::error!("Code store error: {}", e);
+        return (StatusCode::INTERNAL_SERVER_ERROR, "Code store error").into_response();
     }
-    let mut uri = format!("{}?code={}", query.redirect_uri, code);
-    if let Some(state) = &query.state {
-        uri.push_str(&format!("&state={state}"));
+
+    // Build redirect URL with code
+    let mut redirect_url = format!("{}?code={}", query.redirect_uri, code);
+    if let Some(state_param) = &query.state {
+        redirect_url.push_str(&format!("&state={}", state_param));
     }
-    let _ = audit_log_store
+
+    // Log successful authorization
+    let _ = state
+        .audit_log_store
         .add_log(&AuditLog {
             timestamp: Utc::now(),
             event: "oidc_authorize".to_string(),
-            user_id: Some(user_id_for_log),
+            user_id: Some(user_id),
             client_id: Some(query.client_id.clone()),
             status: "success".to_string(),
             detail: None,
         })
         .await;
-    HttpResponse::Found()
-        .append_header(("Location", uri))
-        .finish()
+
+    Redirect::to(&redirect_url).into_response()
 }
 
-#[derive(Deserialize)]
-pub struct OidcTokenRequest {
-    pub grant_type: String,
-    pub code: String,
-    pub redirect_uri: String,
-    pub client_id: String,
-    pub client_secret: Option<String>,
-}
-
-#[post("/oidc/token")]
+/// OIDC Token endpoint
+///
+/// POST /oidc/token
 pub async fn oidc_token(
-    form: web::Form<OidcTokenRequest>,
-    code_store: web::Data<OidcCodeStore>,
-    client_store: web::Data<OidcClientStore>,
-    user_store: web::Data<UserStore>,
-    audit_log_store: web::Data<PgAuditLogStore>,
-) -> impl Responder {
-    // Validate client_id and redirect_uri from registry
-    let client = match client_store.get(&form.client_id) {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = audit_log_store
+    State(state): State<Arc<OidcProviderState>>,
+    Form(form): Form<OidcTokenRequest>,
+) -> Result<Json<OidcTokenResponse>, (StatusCode, Json<ErrorResponse>)> {
+    use crate::services::stores::user_store::UserStoreTrait;
+
+    // Validate client
+    let client = match state.client_store.get(&form.client_id).await {
+        Ok(Some(c)) => c,
+        Ok(None) | Err(_) => {
+            let _ = state
+                .audit_log_store
                 .add_log(&AuditLog {
                     timestamp: Utc::now(),
                     event: "oidc_token".to_string(),
                     user_id: None,
                     client_id: Some(form.client_id.clone()),
                     status: "failure".to_string(),
-                    detail: Some(format!("Client store error: {e}")),
+                    detail: Some("Invalid client".to_string()),
                 })
                 .await;
-            return HttpResponse::InternalServerError().body(format!("Client store error: {e}"));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_client".to_string(),
+                    error_description: Some("Invalid client_id".to_string()),
+                }),
+            ));
         }
     };
-    if client.is_none()
-        || !client.as_ref().map(|c| c.enabled).unwrap_or(false)
-        || !client
-            .as_ref()
-            .map(|c| c.redirect_uris.contains(&form.redirect_uri))
-            .unwrap_or(false)
-    {
-        let _ = audit_log_store
-            .add_log(&AuditLog {
-                timestamp: Utc::now(),
-                event: "oidc_token".to_string(),
-                user_id: None,
-                client_id: Some(form.client_id.clone()),
-                status: "failure".to_string(),
-                detail: Some("Invalid client_id or redirect_uri".to_string()),
-            })
-            .await;
-        return HttpResponse::BadRequest().body("Invalid client_id or redirect_uri");
+
+    // Validate redirect_uri
+    if !client.redirect_uris.contains(&form.redirect_uri) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "invalid_request".to_string(),
+                error_description: Some("Invalid redirect_uri".to_string()),
+            }),
+        ));
     }
-    // Validate code and get user_id
-    let user_id = match code_store.take(&form.code, &form.client_id) {
+
+    // Exchange code for tokens
+    let user_id = match state.code_store.take(&form.code, &form.client_id).await {
         Ok(Some(uid)) => uid,
         Ok(None) => {
-            let _ = audit_log_store
+            let _ = state
+                .audit_log_store
                 .add_log(&AuditLog {
                     timestamp: Utc::now(),
                     event: "oidc_token".to_string(),
@@ -310,126 +645,185 @@ pub async fn oidc_token(
                     detail: Some("Invalid or expired code".to_string()),
                 })
                 .await;
-            return HttpResponse::BadRequest().body("Invalid or expired code");
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_grant".to_string(),
+                    error_description: Some("Invalid or expired code".to_string()),
+                }),
+            ));
         }
         Err(e) => {
-            return HttpResponse::InternalServerError().body(format!("Code store error: {e}"));
+            tracing::error!("Code store error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "server_error".to_string(),
+                    error_description: Some("Internal server error".to_string()),
+                }),
+            ));
         }
     };
-    // Get user info for id_token
-    let user = if let Some(user) = user_store.get_by_username(&user_id) {
-        user
-    } else {
-        return HttpResponse::Unauthorized().body("User not found");
+
+    // Get user info
+    let user = match state.user_store.get_user_by_username(&user_id).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_grant".to_string(),
+                    error_description: Some("User not found".to_string()),
+                }),
+            ));
+        }
+        Err(e) => {
+            tracing::error!("User store error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "server_error".to_string(),
+                    error_description: Some("Internal server error".to_string()),
+                }),
+            ));
+        }
     };
-    let (email, name) = (Some(user.email.clone()), Some(user.username.clone()));
-    let id_token = generate_id_token(
+
+    // Generate ID token using Ed25519
+    let id_token = generate_ed25519_id_token(
         &user_id,
         &form.client_id,
-        email.as_deref(),
-        name.as_deref(),
+        Some(&user.email),
+        Some(&user.username),
         None,
     );
-    let _ = audit_log_store
+
+    // Generate access token using Ed25519
+    let access_token = generate_ed25519_id_token(
+        &user_id,
+        &form.client_id,
+        Some(&user.email),
+        Some(&user.username),
+        Some("access"),
+    );
+
+    // Log successful token exchange
+    let _ = state
+        .audit_log_store
         .add_log(&AuditLog {
             timestamp: Utc::now(),
             event: "oidc_token".to_string(),
-            user_id: Some(user_id.clone()),
+            user_id: Some(user_id),
             client_id: Some(form.client_id.clone()),
             status: "success".to_string(),
             detail: None,
         })
         .await;
-    HttpResponse::Ok().json(serde_json::json!({
-        "access_token": "demo-access-token",
-        "id_token": id_token,
-        "token_type": "Bearer",
-        "expires_in": 3600
+
+    Ok(Json(OidcTokenResponse {
+        access_token,
+        id_token,
+        token_type: "Bearer".to_string(),
+        expires_in: 3600,
     }))
 }
 
-#[get("/oidc/userinfo")]
+/// OIDC Userinfo endpoint
+///
+/// GET /oidc/userinfo
 pub async fn oidc_userinfo(
-    req: HttpRequest,
-    user_store: web::Data<UserStore>,
-    audit_log_store: web::Data<PgAuditLogStore>,
-) -> impl Responder {
-    // Parse id_token from Authorization header
-    let auth = req
-        .headers()
+    State(state): State<Arc<OidcProviderState>>,
+    headers: HeaderMap,
+) -> Result<Json<OidcUserinfoResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Extract Bearer token
+    let token = headers
         .get("Authorization")
-        .and_then(|v| v.to_str().ok());
-    if let Some(auth) = auth {
-        if let Some(token) = auth.strip_prefix("Bearer ") {
-            // Validate JWT RS256
-            use crate::handlers::oidc_jwt::OidcIdTokenClaims;
-            use crate::handlers::oidc_keys::RSA_KEYPAIR;
-            use jsonwebtoken::{Algorithm, DecodingKey, Validation};
-            let pubkey = rsa::RsaPublicKey::from(&*RSA_KEYPAIR);
-            // Use PEM (PKCS8 SubjectPublicKeyInfo); if that fails, fallback to DER
-            let pubkey_pem = pubkey.to_public_key_pem(Default::default()).unwrap();
-            let key = DecodingKey::from_rsa_pem(pubkey_pem.as_bytes())
-                .or_else(|_| {
-                    let der = pubkey.to_public_key_der().unwrap();
-                    let key = DecodingKey::from_rsa_der(der.as_ref());
-                    Result::<DecodingKey, jsonwebtoken::errors::Error>::Ok(key)
-                })
-                .unwrap();
-            let mut validation = Validation::new(Algorithm::RS256);
-            validation.validate_exp = true;
-            let claims = jsonwebtoken::decode::<OidcIdTokenClaims>(token, &key, &validation)
-                .map(|d| d.claims);
-            if let Ok(claims) = claims {
-                // Fetch user from user_store by sub
-                if let Some(user) = user_store.get_by_username(&claims.sub) {
-                    let _ = audit_log_store
-                        .add_log(&AuditLog {
-                            timestamp: Utc::now(),
-                            event: "oidc_userinfo".to_string(),
-                            user_id: Some(user.id.to_string()),
-                            client_id: None,
-                            status: "success".to_string(),
-                            detail: None,
-                        })
-                        .await;
-                    return HttpResponse::Ok().json(serde_json::json!({
-                        "sub": user.id,
-                        "email": user.email,
-                        "name": user.username,
-                    }));
-                }
-            }
-        }
-    }
-    let _ = audit_log_store
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "invalid_token".to_string(),
+                    error_description: Some("Missing or invalid token".to_string()),
+                }),
+            )
+        })?;
+
+    // Validate JWT using Ed25519
+    let claims = verify_ed25519_jwt(token).map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "invalid_token".to_string(),
+                error_description: Some("Token validation failed".to_string()),
+            }),
+        )
+    })?;
+
+    use crate::services::stores::user_store::UserStoreTrait;
+
+    // Get user info
+    let user = state.user_store.get_user_by_username(&claims.sub).await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "server_error".to_string(),
+                error_description: Some("Database error".to_string()),
+            }),
+        )
+    })?.ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "invalid_token".to_string(),
+                error_description: Some("User not found".to_string()),
+            }),
+        )
+    })?;
+
+    // Log successful userinfo request
+    let _ = state
+        .audit_log_store
         .add_log(&AuditLog {
             timestamp: Utc::now(),
             event: "oidc_userinfo".to_string(),
-            user_id: None,
+            user_id: Some(user.id.to_string()),
             client_id: None,
-            status: "failure".to_string(),
-            detail: Some("Invalid or missing token".to_string()),
+            status: "success".to_string(),
+            detail: None,
         })
         .await;
-    HttpResponse::Unauthorized().body("Invalid or missing token")
+
+    Ok(Json(OidcUserinfoResponse {
+        sub: user.id.to_string(),
+        email: user.email,
+        name: user.username,
+    }))
 }
 
-#[get("/oidc/jwks")]
-pub async fn oidc_jwks() -> impl Responder {
-    use base64ct::{Base64UrlUnpadded, Encoding};
-    use rsa::pkcs8::DecodePublicKey;
-    let pubkey_pem = crate::handlers::oidc_keys::get_public_pem();
-    // Support PKCS8 public key PEM (-----BEGIN PUBLIC KEY-----)
-    let pubkey = rsa::RsaPublicKey::from_public_key_pem(&pubkey_pem).unwrap();
-    let n = Base64UrlUnpadded::encode_string(&pubkey.n().to_bytes_be());
-    let e = Base64UrlUnpadded::encode_string(&pubkey.e().to_bytes_be());
-    let jwk = serde_json::json!({
-        "kty": "RSA",
-        "alg": "RS256",
-        "use": "sig",
-        "kid": "authence-demo-key",
-        "n": n,
-        "e": e,
-    });
-    HttpResponse::Ok().json(serde_json::json!({"keys": [jwk]}))
+/// OIDC JWKS endpoint
+///
+/// GET /oidc/jwks
+pub async fn oidc_jwks() -> Json<serde_json::Value> {
+    // Use Ed25519 JWK instead of RSA
+    let jwk = get_ed25519_jwk();
+    Json(serde_json::json!({
+        "keys": [jwk]
+    }))
+}
+
+/// Create OIDC provider routes for the application (Ed25519-based)
+pub fn create_oidc_provider_routes() -> Router<Arc<OidcProviderState>> {
+    Router::new()
+        .route(
+            "/.well-known/openid-configuration",
+            get(oidc_discovery),
+        )
+        .route("/oidc/login", get(oidc_login))
+        .route("/oidc/login", post(oidc_login_post))
+        .route("/oidc/authorize", get(oidc_authorize))
+        .route("/oidc/token", post(oidc_token))
+        .route("/oidc/userinfo", get(oidc_userinfo))
+        .route("/oidc/jwks", get(oidc_jwks))
 }

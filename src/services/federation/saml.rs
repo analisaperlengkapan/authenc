@@ -20,7 +20,7 @@ pub struct SamlIdentityProvider {
     config: IdentityProviderConfig,
     /// IdP entity ID
     entity_id: String,
-    /// SSO service URL
+    /// SSO service URL (used for generating authentication redirect URLs)
     sso_url: String,
     /// Logout service URL
     logout_url: String,

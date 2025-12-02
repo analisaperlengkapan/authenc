@@ -30,7 +30,7 @@ pub struct PermissionCheckQuery {
 /// Check if the authenticated user has a specific permission in the realm
 pub async fn check_user_permission(
     State(state): State<Arc<AppState>>,
-    Path(realm): Path<String>,
+    Path(_realm): Path<String>,
     Query(query): Query<PermissionCheckQuery>,
     auth: AuthBearer,
 ) -> Result<Json<bool>, StatusCode> {

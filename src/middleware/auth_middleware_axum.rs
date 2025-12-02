@@ -70,12 +70,22 @@ fn validate_token(token: &str, _secret: &str) -> Result<AuthUser, AuthencError> 
         AuthencError::unauthorized("Invalid token")
     })?;
 
-    // For now, create a basic AuthUser from the claims
-    // TODO: In the future, we should store more user info in JWT or fetch from DB
+    // Extract email and roles from JWT claims, with fallback values
+    let email = claims.email.unwrap_or_else(|| {
+        // If email is not in the token, use a placeholder
+        // This can happen for tokens generated before the enhancement
+        format!("{}@unknown.local", claims.sub)
+    });
+    
+    let roles = claims.roles.unwrap_or_else(|| {
+        // Default role if not specified in token
+        vec!["user".to_string()]
+    });
+
     Ok(AuthUser {
         id: claims.sub,
-        email: "user@example.com".to_string(), // TODO: Get from JWT or DB
-        roles: vec!["user".to_string()],       // TODO: Get from JWT or DB
+        email,
+        roles,
     })
 }
 
@@ -286,7 +296,8 @@ mod tests {
             .unwrap()
             .to_bytes();
         let body_str = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(body_str.contains("user@example.com"));
+        // Email is derived from user_id when not in token: "{user_id}@unknown.local"
+        assert!(body_str.contains("test-user-id@unknown.local"));
         assert!(body_str.contains("test-user-id"));
     }
 

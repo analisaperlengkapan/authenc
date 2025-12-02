@@ -14,57 +14,29 @@ use ed25519_dalek::{Signature, Verifier};
 /// # Fields
 /// * `sub` - Subject identifier (typically user ID)
 /// * `exp` - Expiration timestamp (Unix timestamp)
+/// * `email` - User's email address (optional)
+/// * `roles` - User's assigned roles (optional)
 ///
 /// # Security Considerations
 /// - The `exp` claim should always be validated to prevent token reuse
 /// - The `sub` claim should be validated against authenticated user identity
 /// - Additional claims may be needed for more complex authorization scenarios
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     /// Subject identifier (typically the user ID or username)
     pub sub: String,
     /// Token expiration timestamp as Unix timestamp
     pub exp: usize,
+    /// User's email address
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    /// User's assigned roles
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub roles: Option<Vec<String>>,
 }
 
-// SECURITY NOTE: Previously had hardcoded secret here. Now removed for security.
-// JWT signing now uses Ed25519 keypair (see crypto/ed25519_keys.rs)
-// If symmetric signing is needed, use get_jwt_secret() function below.
-
-/// Get JWT secret from environment variable or secure configuration
-///
-/// This function retrieves the JWT secret from the environment variable `JWT_SECRET`.
-/// If not found, it falls back to a test-only value (NOT for production).
-///
-/// # Security Considerations
-/// - ALWAYS set JWT_SECRET environment variable in production
-/// - Never use hardcoded secrets
-/// - Rotate secrets regularly
-/// - Use strong random secrets (at least 32 bytes)
-///
-/// # Returns
-/// A `Result` containing the secret bytes on success, or an error string on failure
-fn get_jwt_secret() -> Result<Vec<u8>, String> {
-    // Try to get from environment variable
-    if let Ok(secret) = std::env::var("JWT_SECRET") {
-        if secret.is_empty() {
-            return Err("JWT_SECRET environment variable is empty".to_string());
-        }
-        return Ok(secret.into_bytes());
-    }
-
-    // For development/testing only - should NEVER reach here in production
-    #[cfg(debug_assertions)]
-    {
-        log::warn!("JWT_SECRET not set! Using insecure default. DO NOT USE IN PRODUCTION!");
-        return Ok(b"test-secret-for-development-only-change-in-production".to_vec());
-    }
-
-    #[cfg(not(debug_assertions))]
-    {
-        Err("JWT_SECRET environment variable must be set in production".to_string())
-    }
-}
+// SECURITY NOTE: JWT signing now uses Ed25519 keypair (see crypto/ed25519_keys.rs)
+// Ed25519 provides better security than symmetric signing and is resistant to timing attacks.
 
 /// Generate a JWT token for user authentication using Ed25519
 ///
@@ -91,6 +63,26 @@ fn get_jwt_secret() -> Result<Vec<u8>, String> {
 /// let token = generate_jwt("user123").expect("Failed to generate token");
 /// ```
 pub fn generate_jwt(user_id: &str) -> Result<String, String> {
+    generate_jwt_with_claims(user_id, None, None)
+}
+
+/// Generate a JWT token with additional claims (email and roles)
+///
+/// Creates a signed JWT token with extended claims for the specified user.
+/// This function allows including email and roles in the token payload.
+///
+/// # Arguments
+/// * `user_id` - The user identifier to include in the token's subject claim
+/// * `email` - Optional email address to include in the token
+/// * `roles` - Optional list of roles to include in the token
+///
+/// # Returns
+/// A `Result` containing the JWT token string on success, or an error string on failure
+pub fn generate_jwt_with_claims(
+    user_id: &str,
+    email: Option<String>,
+    roles: Option<Vec<String>>,
+) -> Result<String, String> {
     let expiration = SystemTime::now()
         .checked_add(Duration::from_secs(60 * 60))
         .unwrap()
@@ -101,6 +93,8 @@ pub fn generate_jwt(user_id: &str) -> Result<String, String> {
     let claims = Claims {
         sub: user_id.to_owned(),
         exp: expiration,
+        email,
+        roles,
     };
 
     // Create JWT header
@@ -230,16 +224,39 @@ mod tests {
         let user_id = "test_user_123";
 
         // Generate a valid JWT
-        let mut token = generate_jwt(user_id).expect("Failed to generate JWT");
+        let token = generate_jwt(user_id).expect("Failed to generate JWT");
 
-        // Tamper with the token (change a character in the payload)
-        let token_bytes = unsafe { token.as_bytes_mut() };
-        if token_bytes.len() > 20 {
-            token_bytes[20] = b'x'; // Change a character
+        // Tamper with the token by modifying a character safely
+        let mut token_chars: Vec<char> = token.chars().collect();
+        if token_chars.len() > 20 {
+            token_chars[20] = 'x'; // Change a character
         }
+        let tampered_token: String = token_chars.into_iter().collect();
 
         // This should fail
-        let result = verify_jwt(&token);
+        let result = verify_jwt(&tampered_token);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_jwt_with_extended_claims() {
+        use super::generate_jwt_with_claims;
+
+        let user_id = "test_user_456";
+        let email = Some("user@example.com".to_string());
+        let roles = Some(vec!["admin".to_string(), "user".to_string()]);
+
+        // Generate a JWT with extended claims
+        let token = generate_jwt_with_claims(user_id, email.clone(), roles.clone())
+            .expect("Failed to generate JWT");
+
+        // Verify the JWT
+        let claims = verify_jwt(&token).expect("Failed to verify JWT");
+
+        // Check that all claims are correct
+        assert_eq!(claims.sub, user_id);
+        assert_eq!(claims.email, email);
+        assert_eq!(claims.roles, roles);
+        assert!(claims.exp > 0);
     }
 }

@@ -47,6 +47,7 @@ impl Default for AesGcmService {
     }
 }
 
+#[allow(deprecated)] // TODO: Upgrade to generic-array 1.x when aes-gcm updates
 impl AesGcmService {
     /// Create new AES-GCM service with a random key
     pub fn new() -> Self {

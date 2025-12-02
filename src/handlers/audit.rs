@@ -1,171 +1,261 @@
+//! Audit log handlers for Axum
+//!
+//! This module provides endpoints for querying and exporting audit logs
+//! with filtering and pagination support.
+
+use crate::models::audit_log::AuditLog;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;
-// Legacy Actix-web handler - needs migration to Axum
-// TODO: Migrate to Axum handlers
-// TODO: Migrate to Axum - temporarily commented out
-// use axum::{extract::Query, response::Json};
+use axum::{
+    extract::{Query, State},
+    http::{HeaderMap, StatusCode},
+    response::{Json, Response},
+    routing::get,
+    Router,
+};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
+use std::sync::Arc;
 
-#[derive(serde::Deserialize)]
+/// Query parameters for audit log filtering
+#[derive(Debug, Deserialize)]
 pub struct AuditLogQuery {
+    /// Filter by event type
     pub event: Option<String>,
+    /// Filter by user ID
     pub user_id: Option<String>,
+    /// Filter by client ID
     pub client_id: Option<String>,
+    /// Filter by status (success/failure)
     pub status: Option<String>,
-    pub from: Option<String>, // ISO8601
-    pub to: Option<String>,   // ISO8601
+    /// Filter by start date (ISO8601)
+    pub from: Option<String>,
+    /// Filter by end date (ISO8601)
+    pub to: Option<String>,
+    /// Maximum number of results
     pub limit: Option<usize>,
+    /// Offset for pagination
     pub offset: Option<usize>,
 }
 
+/// Response for audit log queries
+#[derive(Debug, Serialize)]
+pub struct AuditLogResponse {
+    /// Total number of matching logs
+    pub total: usize,
+    /// List of audit log entries
+    pub logs: Vec<AuditLog>,
+}
+
+/// State for audit handlers
+pub struct AuditHandlerState {
+    /// Audit log store
+    pub audit_log_store: Arc<PgAuditLogStore>,
+    /// User store for authentication
+    pub user_store: Arc<UserStore>,
+}
+
+impl AuditHandlerState {
+    /// Create new audit handler state
+    pub fn new(audit_log_store: Arc<PgAuditLogStore>, user_store: Arc<UserStore>) -> Self {
+        Self {
+            audit_log_store,
+            user_store,
+        }
+    }
+}
+
+/// Error response
+#[derive(Debug, Serialize)]
+pub struct ErrorResponse {
+    /// Error message
+    pub error: String,
+}
+
+/// Extract Bearer token from Authorization header
+fn extract_token(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(|s| s.to_string())
+}
+
+/// Check if user is admin (simplified - in production use proper JWT validation)
+/// Note: This is a synchronous placeholder. In production, use async JWT validation.
+fn is_admin(headers: &HeaderMap, _user_store: &UserStore) -> bool {
+    // In production, this should:
+    // 1. Decode the JWT token from headers
+    // 2. Validate the token signature
+    // 3. Check user roles/permissions
+    // For now, just check if a token is present (placeholder)
+    extract_token(headers).is_some()
+}
+
+/// Apply filters to audit logs
+fn apply_filters(mut logs: Vec<AuditLog>, query: &AuditLogQuery) -> Vec<AuditLog> {
+    if let Some(ref event) = query.event {
+        logs.retain(|l| l.event == *event);
+    }
+    if let Some(ref user_id) = query.user_id {
+        logs.retain(|l| l.user_id.as_deref() == Some(user_id.as_str()));
+    }
+    if let Some(ref client_id) = query.client_id {
+        logs.retain(|l| l.client_id.as_deref() == Some(client_id.as_str()));
+    }
+    if let Some(ref status) = query.status {
+        logs.retain(|l| l.status == *status);
+    }
+    if let Some(ref from) = query.from {
+        if let Ok(from_dt) = DateTime::parse_from_rfc3339(from) {
+            let from_utc = from_dt.with_timezone(&Utc);
+            logs.retain(|l| l.timestamp >= from_utc);
+        }
+    }
+    if let Some(ref to) = query.to {
+        if let Ok(to_dt) = DateTime::parse_from_rfc3339(to) {
+            let to_utc = to_dt.with_timezone(&Utc);
+            logs.retain(|l| l.timestamp <= to_utc);
+        }
+    }
+    logs
+}
+
+/// Get audit logs with filtering and pagination
+///
+/// GET /logs
 pub async fn get_audit_logs(
-    req: HttpRequest,
-    query: web::Query<AuditLogQuery>,
-    audit_log_store: web::Data<PgAuditLogStore>,
-    user_store: web::Data<UserStore>,
-) -> HttpResponse {
-    let auth = req
-        .headers()
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok());
-    if let Some(auth) = auth {
-        if let Some(_token) = auth.strip_prefix("Bearer ") {
-            if let Some(user) = user_store.get_by_username("admin") {
-                if user.username == "admin" {
-                    let mut logs = match audit_log_store.all().await {
-                        Ok(l) => l,
-                        Err(e) => {
-                            log::error!("audit log query error: {e}");
-                            return HttpResponse::InternalServerError()
-                                .body("Failed to query audit logs");
-                        }
-                    };
-                    if let Some(ref event) = query.event {
-                        logs.retain(|l| l.event == *event);
-                    }
-                    if let Some(ref user_id) = query.user_id {
-                        logs.retain(|l| l.user_id.as_deref() == Some(user_id.as_str()));
-                    }
-                    if let Some(ref client_id) = query.client_id {
-                        logs.retain(|l| l.client_id.as_deref() == Some(client_id.as_str()));
-                    }
-                    if let Some(ref status) = query.status {
-                        logs.retain(|l| l.status == *status);
-                    }
-                    if let Some(ref from) = query.from {
-                        if let Ok(from_dt) = DateTime::parse_from_rfc3339(from) {
-                            let from_utc = from_dt.with_timezone(&Utc);
-                            logs.retain(|l| l.timestamp >= from_utc);
-                        }
-                    }
-                    if let Some(ref to) = query.to {
-                        if let Ok(to_dt) = DateTime::parse_from_rfc3339(to) {
-                            let to_utc = to_dt.with_timezone(&Utc);
-                            logs.retain(|l| l.timestamp <= to_utc);
-                        }
-                    }
-                    let offset = query.offset.unwrap_or(0);
-                    let limit = query.limit.unwrap_or(100);
-                    let total = logs.len();
-                    let logs = logs
-                        .into_iter()
-                        .skip(offset)
-                        .take(limit)
-                        .collect::<Vec<_>>();
-                    return HttpResponse::Ok().json(serde_json::json!({
-                        "total": total,
-                        "logs": logs,
-                    }));
-                } else {
-                    return HttpResponse::Forbidden().body("Not admin");
-                }
-            } else {
-                return HttpResponse::Unauthorized().body("User not found");
-            }
-        }
+    State(state): State<Arc<AuditHandlerState>>,
+    Query(query): Query<AuditLogQuery>,
+    headers: HeaderMap,
+) -> Result<Json<AuditLogResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Check authentication
+    if extract_token(&headers).is_none() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Invalid or missing token".to_string(),
+            }),
+        ));
     }
-    HttpResponse::Unauthorized().body("Invalid or missing token")
+
+    // Check admin authorization
+    if !is_admin(&headers, &state.user_store) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Admin access required".to_string(),
+            }),
+        ));
+    }
+
+    // Get all logs
+    let logs = match state.audit_log_store.all().await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!("Audit log query error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to query audit logs".to_string(),
+                }),
+            ));
+        }
+    };
+
+    // Apply filters
+    let logs = apply_filters(logs, &query);
+
+    // Apply pagination
+    let offset = query.offset.unwrap_or(0);
+    let limit = query.limit.unwrap_or(100);
+    let total = logs.len();
+    let logs: Vec<AuditLog> = logs.into_iter().skip(offset).take(limit).collect();
+
+    Ok(Json(AuditLogResponse { total, logs }))
 }
 
+/// Export audit logs as CSV
+///
+/// GET /logs/export
 pub async fn export_audit_logs_csv(
-    req: HttpRequest,
-    query: web::Query<AuditLogQuery>,
-    audit_log_store: web::Data<PgAuditLogStore>,
-    user_store: web::Data<UserStore>,
-) -> HttpResponse {
-    let auth = req
-        .headers()
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok());
-    if let Some(auth) = auth {
-        if let Some(_token) = auth.strip_prefix("Bearer ") {
-            if let Some(user) = user_store.get_by_username("admin") {
-                if user.username == "admin" {
-                    let mut logs = match audit_log_store.all().await {
-                        Ok(l) => l,
-                        Err(e) => {
-                            log::error!("audit log query error: {e}");
-                            return HttpResponse::InternalServerError()
-                                .body("Failed to query audit logs");
-                        }
-                    };
-                    if let Some(ref event) = query.event {
-                        logs.retain(|l| l.event == *event);
-                    }
-                    if let Some(ref user_id) = query.user_id {
-                        logs.retain(|l| l.user_id.as_deref() == Some(user_id.as_str()));
-                    }
-                    if let Some(ref client_id) = query.client_id {
-                        logs.retain(|l| l.client_id.as_deref() == Some(client_id.as_str()));
-                    }
-                    if let Some(ref status) = query.status {
-                        logs.retain(|l| l.status == *status);
-                    }
-                    if let Some(ref from) = query.from {
-                        if let Ok(from_dt) = chrono::DateTime::parse_from_rfc3339(from) {
-                            let from_utc = from_dt.with_timezone(&chrono::Utc);
-                            logs.retain(|l| l.timestamp >= from_utc);
-                        }
-                    }
-                    if let Some(ref to) = query.to {
-                        if let Ok(to_dt) = chrono::DateTime::parse_from_rfc3339(to) {
-                            let to_utc = to_dt.with_timezone(&chrono::Utc);
-                            logs.retain(|l| l.timestamp <= to_utc);
-                        }
-                    }
-                    let mut wtr = String::new();
-                    wtr.push_str("timestamp,event,user_id,client_id,status,detail\n");
-                    for log in logs {
-                        let ts = log.timestamp.to_rfc3339();
-                        let event = &log.event;
-                        let user_id = log.user_id.as_deref().unwrap_or("");
-                        let client_id = log.client_id.as_deref().unwrap_or("");
-                        let status = &log.status;
-                        let detail = log
-                            .detail
-                            .as_deref()
-                            .unwrap_or("")
-                            .replace('\n', " ")
-                            .replace('"', "'");
-                        let _ = writeln!(
-                            wtr,
-                            "\"{ts}\",\"{event}\",\"{user_id}\",\"{client_id}\",\"{status}\",\"{detail}\""
-                        );
-                    }
-                    return HttpResponse::Ok().content_type("text/csv").body(wtr);
-                } else {
-                    return HttpResponse::Forbidden().body("Not admin");
-                }
-            } else {
-                return HttpResponse::Unauthorized().body("User not found");
-            }
-        }
+    State(state): State<Arc<AuditHandlerState>>,
+    Query(query): Query<AuditLogQuery>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    // Check authentication
+    if extract_token(&headers).is_none() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Invalid or missing token".to_string(),
+            }),
+        ));
     }
-    HttpResponse::Unauthorized().body("Invalid or missing token")
+
+    // Check admin authorization
+    if !is_admin(&headers, &state.user_store) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Admin access required".to_string(),
+            }),
+        ));
+    }
+
+    // Get all logs
+    let logs = match state.audit_log_store.all().await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!("Audit log query error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to query audit logs".to_string(),
+                }),
+            ));
+        }
+    };
+
+    // Apply filters
+    let logs = apply_filters(logs, &query);
+
+    // Generate CSV
+    let mut wtr = String::new();
+    wtr.push_str("timestamp,event,user_id,client_id,status,detail\n");
+    for log in logs {
+        let ts = log.timestamp.to_rfc3339();
+        let event = &log.event;
+        let user_id = log.user_id.as_deref().unwrap_or("");
+        let client_id = log.client_id.as_deref().unwrap_or("");
+        let status = &log.status;
+        let detail = log
+            .detail
+            .as_deref()
+            .unwrap_or("")
+            .replace('\n', " ")
+            .replace('"', "'");
+        let _ = writeln!(
+            wtr,
+            "\"{ts}\",\"{event}\",\"{user_id}\",\"{client_id}\",\"{status}\",\"{detail}\""
+        );
+    }
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/csv")
+        .header(
+            "Content-Disposition",
+            "attachment; filename=\"audit_logs.csv\"",
+        )
+        .body(wtr.into())
+        .unwrap())
 }
 
-pub fn configure_routes(cfg: &mut web::ServiceConfig) {
-    cfg.route("/logs", web::get().to(get_audit_logs))
-        .route("/logs/export", web::get().to(export_audit_logs_csv));
+/// Create audit log routes for the application
+pub fn create_audit_log_routes() -> Router<Arc<AuditHandlerState>> {
+    Router::new()
+        .route("/logs", get(get_audit_logs))
+        .route("/logs/export", get(export_audit_logs_csv))
 }

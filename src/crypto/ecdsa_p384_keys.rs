@@ -71,6 +71,7 @@ impl EcdsaP384Jwk {
 }
 
 /// Sign JWT with ECDSA P-384
+#[allow(deprecated)] // TODO: Upgrade to generic-array 1.x when p384 updates
 pub fn sign_jwt_p384(header: &str, payload: &str) -> Result<String, String> {
     use base64ct::{Base64UrlUnpadded, Encoding};
     use p384::ecdsa::Signature;

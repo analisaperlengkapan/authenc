@@ -14,8 +14,10 @@ use uuid::Uuid;
 /// Query parameters for listing groups
 #[derive(Deserialize)]
 pub struct GroupListQuery {
+    /// Offset for pagination (first record index)
     #[serde(default)]
     pub first: Option<i64>,
+    /// Maximum number of records to return
     #[serde(default)]
     pub max: Option<i64>,
 }
@@ -29,9 +31,9 @@ pub async fn create_group(
         &db,
         req.realm_id,
         &req.name,
-        req.parent_id,
+        None, // parent_id - not in CreateGroupRequest, use None for top-level
         req.description.as_deref(),
-        &req.attributes,
+        &serde_json::Value::Object(serde_json::Map::new()), // Default empty attributes
     )
     .await
     .map_err(|e| {

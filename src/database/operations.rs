@@ -1922,7 +1922,7 @@ pub mod users {
             .map(|p| bcrypt::hash(p, bcrypt::DEFAULT_COST).unwrap_or_default());
         let realm_id = request.realm_id;
         let organization_id = request.organization_id;
-        let attributes_json = request
+        let _attributes_json = request
             .attributes
             .as_ref()
             .map(|v| serde_json::to_string(v).unwrap_or_default());
@@ -5654,7 +5654,7 @@ pub mod protocol_mappers {
         "#,
         );
 
-        let mut param_idx = 2;
+        let param_idx = 2;
         let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&client_id];
 
         let protocol_owned;
@@ -5662,7 +5662,7 @@ pub mod protocol_mappers {
             protocol_owned = p.clone();
             query.push_str(&format!(" AND protocol = ${}", param_idx));
             params.push(&protocol_owned);
-            param_idx += 1;
+            let _ = param_idx; // Consumed, future params would use next index
         }
 
         query.push_str(" ORDER BY name");
@@ -5702,7 +5702,7 @@ pub mod protocol_mappers {
         "#,
         );
 
-        let mut param_idx = 2;
+        let param_idx = 2;
         let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&realm_id];
 
         let protocol_owned;
@@ -5710,7 +5710,7 @@ pub mod protocol_mappers {
             protocol_owned = p.clone();
             query.push_str(&format!(" AND protocol = ${}", param_idx));
             params.push(&protocol_owned);
-            param_idx += 1;
+            let _ = param_idx; // Consumed, future params would use next index
         }
 
         query.push_str(" ORDER BY name");
@@ -8551,7 +8551,7 @@ pub mod permission_tickets {
         let limit = max.unwrap_or(100);
 
         let query = if let Some(name_pattern) = name_filter {
-            let pattern = format!("%{}%", name_pattern);
+            let _pattern = format!("%{}%", name_pattern);
             r#"
                 SELECT DISTINCT pt.resource_id
                 FROM permission_tickets pt
@@ -8622,7 +8622,7 @@ pub mod permission_tickets {
         resource_id: Uuid,
         granted: Option<bool>,
     ) -> Result<Vec<PermissionTicket>> {
-        let query = if let Some(granted_filter) = granted {
+        let query = if let Some(_granted_filter) = granted {
             r#"
                 SELECT
                     id, resource_id, scope_id, owner, requester, granted,
@@ -8661,7 +8661,7 @@ pub mod permission_tickets {
         requester: &str,
         granted: Option<bool>,
     ) -> Result<Vec<PermissionTicket>> {
-        let query = if let Some(granted_filter) = granted {
+        let query = if let Some(_granted_filter) = granted {
             r#"
                 SELECT
                     id, resource_id, scope_id, owner, requester, granted,

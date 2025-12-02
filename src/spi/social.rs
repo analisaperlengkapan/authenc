@@ -276,7 +276,7 @@ impl SocialProvider for DefaultSocialProvider {
             .form(&params)
             .send()
             .await
-            .map_err(|e| Error::ExternalServiceError {
+            .map_err(|_e| Error::ExternalServiceError {
                 service: "oauth2_token_exchange".to_string(),
             })?;
 
@@ -333,7 +333,7 @@ impl SocialProvider for DefaultSocialProvider {
             .bearer_auth(&token.access_token)
             .send()
             .await
-            .map_err(|e| Error::ExternalServiceError {
+            .map_err(|_e| Error::ExternalServiceError {
                 service: "user_profile_fetch".to_string(),
             })?;
 
@@ -378,7 +378,7 @@ impl SocialProvider for DefaultSocialProvider {
             .form(&params)
             .send()
             .await
-            .map_err(|e| Error::ExternalServiceError {
+            .map_err(|_e| Error::ExternalServiceError {
                 service: "oauth2_token_refresh".to_string(),
             })?;
 
@@ -445,7 +445,7 @@ impl SocialProvider for DefaultSocialProvider {
         }
     }
 
-    async fn revoke_token(&self, token: &str) -> Result<()> {
+    async fn revoke_token(&self, _token: &str) -> Result<()> {
         // Token revocation - implementation depends on provider
         // For now, just return success as tokens are typically short-lived
         Ok(())

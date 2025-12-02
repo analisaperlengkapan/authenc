@@ -1,12 +1,34 @@
 //! KMS-based vault provider for Authenc (e.g., AWS KMS, GCP KMS, Azure Key Vault)
-// (Stub for future implementation)
+//!
+//! This module provides integration with cloud Key Management Services for
+//! cryptographic key management and envelope encryption. Currently a placeholder
+//! for future implementation.
+//!
+//! # Status
+//! This module is not yet implemented. All operations return `VaultError::NotImplemented`.
+//!
+//! # Future Implementation
+//! - AWS KMS integration
+//! - Google Cloud KMS integration  
+//! - Azure Key Vault integration
+//! - Hardware Security Module (HSM) backed operations
+//! - Automatic key rotation
 
-use super::{Secret, Vault};
+use super::{Secret, Vault, VaultError};
 use async_trait::async_trait;
 
 /// KMS-based vault provider for cloud key management services
+///
+/// This vault integrates with cloud Key Management Services such as:
+/// - AWS KMS
+/// - Google Cloud KMS
+/// - Azure Key Vault
+///
+/// # Status
+/// Currently not implemented. All operations return `VaultError::NotImplemented`.
 pub struct KmsVault {
-    // fields for KMS client, config, etc.
+    /// Provider type (aws, gcp, azure)
+    provider: String,
 }
 
 impl Default for KmsVault {
@@ -26,80 +48,117 @@ impl KmsVault {
     /// # Returns
     /// A new `KmsVault` instance for cloud KMS-based secret management
     ///
-    /// # Security Considerations
-    /// - KMS keys should be rotated regularly according to compliance requirements
-    /// - Cloud credentials should be properly scoped and monitored
-    /// - Key usage should be audited and logged
-    /// - Envelope encryption should be used for large data encryption
-    ///
-    /// # Cloud KMS Integration
-    /// - Supports AWS KMS, Google Cloud KMS, and Azure Key Vault
-    /// - Hardware Security Module (HSM) backed key operations
-    /// - Automatic key rotation and version management
-    /// - Multi-region replication for high availability
-    ///
-    /// # Example
-    /// ```rust
-    /// use authenc::vault::kms_vault::KmsVault;
-    ///
-    /// let vault = KmsVault::new();
-    /// // Vault is ready for cloud KMS operations
-    /// // Note: Actual implementation requires cloud provider configuration
-    /// ```
-    pub fn new(/* params */) -> Self {
+    /// # Note
+    /// This is currently a placeholder. All operations will return `NotImplemented`.
+    pub fn new() -> Self {
         KmsVault {
-            // ...
+            provider: "unset".to_string(),
+        }
+    }
+
+    /// Create a new KMS vault with a specific provider
+    ///
+    /// # Arguments
+    /// * `provider` - The cloud provider ("aws", "gcp", or "azure")
+    pub fn with_provider(provider: &str) -> Self {
+        KmsVault {
+            provider: provider.to_string(),
         }
     }
 }
 
 #[async_trait]
 impl Vault for KmsVault {
-    async fn get_secret(&self, _key: &str, _realm: Option<&str>) -> Option<Secret> {
-        // TODO: Implement KMS secret retrieval
+    async fn get_secret(&self, key: &str, realm: Option<&str>) -> Option<Secret> {
+        tracing::warn!(
+            "KmsVault.get_secret called but not implemented. key={}, realm={:?}, provider={}",
+            key,
+            realm,
+            self.provider
+        );
         None
     }
 
     async fn put_secret(
         &self,
-        _key: &str,
+        key: &str,
         _value: &str,
-        _realm: Option<&str>,
+        realm: Option<&str>,
         _metadata: Option<std::collections::HashMap<String, String>>,
-    ) -> Result<(), super::VaultError> {
-        Err(super::VaultError::Other("Not implemented".to_string()))
+    ) -> Result<(), VaultError> {
+        tracing::warn!(
+            "KmsVault.put_secret called but not implemented. key={}, realm={:?}, provider={}",
+            key,
+            realm,
+            self.provider
+        );
+        Err(VaultError::NotImplemented(
+            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead.".to_string()
+        ))
     }
 
     async fn delete_secret(
         &self,
-        _key: &str,
-        _realm: Option<&str>,
-    ) -> Result<(), super::VaultError> {
-        Err(super::VaultError::Other("Not implemented".to_string()))
+        key: &str,
+        realm: Option<&str>,
+    ) -> Result<(), VaultError> {
+        tracing::warn!(
+            "KmsVault.delete_secret called but not implemented. key={}, realm={:?}, provider={}",
+            key,
+            realm,
+            self.provider
+        );
+        Err(VaultError::NotImplemented(
+            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead.".to_string()
+        ))
     }
 
-    async fn list_secrets(&self, _realm: Option<&str>) -> Result<Vec<String>, super::VaultError> {
-        Ok(vec![])
+    async fn list_secrets(&self, realm: Option<&str>) -> Result<Vec<String>, VaultError> {
+        tracing::warn!(
+            "KmsVault.list_secrets called but not implemented. realm={:?}, provider={}",
+            realm,
+            self.provider
+        );
+        Err(VaultError::NotImplemented(
+            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead.".to_string()
+        ))
     }
 
     async fn rotate_secret(
         &self,
-        _key: &str,
-        _realm: Option<&str>,
+        key: &str,
+        realm: Option<&str>,
         _generator: Box<dyn Fn() -> String + Send>,
-    ) -> Result<super::RotationResult, super::VaultError> {
-        Err(super::VaultError::Other("Not implemented".to_string()))
+    ) -> Result<super::RotationResult, VaultError> {
+        tracing::warn!(
+            "KmsVault.rotate_secret called but not implemented. key={}, realm={:?}, provider={}",
+            key,
+            realm,
+            self.provider
+        );
+        Err(VaultError::NotImplemented(
+            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead.".to_string()
+        ))
     }
 
     async fn get_secret_versions(
         &self,
-        _key: &str,
-        _realm: Option<&str>,
-    ) -> Result<Vec<Secret>, super::VaultError> {
-        Ok(vec![])
+        key: &str,
+        realm: Option<&str>,
+    ) -> Result<Vec<Secret>, VaultError> {
+        tracing::warn!(
+            "KmsVault.get_secret_versions called but not implemented. key={}, realm={:?}, provider={}",
+            key,
+            realm,
+            self.provider
+        );
+        Err(VaultError::NotImplemented(
+            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead.".to_string()
+        ))
     }
 
-    async fn health_check(&self) -> Result<bool, super::VaultError> {
+    async fn health_check(&self) -> Result<bool, VaultError> {
+        // Health check returns false since the implementation is not ready
         Ok(false)
     }
 }

@@ -3,7 +3,6 @@ resolver = "2"
 members = ["."]
 
 [workspace.package]
-name = "authenc"
 version = "0.4.0"
 edition = "2024"
 rust-version = "1.90"
@@ -99,6 +98,7 @@ temp-env = "0.3.6"
 
 # Web Frameworks and HTTP
 axum = { version = "0.8.6", optional = true, features = ["http1", "http2", "json", "macros"] }
+axum-extra = { version = "0.10", features = ["cookie"] }
 tower = { version = "0.5.2", optional = true, features = ["util", "timeout", "load-shed", "limit"] }
 tower-http = { version = "0.6.2", optional = true, features = ["cors", "trace", "compression-br", "fs", "add-extension"] }
 hyper = { version = "1.5.1", features = ["full"] }

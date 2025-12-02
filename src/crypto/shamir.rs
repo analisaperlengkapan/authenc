@@ -19,6 +19,10 @@
 //! Security Considerations:
 //! - Use in production only after security audit
 //! - Ensure proper key management
+
+// Allow unused_assignments for struct fields with serde(skip) attributes
+// These fields are assigned during struct construction but serde(skip) confuses the linter
+#![allow(unused_assignments)]
 //! - Use secure channels for share distribution
 //! - Implement proper access controls
 
@@ -30,7 +34,6 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
-use subtle::ConstantTimeEq;
 use thiserror::Error;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -134,6 +137,7 @@ impl Share {
         Ok(share)
     }
 
+    #[allow(unused_assignments)] // Fields accessed via serde serialization and public methods
     fn new(x: u8, y: Vec<Scalar>) -> Self {
         let y_bytes = y.iter().map(|s| s.to_bytes().to_vec()).collect();
         Share {

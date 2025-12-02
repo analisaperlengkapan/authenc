@@ -339,7 +339,7 @@ impl XmlSignature {
                             in_x509_cert = false;
                         }
                         "Signature" | "ds:Signature" => {
-                            in_signature = false;
+                            let _ = in_signature; // Used for state tracking, break exits loop
                             break; // Found complete signature
                         }
                         _ => {}
@@ -1532,6 +1532,8 @@ pub struct OcspClient {
     cache_duration: Duration,
 
     /// HTTP timeout for OCSP requests (default: 10 seconds)
+    /// Stored for reference and potential client reconfiguration
+    #[allow(dead_code)]
     timeout: Duration,
 }
 

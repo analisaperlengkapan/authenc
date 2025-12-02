@@ -134,6 +134,8 @@ pub enum VaultError {
     InvalidFormat(String),
     /// HSM operation failed
     HsmError(String),
+    /// Feature not implemented
+    NotImplemented(String),
     /// Generic error
     Other(String),
 }
@@ -149,6 +151,7 @@ impl std::fmt::Display for VaultError {
             VaultError::Unauthorized(msg) => write!(f, "Vault unauthorized: {}", msg),
             VaultError::InvalidFormat(msg) => write!(f, "Invalid secret format: {}", msg),
             VaultError::HsmError(msg) => write!(f, "HSM error: {}", msg),
+            VaultError::NotImplemented(msg) => write!(f, "Feature not implemented: {}", msg),
             VaultError::Other(msg) => write!(f, "Vault error: {}", msg),
         }
     }

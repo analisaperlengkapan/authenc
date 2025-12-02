@@ -279,13 +279,28 @@ async fn test_cleanup_expired_tokens() {
     assert!(cleanup_result.is_ok());
 }
 
-#[test]
-fn test_token_hash_consistency() {
+#[tokio::test]
+#[ignore = "Requires PostgreSQL database to be running"]
+async fn test_token_hash_consistency() {
     // Test that token hashing is consistent
     let config = authenc::config::AppConfig::default();
-    let db = Arc::new(unsafe { std::mem::zeroed() }); // Mock database for unit test
+    let db = Arc::new(Database::new(&config.database).await.unwrap());
     let token_manager = TokenManager::new(db);
 
-    // This tests private method indirectly by ensuring the same token produces same hash
-    // Would need to make hash_token public or use reflection for direct testing
+    let user_id = Uuid::new_v4();
+    let client_id = Uuid::new_v4().to_string();
+
+    // Generate two tokens and verify they are unique
+    let token1 = token_manager
+        .generate_token_pair(user_id, client_id.clone(), None, false)
+        .await
+        .unwrap();
+    
+    let token2 = token_manager
+        .generate_token_pair(user_id, client_id, None, false)
+        .await
+        .unwrap();
+
+    // Each token should be unique
+    assert_ne!(token1.access_token, token2.access_token);
 }
