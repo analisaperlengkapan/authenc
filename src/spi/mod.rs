@@ -1,7 +1,7 @@
 //! Service Provider Interface (SPI) architecture for Authenc
 //!
 //! This module provides a pluggable component framework that enables pluggable components
-//! and enterprise extensibility, similar to Keycloak's SPI system.
+//! and enterprise extensibility with a comprehensive SPI system.
 
 // Core SPI traits and interfaces
 /// Admin console SPI for managing administrative interfaces

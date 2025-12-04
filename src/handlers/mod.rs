@@ -1,18 +1,12 @@
 // Re-export axum router for convenience
 use axum::{
     Router,
-    response::Html,
     routing::{get, post},
 };
 use std::sync::Arc;
 
 // Database
 use crate::app::AppState;
-
-/// Account Console UI handler
-async fn account_console_handler() -> Html<&'static str> {
-    Html(include_str!("../../static/account.html"))
-}
 
 // Handlers
 /// Consent UI handlers for user consent management
@@ -335,18 +329,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/oid4vc",
             oid4vc::create_oid4vc_router().with_state(state.clone()),
         )
-        .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()));
+        .nest(\"/vp\", oid4vc::create_vp_router().with_state(state.clone()));
 
-    // Static file serving for Account Console UI
-    router = router
-        .nest_service("/static", tower_http::services::ServeDir::new("static"))
-        .route("/account", get(account_console_handler));
-
-    // Admin Console UI routes
-    #[cfg(feature = "admin_console")]
+    // Admin Console UI routes (backend API only - no static frontend)
+    #[cfg(feature = \"admin_console\")]
     {
         router = router.nest(
-            "/admin/console",
+            \"/admin/console\",
             crate::admin_console::create_admin_console_routes(state.clone(), db_state.clone()),
         );
     }

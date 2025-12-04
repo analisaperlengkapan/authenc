@@ -23,11 +23,11 @@ impl Spi for EventsSpi {
     }
 
     fn get_provider_class(&self) -> &'static str {
-        "org.keycloak.events.EventProvider"
+        "io.authenc.events.EventProvider"
     }
 
     fn get_provider_factory_class(&self) -> &'static str {
-        "org.keycloak.events.EventProviderFactory"
+        "io.authenc.events.EventProviderFactory"
     }
 }
 

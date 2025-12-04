@@ -195,8 +195,8 @@ redirect_uri=http://app.example.com/callback'
 
 Complete API documentation is available via OpenAPI:
 
-- **OpenAPI Spec**: `config/openapi.yaml`
 - **Interactive Docs**: Available at `/docs` when running the server
+- **API Endpoints**: All REST API endpoints follow RESTful conventions
 - **Postman Collection**: Available in `docs/postman/`
 
 ## Testing

@@ -21,11 +21,11 @@ impl Spi for ValidationSpi {
     }
 
     fn get_provider_class(&self) -> &'static str {
-        "org.keycloak.validate.ValidatorProvider"
+        "io.authenc.validate.ValidatorProvider"
     }
 
     fn get_provider_factory_class(&self) -> &'static str {
-        "org.keycloak.validate.ValidatorProviderFactory"
+        "io.authenc.validate.ValidatorProviderFactory"
     }
 }
 

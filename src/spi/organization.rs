@@ -22,11 +22,11 @@ impl Spi for OrganizationSpi {
     }
 
     fn get_provider_class(&self) -> &'static str {
-        "org.keycloak.organization.OrganizationProvider"
+        "io.authenc.organization.OrganizationProvider"
     }
 
     fn get_provider_factory_class(&self) -> &'static str {
-        "org.keycloak.organization.OrganizationProviderFactory"
+        "io.authenc.organization.OrganizationProviderFactory"
     }
 }
 

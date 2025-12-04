@@ -10,11 +10,11 @@ mod tests {
         assert!(!spi.is_internal());
         assert_eq!(
             spi.get_provider_class(),
-            "org.keycloak.adminconsole.AdminConsoleProvider"
+            "io.authenc.adminconsole.AdminConsoleProvider"
         );
         assert_eq!(
             spi.get_provider_factory_class(),
-            "org.keycloak.adminconsole.AdminConsoleProviderFactory"
+            "io.authenc.adminconsole.AdminConsoleProviderFactory"
         );
     }
 
@@ -23,7 +23,7 @@ mod tests {
         let config = AdminConsoleConfig::default();
         assert!(config.enabled);
         assert_eq!(config.base_url, "/admin");
-        assert_eq!(config.theme, "keycloak");
+        assert_eq!(config.theme, "authenc");
         assert_eq!(config.locale, "en");
         assert!(config.features.contains(&"users".to_string()));
     }
@@ -35,7 +35,7 @@ mod tests {
 
         assert!(provider.is_enabled());
         assert_eq!(provider.get_base_url(), "/admin");
-        assert_eq!(provider.get_theme(), "keycloak");
+        assert_eq!(provider.get_theme(), "authenc");
         assert_eq!(provider.get_locale(), "en");
         assert!(
             provider

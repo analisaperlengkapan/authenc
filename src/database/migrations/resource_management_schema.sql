@@ -1,6 +1,6 @@
 -- Resource Management Migration
 -- Adds tables for fine-grained authorization and resource management
--- Compatible with Keycloak's resource management features
+-- Enterprise-grade resource management features
 
 -- ============================================================================
 -- RESOURCE MANAGEMENT TABLES

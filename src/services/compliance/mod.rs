@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::services::stores::ConsentStore;
 
-/// Enhanced compliance module with SOC 2/3, ISO 27001, etc. (SUPERIOR TO KEYCLOAK)
+/// Enhanced compliance module with SOC 2/3, ISO 27001, etc. (Enterprise-grade)
 pub mod enhanced;
 
 /// Compliance framework types

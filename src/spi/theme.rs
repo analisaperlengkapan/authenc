@@ -21,11 +21,11 @@ impl Spi for ThemeSpi {
     }
 
     fn get_provider_class(&self) -> &'static str {
-        "org.keycloak.theme.ThemeProvider"
+        "io.authenc.theme.ThemeProvider"
     }
 
     fn get_provider_factory_class(&self) -> &'static str {
-        "org.keycloak.theme.ThemeProviderFactory"
+        "io.authenc.theme.ThemeProviderFactory"
     }
 }
 
@@ -254,22 +254,85 @@ impl ProviderFactory<dyn ThemeProvider> for DefaultThemeProviderFactory {
     fn create(&self, _config: &ProviderConfig) -> Result<Box<dyn ThemeProvider>, SpiError> {
         let mut provider = DefaultThemeProvider::new(self.theme_name.clone());
 
-        // Add some basic theme resources
+        // Add basic theme resources inline
+        let login_template = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Authenc</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f5f5f5; }
+        .login-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 400px; width: 100%; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+        input { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; }
+        button { width: 100%; padding: 0.75rem; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>Welcome to Authenc</h1>
+        <form method="post">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" autofocus>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password">
+            </div>
+            <button type="submit">Sign In</button>
+        </form>
+    </div>
+</body>
+</html>"#;
+
+        let common_macros = r#"#macro css $name
+<link rel="stylesheet" href="${url.resourcesPath}/css/${name}.css">
+#end
+
+#macro js $name
+<script src="${url.resourcesPath}/js/${name}.js" type="text/javascript"></script>
+#end
+
+#macro img $name $alt
+<img src="${url.resourcesPath}/img/${name}" alt="${alt}">
+#end
+
+#macro message $key
+${messages[$key]!}
+#end
+
+#macro errorIcon
+<span class="pf-c-form__helper-text-icon">
+    <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
+</span>
+#end
+
+#macro successIcon
+<span class="pf-c-form__helper-text-icon">
+    <i class="fas fa-check-circle" aria-hidden="true"></i>
+</span>
+#end
+"#;
+
         provider.add_resource(
             "login/login.ftl".to_string(),
             ThemeResource {
                 path: "login/login.ftl".to_string(),
-                content: include_bytes!("../../templates/login.ftl").to_vec(),
+                content: login_template.as_bytes().to_vec(),
                 content_type: "text/html".to_string(),
                 last_modified: None,
             },
         );
 
         provider.add_resource(
-            "common/keycloak.ftl".to_string(),
+            "common/authenc.ftl".to_string(),
             ThemeResource {
-                path: "common/keycloak.ftl".to_string(),
-                content: include_bytes!("../../templates/keycloak.ftl").to_vec(),
+                path: "common/authenc.ftl".to_string(),
+                content: common_macros.as_bytes().to_vec(),
                 content_type: "text/html".to_string(),
                 last_modified: None,
             },

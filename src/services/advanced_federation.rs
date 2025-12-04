@@ -1,7 +1,7 @@
 //! Advanced User Federation Providers
 //!
-//! This module implements advanced user federation features that Keycloak has
-//! but Authenc is missing, including:
+//! This module implements advanced user federation features for enterprise
+//! identity management, including:
 //! - LDAP federation with advanced configuration
 //! - Kerberos authentication
 //! - Social login providers (Google, GitHub, Facebook, etc.)
@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// User Federation Provider trait (similar to Keycloak's UserStorageProvider)
+/// User Federation Provider trait for Authenc's user storage
 #[async_trait]
 pub trait UserFederationProvider: Send + Sync {
     /// Get provider name

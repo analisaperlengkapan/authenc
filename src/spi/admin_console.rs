@@ -21,11 +21,11 @@ impl Spi for AdminConsoleSpi {
     }
 
     fn get_provider_class(&self) -> &'static str {
-        "org.keycloak.adminconsole.AdminConsoleProvider"
+        "io.authenc.adminconsole.AdminConsoleProvider"
     }
 
     fn get_provider_factory_class(&self) -> &'static str {
-        "org.keycloak.adminconsole.AdminConsoleProviderFactory"
+        "io.authenc.adminconsole.AdminConsoleProviderFactory"
     }
 }
 
@@ -46,7 +46,7 @@ pub trait AdminConsoleProvider: Provider {
 
     /// Get admin console theme
     fn get_theme(&self) -> &str {
-        "keycloak"
+        "authenc"
     }
 
     /// Get admin console locale
@@ -77,7 +77,7 @@ impl Default for AdminConsoleConfig {
         Self {
             enabled: true,
             base_url: "/admin".to_string(),
-            theme: "keycloak".to_string(),
+            theme: "authenc".to_string(),
             locale: "en".to_string(),
             features: vec![
                 "users".to_string(),
@@ -213,7 +213,7 @@ impl crate::spi::ProviderFactory<dyn AdminConsoleProvider> for DefaultAdminConso
                 AdminConsoleConfig {
                     enabled: true,
                     base_url: "/admin".to_string(),
-                    theme: "keycloak".to_string(),
+                    theme: "authenc".to_string(),
                     locale: "en".to_string(), // Default locale
                     features: vec![
                         "users".to_string(),
@@ -253,7 +253,7 @@ mod tests {
 
         assert_eq!(provider.get_base_url(), "/admin");
         assert!(provider.is_enabled());
-        assert_eq!(provider.get_theme(), "keycloak");
+        assert_eq!(provider.get_theme(), "authenc");
         assert_eq!(provider.get_locale(), "en");
 
         let features = provider.get_supported_features();
@@ -267,7 +267,7 @@ mod tests {
         let config = AdminConsoleConfig::default();
         assert!(config.enabled);
         assert_eq!(config.base_url, "/admin");
-        assert_eq!(config.theme, "keycloak");
+        assert_eq!(config.theme, "authenc");
         assert_eq!(config.locale, "en");
         assert!(config.features.contains(&"users".to_string()));
     }

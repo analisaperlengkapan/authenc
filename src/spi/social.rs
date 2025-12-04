@@ -619,11 +619,11 @@ impl Spi for SocialProviderSpi {
     }
 
     fn get_provider_class(&self) -> &'static str {
-        "org.keycloak.broker.social.SocialProvider"
+        "io.authenc.broker.social.SocialProvider"
     }
 
     fn get_provider_factory_class(&self) -> &'static str {
-        "org.keycloak.broker.social.SocialProviderFactory"
+        "io.authenc.broker.social.SocialProviderFactory"
     }
 }
 

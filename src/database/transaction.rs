@@ -1,6 +1,6 @@
 //! Database transaction management
 //!
-//! Provides explicit transaction control following Keycloak's transaction patterns.
+//! Provides explicit transaction control following enterprise transaction patterns.
 //! Supports commit, rollback, savepoints, and isolation levels.
 
 use crate::error::{AuthencError, Result};
@@ -47,7 +47,7 @@ enum TransactionState {
     RolledBack,
 }
 
-/// Database transaction wrapper providing Keycloak-like transaction semantics
+/// Database transaction wrapper providing enterprise transaction semantics
 pub struct DatabaseTransaction<'a> {
     transaction: Option<PgTransaction<'a>>,
     state: Arc<Mutex<TransactionState>>,
@@ -335,7 +335,7 @@ impl<'a> Savepoint<'a> {
     }
 }
 
-/// Transaction manager trait (following Keycloak pattern)
+/// Transaction manager trait (following enterprise patterns)
 #[async_trait]
 pub trait TransactionManager: Send + Sync {
     /// Begin a new transaction

@@ -11,11 +11,11 @@ mod tests {
         assert!(!spi.is_internal());
         assert_eq!(
             spi.get_provider_class(),
-            "org.keycloak.protocol.hostname.HostnameProvider"
+            "io.authenc.protocol.hostname.HostnameProvider"
         );
         assert_eq!(
             spi.get_provider_factory_class(),
-            "org.keycloak.protocol.hostname.HostnameProviderFactory"
+            "io.authenc.protocol.hostname.HostnameProviderFactory"
         );
     }
 

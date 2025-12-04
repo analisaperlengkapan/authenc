@@ -12,11 +12,11 @@ mod tests {
         assert!(!spi.is_internal());
         assert_eq!(
             spi.get_provider_class(),
-            "org.keycloak.authorization.policy.provider.rar.RichAuthorizationProvider"
+            "io.authenc.authorization.policy.provider.rar.RichAuthorizationProvider"
         );
         assert_eq!(
             spi.get_provider_factory_class(),
-            "org.keycloak.authorization.policy.provider.rar.RichAuthorizationProviderFactory"
+            "io.authenc.authorization.policy.provider.rar.RichAuthorizationProviderFactory"
         );
     }
 

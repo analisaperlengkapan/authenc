@@ -74,7 +74,7 @@ pub struct SecurityHeadersConfig {
 
 impl SecurityHeadersConfig {
     /// Secure defaults for production with STRICT CSP (no unsafe-inline)
-    /// This configuration exceeds Keycloak's security standards
+    /// This configuration meets enterprise security standards
     pub fn secure() -> Self {
         Self {
             enabled: true,
@@ -83,7 +83,7 @@ impl SecurityHeadersConfig {
             hsts_preload: true,
             csp_directives: vec![
                 // STRICT CSP - No unsafe-inline or unsafe-eval
-                // Superior to Keycloak's CSP policy
+                // Superior security policy for enterprise environments
                 "default-src 'self'".to_string(),
                 "script-src 'self'".to_string(), // ✅ REMOVED 'unsafe-inline'
                 "style-src 'self'".to_string(),  // ✅ REMOVED 'unsafe-inline'

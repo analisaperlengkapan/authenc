@@ -116,11 +116,11 @@ mod tests {
         );
 
         let external_error = AuthencError::ExternalServiceError {
-            service: "keycloak".to_string(),
+            service: "oauth-provider".to_string(),
         };
         assert_eq!(
             format!("{}", external_error),
-            "External service error: keycloak"
+            "External service error: oauth-provider"
         );
 
         let internal_error = AuthencError::internal("Something went wrong");

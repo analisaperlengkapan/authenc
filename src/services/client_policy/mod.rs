@@ -1,7 +1,7 @@
 //! Client Policy Framework
 //!
 //! Comprehensive client policy framework for enforcing security policies
-//! on OAuth2/OIDC clients, similar to Keycloak's advanced client policies.
+//! on OAuth2/OIDC clients with advanced policy enforcement.
 //!
 //! Features:
 //! - Conditional policy execution based on client attributes

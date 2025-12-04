@@ -548,11 +548,11 @@ impl Spi for LdapFederationSpi {
     }
 
     fn get_provider_class(&self) -> &'static str {
-        "org.keycloak.storage.ldap.LdapFederationProvider"
+        "io.authenc.storage.ldap.LdapFederationProvider"
     }
 
     fn get_provider_factory_class(&self) -> &'static str {
-        "org.keycloak.storage.ldap.LdapFederationProviderFactory"
+        "io.authenc.storage.ldap.LdapFederationProviderFactory"
     }
 }
 

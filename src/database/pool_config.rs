@@ -1,7 +1,7 @@
 //! Advanced connection pool configuration and optimization
 //!
-//! Provides production-grade connection pooling configuration inspired by
-//! Keycloak's HikariCP setup and PostgreSQL best practices.
+//! Provides production-grade connection pooling configuration following
+//! enterprise HikariCP setup and PostgreSQL best practices.
 
 use crate::config::DatabaseConfig;
 use deadpool_postgres::{ManagerConfig, PoolConfig, RecyclingMethod};
@@ -10,7 +10,7 @@ use std::time::Duration;
 /// Connection pool configuration builder
 ///
 /// Provides fine-grained control over connection pool behavior following
-/// production best practices from Keycloak and PostgreSQL documentation.
+/// production best practices from enterprise systems and PostgreSQL documentation.
 #[derive(Debug, Clone)]
 pub struct PoolConfigBuilder {
     /// Maximum number of connections in the pool
@@ -48,7 +48,7 @@ impl PoolConfigBuilder {
 
     /// Set maximum pool size
     ///
-    /// # Recommendations (from Keycloak/HikariCP best practices):
+    /// # Recommendations (from enterprise/HikariCP best practices):
     /// - For OLTP workloads: (core_count * 2) + effective_spindle_count
     /// - For web servers: 10-20 per instance
     /// - Never exceed PostgreSQL max_connections setting
@@ -69,7 +69,7 @@ impl PoolConfigBuilder {
     /// Set connection acquisition timeout
     ///
     /// How long to wait for a connection from the pool before timing out.
-    /// Recommended: 30 seconds (Keycloak default)
+    /// Recommended: 30 seconds (enterprise default)
     pub fn timeout(mut self, duration: Duration) -> Self {
         self.timeout = duration;
         self
@@ -78,7 +78,7 @@ impl PoolConfigBuilder {
     /// Set idle connection timeout
     ///
     /// Connections idle longer than this will be closed to free resources.
-    /// Recommended: 10 minutes (Keycloak/HikariCP default)
+    /// Recommended: 10 minutes (enterprise/HikariCP default)
     pub fn idle_timeout(mut self, duration: Duration) -> Self {
         self.idle_timeout = Some(duration);
         self
@@ -88,7 +88,7 @@ impl PoolConfigBuilder {
     ///
     /// Connections older than this will be closed and replaced.
     /// Prevents issues with long-lived connections and helps with load balancing.
-    /// Recommended: 30 minutes (Keycloak/HikariCP default)
+    /// Recommended: 30 minutes (enterprise/HikariCP default)
     pub fn max_lifetime(mut self, duration: Duration) -> Self {
         self.max_lifetime = Some(duration);
         self
@@ -111,7 +111,7 @@ impl PoolConfigBuilder {
             .timeout(Duration::from_secs(config.connection_timeout))
     }
 
-    /// Build for production environment (Keycloak-like settings)
+    /// Build for production environment (enterprise settings)
     pub fn production() -> Self {
         Self::new()
             .max_size(20)

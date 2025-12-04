@@ -10,11 +10,11 @@ mod tests {
         assert!(!spi.is_internal());
         assert_eq!(
             spi.get_provider_class(),
-            "org.keycloak.organization.OrganizationProvider"
+            "io.authenc.organization.OrganizationProvider"
         );
         assert_eq!(
             spi.get_provider_factory_class(),
-            "org.keycloak.organization.OrganizationProviderFactory"
+            "io.authenc.organization.OrganizationProviderFactory"
         );
     }
 

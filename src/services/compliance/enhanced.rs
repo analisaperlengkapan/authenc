@@ -3,7 +3,7 @@
 //! This module provides comprehensive compliance checking and reporting
 //! for multiple security and privacy standards.
 //!
-//! SUPERIOR TO KEYCLOAK: More comprehensive compliance coverage
+//! Enterprise-grade comprehensive compliance coverage
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

@@ -32,11 +32,11 @@ impl Spi for HostnameSpi {
     }
 
     fn get_provider_class(&self) -> &'static str {
-        "org.keycloak.protocol.hostname.HostnameProvider"
+        "io.authenc.protocol.hostname.HostnameProvider"
     }
 
     fn get_provider_factory_class(&self) -> &'static str {
-        "org.keycloak.protocol.hostname.HostnameProviderFactory"
+        "io.authenc.protocol.hostname.HostnameProviderFactory"
     }
 }
 

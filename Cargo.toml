@@ -100,7 +100,7 @@ temp-env = "0.3.6"
 axum = { version = "0.8.6", optional = true, features = ["http1", "http2", "json", "macros"] }
 axum-extra = { version = "0.10", features = ["cookie"] }
 tower = { version = "0.5.2", optional = true, features = ["util", "timeout", "load-shed", "limit"] }
-tower-http = { version = "0.6.2", optional = true, features = ["cors", "trace", "compression-br", "fs", "add-extension"] }
+tower-http = { version = "0.6.2", optional = true, features = ["cors", "trace", "compression-br", "add-extension"] }
 hyper = { version = "1.5.1", features = ["full"] }
 reqwest = { version = "0.12.12", optional = true, features = ["json", "blocking"] }
 

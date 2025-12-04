@@ -1,6 +1,6 @@
 //! Storage Abstraction Layer
 //!
-//! Comprehensive storage abstraction layer inspired by Keycloak's storage SPI,
+//! Comprehensive storage abstraction layer for Authenc's storage SPI,
 //! providing pluggable storage backends for different data types.
 //!
 //! Features:

@@ -1,7 +1,7 @@
 //! Advanced Authentication Flow Management
 //!
 //! This module provides sophisticated authentication flow management
-//! similar to Keycloak's advanced flow system, enabling dynamic flow
+//! for enterprise identity management, enabling dynamic flow
 //! selection, multi-step authentication, and conditional flows.
 //!
 //! Features:

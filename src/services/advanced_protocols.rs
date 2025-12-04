@@ -1,7 +1,7 @@
 //! Advanced OAuth2/OIDC Protocol Extensions
 //!
 //! This module implements advanced OAuth2 and OIDC protocol features
-//! that Keycloak supports but Authenc is missing, including:
+//! for enterprise identity management, including:
 //! - Rich Authorization Requests (RAR)
 //! - JWT Secured Authorization Response Mode (JARM)
 //! - OAuth 2.0 Token Exchange

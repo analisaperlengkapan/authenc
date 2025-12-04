@@ -22,11 +22,11 @@ impl Spi for UserProfileSpi {
     }
 
     fn get_provider_class(&self) -> &'static str {
-        "org.keycloak.userprofile.UserProfileProvider"
+        "io.authenc.userprofile.UserProfileProvider"
     }
 
     fn get_provider_factory_class(&self) -> &'static str {
-        "org.keycloak.userprofile.UserProfileProviderFactory"
+        "io.authenc.userprofile.UserProfileProviderFactory"
     }
 }
 
