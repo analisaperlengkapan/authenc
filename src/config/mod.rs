@@ -498,6 +498,10 @@ pub struct ObservabilityConfig {
     /// Port for metrics server
     #[serde(default = "default_metrics_port")]
     pub metrics_port: u16,
+
+    /// Simulated active connections for health check
+    #[serde(default = "default_db_check_active_connections")]
+    pub db_check_active_connections: u32,
 }
 
 /// Feature flags and settings
@@ -630,6 +634,12 @@ impl AppConfig {
         if let Ok(log_level) = env::var("LOG_LEVEL") {
             if let Ok(level) = log_level.parse::<Level>() {
                 config.observability.log_level = level;
+            }
+        }
+
+        if let Ok(active_conns) = env::var("DB_CHECK_ACTIVE_CONNECTIONS") {
+            if let Ok(conns) = active_conns.parse::<u32>() {
+                config.observability.db_check_active_connections = conns;
             }
         }
 
@@ -787,6 +797,7 @@ impl Default for AppConfig {
                 structured_logging: true,
                 log_file: None,
                 metrics_port: default_metrics_port(),
+                db_check_active_connections: default_db_check_active_connections(),
             },
             features: FeatureConfig {
                 enable_registration: true,
@@ -832,6 +843,10 @@ fn default_metrics_endpoint() -> String {
 }
 fn default_metrics_port() -> u16 {
     9090
+}
+
+fn default_db_check_active_connections() -> u32 {
+    5
 }
 
 fn default_jwt_expiry() -> u64 {
