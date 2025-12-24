@@ -500,4 +500,23 @@ mod tests {
         assert!(user_info.groups.contains(&"group1".to_string()));
         assert!(user_info.groups.contains(&"group2".to_string()));
     }
+
+    #[test]
+    fn test_extract_groups_no_attributes() {
+        let user = create_test_user(None);
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert!(user_info.groups.is_empty());
+    }
+
+    #[test]
+    fn test_extract_groups_missing_keys() {
+        let attributes = json!({
+            "someOtherKey": "someValue"
+        });
+        let user = create_test_user(Some(attributes));
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert!(user_info.groups.is_empty());
+    }
 }
