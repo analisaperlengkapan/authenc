@@ -134,6 +134,10 @@ pub async fn remove_account_credential(
 
     match credential_id.as_str() {
         "totp" => {
+            // Remove TOTP secret for the current user.
+            // Ownership is implicitly verified because we only delete using the authenticated user_id.
+            // If the secret doesn't exist for this user, remove_secret returns false, allowing us to return 404.
+            // This is atomic and more efficient than get-then-remove.
             let removed = state
                 .totp_store
                 .remove_secret(&user_id.to_string())
@@ -145,8 +149,11 @@ pub async fn remove_account_credential(
                 return Err(AuthencError::resource_not_found("Credential not found"));
             }
         }
+        "password" => {
+            return Err(AuthencError::validation("Cannot delete password credential"));
+        }
         _ => {
-            return Err(AuthencError::validation("Unsupported credential type"));
+            return Err(AuthencError::resource_not_found("Credential not found"));
         }
     }
 
