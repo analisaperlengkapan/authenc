@@ -329,13 +329,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/oid4vc",
             oid4vc::create_oid4vc_router().with_state(state.clone()),
         )
-        .nest(\"/vp\", oid4vc::create_vp_router().with_state(state.clone()));
+        .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()));
 
     // Admin Console UI routes (backend API only - no static frontend)
-    #[cfg(feature = \"admin_console\")]
+    #[cfg(feature = "admin_console")]
     {
         router = router.nest(
-            \"/admin/console\",
+            "/admin/console",
             crate::admin_console::create_admin_console_routes(state.clone(), db_state.clone()),
         );
     }
