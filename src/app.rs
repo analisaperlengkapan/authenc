@@ -423,7 +423,10 @@ impl AppState {
 
         // Register default health checks
         observability_service.register_health_check(Box::new(
-            crate::services::observability::DatabaseHealthCheck::new(10, 5), // TODO: Get from config
+            crate::services::observability::DatabaseHealthCheck::new(
+                config.database.max_connections,
+                config.observability.db_check_active_connections,
+            ),
         ));
 
         // Register default metrics collectors

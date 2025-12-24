@@ -160,6 +160,7 @@ mod tests {
             structured_logging: false,
             log_file: Some("/var/log/app.log".to_string()),
             metrics_port: 8080,
+            db_check_active_connections: 10,
         };
         assert_eq!(config.log_level, tracing::Level::DEBUG);
         assert!(!config.enable_metrics);
@@ -415,6 +416,7 @@ mod tests {
             structured_logging: true,
             log_file: Some("/var/log/app.log".to_string()),
             metrics_port: 9090,
+            db_check_active_connections: 5,
         };
 
         let serialized = serde_json::to_string(&config).unwrap();
