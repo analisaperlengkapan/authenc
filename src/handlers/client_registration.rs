@@ -250,7 +250,7 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
         .get("authorization")
         .and_then(|auth| auth.to_str().ok())
         .and_then(|auth| {
-            if auth.starts_with("Bearer ") {
+            if auth.len() >= 7 && auth[..7].eq_ignore_ascii_case("bearer ") {
                 Some(auth[7..].to_string())
             } else {
                 None
@@ -291,6 +291,16 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Bearer "));
         assert_eq!(extract_bearer_token(&headers), Some("".to_string()));
+
+        // Test with lowercase "bearer "
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", HeaderValue::from_static("bearer some.jwt.token"));
+        assert_eq!(extract_bearer_token(&headers), Some("some.jwt.token".to_string()));
+
+        // Test with mixed case "BeArEr "
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", HeaderValue::from_static("BeArEr some.jwt.token"));
+        assert_eq!(extract_bearer_token(&headers), Some("some.jwt.token".to_string()));
     }
 
     #[test]
