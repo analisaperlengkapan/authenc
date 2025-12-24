@@ -128,6 +128,9 @@ pub struct SocialUserInfo {
 }
 
 /// Helper function to convert internal User model to LdapUserInfo
+///
+/// This function extracts groups from both "groups" and "memberOf" attributes,
+/// sorting and deduplicating them.
 fn convert_to_ldap_user_info(user: crate::models::User) -> LdapUserInfo {
     // Extract groups from user attributes
     let mut groups = Vec::new();
