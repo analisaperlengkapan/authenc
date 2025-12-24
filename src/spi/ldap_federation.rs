@@ -100,6 +100,9 @@ pub struct LdapFederationConfig {
 
     /// Batch size for sync operations
     pub batch_size: Option<usize>,
+
+    /// Groups attribute (default: "memberOf")
+    pub groups_attribute: Option<String>,
 }
 
 impl Default for LdapFederationConfig {
@@ -129,6 +132,7 @@ impl Default for LdapFederationConfig {
             sync_enabled: Some(false),
             sync_interval: Some(60),
             batch_size: Some(100),
+            groups_attribute: Some("memberOf".to_string()),
         }
     }
 }
@@ -216,6 +220,21 @@ impl DefaultLdapFederationProvider {
             );
         }
 
+        // Extract groups
+        let groups_attr = self
+            .config
+            .groups_attribute
+            .as_deref()
+            .unwrap_or("memberOf");
+
+        if let Some(groups) = attrs.get(groups_attr) {
+            let groups_array: Vec<serde_json::Value> = groups
+                .iter()
+                .map(|g| serde_json::Value::String(g.clone()))
+                .collect();
+            attributes.insert("groups".to_string(), serde_json::Value::Array(groups_array));
+        }
+
         // Add custom attributes
         if let Some(custom_attrs) = &self.config.custom_user_attributes {
             for (key, ldap_attr) in custom_attrs {
@@ -263,6 +282,13 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
     async fn authenticate(&self, username: &str, password: &str) -> Result<Option<User>> {
         let mut ldap = self.create_ldap_connection().await?;
 
+        // Get groups attribute name
+        let groups_attr = self
+            .config
+            .groups_attribute
+            .as_deref()
+            .unwrap_or("memberOf");
+
         // First, search for the user to get their DN
         let filter = self.build_user_filter(username);
         let search_result = ldap
@@ -270,7 +296,7 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
                 &self.config.base_dn,
                 Scope::Subtree,
                 &filter,
-                vec!["dn", "uid", "mail", "givenName", "sn"],
+                vec!["dn", "uid", "mail", "givenName", "sn", groups_attr],
             )
             .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
@@ -292,7 +318,7 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
                     &self.config.base_dn,
                     Scope::Subtree,
                     &filter,
-                    vec!["dn", "uid", "mail", "givenName", "sn"],
+                    vec!["dn", "uid", "mail", "givenName", "sn", groups_attr],
                 )
                 .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
@@ -316,12 +342,28 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
 
         let mut ldap = self.create_ldap_connection().await?;
         let filter = self.build_user_filter(username);
+
+        // Get groups attribute name
+        let groups_attr = self
+            .config
+            .groups_attribute
+            .as_deref()
+            .unwrap_or("memberOf");
+
         let search_result = ldap
             .search(
                 &self.config.base_dn,
                 Scope::Subtree,
                 &filter,
-                vec!["dn", "uid", "mail", "givenName", "sn", "entryUUID"],
+                vec![
+                    "dn",
+                    "uid",
+                    "mail",
+                    "givenName",
+                    "sn",
+                    "entryUUID",
+                    groups_attr,
+                ],
             )
             .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
@@ -346,6 +388,13 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
             user_id
         );
 
+        // Get groups attribute name
+        let groups_attr = self
+            .config
+            .groups_attribute
+            .as_deref()
+            .unwrap_or("memberOf");
+
         let search_result = ldap
             .search(
                 &self.config.base_dn,
@@ -358,7 +407,7 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
                     "givenName",
                     "sn",
                     "entryUUID",
-                    "memberOf",
+                    groups_attr,
                 ],
             )
             .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
@@ -413,7 +462,7 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
         }
 
         // Extract groups
-        if let Some(groups) = attrs.get("memberOf") {
+        if let Some(groups) = attrs.get(groups_attr) {
             let groups_array: Vec<serde_json::Value> = groups
                 .iter()
                 .map(|g| serde_json::Value::String(g.clone()))
@@ -447,12 +496,20 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
             "(|(uid=*{0}*)(mail=*{0}*)(givenName=*{0}*)(sn=*{0}*))",
             query
         );
+
+        // Get groups attribute name
+        let groups_attr = self
+            .config
+            .groups_attribute
+            .as_deref()
+            .unwrap_or("memberOf");
+
         let search_result = ldap
             .search(
                 &self.config.base_dn,
                 Scope::Subtree,
                 &filter,
-                vec!["dn", "uid", "mail", "givenName", "sn"],
+                vec!["dn", "uid", "mail", "givenName", "sn", groups_attr],
             )
             .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
