@@ -89,6 +89,7 @@ mod tests {
             tls_cert_path: Some("/path/to/cert.pem".to_string()),
             tls_key_path: Some("/path/to/key.pem".to_string()),
             cors_allowed_origins: vec!["https://example.com".to_string()],
+            base_url: "https://auth.example.com".to_string(),
         };
         assert_eq!(config.host, "127.0.0.1");
         assert_eq!(config.port, 8080);
