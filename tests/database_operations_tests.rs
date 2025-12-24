@@ -12,7 +12,7 @@ use axum_test::TestServer;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::time::{Duration, sleep};
+use tokio::time::Duration;
 use uuid::Uuid;
 
 // Mock database state for testing

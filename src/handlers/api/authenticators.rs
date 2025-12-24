@@ -277,23 +277,23 @@ pub async fn get_execution_statistics(
 pub fn create_authenticator_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route(
-            "/:realm/authenticators",
+            "/{realm}/authenticators",
             post(register_authenticator).get(list_authenticators),
         )
         .route(
-            "/:realm/authenticators/:authenticator_id",
+            "/{realm}/authenticators/{authenticator_id}",
             put(update_authenticator).delete(delete_authenticator),
         )
         .route(
-            "/:realm/authentication-flows/:flow_id/executions",
+            "/{realm}/authentication-flows/{flow_id}/executions",
             post(create_execution).get(list_flow_executions),
         )
         .route(
-            "/:realm/authentication-flows/:flow_id/executions/:execution_id",
+            "/{realm}/authentication-flows/{flow_id}/executions/{execution_id}",
             put(update_execution),
         )
         .route(
-            "/:realm/execution-statistics",
+            "/{realm}/execution-statistics",
             get(get_execution_statistics),
         )
 }

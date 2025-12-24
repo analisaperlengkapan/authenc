@@ -1,8 +1,7 @@
 // Extended comprehensive tests for Authence
 // Additional test coverage for authentication, authorization, and API endpoints
 
-#[macro_use]
-extern crate lazy_static;
+use once_cell::sync::Lazy;
 
 use axum::{
     Router,
@@ -17,9 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-lazy_static! {
-    static ref AUDIT_LOGS: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
-}
+static AUDIT_LOGS: Lazy<Arc<Mutex<Vec<serde_json::Value>>>> = Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
 
 #[axum::debug_handler]
 async fn create_user_handler(

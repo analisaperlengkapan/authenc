@@ -290,15 +290,15 @@ pub async fn get_failed_executions(
 /// Create router for event listener API endpoints
 pub fn create_event_listener_routes() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/:realm/event-log", get(query_event_log))
-        .route("/:realm/event-statistics", get(get_event_statistics))
+        .route("/{realm}/event-log", get(query_event_log))
+        .route("/{realm}/event-statistics", get(get_event_statistics))
         .route(
-            "/:realm/event-listeners",
+            "/{realm}/event-listeners",
             post(register_listener).get(list_listeners),
         )
-        .route("/:realm/event-webhooks", post(register_webhook))
+        .route("/{realm}/event-webhooks", post(register_webhook))
         .route(
-            "/:realm/event-failed-executions",
+            "/{realm}/event-failed-executions",
             get(get_failed_executions),
         )
 }

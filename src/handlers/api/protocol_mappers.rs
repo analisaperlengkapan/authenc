@@ -219,16 +219,16 @@ pub async fn get_mapper_statistics(
 pub fn create_protocol_mapper_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route(
-            "/:realm/clients/:client_id/mappers",
+            "/{realm}/clients/{client_id}/mappers",
             post(create_client_mapper).get(list_client_mappers),
         )
         .route(
-            "/:realm/clients/:client_id/mappers/:mapper_id",
+            "/{realm}/clients/{client_id}/mappers/{mapper_id}",
             get(get_mapper).put(update_mapper).delete(delete_mapper),
         )
         .route(
-            "/:realm/mappers",
+            "/{realm}/mappers",
             post(create_realm_mapper).get(list_realm_mappers),
         )
-        .route("/:realm/mapper-statistics", get(get_mapper_statistics))
+        .route("/{realm}/mapper-statistics", get(get_mapper_statistics))
 }
