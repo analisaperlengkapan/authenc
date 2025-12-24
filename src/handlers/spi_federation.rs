@@ -130,18 +130,34 @@ pub struct SocialUserInfo {
 /// Helper function to convert internal User model to LdapUserInfo
 fn convert_to_ldap_user_info(user: crate::models::User) -> LdapUserInfo {
     // Extract groups from user attributes
-    let groups = if let Some(serde_json::Value::Object(attrs)) = &user.attributes {
-        if let Some(serde_json::Value::Array(groups_arr)) = attrs.get("groups") {
-            groups_arr
-                .iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect()
-        } else {
-            vec![]
+    let mut groups = Vec::new();
+    if let Some(serde_json::Value::Object(attrs)) = &user.attributes {
+        // Helper to extract strings from value (single string or array of strings)
+        let extract_strings = |val: &serde_json::Value| -> Vec<String> {
+            match val {
+                serde_json::Value::Array(arr) => arr
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect(),
+                serde_json::Value::String(s) => vec![s.clone()],
+                _ => vec![],
+            }
+        };
+
+        // Check "groups" attribute
+        if let Some(val) = attrs.get("groups") {
+            groups.extend(extract_strings(val));
         }
-    } else {
-        vec![]
-    };
+
+        // Check "memberOf" attribute
+        if let Some(val) = attrs.get("memberOf") {
+            groups.extend(extract_strings(val));
+        }
+
+        // Deduplicate groups
+        groups.sort();
+        groups.dedup();
+    }
 
     LdapUserInfo {
         username: user.username,
@@ -402,4 +418,78 @@ pub async fn social_callback(
     };
 
     social_authenticate(State(state), Json(request)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::User;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    fn create_test_user(attributes: Option<serde_json::Value>) -> User {
+        let mut user = User::new(
+            "testuser".to_string(),
+            "test@example.com".to_string(),
+            None,
+            Some(Uuid::new_v4()),
+        );
+        user.attributes = attributes;
+        user
+    }
+
+    #[test]
+    fn test_extract_groups_from_groups_attribute() {
+        let attributes = json!({
+            "groups": ["group1", "group2"]
+        });
+        let user = create_test_user(Some(attributes));
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert_eq!(user_info.groups.len(), 2);
+        assert!(user_info.groups.contains(&"group1".to_string()));
+        assert!(user_info.groups.contains(&"group2".to_string()));
+    }
+
+    #[test]
+    fn test_extract_groups_from_memberof_attribute() {
+        let attributes = json!({
+            "memberOf": ["group3", "group4"]
+        });
+        let user = create_test_user(Some(attributes));
+        let user_info = convert_to_ldap_user_info(user);
+
+        // This should currently fail or return empty if not implemented
+        assert_eq!(user_info.groups.len(), 2);
+        assert!(user_info.groups.contains(&"group3".to_string()));
+        assert!(user_info.groups.contains(&"group4".to_string()));
+    }
+
+    #[test]
+    fn test_extract_groups_combined() {
+        let attributes = json!({
+            "groups": ["group1"],
+            "memberOf": ["group2"]
+        });
+        let user = create_test_user(Some(attributes));
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert_eq!(user_info.groups.len(), 2);
+        assert!(user_info.groups.contains(&"group1".to_string()));
+        assert!(user_info.groups.contains(&"group2".to_string()));
+    }
+
+    #[test]
+    fn test_extract_groups_single_string() {
+         let attributes = json!({
+            "groups": "group1",
+            "memberOf": "group2"
+        });
+        let user = create_test_user(Some(attributes));
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert_eq!(user_info.groups.len(), 2);
+        assert!(user_info.groups.contains(&"group1".to_string()));
+        assert!(user_info.groups.contains(&"group2".to_string()));
+    }
 }
