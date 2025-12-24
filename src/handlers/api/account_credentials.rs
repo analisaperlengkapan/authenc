@@ -132,9 +132,20 @@ pub async fn remove_account_credential(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    // TODO: Verify credential belongs to current user
     match credential_id.as_str() {
         "totp" => {
+            // Verify credential exists for the current user
+            if state
+                .totp_store
+                .get_secret(&user_id.to_string())
+                .map_err(|e| {
+                    AuthencError::internal(format!("Failed to check TOTP secret: {}", e))
+                })?
+                .is_none()
+            {
+                return Err(AuthencError::resource_not_found("Credential not found"));
+            }
+
             state
                 .totp_store
                 .remove_secret(&user_id.to_string())
