@@ -45,6 +45,7 @@ async fn register_client(
     );
 
     // Check for software statement in Authorization header
+    // Use the extracted bearer token as the software statement
     let software_statement = extract_bearer_token(&headers)
         .and_then(|token| parse_software_statement(&token));
 
@@ -250,11 +251,12 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
         .get("authorization")
         .and_then(|auth| auth.to_str().ok())
         .and_then(|auth| {
-            if auth.len() >= 7 && auth[..7].eq_ignore_ascii_case("bearer ") {
-                Some(auth[7..].to_string())
-            } else {
-                None
+            if let Some(prefix) = auth.get(..7) {
+                if prefix.eq_ignore_ascii_case("Bearer ") {
+                    return Some(auth[7..].to_string());
+                }
             }
+            None
         })
 }
 
@@ -301,6 +303,14 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("BeArEr some.jwt.token"));
         assert_eq!(extract_bearer_token(&headers), Some("some.jwt.token".to_string()));
+
+        // Test with invalid UTF-8/multi-byte (should not panic)
+        let mut headers = HeaderMap::new();
+        // "💩" is 4 bytes. "💩Bearer " is 4 + 7 = 11 bytes.
+        // We want to test a string where splitting at 7 might land in middle of char if not careful.
+        // "ñ" is 2 bytes (0xC3 0xB1). "ññññ" is 8 bytes. index 7 is inside the 4th "ñ".
+        headers.insert("authorization", HeaderValue::from_str("ññññ").unwrap());
+        assert_eq!(extract_bearer_token(&headers), None);
     }
 
     #[test]
