@@ -292,6 +292,13 @@ mod tests {
     }
 
     #[test]
+    fn test_app_config_validation_invalid_base_url() {
+        let mut config = AppConfig::default();
+        config.server.base_url = "not-a-valid-url".to_string();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
     #[serial]
     fn test_app_config_from_env_basic() {
         temp_env::with_vars(

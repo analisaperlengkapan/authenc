@@ -711,6 +711,14 @@ impl AppConfig {
             ));
         }
 
+        // Validate base_url
+        if let Err(_) = url::Url::parse(&self.server.base_url) {
+            return Err(AuthencError::validation(format!(
+                "Invalid base_url: {}",
+                self.server.base_url
+            )));
+        }
+
         Ok(())
     }
 
