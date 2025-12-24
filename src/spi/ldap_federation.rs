@@ -216,6 +216,15 @@ impl DefaultLdapFederationProvider {
             );
         }
 
+        // Extract groups
+        if let Some(groups) = attrs.get("memberOf") {
+            let groups_array: Vec<serde_json::Value> = groups
+                .iter()
+                .map(|g| serde_json::Value::String(g.clone()))
+                .collect();
+            attributes.insert("groups".to_string(), serde_json::Value::Array(groups_array));
+        }
+
         // Add custom attributes
         if let Some(custom_attrs) = &self.config.custom_user_attributes {
             for (key, ldap_attr) in custom_attrs {
@@ -270,7 +279,7 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
                 &self.config.base_dn,
                 Scope::Subtree,
                 &filter,
-                vec!["dn", "uid", "mail", "givenName", "sn"],
+                vec!["dn", "uid", "mail", "givenName", "sn", "memberOf"],
             )
             .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
@@ -292,7 +301,7 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
                     &self.config.base_dn,
                     Scope::Subtree,
                     &filter,
-                    vec!["dn", "uid", "mail", "givenName", "sn"],
+                    vec!["dn", "uid", "mail", "givenName", "sn", "memberOf"],
                 )
                 .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
@@ -321,7 +330,9 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
                 &self.config.base_dn,
                 Scope::Subtree,
                 &filter,
-                vec!["dn", "uid", "mail", "givenName", "sn", "entryUUID"],
+                vec![
+                    "dn", "uid", "mail", "givenName", "sn", "entryUUID", "memberOf",
+                ],
             )
             .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
@@ -452,7 +463,7 @@ impl LdapFederationProvider for DefaultLdapFederationProvider {
                 &self.config.base_dn,
                 Scope::Subtree,
                 &filter,
-                vec!["dn", "uid", "mail", "givenName", "sn"],
+                vec!["dn", "uid", "mail", "givenName", "sn", "memberOf"],
             )
             .map_err(|e| Error::validation(format!("LDAP search failed: {}", e)))?;
 
