@@ -10,7 +10,6 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AuthencError;
-use crate::models::user::UpdateUserRequest;
 use crate::services::stores::user_store::{UserStore, UserStoreTrait};
 use crate::services::totp_store::TotpStore;
 
@@ -97,28 +96,31 @@ pub async fn update_account_password(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    // TODO: Implement password update logic with current password verification
-    // For now, just update the password (insecure - should verify current password)
-    let mut update_request = UpdateUserRequest {
-        username: None,
-        email: None,
-        first_name: None,
-        last_name: None,
-        phone_number: None,
-        enabled: None,
-        email_verified: None,
-        phone_verified: None,
-        require_password_change: None,
-        attributes: None,
+    // Retrieve the user to get the current password hash
+    let user = state
+        .user_store
+        .get_user(user_id)
+        .await?
+        .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+
+    // Verify current password
+    let password_valid = match &user.password_hash {
+        Some(hash) => bcrypt::verify(&password_request.current_password, hash).unwrap_or(false),
+        None => false,
     };
-    // Note: This is a temporary implementation. In production, we should have a separate password field
-    // For now, we'll use attributes to store the password update
-    update_request.attributes = Some(serde_json::json!({
-        "password": password_request.new_password
-    }));
+
+    if !password_valid {
+        return Err(AuthencError::unauthorized("Invalid current password"));
+    }
+
+    // Hash the new password
+    let new_password_hash = bcrypt::hash(&password_request.new_password, bcrypt::DEFAULT_COST)
+        .map_err(|e| AuthencError::internal(format!("Failed to hash password: {}", e)))?;
+
+    // Update the password
     state
         .user_store
-        .update_user(user_id, update_request)
+        .update_password(user_id, new_password_hash)
         .await?;
 
     Ok(StatusCode::NO_CONTENT)
