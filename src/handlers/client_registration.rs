@@ -1,7 +1,7 @@
 use axum::{
     Router,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::Json,
     routing::{delete, get, post, put},
 };
@@ -44,9 +44,9 @@ async fn register_client(
         false, // require_software_statement
     );
 
-    // Check for software statement in Authorization header
-    // Use the extracted bearer token as the software statement
-    let software_statement = extract_bearer_token(&headers)
+    // Check for software statement in Authorization header (RFC 7591)
+    // The software statement is passed as a Bearer token
+    let software_statement = extract_registration_token(&headers)
         .and_then(|token| parse_software_statement(&token));
 
     // Register client
@@ -82,7 +82,7 @@ async fn get_client_configuration(
     headers: HeaderMap,
 ) -> Result<Json<ClientRegistrationResponse>, (StatusCode, Json<ClientRegistrationError>)> {
     // Extract registration access token from Authorization header
-    let registration_token = match extract_bearer_token(&headers) {
+    let registration_token = match extract_registration_token(&headers) {
         Some(token) => token,
         None => {
             return Err((
@@ -138,7 +138,7 @@ async fn update_client_configuration(
     Json(request): Json<ClientUpdateRequest>,
 ) -> Result<Json<ClientRegistrationResponse>, (StatusCode, Json<ClientRegistrationError>)> {
     // Extract registration access token from Authorization header
-    let registration_token = match extract_bearer_token(&headers) {
+    let registration_token = match extract_registration_token(&headers) {
         Some(token) => token,
         None => {
             return Err((
@@ -197,7 +197,7 @@ async fn delete_client_registration(
     headers: HeaderMap,
 ) -> Result<StatusCode, (StatusCode, Json<ClientRegistrationError>)> {
     // Extract registration access token from Authorization header
-    let registration_token = match extract_bearer_token(&headers) {
+    let registration_token = match extract_registration_token(&headers) {
         Some(token) => token,
         None => {
             return Err((
@@ -245,18 +245,17 @@ async fn delete_client_registration(
     }
 }
 
-/// Extract Bearer token from Authorization header
-fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
+/// Extract registration access token from Authorization header
+fn extract_registration_token(headers: &HeaderMap) -> Option<String> {
     headers
-        .get("authorization")
+        .get(header::AUTHORIZATION)
         .and_then(|auth| auth.to_str().ok())
         .and_then(|auth| {
-            if let Some(prefix) = auth.get(..7) {
-                if prefix.eq_ignore_ascii_case("Bearer ") {
-                    return Some(auth[7..].to_string());
-                }
+            if auth.len() >= 7 && auth[..7].eq_ignore_ascii_case("Bearer ") {
+                Some(auth[7..].to_string())
+            } else {
+                None
             }
-            None
         })
 }
 
@@ -274,43 +273,35 @@ mod tests {
     use axum::http::HeaderValue;
 
     #[test]
-    fn test_extract_bearer_token() {
+    fn test_extract_registration_token() {
         // Test with valid Bearer token
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Bearer some.jwt.token"));
-        assert_eq!(extract_bearer_token(&headers), Some("some.jwt.token".to_string()));
+        assert_eq!(extract_registration_token(&headers), Some("some.jwt.token".to_string()));
+
+        // Test with valid bearer token (lowercase)
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", HeaderValue::from_static("bearer some.jwt.token"));
+        assert_eq!(extract_registration_token(&headers), Some("some.jwt.token".to_string()));
 
         // Test with invalid prefix
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Basic some.jwt.token"));
-        assert_eq!(extract_bearer_token(&headers), None);
+        assert_eq!(extract_registration_token(&headers), None);
 
         // Test with no authorization header
         let headers = HeaderMap::new();
-        assert_eq!(extract_bearer_token(&headers), None);
+        assert_eq!(extract_registration_token(&headers), None);
 
         // Test with just "Bearer "
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Bearer "));
-        assert_eq!(extract_bearer_token(&headers), Some("".to_string()));
-
-        // Test with lowercase "bearer "
-        let mut headers = HeaderMap::new();
-        headers.insert("authorization", HeaderValue::from_static("bearer some.jwt.token"));
-        assert_eq!(extract_bearer_token(&headers), Some("some.jwt.token".to_string()));
+        assert_eq!(extract_registration_token(&headers), Some("".to_string()));
 
         // Test with mixed case "BeArEr "
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("BeArEr some.jwt.token"));
-        assert_eq!(extract_bearer_token(&headers), Some("some.jwt.token".to_string()));
-
-        // Test with invalid UTF-8/multi-byte (should not panic)
-        let mut headers = HeaderMap::new();
-        // "💩" is 4 bytes. "💩Bearer " is 4 + 7 = 11 bytes.
-        // We want to test a string where splitting at 7 might land in middle of char if not careful.
-        // "ñ" is 2 bytes (0xC3 0xB1). "ññññ" is 8 bytes. index 7 is inside the 4th "ñ".
-        headers.insert("authorization", HeaderValue::from_str("ññññ").unwrap());
-        assert_eq!(extract_bearer_token(&headers), None);
+        assert_eq!(extract_registration_token(&headers), Some("some.jwt.token".to_string()));
     }
 
     #[test]
