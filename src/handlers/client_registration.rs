@@ -45,7 +45,7 @@ async fn register_client(
     );
 
     // Check for software statement in Authorization header
-    let software_statement = extract_registration_token(&headers)
+    let software_statement = extract_bearer_token(&headers)
         .and_then(|token| parse_software_statement(&token));
 
     // Register client
@@ -81,7 +81,7 @@ async fn get_client_configuration(
     headers: HeaderMap,
 ) -> Result<Json<ClientRegistrationResponse>, (StatusCode, Json<ClientRegistrationError>)> {
     // Extract registration access token from Authorization header
-    let registration_token = match extract_registration_token(&headers) {
+    let registration_token = match extract_bearer_token(&headers) {
         Some(token) => token,
         None => {
             return Err((
@@ -137,7 +137,7 @@ async fn update_client_configuration(
     Json(request): Json<ClientUpdateRequest>,
 ) -> Result<Json<ClientRegistrationResponse>, (StatusCode, Json<ClientRegistrationError>)> {
     // Extract registration access token from Authorization header
-    let registration_token = match extract_registration_token(&headers) {
+    let registration_token = match extract_bearer_token(&headers) {
         Some(token) => token,
         None => {
             return Err((
@@ -196,7 +196,7 @@ async fn delete_client_registration(
     headers: HeaderMap,
 ) -> Result<StatusCode, (StatusCode, Json<ClientRegistrationError>)> {
     // Extract registration access token from Authorization header
-    let registration_token = match extract_registration_token(&headers) {
+    let registration_token = match extract_bearer_token(&headers) {
         Some(token) => token,
         None => {
             return Err((
@@ -244,8 +244,8 @@ async fn delete_client_registration(
     }
 }
 
-/// Extract registration access token from Authorization header
-fn extract_registration_token(headers: &HeaderMap) -> Option<String> {
+/// Extract Bearer token from Authorization header
+fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
     headers
         .get("authorization")
         .and_then(|auth| auth.to_str().ok())
@@ -261,12 +261,7 @@ fn extract_registration_token(headers: &HeaderMap) -> Option<String> {
 /// Parse software statement from JWT string
 /// Note: This only decodes the payload, validation is done by the service
 fn parse_software_statement(token: &str) -> Option<SoftwareStatement> {
-    let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 {
-        return None;
-    }
-
-    let payload = parts[1];
+    let payload = token.split('.').nth(1)?;
     let decoded = BASE64_URL_SAFE_NO_PAD.decode(payload).ok()?;
     serde_json::from_slice(&decoded).ok()
 }
@@ -277,25 +272,25 @@ mod tests {
     use axum::http::HeaderValue;
 
     #[test]
-    fn test_extract_registration_token() {
+    fn test_extract_bearer_token() {
         // Test with valid Bearer token
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Bearer some.jwt.token"));
-        assert_eq!(extract_registration_token(&headers), Some("some.jwt.token".to_string()));
+        assert_eq!(extract_bearer_token(&headers), Some("some.jwt.token".to_string()));
 
         // Test with invalid prefix
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Basic some.jwt.token"));
-        assert_eq!(extract_registration_token(&headers), None);
+        assert_eq!(extract_bearer_token(&headers), None);
 
         // Test with no authorization header
         let headers = HeaderMap::new();
-        assert_eq!(extract_registration_token(&headers), None);
+        assert_eq!(extract_bearer_token(&headers), None);
 
         // Test with just "Bearer "
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Bearer "));
-        assert_eq!(extract_registration_token(&headers), Some("".to_string()));
+        assert_eq!(extract_bearer_token(&headers), Some("".to_string()));
     }
 
     #[test]
