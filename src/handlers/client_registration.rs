@@ -262,7 +262,16 @@ fn extract_registration_token(headers: &HeaderMap) -> Option<String> {
 /// Parse software statement from JWT string
 /// Note: This only decodes the payload, validation is done by the service
 fn parse_software_statement(token: &str) -> Option<SoftwareStatement> {
-    let payload = token.split('.').nth(1)?;
+    let mut parts = token.split('.');
+    let _header = parts.next()?;
+    let payload = parts.next()?;
+    let _signature = parts.next()?;
+
+    // JWT must have exactly 3 parts
+    if parts.next().is_some() {
+        return None;
+    }
+
     let decoded = BASE64_URL_SAFE_NO_PAD.decode(payload).ok()?;
     serde_json::from_slice(&decoded).ok()
 }
