@@ -89,6 +89,7 @@ mod tests {
             tls_cert_path: Some("/path/to/cert.pem".to_string()),
             tls_key_path: Some("/path/to/key.pem".to_string()),
             cors_allowed_origins: vec!["https://example.com".to_string()],
+            base_url: "https://auth.example.com".to_string(),
         };
         assert_eq!(config.host, "127.0.0.1");
         assert_eq!(config.port, 8080);
@@ -288,6 +289,13 @@ mod tests {
         let mut config = AppConfig::default();
         config.server.tls_enabled = true;
         // Missing cert and key paths
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_app_config_validation_invalid_base_url() {
+        let mut config = AppConfig::default();
+        config.server.base_url = "not-a-valid-url".to_string();
         assert!(config.validate().is_err());
     }
 

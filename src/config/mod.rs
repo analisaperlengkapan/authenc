@@ -325,6 +325,10 @@ pub struct ServerConfig {
     /// List of allowed CORS origins
     #[serde(default = "default_cors_origins")]
     pub cors_allowed_origins: Vec<String>,
+
+    /// Base URL for the application (e.g. http://localhost:3000)
+    #[serde(default = "default_base_url")]
+    pub base_url: String,
 }
 
 fn default_host() -> String {
@@ -333,6 +337,10 @@ fn default_host() -> String {
 
 fn default_port() -> u16 {
     3000
+}
+
+fn default_base_url() -> String {
+    "http://localhost:3000".to_string()
 }
 
 fn default_keep_alive() -> u64 {
@@ -580,6 +588,10 @@ impl AppConfig {
             );
         }
 
+        if let Ok(base_url) = env::var("BASE_URL") {
+            config.server.base_url = base_url;
+        }
+
         // TLS configuration
         if let Ok(tls_enabled) = env::var("TLS_ENABLED") {
             config.server.tls_enabled = tls_enabled.parse().unwrap_or(false);
@@ -709,6 +721,14 @@ impl AppConfig {
             ));
         }
 
+        // Validate base_url
+        if let Err(_) = url::Url::parse(&self.server.base_url) {
+            return Err(AuthencError::validation(format!(
+                "Invalid base_url: {}",
+                self.server.base_url
+            )));
+        }
+
         Ok(())
     }
 
@@ -765,6 +785,7 @@ impl Default for AppConfig {
                 tls_cert_path: None,
                 tls_key_path: None,
                 cors_allowed_origins: default_cors_origins(),
+                base_url: default_base_url(),
             },
             database: DatabaseConfig {
                 host: "localhost".to_string(),
@@ -897,12 +918,14 @@ mod tests {
                 ("HOST", Some("127.0.0.1")),
                 ("PORT", Some("4000")),
                 ("JWT_SECRET", Some("test_secret")),
+                ("BASE_URL", Some("https://auth.example.com")),
             ],
             || {
                 let config = AppConfig::from_env().unwrap();
                 assert_eq!(config.server.host, "127.0.0.1");
                 assert_eq!(config.server.port, 4000);
                 assert_eq!(config.security.jwt_secret, "test_secret");
+                assert_eq!(config.server.base_url, "https://auth.example.com");
             },
         );
     }

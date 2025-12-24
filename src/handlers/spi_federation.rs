@@ -394,11 +394,18 @@ pub async fn social_callback(
     // For now, assume it's passed as part of the state
     let provider_name = "google"; // This should be extracted from state
 
+    // Construct redirect URI using the configured base URL
+    // The path must match the mounted route path for the social callback
+    let redirect_uri = format!(
+        "{}/api/v1/auth/federation/social/callback",
+        state.config.server.base_url.trim_end_matches('/')
+    );
+
     let request = SocialAuthRequest {
         provider: provider_name.to_string(),
         code: code.clone(),
         state: state_param.clone(),
-        redirect_uri: "http://localhost:8080/auth/social/callback".to_string(), // TODO: Get from config
+        redirect_uri,
     };
 
     social_authenticate(State(state), Json(request)).await
