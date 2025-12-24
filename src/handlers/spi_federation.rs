@@ -127,6 +127,31 @@ pub struct SocialUserInfo {
     pub avatar_url: Option<String>,
 }
 
+/// Helper function to convert internal User model to LdapUserInfo
+fn convert_to_ldap_user_info(user: crate::models::User) -> LdapUserInfo {
+    // Extract groups from user attributes
+    let groups = if let Some(serde_json::Value::Object(attrs)) = &user.attributes {
+        if let Some(serde_json::Value::Array(groups_arr)) = attrs.get("groups") {
+            groups_arr
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    };
+
+    LdapUserInfo {
+        username: user.username,
+        email: Some(user.email),
+        first_name: user.first_name,
+        last_name: user.last_name,
+        groups,
+    }
+}
+
 /// LDAP authentication handler using SPI
 pub async fn ldap_authenticate(
     State(state): State<Arc<AppState>>,
@@ -155,28 +180,8 @@ pub async fn ldap_authenticate(
         .await
     {
         Ok(Some(user_info)) => {
-            // Extract groups from user attributes
-            let groups = if let Some(serde_json::Value::Object(attrs)) = &user_info.attributes {
-                if let Some(serde_json::Value::Array(groups_arr)) = attrs.get("groups") {
-                    groups_arr
-                        .iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                } else {
-                    vec![]
-                }
-            } else {
-                vec![]
-            };
-
             // Convert SPI user info to response format
-            let user_info = LdapUserInfo {
-                username: user_info.username.clone(),
-                email: Some(user_info.email.clone()),
-                first_name: user_info.first_name.clone(),
-                last_name: user_info.last_name.clone(),
-                groups,
-            };
+            let user_info = convert_to_ldap_user_info(user_info);
 
             Ok(Json(LdapAuthResponse {
                 success: true,
@@ -224,29 +229,7 @@ pub async fn ldap_search_users(
         Ok(users) => {
             let users: Vec<LdapUserInfo> = users
                 .into_iter()
-                .map(|user| {
-                    // Extract groups from user attributes
-                    let groups = if let Some(serde_json::Value::Object(attrs)) = &user.attributes {
-                        if let Some(serde_json::Value::Array(groups_arr)) = attrs.get("groups") {
-                            groups_arr
-                                .iter()
-                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                .collect()
-                        } else {
-                            vec![]
-                        }
-                    } else {
-                        vec![]
-                    };
-
-                    LdapUserInfo {
-                        username: user.username,
-                        email: Some(user.email),
-                        first_name: user.first_name,
-                        last_name: user.last_name,
-                        groups,
-                    }
-                })
+                .map(convert_to_ldap_user_info)
                 .collect();
             let total = users.len();
 
