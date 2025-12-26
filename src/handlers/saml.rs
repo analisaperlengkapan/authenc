@@ -51,38 +51,78 @@ impl AdminService for MockAdminService {
         request: crate::services::admin::CreateUserRequest,
     ) -> Result<crate::services::admin::UserResponse, String> {
         // Use the database operations to create user
-        use crate::database::operations::users;
+        use crate::database::operations::{groups, roles, users};
         use crate::models::user::CreateUserRequest as DbCreateUserRequest;
 
         let db_request = DbCreateUserRequest {
-            username: request.username,
-            email: request.email,
-            password: request.password,
-            first_name: request.first_name,
-            last_name: request.last_name,
-            phone_number: request.phone_number,
-            attributes: request.attributes,
+            username: request.username.clone(),
+            email: request.email.clone(),
+            password: request.password.clone(),
+            first_name: request.first_name.clone(),
+            last_name: request.last_name.clone(),
+            phone_number: request.phone_number.clone(),
+            attributes: request.attributes.clone(),
             realm_id: Some(request.realm_id),
             organization_id: None,
         };
 
         match users::create_user(&self.db, &db_request).await {
-            Ok(user) => Ok(crate::services::admin::UserResponse {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                email_verified: user.email_verified,
-                first_name: user.first_name,
-                last_name: user.last_name,
-                enabled: user.enabled,
-                realm_id: user.realm_id.unwrap_or_default(),
-                roles: vec![],  // TODO: Get roles from database
-                groups: vec![], // TODO: Get groups from database
-                created_at: user.created_at,
-                last_login: user.last_login_at,
-                login_attempts: user.failed_login_attempts as u32,
-                locked_until: user.account_locked_until,
-            }),
+            Ok(user) => {
+                // Assign roles if provided
+                if !request.roles.is_empty() {
+                    let all_roles = roles::list_roles_by_realm(&self.db, &request.realm_id)
+                        .await
+                        .map_err(|e| format!("Failed to fetch realm roles: {}", e))?;
+
+                    for role_name in &request.roles {
+                        if let Some(role) = all_roles.iter().find(|r| r.name == *role_name) {
+                            roles::assign_role_to_user(&self.db, &user.id, &role.id)
+                                .await
+                                .map_err(|e| format!("Failed to assign role {}: {}", role_name, e))?;
+                        }
+                    }
+                }
+
+                // Assign groups if provided
+                if !request.groups.is_empty() {
+                    let all_groups = groups::get_groups_by_realm(&self.db, request.realm_id, None, None)
+                        .await
+                        .map_err(|e| format!("Failed to fetch realm groups: {}", e))?;
+
+                    for group_name in &request.groups {
+                        if let Some(group) = all_groups.iter().find(|g| g.name == *group_name) {
+                            groups::add_user_to_group(&self.db, user.id, group.id, None, None)
+                                .await
+                                .map_err(|e| format!("Failed to add user to group {}: {}", group_name, e))?;
+                        }
+                    }
+                }
+
+                let user_roles = roles::get_user_roles(&self.db, &user.id)
+                    .await
+                    .map_err(|e| format!("Failed to get user roles: {}", e))?;
+
+                let user_groups = groups::get_user_groups(&self.db, user.id)
+                    .await
+                    .map_err(|e| format!("Failed to get user groups: {}", e))?;
+
+                Ok(crate::services::admin::UserResponse {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    email_verified: user.email_verified,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
+                    enabled: user.enabled,
+                    realm_id: user.realm_id.unwrap_or_default(),
+                    roles: user_roles.into_iter().map(|r| r.name).collect(),
+                    groups: user_groups.into_iter().map(|g| g.name).collect(),
+                    created_at: user.created_at,
+                    last_login: user.last_login_at,
+                    login_attempts: user.failed_login_attempts as u32,
+                    locked_until: user.account_locked_until,
+                })
+            }
             Err(e) => Err(format!("Failed to create user: {}", e)),
         }
     }
