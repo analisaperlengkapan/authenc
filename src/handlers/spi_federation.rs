@@ -132,27 +132,18 @@ fn convert_to_ldap_user_info(user: crate::models::User) -> LdapUserInfo {
     // Extract groups from user attributes
     let mut groups = Vec::new();
     if let Some(serde_json::Value::Object(attrs)) = &user.attributes {
-        // Helper to extract strings from value (single string or array of strings)
-        let mut extract_strings_into = |val: &serde_json::Value, target: &mut Vec<String>| {
-            match val {
-                serde_json::Value::Array(arr) => {
-                    target.extend(arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())));
+        for key in ["groups", "memberOf"] {
+            if let Some(val) = attrs.get(key) {
+                match val {
+                    serde_json::Value::Array(arr) => {
+                        groups.extend(arr.iter().filter_map(|v| v.as_str().map(ToString::to_string)));
+                    }
+                    serde_json::Value::String(s) => {
+                        groups.push(s.clone());
+                    }
+                    _ => {}
                 }
-                serde_json::Value::String(s) => {
-                    target.push(s.clone());
-                }
-                _ => {}
             }
-        };
-
-        // Check "groups" attribute
-        if let Some(val) = attrs.get("groups") {
-            extract_strings_into(val, &mut groups);
-        }
-
-        // Check "memberOf" attribute
-        if let Some(val) = attrs.get("memberOf") {
-            extract_strings_into(val, &mut groups);
         }
 
         // Deduplicate groups
