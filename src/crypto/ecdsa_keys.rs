@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 pub static ECDSA_KEYPAIR: Lazy<SigningKey> = Lazy::new(|| {
     // In production, load from secure storage or environment
     // For demo purposes, generate a new key each time
-    SigningKey::random(&mut OsRng)
+    SigningKey::generate()
 });
 
 /// JSON Web Key Set containing ECDSA public keys
