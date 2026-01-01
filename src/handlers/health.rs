@@ -145,7 +145,8 @@ mod tests {
         assert_eq!(body["database"], "connected");
 
         // Test case 2: Database is unhealthy
-        let db = Database::mock().await.with_mock_status(MockStatus::Unhealthy("Connection refused".to_string()));
+        // Verify that the health check correctly handles database errors
+        let db = Database::mock().await.with_mock_status(MockStatus::Unhealthy("Database connection failed".to_string()));
         let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
@@ -159,7 +160,7 @@ mod tests {
         let body: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(body["status"], "not ready");
         assert_eq!(body["database"], "disconnected");
-        assert_eq!(body["error"], "Database error: Connection refused");
+        assert_eq!(body["error"], "Database error: Database connection failed");
     }
 
     #[tokio::test]
