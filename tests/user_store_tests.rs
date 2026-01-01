@@ -4,7 +4,6 @@ use authenc::models::user::{CreateUserRequest, User};
 use authenc::services::stores::user_store::{UserStore, UserStoreTrait};
 use std::sync::Arc;
 use uuid::Uuid;
-use bcrypt;
 
 #[tokio::test]
 #[ignore = "Requires PostgreSQL database to be running"]
@@ -57,6 +56,12 @@ async fn user_store_basic_flow() {
     // Proper password hashing and verification
     let password_hash = retrieved_user.password_hash.expect("Password hash should be present");
     assert_ne!(password_hash, "password123", "Password should be hashed");
-    assert!(bcrypt::verify("password123", &password_hash).unwrap(), "Password verification failed");
-    assert!(!bcrypt::verify("wrongpassword", &password_hash).unwrap(), "Wrong password should fail verification");
+    assert!(
+        authenc::utils::crypto::password::verify_password(&password_hash, "password123").unwrap(),
+        "Password verification failed"
+    );
+    assert!(
+        !authenc::utils::crypto::password::verify_password(&password_hash, "wrongpassword").unwrap(),
+        "Wrong password should fail verification"
+    );
 }
