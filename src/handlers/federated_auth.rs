@@ -1,3 +1,4 @@
+use crate::app::AppState;
 use crate::database::Database;
 use crate::error::AuthencError;
 use crate::models::user::{JITUserProvisioningRequest, JITUserProvisioningResponse};
@@ -228,13 +229,13 @@ impl AdminService for MockAdminService {
 
 /// Handle federated authentication with JIT provisioning
 pub async fn federated_auth(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<FederatedAuthRequest>,
 ) -> std::result::Result<Json<FederatedAuthResponse>, AuthencError> {
     // Create JIT provisioning service
-    let admin_service = Arc::new(MockAdminService::new(db.clone()));
+    let admin_service = Arc::new(MockAdminService::new(state.database.clone()));
     let jit_service = Arc::new(DefaultJITProvisioningService::new(
-        db.clone(),
+        state.database.clone(),
         admin_service,
     ));
 
@@ -271,6 +272,6 @@ pub async fn federated_auth(
 }
 
 /// Create federated authentication routes
-pub fn create_federated_auth_routes() -> Router<Arc<Database>> {
+pub fn create_federated_auth_routes() -> Router<Arc<AppState>> {
     Router::new().route("/federated-auth", post(federated_auth))
 }

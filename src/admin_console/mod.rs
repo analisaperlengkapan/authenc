@@ -15,7 +15,7 @@ use crate::services::stores::user_store::UserStoreTrait;
 pub fn create_admin_console_routes(
     state: Arc<crate::app::AppState>,
     db_state: Arc<Database>,
-) -> Router<Arc<Database>> {
+) -> Router {
     Router::new()
         .route("/", axum::routing::get(dashboard))
         .route("/users", axum::routing::get(users_page))
