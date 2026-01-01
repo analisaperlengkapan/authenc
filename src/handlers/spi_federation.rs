@@ -127,6 +127,15 @@ pub struct SocialUserInfo {
     pub avatar_url: Option<String>,
 }
 
+/// Helper function to construct the social callback URI
+fn construct_social_callback_uri(config: &crate::config::AppConfig) -> String {
+    format!(
+        "{}{}/auth/federation/social/callback",
+        config.server.base_url.trim_end_matches('/'),
+        config.server.public_prefix.trim_end_matches('/')
+    )
+}
+
 /// Helper function to convert internal User model to LdapUserInfo
 ///
 /// This function extracts groups from both "groups" and "memberOf" attributes,
@@ -407,10 +416,7 @@ pub async fn social_callback(
 
     // Construct redirect URI using the configured base URL
     // The path must match the mounted route path for the social callback
-    let redirect_uri = format!(
-        "{}/api/v1/auth/federation/social/callback",
-        state.config.server.base_url.trim_end_matches('/')
-    );
+    let redirect_uri = construct_social_callback_uri(&state.config);
 
     let request = SocialAuthRequest {
         provider: provider_name.to_string(),
@@ -512,5 +518,29 @@ mod tests {
         let user_info = convert_to_ldap_user_info(user);
 
         assert!(user_info.groups.is_empty());
+    }
+
+    #[test]
+    fn test_social_callback_redirect_uri_construction() {
+        use crate::config::AppConfig;
+
+        let mut config = AppConfig::default();
+        config.server.base_url = "https://auth.example.com".to_string();
+        config.server.public_prefix = "/api/v1".to_string();
+
+        let uri = construct_social_callback_uri(&config);
+        assert_eq!(uri, "https://auth.example.com/api/v1/auth/federation/social/callback");
+    }
+
+    #[test]
+    fn test_social_callback_redirect_uri_construction_trailing_slashes() {
+        use crate::config::AppConfig;
+
+        let mut config = AppConfig::default();
+        config.server.base_url = "https://auth.example.com/".to_string();
+        config.server.public_prefix = "/api/v1/".to_string();
+
+        let uri = construct_social_callback_uri(&config);
+        assert_eq!(uri, "https://auth.example.com/api/v1/auth/federation/social/callback");
     }
 }
