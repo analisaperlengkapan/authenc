@@ -1,4 +1,5 @@
 use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
+use crate::app::AppState;
 use crate::error::AuthencError;
 use crate::services::stores::consent_store::ConsentStoreTrait;
 use crate::utils::crypto_monitor::CryptoMonitor;
@@ -263,12 +264,10 @@ impl OAuth2Stores {
 /// Combined state for OAuth2 handlers
 #[derive(Clone)]
 pub struct OAuth2AppState {
-    /// The database connection
-    pub database: Arc<crate::database::Database>,
+    /// The full application state
+    pub app_state: Arc<AppState>,
     /// The OAuth2 in-memory stores
     pub oauth2_stores: Arc<OAuth2Stores>,
-    /// The consent store for GDPR compliance
-    pub consent_store: Arc<crate::services::stores::consent_store::ConsentStore>,
 }
 
 /// Generate PKCE code challenge
@@ -524,6 +523,7 @@ pub async fn oauth2_authorize(
 
     // Check if user has valid consent for the requested scopes
     let has_consent = state
+        .app_state
         .consent_store
         .has_consent(user_id, &params.client_id, &scopes)
         .await?;
@@ -1207,6 +1207,7 @@ pub async fn test_oauth2_authorize(
 
     // Check if user has valid consent for the requested scopes
     let has_consent = state
+        .app_state
         .consent_store
         .has_consent(user_id, &params.client_id, &scopes)
         .await?;

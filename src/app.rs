@@ -691,3 +691,15 @@ mod tests {
         assert!(builder.config.server.port > 0);
     }
 }
+
+
+
+
+
+
+use axum::extract::FromRef;
+impl FromRef<Arc<AppState>> for crate::database::Database {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        (*state.database).clone()
+    }
+}
