@@ -1,29 +1,34 @@
-impl Default for TotpStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+/// Internal struct to hold TOTP data
+#[derive(Clone)]
+struct TotpEntry {
+    secret: String,
+    created_at: DateTime<Utc>,
+}
+
 /// TOTP (Time-based One-Time Password) store for managing user TOTP secrets
 pub struct TotpStore {
-    /// user_id -> base32 secret mapping
-    secrets: Arc<RwLock<HashMap<String, String>>>,
+    /// user_id -> TOTP entry mapping
+    entries: Arc<RwLock<HashMap<String, TotpEntry>>>,
     /// user_id -> hashed backup codes mapping
     backup_codes: Arc<RwLock<HashMap<String, Vec<String>>>>,
-    /// user_id -> configured timestamp mapping
-    configured_at: Arc<RwLock<HashMap<String, chrono::DateTime<chrono::Utc>>>>,
+}
+
+impl Default for TotpStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TotpStore {
     /// Create new TOTP store for managing Time-based One-Time Password secrets
     pub fn new() -> Self {
         TotpStore {
-            secrets: Arc::new(RwLock::new(HashMap::new())),
+            entries: Arc::new(RwLock::new(HashMap::new())),
             backup_codes: Arc::new(RwLock::new(HashMap::new())),
-            configured_at: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -37,18 +42,15 @@ impl TotpStore {
     /// * `Ok(())` on successful storage
     /// * `Err(String)` if there's a lock poisoning error
     pub fn set_secret(&self, user_id: &str, secret: &str) -> Result<(), String> {
-        let mut secrets = self
-            .secrets
+        let mut entries = self
+            .entries
             .write()
             .map_err(|e| format!("Lock poisoned: {e}"))?;
-        secrets.insert(user_id.to_string(), secret.to_string());
 
-        // Also set the configured timestamp
-        let mut configured_at = self
-            .configured_at
-            .write()
-            .map_err(|e| format!("Lock poisoned: {e}"))?;
-        configured_at.insert(user_id.to_string(), Utc::now());
+        entries.insert(user_id.to_string(), TotpEntry {
+            secret: secret.to_string(),
+            created_at: Utc::now(),
+        });
 
         Ok(())
     }
@@ -63,11 +65,11 @@ impl TotpStore {
     /// * `Ok(None)` if no secret is found for the user
     /// * `Err(String)` if there's a lock poisoning error
     pub fn get_secret(&self, user_id: &str) -> Result<Option<String>, String> {
-        let secrets = self
-            .secrets
+        let entries = self
+            .entries
             .read()
             .map_err(|e| format!("Lock poisoned: {e}"))?;
-        Ok(secrets.get(user_id).cloned())
+        Ok(entries.get(user_id).map(|e| e.secret.clone()))
     }
 
     /// Remove TOTP secret for user
@@ -79,20 +81,45 @@ impl TotpStore {
     /// * `Ok(bool)` true if secret was removed, false if it didn't exist
     /// * `Err(String)` if there's a lock poisoning error
     pub fn remove_secret(&self, user_id: &str) -> Result<bool, String> {
-        let mut secrets = self
-            .secrets
+        let mut entries = self
+            .entries
             .write()
             .map_err(|e| format!("Lock poisoned: {e}"))?;
-        let removed = secrets.remove(user_id).is_some();
+        Ok(entries.remove(user_id).is_some())
+    }
 
-        // Also remove configured timestamp
-        let mut configured_at = self
-            .configured_at
-            .write()
+    /// Get TOTP configured timestamp for user
+    ///
+    /// # Arguments
+    /// * `user_id` - The user identifier
+    ///
+    /// # Returns
+    /// * `Ok(Some(DateTime<Utc>))` containing the configured timestamp if it exists
+    /// * `Ok(None)` if no timestamp is found for the user
+    /// * `Err(String)` if there's a lock poisoning error
+    pub fn get_configured_at(&self, user_id: &str) -> Result<Option<DateTime<Utc>>, String> {
+        let entries = self
+            .entries
+            .read()
             .map_err(|e| format!("Lock poisoned: {e}"))?;
-        configured_at.remove(user_id);
+        Ok(entries.get(user_id).map(|e| e.created_at))
+    }
 
-        Ok(removed)
+    /// Get both secret and configuration time atomically
+    ///
+    /// # Arguments
+    /// * `user_id` - The user identifier
+    ///
+    /// # Returns
+    /// * `Ok(Some((String, DateTime<Utc>)))` containing the secret and timestamp if it exists
+    /// * `Ok(None)` if no entry is found for the user
+    /// * `Err(String)` if there's a lock poisoning error
+    pub fn get_totp_info(&self, user_id: &str) -> Result<Option<(String, DateTime<Utc>)>, String> {
+        let entries = self
+            .entries
+            .read()
+            .map_err(|e| format!("Lock poisoned: {e}"))?;
+        Ok(entries.get(user_id).map(|e| (e.secret.clone(), e.created_at)))
     }
 
     /// Set backup codes for user (hashed)
@@ -147,23 +174,6 @@ impl TotpStore {
         Ok(())
     }
 
-    /// Get TOTP configured timestamp for user
-    ///
-    /// # Arguments
-    /// * `user_id` - The user identifier
-    ///
-    /// # Returns
-    /// * `Ok(Some(DateTime<Utc>))` containing the configured timestamp if it exists
-    /// * `Ok(None)` if no timestamp is found for the user
-    /// * `Err(String)` if there's a lock poisoning error
-    pub fn get_configured_at(&self, user_id: &str) -> Result<Option<DateTime<Utc>>, String> {
-        let configured_at = self
-            .configured_at
-            .read()
-            .map_err(|e| format!("Lock poisoned: {e}"))?;
-        Ok(configured_at.get(user_id).cloned())
-    }
-
     /// Verify and consume a backup code
     ///
     /// # Arguments
@@ -192,5 +202,41 @@ impl TotpStore {
             }
         }
         Ok(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn test_totp_store_creation_time() {
+        let store = TotpStore::new();
+        let user_id = "user1";
+        let secret = "secret1";
+
+        // Set secret
+        store.set_secret(user_id, secret).unwrap();
+
+        // Get creation time
+        let created_at = store.get_configured_at(user_id).unwrap().unwrap();
+
+        // It should be close to now
+        let now = Utc::now();
+        assert!(now.signed_duration_since(created_at).num_seconds() < 5);
+
+        // Update secret (re-setup)
+        thread::sleep(Duration::from_millis(10));
+        store.set_secret(user_id, "secret2").unwrap();
+        let created_at_2 = store.get_configured_at(user_id).unwrap().unwrap();
+
+        assert!(created_at_2 > created_at);
+
+        // Test atomic retrieval
+        let info = store.get_totp_info(user_id).unwrap().unwrap();
+        assert_eq!(info.0, "secret2");
+        assert_eq!(info.1, created_at_2);
     }
 }
