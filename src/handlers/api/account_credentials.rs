@@ -65,10 +65,11 @@ pub async fn get_account_credentials(
     });
 
     // Check if TOTP is configured
-    if let Ok(Some(_)) = state.totp_store.get_secret(&user_id.to_string()) {
+    let user_id_str = user_id.to_string();
+    if let Ok(Some(_)) = state.totp_store.get_secret(&user_id_str) {
         let created_at = state
             .totp_store
-            .get_configured_at(&user_id.to_string())
+            .get_configured_at(&user_id_str)
             .ok()
             .flatten()
             .unwrap_or(user.created_at);
