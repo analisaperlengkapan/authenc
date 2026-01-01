@@ -66,6 +66,7 @@ impl PgEventStoreProvider {
                 id VARCHAR(36) PRIMARY KEY,
                 time TIMESTAMP WITH TIME ZONE NOT NULL,
                 realm_id VARCHAR(36) NOT NULL,
+                realm_name VARCHAR(255),
                 operation_type VARCHAR(20) NOT NULL,
                 resource_type VARCHAR(100) NOT NULL,
                 resource_path TEXT NOT NULL,
@@ -78,6 +79,13 @@ impl PgEventStoreProvider {
 
         self.database
             .execute(create_admin_events_table, &[])
+            .await
+            .map_err(|e| Error::database(e.to_string()))?;
+
+        // Add realm_name column to admin_events if it doesn't exist (migration)
+        let alter_admin_events_table = "ALTER TABLE admin_events ADD COLUMN IF NOT EXISTS realm_name VARCHAR(255)";
+        self.database
+            .execute(alter_admin_events_table, &[])
             .await
             .map_err(|e| Error::database(e.to_string()))?;
 
@@ -142,9 +150,9 @@ impl EventStoreProvider for PgEventStoreProvider {
 
         let query = r#"
             INSERT INTO admin_events (
-                id, time, realm_id, operation_type, resource_type, resource_path,
+                id, time, realm_id, realm_name, operation_type, resource_type, resource_path,
                 representation, error, auth_details
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         "#;
 
         self.database
@@ -154,6 +162,7 @@ impl EventStoreProvider for PgEventStoreProvider {
                     &event.id,
                     &event.time,
                     &event.realm_id,
+                    &event.realm_name,
                     &event.operation_type.as_str(),
                     &event.resource_type.as_str(),
                     &event.resource_path,
@@ -317,7 +326,7 @@ impl EventStoreProvider for PgEventStoreProvider {
         max_results: usize,
     ) -> Result<Vec<AdminEvent>> {
         let query = r#"
-            SELECT id, time, realm_id, operation_type, resource_type, resource_path,
+            SELECT id, time, realm_id, realm_name, operation_type, resource_type, resource_path,
                    representation, error, auth_details
             FROM admin_events
             WHERE ($1::text IS NULL OR realm_id = $1)
@@ -354,7 +363,7 @@ impl EventStoreProvider for PgEventStoreProvider {
                 AuthDetails, OperationType as OpType, ResourceType as ResType,
             };
 
-            let operation_type_str: &str = row.get(3);
+            let operation_type_str: &str = row.get(4);
             let operation_type = match operation_type_str {
                 "CREATE" => OpType::Create,
                 "UPDATE" => OpType::Update,
@@ -363,7 +372,7 @@ impl EventStoreProvider for PgEventStoreProvider {
                 _ => continue,
             };
 
-            let resource_type_str: &str = row.get(4);
+            let resource_type_str: &str = row.get(5);
             let resource_type = match resource_type_str {
                 "REALM" => ResType::Realm,
                 "REALM_ROLE" => ResType::RealmRole,
@@ -404,7 +413,7 @@ impl EventStoreProvider for PgEventStoreProvider {
                 _ => continue,
             };
 
-            let auth_details_json: serde_json::Value = row.get(8);
+            let auth_details_json: serde_json::Value = row.get(9);
             let auth_details = if let Some(obj) = auth_details_json.as_object() {
                 AuthDetails {
                     user_id: obj
@@ -438,13 +447,13 @@ impl EventStoreProvider for PgEventStoreProvider {
                 id: row.get(0),
                 time: row.get(1),
                 realm_id: row.get(2),
-                realm_name: None, // TODO: Add realm_name to table if needed
+                realm_name: row.get(3),
                 auth_details,
                 resource_type,
                 operation_type,
-                resource_path: row.get(5),
-                representation: row.get(6),
-                error: row.get(7),
+                resource_path: row.get(6),
+                representation: row.get(7),
+                error: row.get(8),
             };
 
             events.push(event);
