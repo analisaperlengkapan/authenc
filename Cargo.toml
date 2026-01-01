@@ -142,7 +142,7 @@ base64ct = "1.8"  # Constant-time base64 for security-critical operations
 ed25519-dalek = { version = "2.1", features = ["rand_core", "serde"] }
 p256 = { version = "0.13", features = ["ecdsa", "jwk"] }
 p384 = { version = "0.13", features = ["ecdsa", "jwk"] }
-p521 = { version = "0.13", features = ["ecdsa", "jwk"] }
+p521 = { version = "0.13.3", features = ["ecdsa", "jwk"] }
 ecdsa = { version = "0.16", features = ["signing", "verifying"] }
 ed448-goldilocks = "0.9.0"
 x509-parser = "0.15"
