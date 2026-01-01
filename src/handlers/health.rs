@@ -1,10 +1,18 @@
-use axum::extract::State;
+use axum::extract::{FromRef, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use chrono::Utc;
 use std::sync::Arc;
 
-use crate::app::AppState;
+/// Wrapper state for database connectivity checks
+#[derive(Clone)]
+pub struct HealthState(pub Arc<crate::database::Database>);
+
+impl FromRef<Arc<crate::database::Database>> for HealthState {
+    fn from_ref(db: &Arc<crate::database::Database>) -> Self {
+        Self(db.clone())
+    }
+}
 
 /// Health check response
 #[derive(Debug, serde::Serialize)]
@@ -42,8 +50,8 @@ pub async fn health() -> impl IntoResponse {
 }
 
 /// Readiness check endpoint with database connectivity check
-pub async fn ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let db_status = match state.database.health_check().await {
+pub async fn ready(State(state): State<HealthState>) -> impl IntoResponse {
+    let db_status = match state.0.health_check().await {
         Ok(_) => "connected",
         Err(e) => {
             return (
@@ -79,7 +87,11 @@ pub async fn live() -> impl IntoResponse {
 }
 
 /// Create health routes
-pub fn create_health_routes() -> axum::Router<Arc<AppState>> {
+pub fn create_health_routes<S>() -> axum::Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+    HealthState: FromRef<S>,
+{
     use axum::routing::get;
 
     axum::Router::new()
@@ -106,8 +118,9 @@ mod tests {
         use crate::database::Database;
         use http_body_util::BodyExt;
 
-        // Setup with mock DB (required by router state even if not used by handler)
+        // Setup with mock DB (required by router state)
         let db = Database::mock().await;
+        // Pass Arc<Database> directly, which implements FromRef<Arc<Database>>
         let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
@@ -129,7 +142,6 @@ mod tests {
 
         // Test case 1: Database is healthy
         let db = Database::mock().await.with_mock_status(MockStatus::Healthy);
-        // Use create_health_routes() for better integration testing
         let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app

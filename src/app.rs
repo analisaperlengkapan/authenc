@@ -76,6 +76,14 @@ pub struct AppState {
     pub observability_service: Arc<crate::services::observability::ObservabilityService>,
 }
 
+// Support extraction of database for health checks
+#[cfg(feature = "axum")]
+impl axum::extract::FromRef<Arc<AppState>> for crate::handlers::health::HealthState {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        crate::handlers::health::HealthState(state.database.clone())
+    }
+}
+
 impl AppState {
     /// Initialize application state with all services
     pub async fn new(config: AppConfig) -> Result<Self> {
