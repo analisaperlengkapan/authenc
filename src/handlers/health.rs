@@ -119,9 +119,46 @@ mod tests {
 
     #[tokio::test]
     async fn test_ready_endpoint() {
-        // For now, skip the database test as it requires complex setup
-        // TODO: Implement proper database testing with test containers or mocks
-        // This test would require setting up a test database or mocking the database
+        use crate::database::{Database, MockStatus};
+        use axum::extract::State;
+        use http_body_util::BodyExt; // Import BodyExt for collect()
+
+        // Test case 1: Database is healthy
+        let db = Database::mock().await.with_mock_status(MockStatus::Healthy);
+        let app = Router::new()
+            .route("/ready", get(ready))
+            .with_state(Arc::new(db));
+
+        let response = app
+            .oneshot(Request::builder().uri("/ready").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["status"], "ready");
+        assert_eq!(body["database"], "connected");
+
+        // Test case 2: Database is unhealthy
+        let db = Database::mock().await.with_mock_status(MockStatus::Unhealthy("Connection refused".to_string()));
+        let app = Router::new()
+            .route("/ready", get(ready))
+            .with_state(Arc::new(db));
+
+        let response = app
+            .oneshot(Request::builder().uri("/ready").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["status"], "not ready");
+        assert_eq!(body["database"], "disconnected");
+        assert_eq!(body["error"], "Database error: Connection refused");
     }
 
     #[tokio::test]
