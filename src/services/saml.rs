@@ -16,6 +16,8 @@ use x509_parser::pem::parse_x509_pem;
 pub struct SamlServiceProvider {
     /// Entity ID of the service provider
     pub entity_id: String,
+    /// Realm ID this SP belongs to
+    pub realm_id: Uuid,
     /// URL for assertion consumer service
     pub assertion_consumer_service_url: String,
     /// URL for single logout service
@@ -31,6 +33,8 @@ pub struct SamlServiceProvider {
 /// SAML 2.0 Identity Provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlIdentityProvider {
+    /// Internal ID of the identity provider
+    pub id: Uuid,
     /// Entity ID of the identity provider
     pub entity_id: String,
     /// Single sign-on URL
