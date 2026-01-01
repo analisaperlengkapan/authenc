@@ -279,9 +279,9 @@ pub async fn sp_metadata(
 
     // In production, load from configuration
     let sp = get_default_sp_config();
-    service.register_service_provider(sp);
+    service.register_service_provider(sp.clone());
 
-    let default_entity_id = "https://authenc.example.com/saml/sp".to_string();
+    let default_entity_id = sp.entity_id.clone();
     let entity_id = params.get("entity_id").unwrap_or(&default_entity_id);
 
     match service.generate_sp_metadata(entity_id) {
@@ -312,9 +312,9 @@ pub async fn idp_metadata(
     idp.sso_url = "https://authenc.example.com/saml/auth".to_string();
     idp.slo_url = Some("https://authenc.example.com/saml/slo".to_string());
 
-    service.register_identity_provider(idp);
+    service.register_identity_provider(idp.clone());
 
-    let default_entity_id = "https://authenc.example.com/saml/idp".to_string();
+    let default_entity_id = idp.entity_id.clone();
     let entity_id = params.get("entity_id").unwrap_or(&default_entity_id);
 
     match service.generate_idp_metadata(entity_id) {
@@ -332,16 +332,16 @@ pub async fn saml_auth(
 
     // Register service provider
     let sp = get_default_sp_config();
-    service.register_service_provider(sp);
+    service.register_service_provider(sp.clone());
 
     // Register identity provider
     let idp = get_default_idp_config();
-    service.register_identity_provider(idp);
+    service.register_identity_provider(idp.clone());
 
-    let default_sp_entity_id = "https://authenc.example.com/saml/sp".to_string();
+    let default_sp_entity_id = sp.entity_id.clone();
     let sp_entity_id = params.get("sp").unwrap_or(&default_sp_entity_id);
 
-    let default_idp_entity_id = "https://idp.example.com/saml/idp".to_string();
+    let default_idp_entity_id = idp.entity_id.clone();
     let idp_entity_id = params.get("idp").unwrap_or(&default_idp_entity_id);
 
     let relay_state = params.get("RelayState").map(|s| s.as_str());
