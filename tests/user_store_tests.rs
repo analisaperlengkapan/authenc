@@ -34,7 +34,7 @@ async fn user_store_basic_flow() {
     let request = CreateUserRequest {
         username: "alice".into(),
         email: "alice@example.com".into(),
-        password: Some("hash".into()),
+        password: Some("password123".into()),
         first_name: None,
         last_name: None,
         phone_number: None,
@@ -48,8 +48,20 @@ async fn user_store_basic_flow() {
 
     let all_users = store.get_all().await.unwrap();
     assert_eq!(all_users.len(), 1);
-    assert!(store.get_user(id).await.unwrap().is_some());
+
+    let retrieved_user = store.get_user(id).await.unwrap().expect("User not found");
+    assert_eq!(retrieved_user.username, "alice");
     assert!(store.get_user_by_username("alice").await.unwrap().is_some());
-    // TODO: Implement proper password hashing and verification
-    // assert_eq!(store.verify_password("alice", "password").await.unwrap(), true);
+
+    // Proper password hashing and verification
+    let password_hash = retrieved_user.password_hash.expect("Password hash should be present");
+    assert_ne!(password_hash, "password123", "Password should be hashed");
+    assert!(
+        authenc::utils::crypto::password::verify_password(&password_hash, "password123").unwrap(),
+        "Password verification failed"
+    );
+    assert!(
+        !authenc::utils::crypto::password::verify_password(&password_hash, "wrongpassword").unwrap(),
+        "Wrong password should fail verification"
+    );
 }

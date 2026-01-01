@@ -118,6 +118,21 @@ impl UserStoreTrait for MockUserStore {
             .cloned()
             .collect())
     }
+
+    async fn update_password(
+        &self,
+        user_id: Uuid,
+        password_hash: String,
+    ) -> Result<(), AuthencError> {
+        let mut users = self.users.lock().unwrap();
+        if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
+            user.password_hash = Some(password_hash);
+            user.password_changed_at = Some(chrono::Utc::now());
+            Ok(())
+        } else {
+            Err(AuthencError::resource_not_found("User not found"))
+        }
+    }
 }
 
 // Mock OIDC client store for testing
