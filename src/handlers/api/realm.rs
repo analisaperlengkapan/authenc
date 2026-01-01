@@ -96,6 +96,7 @@ pub async fn create_realm(
                 crate::models::events::OperationType::Create,
                 format!("/realms/{}", realm.id),
             )
+            .realm_name(realm.name.clone())
             .representation(serde_json::to_string(&realm).unwrap_or_default())
             .build();
 
@@ -151,6 +152,7 @@ pub async fn update_realm(
                 crate::models::events::OperationType::Update,
                 format!("/realms/{}", realm.id),
             )
+            .realm_name(realm.name.clone())
             .build();
 
             if let Err(e) = state

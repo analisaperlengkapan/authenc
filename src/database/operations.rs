@@ -7811,6 +7811,8 @@ pub async fn store_admin_event(db: &Database, event: &AdminEvent) -> Result<()> 
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         "#;
 
+    // Use default text if realm_name is None, as table might expect string or NULL is allowed
+    // Based on previous code, realm_name is Option<String>.
     db.execute(
         query,
         &[
