@@ -294,10 +294,10 @@ impl KeyRotationService {
             Ok(data) => Ok(data),
             Err(_) => {
                 // If key_id provided, try that key
-                if let Some(key_id) = key_id {
-                    if let Some(key_service) = self.previous_keys.get(key_id) {
-                        return key_service.decrypt(encrypted_data);
-                    }
+                if let Some(key_id) = key_id
+                    && let Some(key_service) = self.previous_keys.get(key_id)
+                {
+                    return key_service.decrypt(encrypted_data);
                 }
 
                 // Try all previous keys
