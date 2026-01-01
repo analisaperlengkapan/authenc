@@ -7,23 +7,40 @@ use crate::{
     error::{AuthencError, Result},
 };
 
+/// Mock status for testing
+#[cfg(test)]
+#[derive(Clone, Debug)]
+pub enum MockStatus {
+    /// Database is healthy
+    Healthy,
+    /// Database is unhealthy with specific error message
+    Unhealthy(String),
+}
+
 /// Database connection pool manager
 #[derive(Clone)] // Derive Clone for easy sharing across handlers
 pub struct Database {
     pool: Pool,
     /// Prepared statement cache for improved performance
     prepared_cache: PreparedStatementCache,
+    /// Mock status for testing
+    #[cfg(test)]
+    mock_status: Option<MockStatus>,
 }
 
 impl std::fmt::Debug for Database {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Database")
-            .field("pool", &"Pool")
+        let mut d = f.debug_struct("Database");
+        d.field("pool", &"Pool")
             .field(
                 "prepared_cache",
                 &format!("{} cached statements", self.prepared_cache.len()),
-            )
-            .finish()
+            );
+
+        #[cfg(test)]
+        d.field("mock_status", &self.mock_status);
+
+        d.finish()
     }
 }
 
@@ -55,6 +72,8 @@ impl Database {
                 Ok(Self {
                     pool,
                     prepared_cache: PreparedStatementCache::new(1000),
+                    #[cfg(test)]
+                    mock_status: None,
                 })
             }
             Err(e) => {
@@ -179,6 +198,14 @@ impl Database {
 
     /// Check if database is healthy
     pub async fn health_check(&self) -> Result<()> {
+        #[cfg(test)]
+        if let Some(status) = &self.mock_status {
+            return match status {
+                MockStatus::Healthy => Ok(()),
+                MockStatus::Unhealthy(msg) => Err(AuthencError::database(msg)),
+            };
+        }
+
         match self.get_connection().await {
             Ok(conn) => conn.query("SELECT 1", &[]).await.map(|_| ()).map_err(|e| {
                 error!("Database health check failed: {}", e);
@@ -189,6 +216,13 @@ impl Database {
                 Err(e)
             }
         }
+    }
+
+    /// Set mock status for testing
+    #[cfg(test)]
+    pub fn with_mock_status(mut self, status: MockStatus) -> Self {
+        self.mock_status = Some(status);
+        self
     }
 }
 
@@ -238,6 +272,8 @@ impl Database {
         Self {
             pool,
             prepared_cache: PreparedStatementCache::new(1),
+            #[cfg(test)]
+            mock_status: None,
         }
     }
 

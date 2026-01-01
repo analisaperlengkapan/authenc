@@ -31,6 +31,8 @@ pub struct AuthUser {
 #[derive(Clone)]
 pub struct AuthState {
     /// Secret key used for JWT token validation
+    /// Note: This is currently unused by the Ed25519 verification logic which uses a global keypair,
+    /// but kept for compatibility or future symmetric key support.
     pub jwt_secret: String,
 }
 
@@ -65,6 +67,7 @@ pub async fn auth_middleware(
 /// Extract and validate the JWT token
 fn validate_token(token: &str, _secret: &str) -> Result<AuthUser, AuthencError> {
     // Use Ed25519 JWT verification
+    // Note: verify_jwt uses the global ED25519_KEYPAIR, ignoring the passed _secret
     let claims = crate::utils::crypto::jwt::verify_jwt(token).map_err(|e| {
         error!("JWT validation failed: {}", e);
         AuthencError::unauthorized("Invalid token")
@@ -142,20 +145,70 @@ mod tests {
         http::{Request, StatusCode},
         routing::get,
     };
-    use tower::ServiceExt;
+    use tower::ServiceExt; // Required for oneshot
 
     use super::*;
 
     #[tokio::test]
     async fn test_auth_middleware() {
-        // Skip this test for now as middleware setup is complex
-        // TODO: Implement proper middleware testing
+        // Comprehensive test for the middleware
+        let state = Arc::new(AuthState {
+            jwt_secret: "unused-secret".to_string(), // Secret is unused by Ed25519 verification
+        });
+
+        let app = Router::new()
+            .route("/protected", get(|| async { "Protected content" }))
+            .layer(axum::middleware::from_fn_with_state(state.clone(), auth_middleware));
+
+        // 1. Test missing token
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        // 2. Test invalid token
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .header("authorization", "Bearer invalid-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        // 3. Test valid token
+        use crate::utils::crypto::jwt::generate_jwt;
+        // generate_jwt uses the same global ED25519_KEYPAIR as verify_jwt
+        let token = generate_jwt("test-user-id").expect("Failed to generate token");
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn test_public_endpoints_no_auth_required() {
         let state = Arc::new(AuthState {
-            jwt_secret: "test-secret".to_string(),
+            jwt_secret: "unused-secret".to_string(),
         });
 
         let app = Router::new()
@@ -206,7 +259,7 @@ mod tests {
     #[tokio::test]
     async fn test_protected_endpoints_require_auth() {
         let state = Arc::new(AuthState {
-            jwt_secret: "test-secret".to_string(),
+            jwt_secret: "unused-secret".to_string(),
         });
 
         let app = Router::new()
@@ -259,7 +312,7 @@ mod tests {
         use crate::utils::crypto::jwt::generate_jwt;
 
         let state = Arc::new(AuthState {
-            jwt_secret: "test-secret".to_string(),
+            jwt_secret: "unused-secret".to_string(),
         });
 
         let app = Router::new()
@@ -306,7 +359,7 @@ mod tests {
         use crate::utils::crypto::jwt::generate_jwt;
 
         let state = Arc::new(AuthState {
-            jwt_secret: "test-secret".to_string(),
+            jwt_secret: "unused-secret".to_string(),
         });
 
         let app = Router::new()
@@ -363,7 +416,7 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_jwt_token() {
         let state = Arc::new(AuthState {
-            jwt_secret: "test-secret".to_string(),
+            jwt_secret: "unused-secret".to_string(),
         });
 
         let app = Router::new()
