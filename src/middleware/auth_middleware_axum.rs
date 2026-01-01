@@ -149,8 +149,24 @@ mod tests {
 
     use super::*;
 
+    // Helper function to create tokens with custom claims for testing
+    // This allows creating expired tokens or tokens with specific claims that generate_jwt doesn't support directly
+    fn create_test_token(claims: &crate::utils::crypto::jwt::Claims) -> String {
+        use crate::crypto::ed25519_keys::sign_ed25519;
+        use base64ct::{Base64UrlUnpadded, Encoding};
+
+        let header = r#"{"alg":"EdDSA","typ":"JWT"}"#;
+        let header_b64 = Base64UrlUnpadded::encode_string(header.as_bytes());
+        let payload_json = serde_json::to_string(claims).expect("Failed to serialize claims");
+        let payload_b64 = Base64UrlUnpadded::encode_string(payload_json.as_bytes());
+        let message = format!("{}.{}", header_b64, payload_b64);
+        let signature = sign_ed25519(message.as_bytes());
+        let signature_b64 = Base64UrlUnpadded::encode_string(&signature.to_bytes());
+        format!("{}.{}.{}", header_b64, payload_b64, signature_b64)
+    }
+
     #[tokio::test]
-    async fn test_auth_middleware() {
+    async fn test_auth_middleware_comprehensive() {
         // Comprehensive test for the middleware
         let state = Arc::new(AuthState {
             jwt_secret: "unused-secret".to_string(), // Secret is unused by Ed25519 verification
@@ -477,9 +493,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_expired_token() {
-        use crate::crypto::ed25519_keys::sign_ed25519;
         use crate::utils::crypto::jwt::Claims;
-        use base64ct::{Base64UrlUnpadded, Encoding};
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let state = Arc::new(AuthState {
@@ -495,18 +509,6 @@ mod tests {
             .unwrap()
             .as_secs() as usize;
 
-        // Helper to create token manually
-        let create_token = |claims: &Claims| -> String {
-            let header = r#"{"alg":"EdDSA","typ":"JWT"}"#;
-            let header_b64 = Base64UrlUnpadded::encode_string(header.as_bytes());
-            let payload_json = serde_json::to_string(claims).unwrap();
-            let payload_b64 = Base64UrlUnpadded::encode_string(payload_json.as_bytes());
-            let message = format!("{}.{}", header_b64, payload_b64);
-            let signature = sign_ed25519(message.as_bytes());
-            let signature_b64 = Base64UrlUnpadded::encode_string(&signature.to_bytes());
-            format!("{}.{}.{}", header_b64, payload_b64, signature_b64)
-        };
-
         // 1. Verify that a valid token manually constructed works (sanity check for test harness)
         let valid_claims = Claims {
             sub: "test-user".to_string(),
@@ -514,7 +516,7 @@ mod tests {
             email: None,
             roles: None,
         };
-        let valid_token = create_token(&valid_claims);
+        let valid_token = create_test_token(&valid_claims);
 
         let response = app
             .clone()
@@ -537,7 +539,7 @@ mod tests {
             email: None,
             roles: None,
         };
-        let expired_token = create_token(&expired_claims);
+        let expired_token = create_test_token(&expired_claims);
 
         let response = app
             .oneshot(
