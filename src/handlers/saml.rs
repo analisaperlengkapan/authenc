@@ -6,6 +6,7 @@ use crate::services::federation::jit_provisioning::{
     DefaultJITProvisioningService, JITProvisioningService,
 };
 use crate::services::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
+use crate::database::operations::identity_providers::get_identity_provider_by_entity_id;
 use async_trait::async_trait;
 use axum::{
     Router,
@@ -351,7 +352,7 @@ pub async fn saml_acs(
     Query(params): Query<std::collections::HashMap<String, String>>,
     _body: String,
 ) -> std::result::Result<Html<String>, AuthencError> {
-    let service = SamlService::new(db.clone());
+    let mut service = SamlService::new(db.clone());
 
     // Extract SAMLResponse from form data or query parameters
     let saml_response = if let Some(response) = params.get("SAMLResponse") {
@@ -363,8 +364,32 @@ pub async fn saml_acs(
 
     let relay_state = params.get("RelayState").map(|s| s.as_str());
 
+    // Extract issuer and XML to identify IdP and avoid double parsing
+    let (issuer, xml) = service
+        .get_issuer_and_xml_from_response(saml_response)
+        .map_err(|e| AuthencError::validation(format!("Failed to parse SAML response: {}", e)))?;
+
+    // Look up Identity Provider
+    let idp_data = get_identity_provider_by_entity_id(&db, &issuer)
+        .await
+        .map_err(|e| AuthencError::internal(format!("Database error: {}", e)))?
+        .ok_or_else(|| {
+            AuthencError::resource_not_found(format!(
+                "Identity Provider not found for issuer: {}",
+                issuer
+            ))
+        })?;
+
+    // Register IDP configuration with service
+    let idp_config: SamlIdentityProvider = serde_json::from_value(idp_data.config.clone()).map_err(|e| {
+        AuthencError::internal(format!("Invalid Identity Provider configuration: {}", e))
+    })?;
+
+    service.register_identity_provider(idp_config);
+
+    // Use process_xml_response to avoid double decompression
     match service
-        .process_response(saml_response, relay_state, "")
+        .process_xml_response(&xml, relay_state, &issuer)
         .await
     {
         Ok(user_info) => {
@@ -377,7 +402,7 @@ pub async fn saml_acs(
 
             // Prepare JIT provisioning request
             let jit_request = JITUserProvisioningRequest {
-                identity_provider_id: uuid::Uuid::new_v4(), // TODO: Get from SAML configuration
+                identity_provider_id: idp_data.id,
                 external_id: user_info.name_id.clone(),
                 external_username: user_info
                     .attributes
@@ -403,7 +428,7 @@ pub async fn saml_acs(
                     serde_json::to_value(&user_info.attributes)
                         .map_err(|_| AuthencError::internal("Failed to serialize attributes"))?,
                 ),
-                realm_id: uuid::Uuid::new_v4(), // TODO: Get from SAML configuration
+                realm_id: idp_data.realm_id,
             };
 
             // Provision user using JIT
