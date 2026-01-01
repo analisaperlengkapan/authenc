@@ -136,7 +136,7 @@ env_logger = "0.11.7"
 rand = "0.8"
 rand_chacha = "0.3"
 getrandom = "0.2"  # v0.3 has breaking API changes
-aes-gcm = "0.10"
+aes-gcm = "0.11.0-rc.2"
 base64 = "0.22"
 base64ct = "1.8"  # Constant-time base64 for security-critical operations
 ed25519-dalek = { version = "2.1", features = ["rand_core", "serde"] }
