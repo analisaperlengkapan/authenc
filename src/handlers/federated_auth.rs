@@ -79,7 +79,7 @@ impl AdminService for MockAdminService {
         request: crate::services::admin::CreateUserRequest,
     ) -> std::result::Result<crate::services::admin::UserResponse, String> {
         // Use the database operations to create user
-        use crate::database::operations::users;
+        use crate::database::operations::{groups, roles, users};
         use crate::models::user::CreateUserRequest as DbCreateUserRequest;
 
         let db_request = DbCreateUserRequest {
@@ -95,22 +95,37 @@ impl AdminService for MockAdminService {
         };
 
         match users::create_user(&self.db, &db_request).await {
-            Ok(user) => Ok(crate::services::admin::UserResponse {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                email_verified: user.email_verified,
-                first_name: user.first_name,
-                last_name: user.last_name,
-                enabled: user.enabled,
-                realm_id: user.realm_id.unwrap_or_default(),
-                roles: vec![],  // TODO: Get roles from database
-                groups: vec![], // TODO: Get groups from database
-                created_at: user.created_at,
-                last_login: user.last_login_at,
-                login_attempts: user.failed_login_attempts as u32,
-                locked_until: user.account_locked_until,
-            }),
+            Ok(user) => {
+                let (roles_result, groups_result) = tokio::join!(
+                    roles::get_user_roles(&self.db, &user.id),
+                    groups::get_user_groups(&self.db, user.id)
+                );
+
+                Ok(crate::services::admin::UserResponse {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    email_verified: user.email_verified,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
+                    enabled: user.enabled,
+                    realm_id: user.realm_id.unwrap_or_default(),
+                    roles: roles_result
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|r| r.name)
+                        .collect(),
+                    groups: groups_result
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|g| g.name)
+                        .collect(),
+                    created_at: user.created_at,
+                    last_login: user.last_login_at,
+                    login_attempts: user.failed_login_attempts as u32,
+                    locked_until: user.account_locked_until,
+                })
+            }
             Err(e) => Err(format!("Failed to create user: {}", e)),
         }
     }
