@@ -103,7 +103,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_endpoint() {
-        let app = Router::new().route("/", get(health));
+        use crate::database::Database;
+        use http_body_util::BodyExt;
+
+        // Setup with mock DB (required by router state even if not used by handler)
+        let db = Database::mock().await;
+        let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
             .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
@@ -119,14 +124,52 @@ mod tests {
 
     #[tokio::test]
     async fn test_ready_endpoint() {
-        // For now, skip the database test as it requires complex setup
-        // TODO: Implement proper database testing with test containers or mocks
-        // This test would require setting up a test database or mocking the database
+        use crate::database::{Database, MockStatus};
+        use http_body_util::BodyExt;
+
+        // Test case 1: Database is healthy
+        let db = Database::mock().await.with_mock_status(MockStatus::Healthy);
+        // Use create_health_routes() for better integration testing
+        let app = create_health_routes().with_state(Arc::new(db));
+
+        let response = app
+            .oneshot(Request::builder().uri("/ready").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["status"], "ready");
+        assert_eq!(body["database"], "connected");
+
+        // Test case 2: Database is unhealthy
+        let db = Database::mock().await.with_mock_status(MockStatus::Unhealthy("Connection refused".to_string()));
+        let app = create_health_routes().with_state(Arc::new(db));
+
+        let response = app
+            .oneshot(Request::builder().uri("/ready").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["status"], "not ready");
+        assert_eq!(body["database"], "disconnected");
+        assert_eq!(body["error"], "Database error: Connection refused");
     }
 
     #[tokio::test]
     async fn test_live_endpoint() {
-        let app = Router::new().route("/live", get(live));
+        use crate::database::Database;
+        use http_body_util::BodyExt;
+
+        // Setup with mock DB (required by router state)
+        let db = Database::mock().await;
+        let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
             .oneshot(Request::builder().uri("/live").body(Body::empty()).unwrap())
