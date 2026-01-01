@@ -79,7 +79,7 @@ impl AdminService for MockAdminService {
         request: crate::services::admin::CreateUserRequest,
     ) -> std::result::Result<crate::services::admin::UserResponse, String> {
         // Use the database operations to create user
-        use crate::database::operations::users;
+        use crate::database::operations::{groups, roles, users};
         use crate::models::user::CreateUserRequest as DbCreateUserRequest;
 
         let db_request = DbCreateUserRequest {
@@ -104,8 +104,18 @@ impl AdminService for MockAdminService {
                 last_name: user.last_name,
                 enabled: user.enabled,
                 realm_id: user.realm_id.unwrap_or_default(),
-                roles: vec![],  // TODO: Get roles from database
-                groups: vec![], // TODO: Get groups from database
+                roles: roles::get_user_roles(&self.db, &user.id)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|r| r.name)
+                    .collect(),
+                groups: groups::get_user_groups(&self.db, user.id)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|g| g.name)
+                    .collect(),
                 created_at: user.created_at,
                 last_login: user.last_login_at,
                 login_attempts: user.failed_login_attempts as u32,
