@@ -4,7 +4,7 @@ use axum::response::{IntoResponse, Json};
 use chrono::Utc;
 use std::sync::Arc;
 
-use crate::database::Database;
+use crate::app::AppState;
 
 /// Health check response
 #[derive(Debug, serde::Serialize)]
@@ -42,8 +42,8 @@ pub async fn health() -> impl IntoResponse {
 }
 
 /// Readiness check endpoint with database connectivity check
-pub async fn ready(State(db): State<Arc<Database>>) -> impl IntoResponse {
-    let db_status = match db.health_check().await {
+pub async fn ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let db_status = match state.database.health_check().await {
         Ok(_) => "connected",
         Err(e) => {
             return (
@@ -79,7 +79,7 @@ pub async fn live() -> impl IntoResponse {
 }
 
 /// Create health routes
-pub fn create_health_routes() -> axum::Router<Arc<Database>> {
+pub fn create_health_routes() -> axum::Router<Arc<AppState>> {
     use axum::routing::get;
 
     axum::Router::new()

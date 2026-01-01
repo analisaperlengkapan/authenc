@@ -1,4 +1,4 @@
-use crate::database::Database;
+use crate::app::AppState;
 use crate::error::AuthencError;
 use crate::services::admin::{
     AdminManager, AdminService, AuditLogResponse, CreateIdentityProviderRequest,
@@ -93,7 +93,7 @@ pub struct ListPoliciesQuery {
 
 /// Get system statistics
 pub async fn get_system_stats(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
 ) -> Result<Json<SystemStats>, StatusCode> {
     // Mock response - in real implementation would use actual service
     let stats = SystemStats {
@@ -114,7 +114,7 @@ pub async fn get_system_stats(
 
 /// Get dashboard data
 pub async fn get_dashboard_data(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Query(_query): Query<ListUsersQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Mock response - in real implementation would fetch from service
@@ -130,10 +130,10 @@ pub async fn get_dashboard_data(
 
 /// List users with filtering and pagination
 pub async fn list_users(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Query(query): Query<ListUsersQuery>,
 ) -> Result<Json<UserListResponse>, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
     let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
@@ -149,7 +149,7 @@ pub async fn list_users(
 
 /// Get user by ID
 pub async fn get_user(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Path(_user_id): Path<Uuid>,
 ) -> Result<Json<UserResponse>, StatusCode> {
     // Mock response - in real implementation would fetch from service
@@ -158,10 +158,10 @@ pub async fn get_user(
 
 /// Create a new user
 pub async fn create_user(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<CreateUserRequest>,
 ) -> Result<Json<UserResponse>, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.create_user(request).await {
         Ok(user) => Ok(Json(user)),
@@ -174,11 +174,11 @@ pub async fn create_user(
 
 /// Update user
 pub async fn update_user(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Path(user_id): Path<Uuid>,
     Json(request): Json<UpdateUserRequest>,
 ) -> Result<Json<UserResponse>, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.update_user(&user_id, request).await {
         Ok(user) => Ok(Json(user)),
@@ -191,10 +191,10 @@ pub async fn update_user(
 
 /// Delete user
 pub async fn delete_user(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Path(user_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.delete_user(&user_id).await {
         Ok(_) => Ok(StatusCode::NO_CONTENT),
@@ -207,7 +207,7 @@ pub async fn delete_user(
 
 /// List user sessions
 pub async fn list_sessions(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Query(_query): Query<ListSessionsQuery>,
 ) -> Result<Json<SessionListResponse>, StatusCode> {
     // Mock response - in real implementation would fetch from service
@@ -222,7 +222,7 @@ pub async fn list_sessions(
 
 /// Terminate user session
 pub async fn terminate_session(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Path(_session_id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     // Mock response - in real implementation would terminate via service
@@ -231,7 +231,7 @@ pub async fn terminate_session(
 
 /// List audit logs
 pub async fn list_audit_logs(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Query(_query): Query<ListAuditLogsQuery>,
 ) -> Result<Json<AuditLogResponse>, StatusCode> {
     // Mock response - in real implementation would fetch from service
@@ -246,10 +246,10 @@ pub async fn list_audit_logs(
 
 /// List roles
 pub async fn list_roles(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Query(query): Query<ListRolesQuery>,
 ) -> Result<Json<Vec<RoleResponse>>, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
     let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
 
     match admin_manager.get_roles(&realm_id).await {
@@ -263,10 +263,10 @@ pub async fn list_roles(
 
 /// Create role
 pub async fn create_role(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<CreateRoleRequest>,
 ) -> Result<Json<RoleResponse>, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.create_role(request).await {
         Ok(role) => Ok(Json(role)),
@@ -279,7 +279,7 @@ pub async fn create_role(
 
 /// Get role by ID
 pub async fn get_role(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Path(_role_id): Path<Uuid>,
 ) -> Result<Json<RoleResponse>, StatusCode> {
     // Mock response - in real implementation would fetch from service
@@ -288,7 +288,7 @@ pub async fn get_role(
 
 /// Update role
 pub async fn update_role(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Path(_role_id): Path<Uuid>,
     Json(_request): Json<CreateRoleRequest>,
 ) -> Result<Json<RoleResponse>, StatusCode> {
@@ -298,7 +298,7 @@ pub async fn update_role(
 
 /// Delete role
 pub async fn delete_role(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Path(_role_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     // Mock response - in real implementation would delete via service
@@ -307,7 +307,7 @@ pub async fn delete_role(
 
 /// List authorization policies
 pub async fn list_policies(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Query(_query): Query<ListPoliciesQuery>,
 ) -> Result<Json<Vec<PolicyResponse>>, StatusCode> {
     // Mock response - in real implementation would fetch from service
@@ -316,7 +316,7 @@ pub async fn list_policies(
 
 /// Create authorization policy
 pub async fn create_policy(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Json(_request): Json<CreatePolicyRequest>,
 ) -> Result<Json<PolicyResponse>, StatusCode> {
     // Mock response - in real implementation would create via service
@@ -325,7 +325,7 @@ pub async fn create_policy(
 
 /// Get security events
 pub async fn get_security_events(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Query(_query): Query<ListAuditLogsQuery>,
 ) -> Result<Json<Vec<SecurityEvent>>, StatusCode> {
     // Mock response - in real implementation would fetch from service
@@ -334,7 +334,7 @@ pub async fn get_security_events(
 
 /// Get risk analytics
 pub async fn get_risk_analytics(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Query(_query): Query<ListUsersQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Mock response - in real implementation would fetch from service
@@ -350,10 +350,10 @@ pub async fn get_risk_analytics(
 
 /// List identity providers
 pub async fn list_identity_providers(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Query(query): Query<ListIdentityProvidersQuery>,
 ) -> Result<Json<Vec<IdentityProviderResponse>>, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
     let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
 
     match admin_manager.get_identity_providers(&realm_id).await {
@@ -367,10 +367,10 @@ pub async fn list_identity_providers(
 
 /// Get identity provider by ID
 pub async fn get_identity_provider(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Path(provider_id): Path<Uuid>,
 ) -> Result<Json<IdentityProviderResponse>, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.get_identity_provider(&provider_id).await {
         Ok(provider) => Ok(Json(provider)),
@@ -383,10 +383,10 @@ pub async fn get_identity_provider(
 
 /// Create identity provider
 pub async fn create_identity_provider(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<CreateIdentityProviderRequest>,
 ) -> Result<Json<IdentityProviderResponse>, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.create_identity_provider(request).await {
         Ok(provider) => Ok(Json(provider)),
@@ -399,11 +399,11 @@ pub async fn create_identity_provider(
 
 /// Update identity provider
 pub async fn update_identity_provider(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Path(provider_id): Path<Uuid>,
     Json(request): Json<UpdateIdentityProviderRequest>,
 ) -> Result<Json<IdentityProviderResponse>, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager
         .update_identity_provider(&provider_id, request)
@@ -419,10 +419,10 @@ pub async fn update_identity_provider(
 
 /// Delete identity provider
 pub async fn delete_identity_provider(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Path(provider_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.delete_identity_provider(&provider_id).await {
         Ok(_) => Ok(StatusCode::NO_CONTENT),
@@ -435,10 +435,10 @@ pub async fn delete_identity_provider(
 
 /// Test identity provider connection
 pub async fn test_identity_provider(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Path(provider_id): Path<Uuid>,
 ) -> Result<Json<TestIdentityProviderResponse>, StatusCode> {
-    let admin_manager = AdminManager::new(db);
+    let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.test_identity_provider(&provider_id).await {
         Ok(result) => Ok(Json(result)),
@@ -461,7 +461,7 @@ pub struct ListIdentityProvidersQuery {
 }
 
 /// Create admin routes
-pub fn create_admin_routes() -> Router<Arc<Database>> {
+pub fn create_admin_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/stats", get(get_system_stats))
         .route("/dashboard", get(get_dashboard_data))
