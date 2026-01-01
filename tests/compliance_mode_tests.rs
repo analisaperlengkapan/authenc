@@ -26,7 +26,7 @@ mod tests {
     #[tokio::test]
     async fn test_compliance_mode_enable_disable() {
         let event_manager = Arc::new(MockEventManager);
-        let service = ComplianceModeService::new(event_manager);
+        let service = ComplianceModeService::new(event_manager, None);
 
         // Initially disabled
         assert!(!service.is_strict_mode().await);
@@ -64,7 +64,7 @@ mod tests {
     #[tokio::test]
     async fn test_compliance_validation() {
         let event_manager = Arc::new(MockEventManager);
-        let service = ComplianceModeService::new(event_manager);
+        let service = ComplianceModeService::new(event_manager, None);
 
         // Enable GDPR with strict mode
         service
@@ -109,7 +109,7 @@ mod tests {
     #[tokio::test]
     async fn test_hipaa_compliance_validation() {
         let event_manager = Arc::new(MockEventManager);
-        let service = ComplianceModeService::new(event_manager);
+        let service = ComplianceModeService::new(event_manager, None);
 
         // Enable HIPAA compliance
         service
@@ -143,7 +143,7 @@ mod tests {
     #[tokio::test]
     async fn test_multi_framework_compliance() {
         let event_manager = Arc::new(MockEventManager);
-        let service = ComplianceModeService::new(event_manager);
+        let service = ComplianceModeService::new(event_manager, None);
 
         // Enable multiple frameworks
         service
@@ -188,7 +188,7 @@ mod tests {
     #[tokio::test]
     async fn test_framework_config() {
         let event_manager = Arc::new(MockEventManager);
-        let service = ComplianceModeService::new(event_manager);
+        let service = ComplianceModeService::new(event_manager, None);
 
         // Enable GDPR
         service
@@ -205,5 +205,39 @@ mod tests {
         let config = gdpr_config.unwrap();
         assert_eq!(config["data_retention_days"], 2555);
         assert_eq!(config["consent_required"], true);
+    }
+
+    #[tokio::test]
+    async fn test_compliance_with_consent_store() {
+        let event_manager = Arc::new(MockEventManager);
+        // Use Database::mock() which doesn't connect immediately
+        let database = Arc::new(authenc::database::Database::mock().await);
+        let consent_store = Arc::new(authenc::services::stores::ConsentStore::new(database));
+
+        let service = ComplianceModeService::new(event_manager, Some(consent_store));
+
+        // Enable GDPR
+        service
+            .enable_compliance_mode(vec![ComplianceFramework::GDPR], false)
+            .await
+            .unwrap();
+
+        // Run checks
+        let results = service.run_compliance_checks().await.unwrap();
+
+        // Find consent management check by looking for specific evidence string
+        // defined in GDPRConsentManagementCheck::execute
+        let consent_check = results.iter().find(|r|
+            r.evidence.contains(&"Consent management system integrated".to_string())
+        );
+
+        assert!(consent_check.is_some(), "Consent management check should be present and passed");
+        let check = consent_check.unwrap();
+
+        // Should be Compliant because consent_store is Some(_)
+        match check.status {
+            authenc::services::compliance::ComplianceStatus::Compliant => {},
+            _ => panic!("Expected Compliant status, got {:?}", check.status),
+        }
     }
 }

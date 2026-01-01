@@ -8,6 +8,7 @@ use crate::AuthencError;
 use crate::models::events::{Event, EventType};
 use crate::services::compliance::{ComplianceFramework, GDPRComplianceChecks};
 use crate::services::events::EventManager;
+use crate::services::stores::ConsentStore;
 
 /// Trait for event management in compliance mode
 #[async_trait::async_trait]
@@ -37,11 +38,16 @@ pub struct ComplianceModeService {
     config: RwLock<ComplianceModeConfig>,
     /// Event manager for compliance events
     event_manager: Arc<dyn ComplianceEventManager>,
+    /// Consent store for compliance checks
+    consent_store: Option<Arc<ConsentStore>>,
 }
 
 impl ComplianceModeService {
     /// Create a new compliance mode service
-    pub fn new(event_manager: Arc<dyn ComplianceEventManager>) -> Self {
+    pub fn new(
+        event_manager: Arc<dyn ComplianceEventManager>,
+        consent_store: Option<Arc<ConsentStore>>,
+    ) -> Self {
         Self {
             config: RwLock::new(ComplianceModeConfig {
                 enabled: false,
@@ -51,6 +57,7 @@ impl ComplianceModeService {
                 audit_compliance: true,
             }),
             event_manager,
+            consent_store,
         }
     }
 
@@ -316,7 +323,7 @@ impl ComplianceModeService {
                     .await?,
             );
             results.push(
-                GDPRComplianceChecks::consent_management_check(None) // TODO: Pass actual ConsentStore when available
+                GDPRComplianceChecks::consent_management_check(self.consent_store.clone())
                     .execute()
                     .await?,
             );
