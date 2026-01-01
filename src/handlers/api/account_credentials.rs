@@ -66,14 +66,7 @@ pub async fn get_account_credentials(
 
     // Check if TOTP is configured
     let user_id_str = user_id.to_string();
-    if let Ok(Some(_)) = state.totp_store.get_secret(&user_id_str) {
-        let created_at = state
-            .totp_store
-            .get_configured_at(&user_id_str)
-            .ok()
-            .flatten()
-            .unwrap_or(user.created_at);
-
+    if let Ok(Some((_, created_at))) = state.totp_store.get_totp_info(&user_id_str) {
         credentials.push(CredentialResponse {
             id: "totp".to_string(),
             credential_type: CredentialType::Totp,
