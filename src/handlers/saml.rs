@@ -401,6 +401,7 @@ pub async fn saml_acs(
             ));
 
             // Prepare JIT provisioning request
+            log::info!("Preparing JIT provisioning request for IDP: {}", idp_data.id);
             let jit_request = JITUserProvisioningRequest {
                 identity_provider_id: idp_data.id,
                 external_id: user_info.name_id.clone(),
