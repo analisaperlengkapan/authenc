@@ -319,54 +319,53 @@ impl SamlService {
         Ok(url)
     }
 
-    /// Get Issuer from SAML Response without full validation
-    /// This is useful for identifying the IdP to load its configuration
-    pub fn get_issuer_from_response(&self, saml_response: &str) -> Result<String> {
-        // Decode and decompress
+    /// Decode and decompress SAML Response
+    fn decode_saml_response(&self, saml_response: &str) -> Result<String> {
+        // Decode
         let decoded = Base64UrlUnpadded::decode_vec(saml_response).map_err(|_| {
             AuthencError::ValidationError {
                 message: "Invalid SAML response encoding".to_string(),
             }
         })?;
 
-        let xml = self.deflate_decompress(&decoded)?;
+        // Decompress
+        self.deflate_decompress(&decoded)
+    }
+
+    /// Get Issuer and raw XML from SAML Response without full validation
+    /// This is useful for identifying the IdP to load its configuration
+    pub fn get_issuer_and_xml_from_response(&self, saml_response: &str) -> Result<(String, String)> {
+        let xml = self.decode_saml_response(saml_response)?;
 
         // Parse XML to SamlResponse
         let response: SamlResponse = self.parse_saml_xml(&xml)?;
 
         // Extract assertion issuer
-        if let Some(assertion) = response.assertion {
-            Ok(assertion.issuer)
+        let issuer = if let Some(assertion) = &response.assertion {
+            assertion.issuer.clone()
         } else {
-            Ok(response.issuer)
-        }
+            response.issuer.clone()
+        };
+
+        Ok((issuer, xml))
     }
 
-    /// Process SAML Response
-    pub async fn process_response(
+    /// Process SAML Response (using pre-parsed XML)
+    pub async fn process_xml_response(
         &self,
-        saml_response: &str,
+        xml: &str,
         _relay_state: Option<&str>,
         expected_idp_entity_id: &str,
     ) -> Result<SamlUserInfo> {
-        // Decode and decompress
-        let decoded = Base64UrlUnpadded::decode_vec(saml_response).map_err(|_| {
-            AuthencError::ValidationError {
-                message: "Invalid SAML response encoding".to_string(),
-            }
-        })?;
-
-        let xml = self.deflate_decompress(&decoded)?;
-
         // Verify signature if IdP is configured
         if let Some(idp) = self.identity_providers.get(expected_idp_entity_id) {
             if !idp.certificate.is_empty() {
-                self.verify_saml_signature(&xml, &idp.certificate)?;
+                self.verify_saml_signature(xml, &idp.certificate)?;
             }
         }
 
         // Parse XML to SamlResponse
-        let response: SamlResponse = self.parse_saml_xml(&xml)?;
+        let response: SamlResponse = self.parse_saml_xml(xml)?;
 
         // Validate response against stored request
         self.validate_response_against_request(&response, &response.in_response_to)
@@ -420,6 +419,17 @@ impl SamlService {
         };
 
         Ok(user_info)
+    }
+
+    /// Process SAML Response (backward compatibility wrapper)
+    pub async fn process_response(
+        &self,
+        saml_response: &str,
+        relay_state: Option<&str>,
+        expected_idp_entity_id: &str,
+    ) -> Result<SamlUserInfo> {
+        let xml = self.decode_saml_response(saml_response)?;
+        self.process_xml_response(&xml, relay_state, expected_idp_entity_id).await
     }
 
     /// Generate SAML metadata for Service Provider

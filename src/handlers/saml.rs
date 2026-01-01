@@ -364,9 +364,9 @@ pub async fn saml_acs(
 
     let relay_state = params.get("RelayState").map(|s| s.as_str());
 
-    // Extract issuer to identify IdP
-    let issuer = service
-        .get_issuer_from_response(saml_response)
+    // Extract issuer and XML to identify IdP and avoid double parsing
+    let (issuer, xml) = service
+        .get_issuer_and_xml_from_response(saml_response)
         .map_err(|e| AuthencError::validation(format!("Failed to parse SAML response: {}", e)))?;
 
     // Look up Identity Provider
@@ -387,8 +387,9 @@ pub async fn saml_acs(
 
     service.register_identity_provider(idp_config);
 
+    // Use process_xml_response to avoid double decompression
     match service
-        .process_response(saml_response, relay_state, &issuer)
+        .process_xml_response(&xml, relay_state, &issuer)
         .await
     {
         Ok(user_info) => {
