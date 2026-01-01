@@ -103,7 +103,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_endpoint() {
-        let app = Router::new().route("/", get(health));
+        use crate::database::Database;
+        use http_body_util::BodyExt;
+
+        // Setup with mock DB (required by router state even if not used by handler)
+        let db = Database::mock().await;
+        let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
             .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
@@ -120,14 +125,12 @@ mod tests {
     #[tokio::test]
     async fn test_ready_endpoint() {
         use crate::database::{Database, MockStatus};
-        use axum::extract::State;
-        use http_body_util::BodyExt; // Import BodyExt for collect()
+        use http_body_util::BodyExt;
 
         // Test case 1: Database is healthy
         let db = Database::mock().await.with_mock_status(MockStatus::Healthy);
-        let app = Router::new()
-            .route("/ready", get(ready))
-            .with_state(Arc::new(db));
+        // Use create_health_routes() for better integration testing
+        let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
             .oneshot(Request::builder().uri("/ready").body(Body::empty()).unwrap())
@@ -143,9 +146,7 @@ mod tests {
 
         // Test case 2: Database is unhealthy
         let db = Database::mock().await.with_mock_status(MockStatus::Unhealthy("Connection refused".to_string()));
-        let app = Router::new()
-            .route("/ready", get(ready))
-            .with_state(Arc::new(db));
+        let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
             .oneshot(Request::builder().uri("/ready").body(Body::empty()).unwrap())
@@ -163,7 +164,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_endpoint() {
-        let app = Router::new().route("/live", get(live));
+        use crate::database::Database;
+        use http_body_util::BodyExt;
+
+        // Setup with mock DB (required by router state)
+        let db = Database::mock().await;
+        let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
             .oneshot(Request::builder().uri("/live").body(Body::empty()).unwrap())
