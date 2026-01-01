@@ -335,7 +335,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     {
         router = router.nest(
             "/admin/console",
-            crate::admin_console::create_admin_console_routes(state.clone(), db_state.clone()),
+            crate::admin_console::create_admin_console_routes(state.clone()),
         );
     }
 
