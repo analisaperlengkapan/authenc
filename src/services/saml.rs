@@ -319,6 +319,29 @@ impl SamlService {
         Ok(url)
     }
 
+    /// Get Issuer from SAML Response without full validation
+    /// This is useful for identifying the IdP to load its configuration
+    pub fn get_issuer_from_response(&self, saml_response: &str) -> Result<String> {
+        // Decode and decompress
+        let decoded = Base64UrlUnpadded::decode_vec(saml_response).map_err(|_| {
+            AuthencError::ValidationError {
+                message: "Invalid SAML response encoding".to_string(),
+            }
+        })?;
+
+        let xml = self.deflate_decompress(&decoded)?;
+
+        // Parse XML to SamlResponse
+        let response: SamlResponse = self.parse_saml_xml(&xml)?;
+
+        // Extract assertion issuer
+        if let Some(assertion) = response.assertion {
+            Ok(assertion.issuer)
+        } else {
+            Ok(response.issuer)
+        }
+    }
+
     /// Process SAML Response
     pub async fn process_response(
         &self,
@@ -377,6 +400,7 @@ impl SamlService {
         }
 
         let user_info = SamlUserInfo {
+            issuer: assertion.issuer,
             name_id: assertion.subject.name_id.value,
             name_id_format: assertion.subject.name_id.format,
             session_index: assertion.authn_statement.session_index,
@@ -821,6 +845,8 @@ impl SamlService {
 /// User information extracted from SAML response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlUserInfo {
+    /// Issuer of the assertion (IdP Entity ID)
+    pub issuer: String,
     /// Name identifier for the user
     pub name_id: String,
     /// Format of the name identifier

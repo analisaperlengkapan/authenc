@@ -6479,6 +6479,44 @@ pub mod identity_providers {
         pub updated_at: DateTime<Utc>,
     }
 
+    /// Get identity provider by entity ID (from config)
+    pub async fn get_identity_provider_by_entity_id(
+        db: &Database,
+        entity_id: &str,
+    ) -> Result<Option<IdentityProviderData>> {
+        let query = r#"
+            SELECT id, name, display_name, provider_type, enabled, realm_id,
+                   config, truststore_path, keystore_path, created_at, updated_at
+            FROM identity_providers
+            WHERE config->>'entity_id' = $1
+        "#;
+
+        let row_opt = db.query_opt(query, &[&entity_id]).await.map_err(|e| {
+            crate::error::AuthencError::database(format!("Failed to get identity provider: {}", e))
+        })?;
+
+        if let Some(row) = row_opt {
+            Ok(Some(IdentityProviderData {
+                id: row.get(0),
+                name: row.get(1),
+                display_name: row.get(2),
+                provider_type: row.get(3),
+                enabled: row.get(4),
+                realm_id: row.get(5),
+                config: {
+                    let json_str: String = row.get(6);
+                    serde_json::from_str(&json_str)?
+                },
+                truststore_path: row.get(7),
+                keystore_path: row.get(8),
+                created_at: row.get(9),
+                updated_at: row.get(10),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Create a new identity provider
     pub async fn create_identity_provider(
         db: &Database,
