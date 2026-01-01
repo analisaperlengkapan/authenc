@@ -1919,7 +1919,10 @@ pub mod users {
         let password_hash = request
             .password
             .as_ref()
-            .map(|p| bcrypt::hash(p, bcrypt::DEFAULT_COST).unwrap_or_default());
+            .map(|p| {
+                crate::utils::crypto::password::hash_password(p)
+                    .unwrap_or_default()
+            });
         let realm_id = request.realm_id;
         let organization_id = request.organization_id;
         let _attributes_json = request
@@ -2497,8 +2500,7 @@ pub mod users {
 
             // Hash password if provided
             let password_hash = if let Some(password) = &user_req.password {
-                use bcrypt::{DEFAULT_COST, hash};
-                hash(password, DEFAULT_COST).map_err(|e| {
+                crate::utils::crypto::password::hash_password(password).map_err(|e| {
                     crate::error::AuthencError::database(format!("Password hashing failed: {}", e))
                 })?
             } else {

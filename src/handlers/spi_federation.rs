@@ -137,31 +137,25 @@ fn construct_social_callback_uri(config: &crate::config::AppConfig) -> String {
 }
 
 /// Helper function to convert internal User model to LdapUserInfo
+///
+/// This function extracts groups from both "groups" and "memberOf" attributes,
+/// sorting and deduplicating them.
 fn convert_to_ldap_user_info(user: crate::models::User) -> LdapUserInfo {
     // Extract groups from user attributes
     let mut groups = Vec::new();
     if let Some(serde_json::Value::Object(attrs)) = &user.attributes {
-        // Helper to extract strings from value (single string or array of strings)
-        let mut extract_strings_into = |val: &serde_json::Value, target: &mut Vec<String>| {
-            match val {
-                serde_json::Value::Array(arr) => {
-                    target.extend(arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())));
+        for key in ["groups", "memberOf"] {
+            if let Some(val) = attrs.get(key) {
+                match val {
+                    serde_json::Value::Array(arr) => {
+                        groups.extend(arr.iter().filter_map(|v| v.as_str().map(ToString::to_string)));
+                    }
+                    serde_json::Value::String(s) => {
+                        groups.push(s.clone());
+                    }
+                    _ => {}
                 }
-                serde_json::Value::String(s) => {
-                    target.push(s.clone());
-                }
-                _ => {}
             }
-        };
-
-        // Check "groups" attribute
-        if let Some(val) = attrs.get("groups") {
-            extract_strings_into(val, &mut groups);
-        }
-
-        // Check "memberOf" attribute
-        if let Some(val) = attrs.get("memberOf") {
-            extract_strings_into(val, &mut groups);
         }
 
         // Deduplicate groups
@@ -505,6 +499,25 @@ mod tests {
         assert_eq!(user_info.groups.len(), 2);
         assert!(user_info.groups.contains(&"group1".to_string()));
         assert!(user_info.groups.contains(&"group2".to_string()));
+    }
+
+    #[test]
+    fn test_extract_groups_no_attributes() {
+        let user = create_test_user(None);
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert!(user_info.groups.is_empty());
+    }
+
+    #[test]
+    fn test_extract_groups_missing_keys() {
+        let attributes = json!({
+            "someOtherKey": "someValue"
+        });
+        let user = create_test_user(Some(attributes));
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert!(user_info.groups.is_empty());
     }
 
     #[test]

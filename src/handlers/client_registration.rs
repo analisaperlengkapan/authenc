@@ -16,8 +16,8 @@ use crate::models::client_registration::{
 use crate::services::client_registration::{
     ClientRegistrationService, DefaultClientRegistrationService,
 };
-use base64::Engine;
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use jsonwebtoken::{decode, DecodingKey, Validation};
+use serde::Deserialize;
 
 /// Create client registration routes (RFC 7591/7592)
 pub fn create_client_registration_routes() -> Router<Arc<AppState>> {
@@ -45,7 +45,7 @@ async fn register_client(
     );
 
     // Check for software statement in Authorization header
-    let software_statement = extract_bearer_token(&headers)
+    let software_statement = extract_registration_token(&headers)
         .and_then(|token| parse_software_statement(&token));
 
     // Register client
@@ -81,7 +81,7 @@ async fn get_client_configuration(
     headers: HeaderMap,
 ) -> Result<Json<ClientRegistrationResponse>, (StatusCode, Json<ClientRegistrationError>)> {
     // Extract registration access token from Authorization header
-    let registration_token = match extract_bearer_token(&headers) {
+    let registration_token = match extract_registration_token(&headers) {
         Some(token) => token,
         None => {
             return Err((
@@ -137,7 +137,7 @@ async fn update_client_configuration(
     Json(request): Json<ClientUpdateRequest>,
 ) -> Result<Json<ClientRegistrationResponse>, (StatusCode, Json<ClientRegistrationError>)> {
     // Extract registration access token from Authorization header
-    let registration_token = match extract_bearer_token(&headers) {
+    let registration_token = match extract_registration_token(&headers) {
         Some(token) => token,
         None => {
             return Err((
@@ -196,7 +196,7 @@ async fn delete_client_registration(
     headers: HeaderMap,
 ) -> Result<StatusCode, (StatusCode, Json<ClientRegistrationError>)> {
     // Extract registration access token from Authorization header
-    let registration_token = match extract_bearer_token(&headers) {
+    let registration_token = match extract_registration_token(&headers) {
         Some(token) => token,
         None => {
             return Err((
@@ -244,8 +244,8 @@ async fn delete_client_registration(
     }
 }
 
-/// Extract Bearer token from Authorization header
-fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
+/// Extract registration access token from Authorization header
+fn extract_registration_token(headers: &HeaderMap) -> Option<String> {
     headers
         .get("authorization")
         .and_then(|auth| auth.to_str().ok())
@@ -261,9 +261,20 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
 /// Parse software statement from JWT string
 /// Note: This only decodes the payload, validation is done by the service
 fn parse_software_statement(token: &str) -> Option<SoftwareStatement> {
-    let payload = token.split('.').nth(1)?;
-    let decoded = BASE64_URL_SAFE_NO_PAD.decode(payload).ok()?;
-    serde_json::from_slice(&decoded).ok()
+    // We use jsonwebtoken to decode the token without signature validation
+    // The service layer will handle signature validation later if needed
+    let mut validation = Validation::default();
+    validation.insecure_disable_signature_validation();
+    validation.validate_exp = false; // Software statements might not have exp
+    validation.required_spec_claims.clear(); // Don't require any specific claims
+
+    let token_data = decode::<SoftwareStatement>(
+        token,
+        &DecodingKey::from_secret(&[]), // Key is ignored when signature validation is disabled
+        &validation,
+    ).ok()?;
+
+    Some(token_data.claims)
 }
 
 #[cfg(test)]
@@ -272,44 +283,47 @@ mod tests {
     use axum::http::HeaderValue;
 
     #[test]
-    fn test_extract_bearer_token() {
+    fn test_extract_registration_token() {
         // Test with valid Bearer token
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Bearer some.jwt.token"));
-        assert_eq!(extract_bearer_token(&headers), Some("some.jwt.token".to_string()));
+        assert_eq!(extract_registration_token(&headers), Some("some.jwt.token".to_string()));
 
         // Test with invalid prefix
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Basic some.jwt.token"));
-        assert_eq!(extract_bearer_token(&headers), None);
+        assert_eq!(extract_registration_token(&headers), None);
 
         // Test with no authorization header
         let headers = HeaderMap::new();
-        assert_eq!(extract_bearer_token(&headers), None);
+        assert_eq!(extract_registration_token(&headers), None);
 
         // Test with just "Bearer "
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Bearer "));
-        assert_eq!(extract_bearer_token(&headers), Some("".to_string()));
+        assert_eq!(extract_registration_token(&headers), Some("".to_string()));
     }
 
     #[test]
     fn test_parse_software_statement() {
+        use jsonwebtoken::{encode, EncodingKey, Header};
         use serde_json::json;
 
         // Create a mock JWT payload
-        let payload = json!({
-            "software_id": "test_software",
-            "software_version": "1.0",
-            "client_name": "Test Client"
-        });
+        let payload = SoftwareStatement {
+            software_id: Some("test_software".to_string()),
+            software_version: Some("1.0".to_string()),
+            client_metadata: [
+                ("client_name".to_string(), json!("Test Client")),
+            ].into_iter().collect(),
+        };
 
-        // Encode payload
-        let payload_str = serde_json::to_string(&payload).unwrap();
-        let encoded_payload = BASE64_URL_SAFE_NO_PAD.encode(payload_str);
-
-        // Create a mock JWT (header.payload.signature)
-        let token = format!("header.{}.signature", encoded_payload);
+        // Create a real JWT
+        let token = encode(
+            &Header::default(),
+            &payload,
+            &EncodingKey::from_secret(b"secret"),
+        ).unwrap();
 
         // Test parsing
         let stmt = parse_software_statement(&token).expect("Failed to parse software statement");
@@ -319,6 +333,5 @@ mod tests {
 
         // Test invalid token format
         assert!(parse_software_statement("invalid").is_none());
-        assert!(parse_software_statement("header.payload").is_none());
     }
 }

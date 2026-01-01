@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -248,20 +249,40 @@ impl ClientRegistrationService for DefaultClientRegistrationService {
             });
         }
 
-        // Validate software statement if required
-        if self.require_software_statement {
-            if let Some(stmt) = &software_statement {
-                if !self.validate_software_statement(stmt).await? {
-                    return Err(AuthencError::ValidationError {
-                        message: "Invalid software statement".to_string(),
-                    });
-                }
-            } else {
+        // Validate software statement if provided or required
+        if let Some(stmt) = &software_statement {
+            if !self.validate_software_statement(stmt).await? {
                 return Err(AuthencError::ValidationError {
-                    message: "Software statement is required".to_string(),
+                    message: "Invalid software statement".to_string(),
                 });
             }
+        } else if self.require_software_statement {
+            return Err(AuthencError::ValidationError {
+                message: "Software statement is required".to_string(),
+            });
         }
+
+        // Merge software statement metadata if present (RFC 7591)
+        let request = if let Some(stmt) = &software_statement {
+            // Serialize request to Value to allow merging
+            let mut request_value = serde_json::to_value(&request).map_err(|e| AuthencError::SerializationError {
+                message: format!("Failed to serialize request: {}", e),
+            })?;
+
+            // Merge metadata from software statement
+            if let Some(obj) = request_value.as_object_mut() {
+                for (k, v) in &stmt.client_metadata {
+                    obj.insert(k.clone(), v.clone());
+                }
+            }
+
+            // Deserialize back to request
+            serde_json::from_value(request_value).map_err(|e| AuthencError::ValidationError {
+                message: format!("Failed to merge software statement: {}", e),
+            })?
+        } else {
+            request
+        };
 
         // Validate registration request
         self.validate_registration_request(&request)?;

@@ -424,7 +424,9 @@ impl AppState {
         // Register default health checks
         observability_service.register_health_check(Box::new(
             crate::services::observability::DatabaseHealthCheck::new(
+                // Configured from database.max_connections
                 config.database.max_connections,
+                // Configured from observability.db_check_active_connections
                 config.observability.db_check_active_connections,
             ),
         ));
