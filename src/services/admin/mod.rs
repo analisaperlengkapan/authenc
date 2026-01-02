@@ -649,48 +649,225 @@ impl AdminManager {
     }
 
     /// Generate zero trust dashboard data
-    fn generate_zero_trust_dashboard(&self, _realm_id: &Uuid) -> ZeroTrustDashboard {
-        // TODO: Implement actual dashboard data generation
-        ZeroTrustDashboard {
-            risk_distribution: [
-                ("low".to_string(), 800),
-                ("medium".to_string(), 150),
-                ("high".to_string(), 45),
-                ("critical".to_string(), 5),
-            ]
-            .iter()
-            .cloned()
-            .collect(),
-            top_risk_users: vec![RiskUser {
-                user_id: Uuid::new_v4(),
-                username: "user1".to_string(),
-                risk_score: 0.85,
-                risk_level: "high".to_string(),
-                last_activity: Utc::now(),
-            }],
-            security_events: vec![SecurityEvent {
-                id: Uuid::new_v4(),
-                event_type: "failed_login".to_string(),
-                severity: "medium".to_string(),
-                user_id: Some(Uuid::new_v4()),
-                username: Some("user1".to_string()),
-                ip_address: "192.168.1.100".to_string(),
-                timestamp: Utc::now(),
-                details: serde_json::json!({"attempts": 3}),
-            }],
-            device_trust_stats: DeviceTrustStats {
-                total_devices: 500,
-                trusted_devices: 450,
-                untrusted_devices: 50,
-                compliance_rate: 90.0,
-            },
-            adaptive_controls_stats: AdaptiveControlsStats {
-                active_sessions: 180,
-                sessions_with_mfa: 120,
-                sessions_with_device_verification: 90,
-                blocked_actions: 5,
-            },
+    async fn generate_zero_trust_dashboard(
+        &self,
+        realm_id: &Uuid,
+    ) -> Result<ZeroTrustDashboard, String> {
+        // 1. Risk Distribution
+        // Join with users to filter by realm_id
+        let risk_query = r#"
+            SELECT
+                CASE
+                    WHEN ds.risk_score < 0.3 THEN 'low'
+                    WHEN ds.risk_score < 0.6 THEN 'medium'
+                    WHEN ds.risk_score < 0.8 THEN 'high'
+                    ELSE 'critical'
+                END as risk_level,
+                COUNT(DISTINCT ds.user_id)::bigint as user_count
+            FROM device_sessions ds
+            JOIN users u ON ds.user_id = u.id
+            WHERE ds.is_active = true AND u.realm_id = $1
+            GROUP BY 1
+        "#;
+
+        let risk_rows: Vec<tokio_postgres::Row> = self
+            .db
+            .query(risk_query, &[realm_id])
+            .await
+            .map_err(|e| format!("Failed to query risk distribution: {}", e))?;
+
+        let mut risk_distribution = std::collections::HashMap::new();
+        // Initialize with zeros
+        risk_distribution.insert("low".to_string(), 0);
+        risk_distribution.insert("medium".to_string(), 0);
+        risk_distribution.insert("high".to_string(), 0);
+        risk_distribution.insert("critical".to_string(), 0);
+
+        for row in risk_rows {
+            let level: String = row.get("risk_level");
+            let count: i64 = row.get("user_count");
+            risk_distribution.insert(level, count as u64);
         }
+
+        // 2. Top Risk Users
+        let top_users_query = r#"
+            SELECT
+                u.id, u.username,
+                MAX(ds.risk_score) as risk_score,
+                MAX(ds.last_activity) as last_activity
+            FROM users u
+            JOIN device_sessions ds ON u.id = ds.user_id
+            WHERE ds.is_active = true AND u.realm_id = $1
+            GROUP BY u.id, u.username
+            ORDER BY risk_score DESC
+            LIMIT 5
+        "#;
+
+        let user_rows: Vec<tokio_postgres::Row> = self
+            .db
+            .query(top_users_query, &[realm_id])
+            .await
+            .map_err(|e| format!("Failed to query top risk users: {}", e))?;
+
+        let mut top_risk_users = Vec::new();
+        for row in user_rows {
+            let risk_score: f64 = row.get("risk_score");
+            let risk_level = if risk_score < 0.3 {
+                "low"
+            } else if risk_score < 0.6 {
+                "medium"
+            } else if risk_score < 0.8 {
+                "high"
+            } else {
+                "critical"
+            }
+            .to_string();
+
+            top_risk_users.push(RiskUser {
+                user_id: row.get("id"),
+                username: row.get("username"),
+                risk_score,
+                risk_level,
+                last_activity: row.get("last_activity"),
+            });
+        }
+
+        // 3. Security Events
+        // Filter by realm_id via user join.
+        // Note: This excludes events not linked to a user or linked to a user without realm (rare).
+        let events_query = r#"
+            SELECT
+                a.id, a.event_type, a.status, a.user_id, u.username,
+                a.ip_address, a.timestamp, a.details
+            FROM audit_logs a
+            LEFT JOIN users u ON a.user_id = u.id
+            WHERE (u.realm_id = $1)
+              AND (a.status != 'SUCCESS' OR a.event_type IN ('failed_login', 'access_denied', 'suspicious_activity'))
+            ORDER BY a.timestamp DESC
+            LIMIT 10
+        "#;
+
+        let event_rows: Vec<tokio_postgres::Row> = self
+            .db
+            .query(events_query, &[realm_id])
+            .await
+            .map_err(|e| format!("Failed to query security events: {}", e))?;
+
+        let mut security_events = Vec::new();
+        for row in event_rows {
+            let event_type: String = row.get("event_type");
+            let status: String = row.get("status");
+            let severity = if status != "SUCCESS" || event_type.contains("failed") {
+                "high".to_string()
+            } else {
+                "medium".to_string()
+            };
+
+            security_events.push(SecurityEvent {
+                id: row.get("id"),
+                event_type,
+                severity,
+                user_id: row.get("user_id"),
+                username: row.get("username"),
+                ip_address: row.get("ip_address"),
+                timestamp: row.get("timestamp"),
+                details: row
+                    .get::<_, Option<String>>("details")
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                    .unwrap_or(serde_json::json!({})),
+            });
+        }
+
+        // 4. Device Trust Stats
+        let device_stats_query = r#"
+            SELECT
+                COUNT(d.id)::bigint as total,
+                COUNT(d.id) FILTER (WHERE d.trust_score >= 0.7)::bigint as trusted
+            FROM devices d
+            JOIN users u ON d.user_id = u.id
+            WHERE u.realm_id = $1
+        "#;
+
+        let device_row: tokio_postgres::Row = self
+            .db
+            .query_one(device_stats_query, &[realm_id])
+            .await
+            .map_err(|e| format!("Failed to query device stats: {}", e))?;
+
+        let total_devices: i64 = device_row.get("total");
+        let trusted_devices: i64 = device_row.get("trusted");
+        let untrusted_devices = total_devices - trusted_devices;
+        let compliance_rate = if total_devices > 0 {
+            (trusted_devices as f64 / total_devices as f64) * 100.0
+        } else {
+            100.0
+        };
+
+        let device_trust_stats = DeviceTrustStats {
+            total_devices: total_devices as u64,
+            trusted_devices: trusted_devices as u64,
+            untrusted_devices: untrusted_devices as u64,
+            compliance_rate,
+        };
+
+        // 5. Adaptive Controls Stats
+        // We'll run a few separate counts, filtering by realm_id
+        // user_sessions has realm_id
+        let active_sessions_query =
+            "SELECT COUNT(*)::bigint FROM user_sessions WHERE realm_id = $1 AND expires_at > NOW() AND NOT revoked";
+
+        // user_sessions has realm_id
+        let mfa_sessions_query = "SELECT COUNT(*)::bigint FROM user_sessions WHERE realm_id = $1 AND (authentication_method ILIKE '%mfa%' OR authentication_method ILIKE '%totp%' OR authentication_method ILIKE '%webauthn%') AND expires_at > NOW()";
+
+        // device_sessions needs join with users
+        let device_verification_query =
+            "SELECT COUNT(ds.id)::bigint FROM device_sessions ds JOIN users u ON ds.user_id = u.id WHERE u.realm_id = $1 AND ds.is_active = true";
+
+        // audit_logs needs join with users
+        let blocked_actions_query = "SELECT COUNT(a.id)::bigint FROM audit_logs a LEFT JOIN users u ON a.user_id = u.id WHERE u.realm_id = $1 AND (a.action = 'BLOCK' OR a.status = 'DENIED') AND a.timestamp > NOW() - INTERVAL '24 hours'";
+
+        let active_sessions: i64 = self
+            .db
+            .query_one::<tokio_postgres::Row>(active_sessions_query, &[realm_id])
+            .await
+            .map_err(|e| format!("Failed to count active sessions: {}", e))?
+            .get(0);
+
+        let sessions_with_mfa: i64 = self
+            .db
+            .query_one::<tokio_postgres::Row>(mfa_sessions_query, &[realm_id])
+            .await
+            .map_err(|e| format!("Failed to count MFA sessions: {}", e))?
+            .get(0);
+
+        let sessions_with_device_verification: i64 = self
+            .db
+            .query_one::<tokio_postgres::Row>(device_verification_query, &[realm_id])
+            .await
+            .map_err(|e| format!("Failed to count device sessions: {}", e))?
+            .get(0);
+
+        let blocked_actions: i64 = self
+            .db
+            .query_one::<tokio_postgres::Row>(blocked_actions_query, &[realm_id])
+            .await
+            .map_err(|e| format!("Failed to count blocked actions: {}", e))?
+            .get(0);
+
+        let adaptive_controls_stats = AdaptiveControlsStats {
+            active_sessions: active_sessions as u64,
+            sessions_with_mfa: sessions_with_mfa as u64,
+            sessions_with_device_verification: sessions_with_device_verification as u64,
+            blocked_actions: blocked_actions as u64,
+        };
+
+        Ok(ZeroTrustDashboard {
+            risk_distribution,
+            top_risk_users,
+            security_events,
+            device_trust_stats,
+            adaptive_controls_stats,
+        })
     }
 }
 
@@ -1183,7 +1360,7 @@ impl AdminService for AdminManager {
         &self,
         realm_id: &Uuid,
     ) -> Result<ZeroTrustDashboard, String> {
-        Ok(self.generate_zero_trust_dashboard(realm_id))
+        self.generate_zero_trust_dashboard(realm_id).await
     }
 
     async fn get_identity_providers(

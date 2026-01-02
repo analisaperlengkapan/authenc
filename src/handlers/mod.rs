@@ -77,8 +77,7 @@ pub mod zero_trust;
 
 /// Create the main application router with all routes
 pub fn create_router(state: Arc<AppState>) -> Router {
-    // For backward compatibility, extract database from state
-    // TODO: Gradually migrate handlers to use AppState directly
+    // Database connection for compatibility (used in some places where AppState refactoring is not fully complete)
     let db_state = state.database.clone();
 
     // Create OAuth2 stores
@@ -336,11 +335,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     {
         router = router.nest(
             "/admin/console",
-            crate::admin_console::create_admin_console_routes(state.clone(), db_state.clone()),
+            crate::admin_console::create_admin_console_routes(state.clone()),
         );
     }
 
-    router.with_state(db_state)
+    router.with_state(state)
 }
 
 #[cfg(test)]

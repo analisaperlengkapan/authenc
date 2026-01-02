@@ -1,0 +1,267 @@
+    Checking authenc v0.4.0 (/app)
+warning: unused import: `serde::Deserialize`
+  --> src/handlers/client_registration.rs:20:5
+   |
+20 | use serde::Deserialize;
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `serde_json::Value`
+ --> src/services/client_registration.rs:2:5
+  |
+2 | use serde_json::Value;
+  |     ^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `attributes`
+    --> src/database/operations.rs:1274:17
+     |
+1274 |             let attributes: HashMap<String, String> =
+     |                 ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_attributes`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `query`
+   --> src/handlers/group.rs:152:11
+    |
+152 |     Query(query): Query<GroupListQuery>,
+    |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_query`
+
+warning: unused variable: `realm`
+  --> src/handlers/api/user_permission.rs:80:11
+   |
+80 |     Path((realm, user_id)): Path<(String, String)>,
+   |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_realm`
+
+warning: unused variable: `auth`
+  --> src/handlers/api/user_permission.rs:81:5
+   |
+81 |     auth: AuthBearer,
+   |     ^^^^ help: if this is intentional, prefix it with an underscore: `_auth`
+
+warning: unused variable: `user`
+   --> src/handlers/api/account.rs:583:9
+    |
+583 |     let user = user_store
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_user`
+
+warning: unused variable: `user_store`
+   --> src/handlers/api/account.rs:604:12
+    |
+604 |     State((user_store, _, _, _, audit_log_store, social_account_store)): State<(
+    |            ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_user_store`
+
+warning: unused variable: `old_representation`
+   --> src/handlers/api/client.rs:184:9
+    |
+184 |     let old_representation = serde_json::to_string(&client).unwrap_or_default();
+    |         ^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_old_representation`
+
+warning: unused variable: `provider_type`
+   --> src/handlers/spi_federation.rs:324:9
+    |
+324 |     let provider_type = match request.provider.as_str() {
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_provider_type`
+
+warning: unused variable: `state`
+  --> src/handlers/social.rs:59:11
+   |
+59 |     State(state): State<Arc<AppState>>,
+   |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `state`
+   --> src/handlers/social.rs:138:11
+    |
+138 |     State(state): State<Arc<AppState>>,
+    |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `session`
+   --> src/services/auth_flow.rs:548:9
+    |
+548 |         session: &AuthenticationSessionModel,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_session`
+
+warning: unused variable: `gdpr_checks`
+   --> src/services/compliance_mode.rs:307:17
+    |
+307 |             let gdpr_checks = GDPRComplianceChecks::new();
+    |                 ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_gdpr_checks`
+
+warning: unused variable: `config`
+   --> src/spi/mod.rs:423:34
+    |
+423 |     pub async fn init(&mut self, config: &ProviderConfig) -> Result<(), SpiError> {
+    |                                  ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `spi`
+   --> src/spi/mod.rs:424:13
+    |
+424 |         for spi in self.spis.values_mut() {
+    |             ^^^ help: if this is intentional, prefix it with an underscore: `_spi`
+
+warning: use of deprecated method `jsonwebtoken::Validation::insecure_disable_signature_validation`: Use `jsonwebtoken::dangerous::insecure_decode` if you require this functionality.
+   --> src/handlers/client_registration.rs:267:16
+    |
+267 |     validation.insecure_disable_signature_validation();
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: unused import: `sha2::Digest`
+  --> src/handlers/api/account.rs:10:5
+   |
+10 | use sha2::Digest;
+   |     ^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src/handlers/mod.rs:131:9
+    |
+131 |     let mut router = Router::new()
+    |         ----^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `session_id`
+   --> src/services/managers/authentication.rs:188:13
+    |
+188 |         let session_id = self
+    |             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_session_id`
+
+warning: unused variable: `injection_patterns`
+  --> src/services/security_testing.rs:56:17
+   |
+56 |             let injection_patterns = vec![
+   |                 ^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_injection_patterns`
+
+warning: variable `all_passed` is assigned to, but never used
+  --> src/services/security_testing.rs:88:21
+   |
+88 |             let mut all_passed = true;
+   |                     ^^^^^^^^^^
+   |
+   = note: consider using `_all_passed` instead
+
+warning: value assigned to `all_passed` is never read
+  --> src/services/security_testing.rs:91:21
+   |
+91 |                     all_passed = false;
+   |                     ^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `max_variance`
+   --> src/services/security_testing.rs:133:17
+    |
+133 |             let max_variance = timings
+    |                 ^^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+133 |             let _max_variance = timings
+    |                 +
+help: you might have meant to pattern match on the similarly named constant `DEFAULT_TIMEOUT`
+    |
+133 -             let max_variance = timings
+133 +             let middleware::timeout_axum::DEFAULT_TIMEOUT = timings
+    |
+
+warning: unused variable: `ocsp_client`
+   --> src/services/federation/saml_security.rs:286:25
+    |
+286 |             if let Some(ocsp_client) = &self.ocsp_client {
+    |                         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ocsp_client`
+
+warning: unused variable: `session`
+   --> src/services/sso/service.rs:291:13
+    |
+291 |         let session = self
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_session`
+
+warning: unused variable: `ninety_days_ago`
+   --> src/services/compliance/mod.rs:441:25
+    |
+441 |                     let ninety_days_ago = (Utc::now() - Duration::days(90))
+    |                         ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ninety_days_ago`
+
+warning: unused variable: `consent_store`
+   --> src/services/compliance/mod.rs:566:21
+    |
+566 |         if let Some(consent_store) = &self.consent_store {
+    |                     ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_consent_store`
+
+warning: unused variable: `app_config`
+   --> src/spi/admin_console.rs:212:25
+    |
+212 |             if let Some(app_config) = global_config.downcast_ref::<crate::config::AppConfig>() {
+    |                         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_app_config`
+
+warning: unused variable: `username`
+   --> src/spi/authenticator.rs:152:22
+    |
+152 |         if let (Some(username), Some(password)) = (username, password) {
+    |                      ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_username`
+
+warning: unused variable: `password`
+   --> src/spi/authenticator.rs:152:38
+    |
+152 |         if let (Some(username), Some(password)) = (username, password) {
+    |                                      ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_password`
+
+warning: unused variable: `code`
+   --> src/spi/authenticator.rs:214:21
+    |
+214 |         if let Some(code) = code {
+    |                     ^^^^ help: if this is intentional, prefix it with an underscore: `_code`
+
+warning: unused variable: `context`
+   --> src/spi/authenticator.rs:235:33
+    |
+235 |     fn is_configured_for(&self, context: &AuthenticationContext) -> bool {
+    |                                 ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_context`
+
+warning: unused variable: `flow_type`
+   --> src/spi/authenticator.rs:356:9
+    |
+356 |         flow_type: AuthenticationFlowType,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_flow_type`
+
+warning: unused variable: `model`
+   --> src/spi/component.rs:177:44
+    |
+177 |     async fn validate_configuration(&self, model: &ComponentModel) -> Result<()> {
+    |                                            ^^^^^ help: if this is intentional, prefix it with an underscore: `_model`
+
+warning: unused variable: `context`
+   --> src/spi/protocol_mappers.rs:267:9
+    |
+267 |         context: &ProtocolMapperContext,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_context`
+
+warning: unused variable: `totp_code`
+   --> src/spi/required_actions.rs:524:13
+    |
+524 |         let totp_code = response_data
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_totp_code`
+
+warning: unused variable: `config`
+   --> src/spi/mod.rs:169:24
+    |
+169 |     fn init(&mut self, config: &ProviderConfig) -> Result<(), SpiError> {
+    |                        ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: field `sso_url` is never read
+  --> src/services/federation/saml.rs:24:5
+   |
+18 | pub struct SamlIdentityProvider {
+   |            -------------------- field in this struct
+...
+24 |     sso_url: String,
+   |     ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `authenc` (lib) generated 39 warnings (run `cargo fix --lib -p authenc` to apply 4 suggestions)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 12.57s

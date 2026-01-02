@@ -74,6 +74,8 @@ pub struct AppState {
     pub cluster_manager: Option<Arc<crate::services::clustering::ClusterManager>>,
     /// Observability service for monitoring and metrics
     pub observability_service: Arc<crate::services::observability::ObservabilityService>,
+    /// Compliance mode service
+    pub compliance_mode_service: Arc<crate::services::compliance_mode::ComplianceModeService>,
 }
 
 impl AppState {
@@ -438,6 +440,14 @@ impl AppState {
 
         let observability_service = Arc::new(observability_service);
 
+        // Initialize compliance mode service
+        let compliance_mode_service = Arc::new(
+            crate::services::compliance_mode::ComplianceModeService::new(
+                event_manager.clone(),
+                Some(consent_store.clone()),
+            ),
+        );
+
         Ok(Self {
             config,
             database,
@@ -470,6 +480,7 @@ impl AppState {
             spi_manager,
             cluster_manager,
             observability_service,
+            compliance_mode_service,
         })
     }
 

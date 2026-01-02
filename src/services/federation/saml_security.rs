@@ -6,8 +6,8 @@ use openssl::x509::X509;
 use std::sync::{Arc, Mutex};
 
 use crate::crypto::xmldsig::{
-    CertificateValidationResult, CertificateValidator, CrlManager, OcspClient, RevocationStatus,
-    XmlSecurityLimits, XmlSecurityValidator, XmlSignature,
+    CertificateValidationResult, CertificateValidator, CrlManager, OcspClient, OcspStatus,
+    RevocationStatus, XmlSecurityLimits, XmlSecurityValidator, XmlSignature,
 };
 
 /// SAML Security Configuration
@@ -284,19 +284,61 @@ impl SamlSecurityValidator {
         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
         if self.config.enable_ocsp_check {
             if let Some(ocsp_client) = &self.ocsp_client {
-                // Need issuer certificate for OCSP check
-                // For now, we'll skip OCSP if we can't determine issuer
-                // This is a limitation that could be improved by extracting issuer from chain
-                tracing::debug!("OCSP check skipped: issuer certificate not available");
+                // Get issuer from certificate chain if validator is available
+                let issuer = if let Some(cert_validator) = &self.cert_validator {
+                    match cert_validator.get_issuer_from_chain(&cert) {
+                        Ok(Some(issuer)) => Some(issuer),
+                        Ok(None) => {
+                            tracing::warn!(
+                                "Could not determine issuer from certificate chain for OCSP check"
+                            );
+                            None
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to extract issuer for OCSP check: {}", e);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
 
-                // TODO: Extract issuer from certificate chain and perform OCSP check
-                // let mut client = ocsp_client.lock().unwrap();
-                // match client.check_status(&cert, &issuer) {
-                //     Ok(OcspStatus::Good) => { ... }
-                //     Ok(OcspStatus::Revoked { .. }) => { ... }
-                //     Ok(OcspStatus::Unknown) => { ... }
-                //     Err(e) => { ... }
-                // }
+                if let Some(issuer) = issuer {
+                    let mut client = ocsp_client.lock().unwrap();
+                    match client.check_status(&cert, &issuer) {
+                        Ok(OcspStatus::Good) => {
+                            tracing::debug!("OCSP check passed: certificate is good");
+                        }
+                        Ok(OcspStatus::Revoked {
+                            reason,
+                            revocation_time,
+                        }) => {
+                            return Err(anyhow!(
+                                "Certificate revoked (OCSP): {} (time: {:?})",
+                                reason.unwrap_or_else(|| "No reason provided".to_string()),
+                                revocation_time
+                            ));
+                        }
+                        Ok(OcspStatus::Unknown) => {
+                            if self.config.ocsp_fail_on_unavailable {
+                                return Err(anyhow!(
+                                    "OCSP revocation status unknown (hard-fail mode)"
+                                ));
+                            } else {
+                                tracing::warn!("OCSP revocation status unknown (soft-fail mode)");
+                            }
+                        }
+                        Err(e) => {
+                            if self.config.ocsp_fail_on_unavailable {
+                                return Err(anyhow!("OCSP check failed (hard-fail mode): {}", e));
+                            } else {
+                                tracing::warn!("OCSP check failed (soft-fail mode): {}", e);
+                            }
+                        }
+                    }
+                } else {
+                    tracing::debug!("OCSP check skipped: issuer certificate not available");
+                }
             }
         }
 

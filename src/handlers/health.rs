@@ -4,7 +4,7 @@ use axum::response::{IntoResponse, Json};
 use chrono::Utc;
 use std::sync::Arc;
 
-use crate::database::Database;
+use crate::app::AppState;
 
 /// Health check response
 #[derive(Debug, serde::Serialize)]
@@ -42,8 +42,8 @@ pub async fn health() -> impl IntoResponse {
 }
 
 /// Readiness check endpoint with database connectivity check
-pub async fn ready(State(db): State<Arc<Database>>) -> impl IntoResponse {
-    let db_status = match db.health_check().await {
+pub async fn ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let db_status = match state.database.health_check().await {
         Ok(_) => "connected",
         Err(e) => {
             return (
@@ -79,7 +79,7 @@ pub async fn live() -> impl IntoResponse {
 }
 
 /// Create health routes
-pub fn create_health_routes() -> axum::Router<Arc<Database>> {
+pub fn create_health_routes() -> axum::Router<Arc<AppState>> {
     use axum::routing::get;
 
     axum::Router::new()
@@ -145,7 +145,8 @@ mod tests {
         assert_eq!(body["database"], "connected");
 
         // Test case 2: Database is unhealthy
-        let db = Database::mock().await.with_mock_status(MockStatus::Unhealthy("Connection refused".to_string()));
+        // Verify that the health check correctly handles database errors
+        let db = Database::mock().await.with_mock_status(MockStatus::Unhealthy("Database connection failed".to_string()));
         let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
@@ -159,7 +160,7 @@ mod tests {
         let body: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(body["status"], "not ready");
         assert_eq!(body["database"], "disconnected");
-        assert_eq!(body["error"], "Database error: Connection refused");
+        assert_eq!(body["error"], "Database error: Database connection failed");
     }
 
     #[tokio::test]

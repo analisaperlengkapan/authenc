@@ -641,6 +641,190 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod issuer_tests {
+    use super::*;
+    use openssl::asn1::Asn1Time;
+    use openssl::bn::BigNum;
+    use openssl::rsa::Rsa;
+    use openssl::x509::extension::{
+        AuthorityKeyIdentifier, BasicConstraints, KeyUsage, SubjectKeyIdentifier,
+    };
+    use openssl::x509::X509NameBuilder;
+
+    fn create_ca_cert() -> Result<(X509, PKey<openssl::pkey::Private>)> {
+        let rsa = Rsa::generate(2048)?;
+        let pkey = PKey::from_rsa(rsa)?;
+
+        let mut name_builder = X509NameBuilder::new()?;
+        name_builder.append_entry_by_text("CN", "Test CA")?;
+        let name = name_builder.build();
+
+        let mut builder = X509::builder()?;
+        builder.set_version(2)?;
+        builder.set_subject_name(&name)?;
+        builder.set_issuer_name(&name)?;
+        builder.set_pubkey(&pkey)?;
+
+        // Set serial number
+        let serial = BigNum::from_u32(1)?;
+        let serial_asn1 = serial.to_asn1_integer()?;
+        builder.set_serial_number(&serial_asn1)?;
+
+        let not_before = Asn1Time::days_from_now(0)?;
+        let not_after = Asn1Time::days_from_now(365)?;
+        builder.set_not_before(&not_before)?;
+        builder.set_not_after(&not_after)?;
+
+        builder.append_extension(BasicConstraints::new().critical().ca().build()?)?;
+        builder.append_extension(
+            KeyUsage::new()
+                .critical()
+                .key_cert_sign()
+                .crl_sign()
+                .build()?,
+        )?;
+        builder.append_extension(
+            SubjectKeyIdentifier::new().build(&builder.x509v3_context(None, None))?,
+        )?;
+
+        builder.sign(&pkey, MessageDigest::sha256())?;
+        let cert = builder.build();
+
+        Ok((cert, pkey))
+    }
+
+    fn create_leaf_cert(
+        ca_cert: &X509,
+        ca_key: &PKey<openssl::pkey::Private>,
+    ) -> Result<(X509, PKey<openssl::pkey::Private>)> {
+        let rsa = Rsa::generate(2048)?;
+        let pkey = PKey::from_rsa(rsa)?;
+
+        let mut name_builder = X509NameBuilder::new()?;
+        name_builder.append_entry_by_text("CN", "Test Leaf")?;
+        let name = name_builder.build();
+
+        let mut builder = X509::builder()?;
+        builder.set_version(2)?;
+        builder.set_subject_name(&name)?;
+        builder.set_issuer_name(ca_cert.subject_name())?;
+        builder.set_pubkey(&pkey)?;
+
+        // Set serial number
+        let serial = BigNum::from_u32(2)?;
+        let serial_asn1 = serial.to_asn1_integer()?;
+        builder.set_serial_number(&serial_asn1)?;
+
+        let not_before = Asn1Time::days_from_now(0)?;
+        let not_after = Asn1Time::days_from_now(365)?;
+        builder.set_not_before(&not_before)?;
+        builder.set_not_after(&not_after)?;
+
+        builder.append_extension(BasicConstraints::new().critical().build()?)?;
+        builder.append_extension(
+            KeyUsage::new()
+                .critical()
+                .digital_signature()
+                .key_encipherment()
+                .build()?,
+        )?;
+
+        // Authority Key Identifier
+        builder.append_extension(
+            AuthorityKeyIdentifier::new()
+                .keyid(false)
+                .issuer(false)
+                .build(&builder.x509v3_context(Some(ca_cert), None))?,
+        )?;
+
+        builder.sign(ca_key, MessageDigest::sha256())?;
+        let cert = builder.build();
+
+        Ok((cert, pkey))
+    }
+
+    #[test]
+    fn test_get_issuer_from_chain() -> Result<()> {
+        // 1. Create CA and Leaf certs
+        let (ca_cert, ca_key) = create_ca_cert()?;
+        let (leaf_cert, _leaf_key) = create_leaf_cert(&ca_cert, &ca_key)?;
+
+        // 2. Setup CertificateValidator with CA in trust store
+        let mut store_builder = X509StoreBuilder::new()?;
+        store_builder.add_cert(ca_cert.clone())?;
+        let store = store_builder.build();
+        let validator = CertificateValidator::new(store);
+
+        // 3. Call get_issuer_from_chain with leaf cert
+        let issuer_option = validator.get_issuer_from_chain(&leaf_cert)?;
+
+        // 4. Verify we got the issuer
+        assert!(issuer_option.is_some());
+        let issuer = issuer_option.unwrap();
+
+        // Verify it is indeed the CA cert
+        assert_eq!(
+            issuer.serial_number().to_bn()?,
+            ca_cert.serial_number().to_bn()?
+        );
+        assert_eq!(
+            issuer.subject_name().to_der()?,
+            ca_cert.subject_name().to_der()?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_issuer_self_signed() -> Result<()> {
+        // 1. Create self-signed CA cert
+        let (ca_cert, _ca_key) = create_ca_cert()?;
+
+        // 2. Setup CertificateValidator with CA in trust store
+        let mut store_builder = X509StoreBuilder::new()?;
+        store_builder.add_cert(ca_cert.clone())?;
+        let store = store_builder.build();
+        let validator = CertificateValidator::new(store);
+
+        // 3. Call get_issuer_from_chain with CA cert (it is self-signed)
+        let issuer_option = validator.get_issuer_from_chain(&ca_cert)?;
+
+        // 4. Verify we got the issuer (itself)
+        assert!(issuer_option.is_some());
+        let issuer = issuer_option.unwrap();
+
+        assert_eq!(
+            issuer.serial_number().to_bn()?,
+            ca_cert.serial_number().to_bn()?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_issuer_not_found() -> Result<()> {
+        // 1. Create CA and Leaf certs
+        let (ca_cert, ca_key) = create_ca_cert()?;
+        let (leaf_cert, _leaf_key) = create_leaf_cert(&ca_cert, &ca_key)?;
+
+        // 2. Setup CertificateValidator with EMPTY trust store
+        let store_builder = X509StoreBuilder::new()?;
+        let store = store_builder.build();
+        let validator = CertificateValidator::new(store);
+
+        // 3. Call get_issuer_from_chain with leaf cert
+        // Validation should fail, so it should return None or error?
+        // The implementation returns Ok(None) if verification fails.
+        let issuer_option = validator.get_issuer_from_chain(&leaf_cert)?;
+
+        // 4. Verify we got None
+        assert!(issuer_option.is_none());
+
+        Ok(())
+    }
+}
+
 // ============================================================================
 // Certificate Validation (Phase 2)
 // ============================================================================
@@ -829,6 +1013,44 @@ impl CertificateValidator {
         // For now, return true (assume valid)
         // TODO: Implement proper key usage extension parsing
         Ok(true)
+    }
+
+    /// Get the issuer certificate from the trust store by building the chain
+    pub fn get_issuer_from_chain(&self, cert: &X509) -> Result<Option<X509>> {
+        use openssl::stack::Stack;
+
+        let mut context = X509StoreContext::new()?;
+        let chain = Stack::new()?; // Empty chain - only validate end certificate
+
+        // We use the trust store to find the issuer
+        let issuer = context
+            .init(&self.trust_store, cert, &chain, |ctx| {
+                // verify_cert builds the chain
+                match ctx.verify_cert() {
+                    Ok(true) => {
+                        // Success, extract issuer
+                        if let Some(chain) = ctx.chain() {
+                            if chain.len() >= 2 {
+                                // The issuer is the second element in the chain (index 1)
+                                // index 0 is the subject certificate
+                                return Ok(Some(chain[1].to_owned()));
+                            } else if chain.len() == 1 {
+                                // Self-signed certificate (issuer is subject)
+                                return Ok(Some(chain[0].to_owned()));
+                            }
+                        }
+                        Ok(None)
+                    }
+                    Ok(false) => {
+                        // Verification failed
+                        Ok(None)
+                    }
+                    Err(e) => Err(e),
+                }
+            })
+            .map_err(|e| anyhow!("Failed to get issuer from chain: {}", e))?;
+
+        Ok(issuer)
     }
 
     /// Disable expiration checking (for testing)

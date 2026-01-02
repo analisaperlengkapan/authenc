@@ -1,3 +1,4 @@
+use crate::app::AppState;
 use crate::database::Database;
 use crate::error::AuthencError;
 use crate::models::user::{JITUserProvisioningRequest, JITUserProvisioningResponse};
@@ -96,6 +97,36 @@ impl AdminService for MockAdminService {
 
         match users::create_user(&self.db, &db_request).await {
             Ok(user) => {
+                // Assign roles if provided
+                if !request.roles.is_empty() {
+                    let all_roles = roles::list_roles_by_realm(&self.db, &request.realm_id)
+                        .await
+                        .map_err(|e| format!("Failed to fetch realm roles: {}", e))?;
+
+                    for role_name in &request.roles {
+                        if let Some(role) = all_roles.iter().find(|r| r.name == *role_name) {
+                            roles::assign_role_to_user(&self.db, &user.id, &role.id)
+                                .await
+                                .map_err(|e| format!("Failed to assign role {}: {}", role_name, e))?;
+                        }
+                    }
+                }
+
+                // Assign groups if provided
+                if !request.groups.is_empty() {
+                    let all_groups = groups::get_groups_by_realm(&self.db, request.realm_id, None, None)
+                        .await
+                        .map_err(|e| format!("Failed to fetch realm groups: {}", e))?;
+
+                    for group_name in &request.groups {
+                        if let Some(group) = all_groups.iter().find(|g| g.name == *group_name) {
+                            groups::add_user_to_group(&self.db, user.id, group.id, None, None)
+                                .await
+                                .map_err(|e| format!("Failed to add user to group {}: {}", group_name, e))?;
+                        }
+                    }
+                }
+
                 let (roles_result, groups_result) = tokio::join!(
                     roles::get_user_roles(&self.db, &user.id),
                     groups::get_user_groups(&self.db, user.id)
@@ -243,13 +274,13 @@ impl AdminService for MockAdminService {
 
 /// Handle federated authentication with JIT provisioning
 pub async fn federated_auth(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<FederatedAuthRequest>,
 ) -> std::result::Result<Json<FederatedAuthResponse>, AuthencError> {
     // Create JIT provisioning service
-    let admin_service = Arc::new(MockAdminService::new(db.clone()));
+    let admin_service = Arc::new(MockAdminService::new(state.database.clone()));
     let jit_service = Arc::new(DefaultJITProvisioningService::new(
-        db.clone(),
+        state.database.clone(),
         admin_service,
     ));
 
@@ -286,6 +317,6 @@ pub async fn federated_auth(
 }
 
 /// Create federated authentication routes
-pub fn create_federated_auth_routes() -> Router<Arc<Database>> {
+pub fn create_federated_auth_routes() -> Router<Arc<AppState>> {
     Router::new().route("/federated-auth", post(federated_auth))
 }

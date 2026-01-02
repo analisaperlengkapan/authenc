@@ -235,8 +235,6 @@ pub enum SdJwtClaim {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum SdJwtArrayElement {
-    /// Disclosed array element
-    Disclosed(Value),
     /// Undisclosed array element with hash
     Undisclosed {
         /// Hash reference for the undisclosed array element
@@ -247,6 +245,8 @@ pub enum SdJwtArrayElement {
         /// Flag indicating this is a decoy array element
         decoy: bool,
     },
+    /// Disclosed array element
+    Disclosed(Value),
 }
 
 /// Issuer-signed JWT with SD-JWT capabilities
@@ -376,13 +376,9 @@ impl IssuerSignedJwt {
                 .as_bytes(),
         );
 
-        let payload_b64 = Base64UrlUnpadded::encode_string(
-            serde_json::to_string(&self.payload)
-                .map_err(|_| AuthencError::SerializationError {
-                    message: "Failed to serialize payload".to_string(),
-                })?
-                .as_bytes(),
-        );
+        let full_payload = self.get_payload_as_value()?;
+        let payload_b64 =
+            Base64UrlUnpadded::encode_string(full_payload.to_string().as_bytes());
 
         let message = format!("{}.{}", header_b64, payload_b64);
         let signature = keypair.sign(message.as_bytes());
@@ -393,16 +389,42 @@ impl IssuerSignedJwt {
 
     /// Serialize to SD-JWT format
     pub fn to_sd_jwt(&self) -> String {
+        let full_payload = self
+            .get_payload_as_value()
+            .unwrap_or(json!({}));
+
         format!(
             "{}.{}.{}",
             Base64UrlUnpadded::encode_string(
                 serde_json::to_string(&self.header).unwrap().as_bytes()
             ),
             Base64UrlUnpadded::encode_string(
-                serde_json::to_string(&self.payload).unwrap().as_bytes()
+                full_payload.to_string().as_bytes()
             ),
             self.signature
         )
+    }
+
+    /// Helper to merge payload and array claims into a single JSON value
+    pub fn get_payload_as_value(&self) -> Result<Value, AuthencError> {
+        let mut full_payload = serde_json::to_value(&self.payload).map_err(|_| {
+            AuthencError::SerializationError {
+                message: "Failed to serialize payload".to_string(),
+            }
+        })?;
+
+        if let Some(payload_obj) = full_payload.as_object_mut() {
+            for (k, v) in &self.array_claims {
+                let array_value = serde_json::to_value(v).map_err(|_| {
+                    AuthencError::SerializationError {
+                        message: "Failed to serialize array claim".to_string(),
+                    }
+                })?;
+                payload_obj.insert(k.clone(), array_value);
+            }
+        }
+
+        Ok(full_payload)
     }
 }
 
@@ -491,17 +513,39 @@ impl SdJwt {
                 }
             })?;
 
-        let payload: HashMap<String, SdJwtClaim> =
+        let raw_payload: HashMap<String, Value> =
             serde_json::from_slice(&payload_bytes).map_err(|_| {
                 AuthencError::SerializationError {
                     message: "Invalid payload format".to_string(),
                 }
             })?;
 
+        let mut payload = HashMap::new();
+        let mut array_claims = HashMap::new();
+
+        for (key, value) in raw_payload {
+            if value.is_array() {
+                // Try to parse as array claim
+                if let Ok(elements) = serde_json::from_value::<Vec<SdJwtArrayElement>>(value.clone()) {
+                    array_claims.insert(key, elements);
+                } else {
+                    // Fallback to trying to parse as SdJwtClaim (unlikely for array but possible if SdJwtClaim changes)
+                    if let Ok(claim) = serde_json::from_value::<SdJwtClaim>(value) {
+                        payload.insert(key, claim);
+                    }
+                }
+            } else {
+                // Try to parse as SdJwtClaim
+                if let Ok(claim) = serde_json::from_value::<SdJwtClaim>(value) {
+                    payload.insert(key, claim);
+                }
+            }
+        }
+
         let issuer_signed = IssuerSignedJwt {
             header,
             payload,
-            array_claims: HashMap::new(), // TODO: Parse array claims
+            array_claims,
             signature: jwt_parts[2].to_string(),
         };
 
@@ -530,6 +574,8 @@ impl SdJwt {
     /// Verify SD-JWT
     pub fn verify(&self, public_key: &VerifyingKey) -> Result<(), AuthencError> {
         // Verify issuer signature
+        let full_payload = self.issuer_signed.get_payload_as_value()?;
+
         let message = format!(
             "{}.{}",
             Base64UrlUnpadded::encode_string(
@@ -537,11 +583,7 @@ impl SdJwt {
                     .unwrap()
                     .as_bytes()
             ),
-            Base64UrlUnpadded::encode_string(
-                serde_json::to_string(&self.issuer_signed.payload)
-                    .unwrap()
-                    .as_bytes()
-            )
+            Base64UrlUnpadded::encode_string(full_payload.to_string().as_bytes())
         );
 
         let signature_bytes = Base64UrlUnpadded::decode_vec(&self.issuer_signed.signature)
@@ -1125,5 +1167,53 @@ mod tests {
             .count();
 
         assert_eq!(decoy_count, 3);
+    }
+
+    #[test]
+    fn test_sd_jwt_array_claims_parsing() {
+        use serde_json::json;
+
+        // Generate a keypair
+        let keypair = SigningKey::generate(&mut rand::rngs::OsRng);
+
+        // Create an IssuerSignedJwt
+        let mut issuer_signed = IssuerSignedJwt::new("issuer", "subject", "audience");
+
+        // Add an array claim
+        let elements = vec![
+            json!("undisclosed_elem"),
+            json!("disclosed_elem"),
+        ];
+        // Only one salt, so first element is undisclosed (if i < salts.len()), others disclosed
+        let salts = vec![SdJwtSalt::new()];
+
+        issuer_signed.add_selective_array_claim("test_array".to_string(), elements, salts).unwrap();
+
+        // Sign it (this should now include array_claims in the JSON payload)
+        issuer_signed.sign(&keypair).unwrap();
+
+        // Convert to string
+        let sd_jwt_str = issuer_signed.to_sd_jwt();
+
+        // Parse back
+        let parsed_sd_jwt = SdJwt::from_string(&sd_jwt_str).expect("Failed to parse SD-JWT");
+
+        // Verify array claims are present and correct
+        let array = parsed_sd_jwt.issuer_signed.array_claims.get("test_array").expect("test_array missing");
+        assert_eq!(array.len(), 2);
+
+        match &array[0] {
+            SdJwtArrayElement::Undisclosed { sd_hash: _ } => {
+                // Success
+            }
+            _ => panic!("First element should be undisclosed"),
+        }
+
+        match &array[1] {
+            SdJwtArrayElement::Disclosed(val) => {
+                assert_eq!(val, "disclosed_elem");
+            }
+            _ => panic!("Second element should be disclosed"),
+        }
     }
 }
