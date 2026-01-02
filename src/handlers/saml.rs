@@ -16,24 +16,24 @@ use axum::{
 };
 use std::sync::Arc;
 
-/// Mock Admin Service for SAML JIT provisioning
-struct MockAdminService {
+/// Admin Service for SAML JIT provisioning
+struct SamlAdminService {
     db: Arc<Database>,
 }
 
 #[allow(unsafe_code)]
-unsafe impl Send for MockAdminService {}
+unsafe impl Send for SamlAdminService {}
 #[allow(unsafe_code)]
-unsafe impl Sync for MockAdminService {}
+unsafe impl Sync for SamlAdminService {}
 
-impl MockAdminService {
+impl SamlAdminService {
     fn new(db: Arc<Database>) -> Self {
         Self { db }
     }
 }
 
 #[async_trait]
-impl AdminService for MockAdminService {
+impl AdminService for SamlAdminService {
     async fn get_system_stats(&self) -> Result<crate::services::admin::SystemStats, String> {
         Err("Not implemented".to_string())
     }
@@ -394,36 +394,30 @@ pub async fn saml_acs(
     {
         Ok(user_info) => {
             // Create JIT provisioning service
-            let admin_service = Arc::new(MockAdminService::new(db.clone()));
+            let admin_service = Arc::new(SamlAdminService::new(db.clone()));
             let jit_service = Arc::new(DefaultJITProvisioningService::new(
                 db.clone(),
                 admin_service,
             ));
 
+            // Helper to extract first value from attributes
+            let get_attribute_value = |key: &str| -> Option<String> {
+                user_info
+                    .attributes
+                    .get(key)
+                    .and_then(|v| v.first())
+                    .cloned()
+            };
+
             // Prepare JIT provisioning request
+            log::info!("Preparing JIT provisioning request for IDP: {}", idp_data.id);
             let jit_request = JITUserProvisioningRequest {
                 identity_provider_id: idp_data.id,
                 external_id: user_info.name_id.clone(),
-                external_username: user_info
-                    .attributes
-                    .get("username")
-                    .and_then(|v| v.first())
-                    .map(|s| s.to_string()),
-                external_email: user_info
-                    .attributes
-                    .get("email")
-                    .and_then(|v| v.first())
-                    .map(|s| s.to_string()),
-                first_name: user_info
-                    .attributes
-                    .get("firstName")
-                    .and_then(|v| v.first())
-                    .map(|s| s.to_string()),
-                last_name: user_info
-                    .attributes
-                    .get("lastName")
-                    .and_then(|v| v.first())
-                    .map(|s| s.to_string()),
+                external_username: get_attribute_value("username"),
+                external_email: get_attribute_value("email"),
+                first_name: get_attribute_value("firstName"),
+                last_name: get_attribute_value("lastName"),
                 external_attributes: Some(
                     serde_json::to_value(&user_info.attributes)
                         .map_err(|_| AuthencError::internal("Failed to serialize attributes"))?,
