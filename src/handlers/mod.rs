@@ -77,17 +77,13 @@ pub mod zero_trust;
 
 /// Create the main application router with all routes
 pub fn create_router(state: Arc<AppState>) -> Router {
-    // Database connection for compatibility (used in some places where AppState refactoring is not fully complete)
-    let db_state = state.database.clone();
-
     // Create OAuth2 stores
     let oauth2_stores = Arc::new(oauth2_comprehensive::OAuth2Stores::new());
 
     // Create combined OAuth2 state
     let oauth2_state = Arc::new(oauth2_comprehensive::OAuth2AppState {
-        database: db_state.clone(),
+        app_state: state.clone(),
         oauth2_stores,
-        consent_store: state.consent_store.clone(),
     });
 
     // Create OAuth2 test router without authentication

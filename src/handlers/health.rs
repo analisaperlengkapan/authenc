@@ -109,7 +109,6 @@ mod tests {
         http::{Request, StatusCode},
         routing::get,
     };
-    use http_body_util::BodyExt;
     use serde_json::Value;
     use tower::ServiceExt;
 
