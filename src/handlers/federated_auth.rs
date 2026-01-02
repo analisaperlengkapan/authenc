@@ -127,10 +127,24 @@ impl AdminService for MockAdminService {
                     }
                 }
 
+                // Fetch roles and groups concurrently for the response
                 let (roles_result, groups_result) = tokio::join!(
                     roles::get_user_roles(&self.db, &user.id),
                     groups::get_user_groups(&self.db, user.id)
                 );
+
+                let roles = roles_result
+                    .map_err(|e| format!("Failed to get user roles: {}", e))?
+                    .into_iter()
+                    .map(|r| r.name)
+                    .collect();
+
+                let groups = groups_result
+                    .map_err(|e| format!("Failed to get user groups: {}", e))?
+                    .into_iter()
+                    .map(|g| g.name)
+                    .collect();
+
 
                 Ok(crate::services::admin::UserResponse {
                     id: user.id,
@@ -141,16 +155,8 @@ impl AdminService for MockAdminService {
                     last_name: user.last_name,
                     enabled: user.enabled,
                     realm_id: user.realm_id.unwrap_or_default(),
-                    roles: roles_result
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|r| r.name)
-                        .collect(),
-                    groups: groups_result
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|g| g.name)
-                        .collect(),
+                    roles,
+                    groups,
                     created_at: user.created_at,
                     last_login: user.last_login_at,
                     login_attempts: user.failed_login_attempts as u32,
