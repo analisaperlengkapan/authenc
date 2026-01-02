@@ -11,12 +11,11 @@ use crate::app::AppState;
 use crate::error::AuthencError;
 use crate::models::client_registration::{
     ClientRegistrationError, ClientRegistrationRequest, ClientRegistrationResponse,
-    ClientUpdateRequest, SoftwareStatement,
+    ClientUpdateRequest,
 };
 use crate::services::client_registration::{
     ClientRegistrationService, DefaultClientRegistrationService,
 };
-use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::Deserialize;
 
 /// Create client registration routes (RFC 7591/7592)
@@ -42,11 +41,12 @@ async fn register_client(
         state.oidc_client_store.clone(),
         true,  // enable_dynamic_registration
         false, // require_software_statement
+        Some(state.config.security.jwt_secret.as_bytes().to_vec()), // Validation secret
     );
 
     // Check for software statement in Authorization header
-    let software_statement = extract_registration_token(&headers)
-        .and_then(|token| parse_software_statement(&token));
+    // In this implementation, we extract the token but don't parse it yet, passing it to the service
+    let software_statement = extract_registration_token(&headers);
 
     // Register client
     match registration_service
@@ -101,6 +101,7 @@ async fn get_client_configuration(
         state.oidc_client_store.clone(),
         true,  // enable_dynamic_registration
         false, // require_software_statement
+        Some(state.config.security.jwt_secret.as_bytes().to_vec()),
     );
 
     // Get client configuration
@@ -157,6 +158,7 @@ async fn update_client_configuration(
         state.oidc_client_store.clone(),
         true,  // enable_dynamic_registration
         false, // require_software_statement
+        Some(state.config.security.jwt_secret.as_bytes().to_vec()),
     );
 
     // Update client configuration
@@ -216,6 +218,7 @@ async fn delete_client_registration(
         state.oidc_client_store.clone(),
         true,  // enable_dynamic_registration
         false, // require_software_statement
+        Some(state.config.security.jwt_secret.as_bytes().to_vec()),
     );
 
     // Delete client registration
@@ -258,25 +261,6 @@ fn extract_registration_token(headers: &HeaderMap) -> Option<String> {
         })
 }
 
-/// Parse software statement from JWT string
-/// Note: This only decodes the payload, validation is done by the service
-fn parse_software_statement(token: &str) -> Option<SoftwareStatement> {
-    // We use jsonwebtoken to decode the token without signature validation
-    // The service layer will handle signature validation later if needed
-    let mut validation = Validation::default();
-    validation.insecure_disable_signature_validation();
-    validation.validate_exp = false; // Software statements might not have exp
-    validation.required_spec_claims.clear(); // Don't require any specific claims
-
-    let token_data = decode::<SoftwareStatement>(
-        token,
-        &DecodingKey::from_secret(&[]), // Key is ignored when signature validation is disabled
-        &validation,
-    ).ok()?;
-
-    Some(token_data.claims)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,36 +286,5 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Bearer "));
         assert_eq!(extract_registration_token(&headers), Some("".to_string()));
-    }
-
-    #[test]
-    fn test_parse_software_statement() {
-        use jsonwebtoken::{encode, EncodingKey, Header};
-        use serde_json::json;
-
-        // Create a mock JWT payload
-        let payload = SoftwareStatement {
-            software_id: Some("test_software".to_string()),
-            software_version: Some("1.0".to_string()),
-            client_metadata: [
-                ("client_name".to_string(), json!("Test Client")),
-            ].into_iter().collect(),
-        };
-
-        // Create a real JWT
-        let token = encode(
-            &Header::default(),
-            &payload,
-            &EncodingKey::from_secret(b"secret"),
-        ).unwrap();
-
-        // Test parsing
-        let stmt = parse_software_statement(&token).expect("Failed to parse software statement");
-        assert_eq!(stmt.software_id, Some("test_software".to_string()));
-        assert_eq!(stmt.software_version, Some("1.0".to_string()));
-        assert_eq!(stmt.client_metadata.get("client_name"), Some(&json!("Test Client")));
-
-        // Test invalid token format
-        assert!(parse_software_statement("invalid").is_none());
     }
 }

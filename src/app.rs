@@ -78,6 +78,14 @@ pub struct AppState {
     pub compliance_mode_service: Arc<crate::services::compliance_mode::ComplianceModeService>,
 }
 
+// Support extraction of database for health checks
+#[cfg(feature = "axum")]
+impl axum::extract::FromRef<Arc<AppState>> for crate::handlers::health::HealthState {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        crate::handlers::health::HealthState(state.database.clone())
+    }
+}
+
 impl AppState {
     /// Initialize application state with all services
     pub async fn new(config: AppConfig) -> Result<Self> {
