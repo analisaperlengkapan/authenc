@@ -5,14 +5,62 @@ use crate::database::Database;
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
+use flate2::{Compression, write::DeflateEncoder};
 use openssl::x509::X509;
 use quick_xml::Reader;
 use quick_xml::events::Event;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use uuid::Uuid;
 
 use super::saml_security::{SamlSecurityConfig, SamlSecurityValidator};
 use super::{AuthRequest, AuthResponse, IdentityProvider, IdentityProviderConfig, UserInfo};
+
+/// Internal token structure to persist SAML session details
+#[derive(Debug, Serialize, Deserialize)]
+struct SamlToken {
+    /// Session Index from IdP
+    pub session_index: String,
+    /// NameID from IdP
+    pub name_id: String,
+    /// NameID Format from IdP
+    pub name_id_format: Option<String>,
+}
+
+impl SamlToken {
+    /// Encode token to string (Base64 URL safe JSON)
+    pub fn encode(&self) -> Result<String> {
+        let json = serde_json::to_string(self)?;
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+        Ok(URL_SAFE_NO_PAD.encode(json))
+    }
+
+    /// Decode token from string
+    pub fn decode(token: &str) -> Result<Self> {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+        // Try URL Safe first
+        let bytes = match URL_SAFE_NO_PAD.decode(token) {
+            Ok(b) => b,
+            Err(_) => {
+                // Fallback to standard if needed (legacy or different encoding)
+                 use base64::engine::general_purpose::STANDARD;
+                 STANDARD.decode(token)?
+            }
+        };
+
+        // If the token is just a session index (legacy), this will fail
+        // We'll handle that by checking if it parses as JSON
+        if let Ok(token) = serde_json::from_slice(&bytes) {
+            Ok(token)
+        } else {
+            // Treat as raw session index (legacy) - missing NameID will prevent logout
+            Err(anyhow!("Invalid token format"))
+        }
+    }
+}
 
 /// SAML 2.0 Identity Provider
 pub struct SamlIdentityProvider {
@@ -30,6 +78,8 @@ pub struct SamlIdentityProvider {
     db: Arc<Database>,
     /// Security validator for comprehensive validation
     security_validator: Option<SamlSecurityValidator>,
+    /// HTTP client for API calls
+    http_client: Client,
 }
 
 impl SamlIdentityProvider {
@@ -52,6 +102,12 @@ impl SamlIdentityProvider {
             .get("logout_url")
             .unwrap_or(&"".to_string())
             .clone();
+
+        // Create HTTP client
+        let http_client = Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| Client::new());
 
         // Load X.509 certificate if provided
         let certificate = if let Some(cert_path) = &config.truststore_path {
@@ -103,6 +159,7 @@ impl SamlIdentityProvider {
             certificate,
             db,
             security_validator,
+            http_client,
         })
     }
 
@@ -282,6 +339,14 @@ impl SamlIdentityProvider {
                             in_subject = true;
                         }
                         b"saml:NameID" | b"NameID" if in_subject => {
+                            // Extract NameID Format
+                            for attr in e.attributes() {
+                                let attr = attr?;
+                                if attr.key.as_ref() == b"Format" {
+                                    assertion.name_id_format =
+                                        Some(String::from_utf8(attr.value.to_vec())?);
+                                }
+                            }
                             let text = reader.read_text(e.name())?;
                             assertion.name_id = text.to_string();
                         }
@@ -665,6 +730,24 @@ impl IdentityProvider for SamlIdentityProvider {
             // Extract user info
             let user_info = self.map_attributes_to_user_info(&assertion);
 
+            // Create composite token for SLO
+            let token = if let Some(session_index) = &assertion.session_index {
+                let saml_token = SamlToken {
+                    session_index: session_index.clone(),
+                    name_id: assertion.name_id.clone(),
+                    name_id_format: assertion.name_id_format.clone(),
+                };
+                match saml_token.encode() {
+                    Ok(t) => Some(t),
+                    Err(e) => {
+                        tracing::error!("Failed to encode SAML token: {}", e);
+                        Some(session_index.clone()) // Fallback to raw session index
+                    }
+                }
+            } else {
+                None
+            };
+
             Ok(AuthResponse {
                 success: true,
                 user_id: Some(user_info.id.clone()),
@@ -673,7 +756,7 @@ impl IdentityProvider for SamlIdentityProvider {
                 groups: user_info.groups.clone(),
                 roles: user_info.roles.clone(),
                 attributes: user_info.attributes.clone(),
-                token: assertion.session_index.clone(),
+                token,
                 refresh_token: None,
                 expires_at: assertion.not_on_or_after.map(|dt| dt.timestamp() as u64),
                 error: None,
@@ -729,18 +812,94 @@ impl IdentityProvider for SamlIdentityProvider {
 
     async fn logout(&self, token: &str) -> Result<()> {
         // Implement SAML Single Logout (SLO)
-        // This would:
-        // 1. Generate LogoutRequest XML
-        // 2. Send to IdP logout endpoint
-        // 3. Handle LogoutResponse
-        // 4. Clean up local session
-
         tracing::info!("SAML logout for session: {}", token);
 
-        // In production, send LogoutRequest to IdP
-        if !self.logout_url.is_empty() {
-            // TODO: Implement actual SAML LogoutRequest generation and sending
-            tracing::info!("Would send LogoutRequest to: {}", self.logout_url);
+        if self.logout_url.is_empty() {
+            return Ok(());
+        }
+
+        // 1. Decode token to get SessionIndex and NameID
+        let saml_token = match SamlToken::decode(token) {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to decode SAML token for logout: {}. Cannot perform SLO (IdP logout skipped).",
+                    e
+                );
+                return Ok(());
+            }
+        };
+
+        // 2. Generate LogoutRequest XML
+        let id = format!("_{}", Uuid::new_v4());
+        let issue_instant = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+        // Get SP Entity ID (Issuer)
+        let issuer = self
+            .config
+            .config
+            .get("sp_entity_id")
+            .unwrap_or(&self.entity_id);
+
+        let name_id_format_attr = if let Some(fmt) = &saml_token.name_id_format {
+            format!(" Format=\"{}\"", fmt)
+        } else {
+            String::new()
+        };
+
+        let xml = format!(
+            r#"<samlp:LogoutRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="{}" Version="2.0" IssueInstant="{}" Destination="{}"><saml:Issuer>{}</saml:Issuer><saml:NameID{}>{}</saml:NameID><samlp:SessionIndex>{}</samlp:SessionIndex></samlp:LogoutRequest>"#,
+            id,
+            issue_instant,
+            self.logout_url,
+            issuer,
+            name_id_format_attr,
+            saml_token.name_id,
+            saml_token.session_index
+        );
+
+        tracing::debug!("Generated SAML LogoutRequest: {}", xml);
+
+        // 3. Send to IdP logout endpoint using HTTP-Redirect Binding
+        // DEFLATE + Base64 + URL Encode
+        use std::io::Write;
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        if let Err(e) = encoder.write_all(xml.as_bytes()) {
+            tracing::error!("Failed to compress SAML LogoutRequest: {}", e);
+            return Ok(());
+        }
+        let compressed_bytes = match encoder.finish() {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::error!("Failed to finish compression for SAML LogoutRequest: {}", e);
+                return Ok(());
+            }
+        };
+
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let saml_request = STANDARD.encode(compressed_bytes);
+
+        // Send GET request (HTTP-Redirect Binding)
+        tracing::info!("Sending LogoutRequest to: {}", self.logout_url);
+
+        let response = self
+            .http_client
+            .get(&self.logout_url)
+            .query(&[("SAMLRequest", saml_request)])
+            .send()
+            .await;
+
+        match response {
+            Ok(res) => {
+                if res.status().is_success() {
+                    tracing::info!("Successfully sent SAML LogoutRequest to IdP");
+                } else {
+                    tracing::warn!("IdP returned error for LogoutRequest: {}", res.status());
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to send SAML LogoutRequest: {}", e);
+            }
         }
 
         Ok(())
@@ -754,6 +913,8 @@ struct SamlAssertion {
     id: String,
     /// Subject NameID
     name_id: String,
+    /// Subject NameID Format
+    name_id_format: Option<String>,
     /// NotBefore condition
     not_before: Option<DateTime<Utc>>,
     /// NotOnOrAfter condition
@@ -776,6 +937,32 @@ mod tests {
         assert!(assertion.id.is_empty());
         assert!(assertion.name_id.is_empty());
         assert!(assertion.attributes.is_empty());
+    }
+
+    #[test]
+    fn test_saml_token_encode_decode() {
+        let original_token = SamlToken {
+            session_index: "session-123".to_string(),
+            name_id: "user@example.com".to_string(),
+            name_id_format: Some(
+                "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress".to_string(),
+            ),
+        };
+
+        let encoded = original_token.encode().unwrap();
+        let decoded = SamlToken::decode(&encoded).unwrap();
+
+        assert_eq!(decoded.session_index, original_token.session_index);
+        assert_eq!(decoded.name_id, original_token.name_id);
+        assert_eq!(decoded.name_id_format, original_token.name_id_format);
+    }
+
+    #[test]
+    fn test_saml_token_legacy_fallback() {
+        // Legacy token (raw string) should fail decoding
+        let legacy_token = "legacy-session-index";
+        let result = SamlToken::decode(legacy_token);
+        assert!(result.is_err());
     }
 
     #[tokio::test]
