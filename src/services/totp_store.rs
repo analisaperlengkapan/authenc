@@ -15,6 +15,8 @@ pub struct TotpStore {
     entries: Arc<RwLock<HashMap<String, TotpEntry>>>,
     /// user_id -> hashed backup codes mapping
     backup_codes: Arc<RwLock<HashMap<String, Vec<String>>>>,
+    /// user_id -> last used timestamp mapping
+    last_used_at: Arc<RwLock<HashMap<String, DateTime<Utc>>>>,
 }
 
 impl Default for TotpStore {
@@ -29,6 +31,7 @@ impl TotpStore {
         TotpStore {
             entries: Arc::new(RwLock::new(HashMap::new())),
             backup_codes: Arc::new(RwLock::new(HashMap::new())),
+            last_used_at: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -85,7 +88,16 @@ impl TotpStore {
             .entries
             .write()
             .map_err(|e| format!("Lock poisoned: {e}"))?;
-        Ok(entries.remove(user_id).is_some())
+        let removed = entries.remove(user_id).is_some();
+
+        // Also remove last used timestamp
+        let mut last_used_at = self
+            .last_used_at
+            .write()
+            .map_err(|e| format!("Lock poisoned: {e}"))?;
+        last_used_at.remove(user_id);
+
+        Ok(removed)
     }
 
     /// Get TOTP configured timestamp for user
@@ -120,6 +132,40 @@ impl TotpStore {
             .read()
             .map_err(|e| format!("Lock poisoned: {e}"))?;
         Ok(entries.get(user_id).map(|e| (e.secret.clone(), e.created_at)))
+    }
+
+    /// Record TOTP usage timestamp for user
+    ///
+    /// # Arguments
+    /// * `user_id` - The user identifier
+    ///
+    /// # Returns
+    /// * `Ok(())` on successful storage
+    /// * `Err(String)` if there's a lock poisoning error
+    pub fn record_usage(&self, user_id: &str) -> Result<(), String> {
+        let mut last_used_at = self
+            .last_used_at
+            .write()
+            .map_err(|e| format!("Lock poisoned: {e}"))?;
+        last_used_at.insert(user_id.to_string(), Utc::now());
+        Ok(())
+    }
+
+    /// Get TOTP last used timestamp for user
+    ///
+    /// # Arguments
+    /// * `user_id` - The user identifier
+    ///
+    /// # Returns
+    /// * `Ok(Some(DateTime<Utc>))` containing the last used timestamp if it exists
+    /// * `Ok(None)` if no timestamp is found for the user
+    /// * `Err(String)` if there's a lock poisoning error
+    pub fn get_last_used_at(&self, user_id: &str) -> Result<Option<DateTime<Utc>>, String> {
+        let last_used_at = self
+            .last_used_at
+            .read()
+            .map_err(|e| format!("Lock poisoned: {e}"))?;
+        Ok(last_used_at.get(user_id).cloned())
     }
 
     /// Set backup codes for user (hashed)
@@ -238,5 +284,37 @@ mod tests {
         let info = store.get_totp_info(user_id).unwrap().unwrap();
         assert_eq!(info.0, "secret2");
         assert_eq!(info.1, created_at_2);
+    }
+
+    #[test]
+    fn test_record_usage() {
+        let store = TotpStore::new();
+        let user_id = "user123";
+
+        // Initially no last used time
+        assert!(store.get_last_used_at(user_id).unwrap().is_none());
+
+        // Record usage
+        store.record_usage(user_id).unwrap();
+
+        // Check it was recorded
+        let last_used = store.get_last_used_at(user_id).unwrap();
+        assert!(last_used.is_some());
+    }
+
+    #[test]
+    fn test_remove_secret_clears_usage() {
+        let store = TotpStore::new();
+        let user_id = "user123";
+
+        store.set_secret(user_id, "secret").unwrap();
+        store.record_usage(user_id).unwrap();
+
+        assert!(store.get_last_used_at(user_id).unwrap().is_some());
+
+        store.remove_secret(user_id).unwrap();
+
+        assert!(store.get_last_used_at(user_id).unwrap().is_none());
+        assert!(store.get_secret(user_id).unwrap().is_none());
     }
 }

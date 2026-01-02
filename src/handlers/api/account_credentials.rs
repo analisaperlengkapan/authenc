@@ -64,17 +64,24 @@ pub async fn get_account_credentials(
         last_used_at: user.last_login_at,
     });
 
-    // Check if TOTP is configured
+
+    // Check if TOTP is configured using atomic retrieval
     let user_id_str = user_id.to_string();
     if let Ok(Some((_, created_at))) = state.totp_store.get_totp_info(&user_id_str) {
+        let totp_last_used_at = state
+            .totp_store
+            .get_last_used_at(&user_id_str)
+            .unwrap_or(None);
+
         credentials.push(CredentialResponse {
             id: "totp".to_string(),
             credential_type: CredentialType::Totp,
             user_label: Some("Authenticator App".to_string()),
             created_at,
-            last_used_at: None, // TODO: Track TOTP usage
+            last_used_at: totp_last_used_at,
         });
     }
+
 
     Ok(Json(credentials))
 }
@@ -196,7 +203,8 @@ pub async fn setup_totp(
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     // Check if TOTP is already configured
-    if let Ok(Some(_)) = state.totp_store.get_secret(&user_id.to_string()) {
+    let user_id_str = user_id.to_string();
+    if let Ok(Some(_)) = state.totp_store.get_secret(&user_id_str) {
         return Err(AuthencError::validation("TOTP already configured"));
     }
 
@@ -209,7 +217,7 @@ pub async fn setup_totp(
     // For now, we'll store it directly - in production, use a temporary store
     state
         .totp_store
-        .set_secret(&user_id.to_string(), &secret)
+        .set_secret(&user_id_str, &secret)
         .map_err(|e| AuthencError::internal(format!("Failed to store TOTP secret: {}", e)))?;
 
     // Get user for account name
@@ -252,15 +260,21 @@ pub async fn verify_totp_setup(
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     // Get the stored secret
+    let user_id_str = user_id.to_string();
     let secret = state
         .totp_store
-        .get_secret(&user_id.to_string())
+        .get_secret(&user_id_str)
         .map_err(|e| AuthencError::internal(format!("Failed to get TOTP secret: {}", e)))?
         .ok_or_else(|| AuthencError::validation("TOTP not configured"))?;
 
     // Verify the code
     if !verify_totp_code(&secret, &verify_request.code) {
         return Err(AuthencError::validation("Invalid TOTP code"));
+    }
+
+    // Record usage
+    if let Err(e) = state.totp_store.record_usage(&user_id_str) {
+        tracing::error!("Failed to record TOTP usage: {}", e);
     }
 
     // TOTP is now verified and active
