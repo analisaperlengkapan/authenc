@@ -246,6 +246,30 @@ pub fn create_saml_routes() -> Router<Arc<Database>> {
         .route("/slo", get(saml_slo))
 }
 
+fn get_default_sp_config() -> SamlServiceProvider {
+    SamlServiceProvider {
+        entity_id: "https://authenc.example.com/saml/sp".to_string(),
+        realm_id: uuid::Uuid::nil(), // Placeholder Realm ID
+        assertion_consumer_service_url: "https://authenc.example.com/saml/acs".to_string(),
+        single_logout_service_url: Some("https://authenc.example.com/saml/slo".to_string()),
+        name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
+        want_assertions_signed: true,
+        want_response_signed: true,
+    }
+}
+
+fn get_default_idp_config() -> SamlIdentityProvider {
+    SamlIdentityProvider {
+        id: uuid::Uuid::nil(), // Placeholder ID
+        entity_id: "https://idp.example.com/saml/idp".to_string(),
+        sso_url: "https://idp.example.com/saml/auth".to_string(),
+        slo_url: Some("https://idp.example.com/saml/slo".to_string()),
+        certificate: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...".to_string(),
+        name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
+        want_authn_requests_signed: true,
+    }
+}
+
 /// SAML service provider metadata endpoint
 pub async fn sp_metadata(
     State(db): State<Arc<Database>>,
@@ -254,17 +278,10 @@ pub async fn sp_metadata(
     let mut service = SamlService::new(db);
 
     // In production, load from configuration
-    let sp = SamlServiceProvider {
-        entity_id: "https://authenc.example.com/saml/sp".to_string(),
-        assertion_consumer_service_url: "https://authenc.example.com/saml/acs".to_string(),
-        single_logout_service_url: Some("https://authenc.example.com/saml/slo".to_string()),
-        name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
-        want_assertions_signed: true,
-        want_response_signed: true,
-    };
-    service.register_service_provider(sp);
+    let sp = get_default_sp_config();
+    service.register_service_provider(sp.clone());
 
-    let default_entity_id = "https://authenc.example.com/saml/sp".to_string();
+    let default_entity_id = sp.entity_id.clone();
     let entity_id = params.get("entity_id").unwrap_or(&default_entity_id);
 
     match service.generate_sp_metadata(entity_id) {
@@ -281,17 +298,23 @@ pub async fn idp_metadata(
     let mut service = SamlService::new(db);
 
     // In production, load from configuration
-    let idp = SamlIdentityProvider {
-        entity_id: "https://authenc.example.com/saml/idp".to_string(),
-        sso_url: "https://authenc.example.com/saml/auth".to_string(),
-        slo_url: Some("https://authenc.example.com/saml/slo".to_string()),
-        certificate: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...".to_string(), // Placeholder
-        name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
-        want_authn_requests_signed: true,
-    };
-    service.register_identity_provider(idp);
+    // Note: For IDP metadata, we might want to use "authenc" entity ID instead of external "idp" entity ID
+    // but sticking to existing pattern for now where we seem to be configuring "our" IDP representation?
+    // Actually, looking at previous code:
+    // idp_metadata used "https://authenc.example.com/saml/idp"
+    // saml_auth used "https://idp.example.com/saml/idp"
+    // The previous `idp_metadata` implementation used a DIFFERENT entity ID than `saml_auth`.
+    // I should respect that difference.
 
-    let default_entity_id = "https://authenc.example.com/saml/idp".to_string();
+    let mut idp = get_default_idp_config();
+    // Override for local metadata generation as per previous implementation
+    idp.entity_id = "https://authenc.example.com/saml/idp".to_string();
+    idp.sso_url = "https://authenc.example.com/saml/auth".to_string();
+    idp.slo_url = Some("https://authenc.example.com/saml/slo".to_string());
+
+    service.register_identity_provider(idp.clone());
+
+    let default_entity_id = idp.entity_id.clone();
     let entity_id = params.get("entity_id").unwrap_or(&default_entity_id);
 
     match service.generate_idp_metadata(entity_id) {
@@ -308,31 +331,17 @@ pub async fn saml_auth(
     let mut service = SamlService::new(db);
 
     // Register service provider
-    let sp = SamlServiceProvider {
-        entity_id: "https://authenc.example.com/saml/sp".to_string(),
-        assertion_consumer_service_url: "https://authenc.example.com/saml/acs".to_string(),
-        single_logout_service_url: Some("https://authenc.example.com/saml/slo".to_string()),
-        name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
-        want_assertions_signed: true,
-        want_response_signed: true,
-    };
-    service.register_service_provider(sp);
+    let sp = get_default_sp_config();
+    service.register_service_provider(sp.clone());
 
     // Register identity provider
-    let idp = SamlIdentityProvider {
-        entity_id: "https://idp.example.com/saml/idp".to_string(),
-        sso_url: "https://idp.example.com/saml/auth".to_string(),
-        slo_url: Some("https://idp.example.com/saml/slo".to_string()),
-        certificate: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...".to_string(),
-        name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
-        want_authn_requests_signed: true,
-    };
-    service.register_identity_provider(idp);
+    let idp = get_default_idp_config();
+    service.register_identity_provider(idp.clone());
 
-    let default_sp_entity_id = "https://authenc.example.com/saml/sp".to_string();
+    let default_sp_entity_id = sp.entity_id.clone();
     let sp_entity_id = params.get("sp").unwrap_or(&default_sp_entity_id);
 
-    let default_idp_entity_id = "https://idp.example.com/saml/idp".to_string();
+    let default_idp_entity_id = idp.entity_id.clone();
     let idp_entity_id = params.get("idp").unwrap_or(&default_idp_entity_id);
 
     let relay_state = params.get("RelayState").map(|s| s.as_str());
@@ -369,7 +378,7 @@ pub async fn saml_acs(
         .get_issuer_and_xml_from_response(saml_response)
         .map_err(|e| AuthencError::validation(format!("Failed to parse SAML response: {}", e)))?;
 
-    // Look up Identity Provider
+    // Look up Identity Provider from database to get realm_id
     let idp_data = get_identity_provider_by_entity_id(&db, &issuer)
         .await
         .map_err(|e| AuthencError::internal(format!("Database error: {}", e)))?
@@ -400,7 +409,7 @@ pub async fn saml_acs(
                 admin_service,
             ));
 
-            // Prepare JIT provisioning request
+            // Prepare JIT provisioning request using realm_id from IDP config
             log::info!("Preparing JIT provisioning request for IDP: {}", idp_data.id);
             let jit_request = JITUserProvisioningRequest {
                 identity_provider_id: idp_data.id,
