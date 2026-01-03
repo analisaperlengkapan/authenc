@@ -418,6 +418,8 @@ pub struct CreatePolicyRequest {
     pub logic: String,
     /// Configuration for the new policy
     pub config: serde_json::Value,
+    /// Whether the policy is enabled
+    pub enabled: Option<bool>,
     /// ID of the realm for the new policy
     pub realm_id: Uuid,
 }
@@ -1468,7 +1470,7 @@ impl AdminService for AdminManager {
             &request.policy_type,
             &request.logic,
             &request.config,
-            true, // enabled by default for new policies if not specified, but request doesn't have enabled field?
+            request.enabled.unwrap_or(true),
             request.realm_id,
         )
         .await

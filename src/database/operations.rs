@@ -10608,7 +10608,7 @@ pub mod policies {
     use chrono::Utc;
     use uuid::Uuid;
 
-    /// Get policies by realm
+    /// Get policies by realm with pagination
     pub async fn get_policies_by_realm(
         db: &Database,
         realm_id: Uuid,
@@ -10695,7 +10695,6 @@ pub mod policies {
             )
             .await
             .map_err(|e| {
-                // error!("Failed to create policy: {}", e);
                 AuthencError::database(format!("Failed to create policy: {}", e))
             })?;
 
