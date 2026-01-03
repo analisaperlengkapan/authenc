@@ -435,7 +435,7 @@ impl ComplianceCheck for GDPRDataRetentionCheck {
 
             // Test 1: Check audit logs are being cleaned up (40 points)
             // Verify old audit logs (> 90 days) have been removed
-            match crate::database::operations::audit::get_audit_log_count(db, None, None).await {
+            match crate::database::operations::audit::get_audit_log_count(db, None, None, None).await {
                 Ok(total_count) => {
                     // Check for very old logs (> 90 days ago)
                     let ninety_days_ago = (Utc::now() - Duration::days(90))
@@ -910,7 +910,7 @@ impl ComplianceCheck for HIPAAAuditControlsCheck {
         // Check if audit logging system is operational
         if let Some(db) = &self.database {
             // Test 1: Check if audit_logs table has recent entries (last 24 hours)
-            match crate::database::operations::audit::get_audit_log_count(db, None, None).await {
+            match crate::database::operations::audit::get_audit_log_count(db, None, None, None).await {
                 Ok(count) if count > 0 => {
                     score += 40.0;
                     evidence.push(format!(
@@ -936,7 +936,9 @@ impl ComplianceCheck for HIPAAAuditControlsCheck {
             }
 
             // Test 2: Query recent audit logs to verify capture of different event types
-            match crate::database::operations::audit::get_audit_logs(db, None, None, 100, 0).await {
+            match crate::database::operations::audit::get_audit_logs(db, None, None, None, 100, 0)
+                .await
+            {
                 Ok(logs) if !logs.is_empty() => {
                     score += 30.0;
                     let unique_event_types: std::collections::HashSet<_> =

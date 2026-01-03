@@ -119,3 +119,29 @@ CREATE TRIGGER update_resource_servers_updated_at BEFORE UPDATE ON resource_serv
 CREATE TRIGGER update_scopes_updated_at BEFORE UPDATE ON scopes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_resources_updated_at BEFORE UPDATE ON resources FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_permission_tickets_updated_at BEFORE UPDATE ON permission_tickets FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- AUTHORIZATION POLICIES
+-- ============================================================================
+
+-- Authorization policies table
+CREATE TABLE IF NOT EXISTS authorization_policies (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    policy_type VARCHAR(50) NOT NULL,
+    logic VARCHAR(20) NOT NULL DEFAULT 'Positive',
+    config JSONB NOT NULL DEFAULT '{}',
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    realm_id UUID NOT NULL REFERENCES realms(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
+);
+
+-- Authorization policies indexes
+CREATE INDEX IF NOT EXISTS idx_authorization_policies_realm_id ON authorization_policies(realm_id);
+CREATE INDEX IF NOT EXISTS idx_authorization_policies_name ON authorization_policies(name);
+
+-- Trigger for authorization_policies updated_at
+CREATE TRIGGER update_authorization_policies_updated_at BEFORE UPDATE ON authorization_policies FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

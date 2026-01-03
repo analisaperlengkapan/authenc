@@ -307,20 +307,37 @@ pub async fn delete_role(
 
 /// List authorization policies
 pub async fn list_policies(
-    State(_state): State<Arc<AppState>>,
-    Query(_query): Query<ListPoliciesQuery>,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ListPoliciesQuery>,
 ) -> Result<Json<Vec<PolicyResponse>>, StatusCode> {
-    // Mock response - in real implementation would fetch from service
-    Ok(Json(vec![]))
+    let admin_manager = AdminManager::new(state.database.clone());
+    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+    let page = query.page.unwrap_or(1);
+    let limit = query.limit.unwrap_or(20);
+
+    match admin_manager.get_policies(&realm_id, page, limit).await {
+        Ok(policies) => Ok(Json(policies)),
+        Err(e) => {
+            eprintln!("Failed to list policies: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Create authorization policy
 pub async fn create_policy(
-    State(_state): State<Arc<AppState>>,
-    Json(_request): Json<CreatePolicyRequest>,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<CreatePolicyRequest>,
 ) -> Result<Json<PolicyResponse>, StatusCode> {
-    // Mock response - in real implementation would create via service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.create_policy(request).await {
+        Ok(policy) => Ok(Json(policy)),
+        Err(e) => {
+            eprintln!("Failed to create policy: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Get security events

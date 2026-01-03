@@ -129,6 +129,44 @@ pub mod groups {
         }
     }
 
+    /// Get group by name in a realm
+    pub async fn get_group_by_name(
+        db: &Database,
+        realm_id: Uuid,
+        name: &str,
+    ) -> Result<Option<Group>> {
+        let query = r#"
+            SELECT
+                id, realm_id, parent_id, name, path,
+                description, attributes, created_at, updated_at
+            FROM groups
+            WHERE realm_id = $1 AND name = $2
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> =
+            db.query(query, &[&realm_id, &name]).await.map_err(|e| {
+                error!("Failed to get group by name: {}", e);
+                AuthencError::database(format!("Failed to get group by name: {}", e))
+            })?;
+
+        if rows.is_empty() {
+            Ok(None)
+        } else {
+            let row = &rows[0];
+            Ok(Some(Group {
+                id: row.get(0),
+                realm_id: row.get(1),
+                parent_id: row.get(2),
+                name: row.get(3),
+                path: row.get(4),
+                description: row.get(5),
+                attributes: row.get(6),
+                created_at: row.get(7),
+                updated_at: row.get(8),
+            }))
+        }
+    }
+
     /// Get all groups in a realm
     pub async fn get_groups_by_realm(
         db: &Database,
@@ -1808,9 +1846,10 @@ pub mod audit {
                 id, timestamp, event_type, user_id, session_id,
                 client_id, resource_type, resource_id, action,
                 status, details, ip_address, user_agent,
-                location_data, error_message, request_id, correlation_id
+                location_data, error_message, request_id, correlation_id,
+                realm_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
         "#;
 
         db.execute(
@@ -1836,6 +1875,7 @@ pub mod audit {
                 &event.error_message,
                 &event.request_id,
                 &event.correlation_id,
+                &event.realm_id,
             ],
         )
         .await?;
@@ -1848,6 +1888,7 @@ pub mod audit {
         db: &Database,
         user_id: Option<Uuid>,
         event_type: Option<&str>,
+        realm_id: Option<Uuid>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<AuditEvent>> {
@@ -1856,16 +1897,21 @@ pub mod audit {
                 id, timestamp, event_type, user_id, session_id,
                 client_id, resource_type, resource_id, action,
                 status, details, ip_address, user_agent,
-                location_data, error_message, request_id, correlation_id
+                location_data, error_message, request_id, correlation_id,
+                realm_id
             FROM audit_logs
             WHERE ($1::uuid IS NULL OR user_id = $1)
             AND ($2::text IS NULL OR event_type = $2)
+            AND ($3::uuid IS NULL OR realm_id = $3)
             ORDER BY timestamp DESC
-            LIMIT $3 OFFSET $4
+            LIMIT $4 OFFSET $5
         "#;
 
         let rows = db
-            .query(query, &[&user_id, &event_type, &limit, &offset])
+            .query(
+                query,
+                &[&user_id, &event_type, &realm_id, &limit, &offset],
+            )
             .await?;
         // Convert rows to Vec<AuditEvent>
         rows.into_iter()
@@ -1878,16 +1924,18 @@ pub mod audit {
         db: &Database,
         user_id: Option<Uuid>,
         event_type: Option<&str>,
+        realm_id: Option<Uuid>,
     ) -> Result<i64> {
         let query = r#"
             SELECT COUNT(*) FROM audit_logs
             WHERE ($1::uuid IS NULL OR user_id = $1)
             AND ($2::text IS NULL OR event_type = $2)
+            AND ($3::uuid IS NULL OR realm_id = $3)
         "#;
 
         let client = db.get_connection().await?;
         let count: i64 = client
-            .query_one(query, &[&user_id, &event_type])
+            .query_one(query, &[&user_id, &event_type, &realm_id])
             .await?
             .try_get(0)?;
         Ok(count)
@@ -10551,5 +10599,118 @@ pub mod themes {
             "admin_theme_id": row.get::<_, Option<Uuid>>("admin_theme_id"),
             "email_theme_id": row.get::<_, Option<Uuid>>("email_theme_id")
         }))
+    }
+}
+
+/// Database operations for policies
+pub mod policies {
+    use crate::database::Database;
+    use crate::error::{AuthencError, Result};
+    use crate::models::Policy;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    /// Get policies by realm with pagination
+    pub async fn get_policies_by_realm(
+        db: &Database,
+        realm_id: Uuid,
+        page: u32,
+        limit: u32,
+    ) -> Result<Vec<Policy>> {
+        let offset = (page.saturating_sub(1)) * limit;
+        let query = r#"
+            SELECT
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+            FROM policies
+            WHERE realm_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db
+            .query(
+                query,
+                &[&realm_id, &(limit as i64), &(offset as i64)],
+            )
+            .await?;
+
+        let mut policies = Vec::new();
+        for row in rows {
+            policies.push(Policy {
+                id: row.get("id"),
+                name: row.get("name"),
+                description: row.get("description"),
+                policy_type: row.get("policy_type"),
+                logic: row.get("logic"),
+                config: row.get("config"),
+                enabled: row.get("enabled"),
+                realm_id: row.get("realm_id"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            });
+        }
+
+        Ok(policies)
+    }
+
+    /// Create a new policy
+    pub async fn create_policy(
+        db: &Database,
+        name: &str,
+        description: Option<&str>,
+        policy_type: &str,
+        logic: &str,
+        config: &serde_json::Value,
+        enabled: bool,
+        realm_id: Uuid,
+    ) -> Result<Policy> {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO policies (
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &id,
+                    &name,
+                    &description,
+                    &policy_type,
+                    &logic,
+                    &config,
+                    &enabled,
+                    &realm_id,
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                AuthencError::database(format!("Failed to create policy: {}", e))
+            })?;
+
+        Ok(Policy {
+            id: row.get("id"),
+            name: row.get("name"),
+            description: row.get("description"),
+            policy_type: row.get("policy_type"),
+            logic: row.get("logic"),
+            config: row.get("config"),
+            enabled: row.get("enabled"),
+            realm_id: row.get("realm_id"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        })
     }
 }
