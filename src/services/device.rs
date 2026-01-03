@@ -664,6 +664,7 @@ impl DeviceService {
         let location_json = session.location.as_ref().map(|loc| {
             serde_json::json!({
                 "country": loc.country,
+                "region": loc.region,
                 "city": loc.city,
                 "latitude": loc.latitude,
                 "longitude": loc.longitude
