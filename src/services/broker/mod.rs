@@ -655,10 +655,41 @@ impl IdentityBroker for SocialIdentityBroker {
         Ok(None)
     }
 
-    async fn get_user_info(&self, _identifier: &str) -> Result<Option<User>, String> {
-        // TODO: Implement OAuth user info retrieval
-        // This would use reqwest to call provider's user info endpoint
-        Ok(None)
+    async fn get_user_info(&self, identifier: &str) -> Result<Option<User>, String> {
+        let client = reqwest::Client::new();
+        let url = match self.provider_type {
+            IdentityProviderType::SocialGoogle => "https://www.googleapis.com/oauth2/v3/userinfo",
+            IdentityProviderType::SocialFacebook => "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name,picture",
+            IdentityProviderType::SocialGitHub => "https://api.github.com/user",
+            IdentityProviderType::SocialTwitter => "https://api.twitter.com/2/users/me?user.fields=profile_image_url,name,username",
+            _ => return Err(format!("Unsupported social provider type: {:?}", self.provider_type)),
+        };
+
+        let response = client
+            .get(url)
+            .header("Authorization", format!("Bearer {}", identifier))
+            .send()
+            .await
+            .map_err(|e| format!("Failed to send request: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!("Provider returned error: {}", response.status()));
+        }
+
+        let json: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+        let user = match self.provider_type {
+            IdentityProviderType::SocialGoogle => parse_google_user(&json),
+            IdentityProviderType::SocialFacebook => parse_facebook_user(&json),
+            IdentityProviderType::SocialGitHub => parse_github_user(&json),
+            IdentityProviderType::SocialTwitter => parse_twitter_user(&json),
+            _ => return Err("Provider parsing not implemented".to_string()),
+        }?;
+
+        Ok(Some(user))
     }
 
     async fn sync_user(&self, _external_user: &ExternalUser) -> Result<User, String> {
@@ -669,4 +700,190 @@ impl IdentityBroker for SocialIdentityBroker {
     fn provider_type(&self) -> IdentityProviderType {
         self.provider_type.clone()
     }
+}
+
+// Helper functions for parsing social user profiles
+fn parse_google_user(data: &serde_json::Value) -> Result<User, String> {
+    let email = data["email"].as_str().unwrap_or("").to_string();
+    let username = if !email.is_empty() {
+        email.clone()
+    } else {
+        data["sub"]
+            .as_str()
+            .ok_or("Missing sub field")?
+            .to_string()
+    };
+
+    let mut user = User::new(username, email, None, None);
+    user.first_name = data["given_name"].as_str().map(|s| s.to_string());
+    user.last_name = data["family_name"].as_str().map(|s| s.to_string());
+
+    if let Some(verified) = data["email_verified"].as_bool() {
+        user.email_verified = verified;
+    } else if let Some(verified) = data["email_verified"].as_str() {
+        user.email_verified = verified == "true";
+    }
+
+    user.federated = true;
+    user.attributes = Some(data.clone());
+
+    Ok(user)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_parse_google_user() {
+        let data = json!({
+            "sub": "12345",
+            "email": "test@example.com",
+            "given_name": "Test",
+            "family_name": "User",
+            "email_verified": true
+        });
+
+        let user = parse_google_user(&data).unwrap();
+        assert_eq!(user.username, "test@example.com");
+        assert_eq!(user.email, "test@example.com");
+        assert_eq!(user.first_name, Some("Test".to_string()));
+        assert_eq!(user.last_name, Some("User".to_string()));
+        assert!(user.email_verified);
+        assert!(user.federated);
+    }
+
+    #[test]
+    fn test_parse_google_user_no_email() {
+        let data = json!({
+            "sub": "12345",
+            "given_name": "Test"
+        });
+
+        let user = parse_google_user(&data).unwrap();
+        assert_eq!(user.username, "12345");
+        assert_eq!(user.email, "");
+        assert_eq!(user.first_name, Some("Test".to_string()));
+    }
+
+    #[test]
+    fn test_parse_facebook_user() {
+        let data = json!({
+            "id": "12345",
+            "email": "test@example.com",
+            "first_name": "Test",
+            "last_name": "User"
+        });
+
+        let user = parse_facebook_user(&data).unwrap();
+        assert_eq!(user.username, "test@example.com");
+        assert_eq!(user.first_name, Some("Test".to_string()));
+        assert_eq!(user.last_name, Some("User".to_string()));
+        assert!(user.federated);
+    }
+
+    #[test]
+    fn test_parse_github_user() {
+        let data = json!({
+            "login": "testuser",
+            "email": "test@example.com",
+            "name": "Test User"
+        });
+
+        let user = parse_github_user(&data).unwrap();
+        assert_eq!(user.username, "testuser");
+        assert_eq!(user.email, "test@example.com");
+        assert_eq!(user.first_name, Some("Test".to_string()));
+        assert_eq!(user.last_name, Some("User".to_string()));
+        assert!(user.federated);
+    }
+
+    #[test]
+    fn test_parse_twitter_user() {
+        let data = json!({
+            "data": {
+                "username": "testuser",
+                "name": "Test User"
+            }
+        });
+
+        let user = parse_twitter_user(&data).unwrap();
+        assert_eq!(user.username, "testuser");
+        assert_eq!(user.first_name, Some("Test".to_string()));
+        assert_eq!(user.last_name, Some("User".to_string()));
+        assert!(user.federated);
+    }
+}
+
+fn parse_facebook_user(data: &serde_json::Value) -> Result<User, String> {
+    let id = data["id"].as_str().ok_or("Missing id field")?.to_string();
+    let email = data["email"].as_str().unwrap_or("").to_string();
+    let username = if !email.is_empty() {
+        email.clone()
+    } else {
+        id.clone()
+    };
+
+    let mut user = User::new(username, email, None, None);
+    user.first_name = data["first_name"].as_str().map(|s| s.to_string());
+    user.last_name = data["last_name"].as_str().map(|s| s.to_string());
+    user.federated = true;
+    user.attributes = Some(data.clone());
+
+    Ok(user)
+}
+
+fn parse_github_user(data: &serde_json::Value) -> Result<User, String> {
+    let login = data["login"]
+        .as_str()
+        .ok_or("Missing login field")?
+        .to_string();
+    let email = data["email"].as_str().unwrap_or("").to_string();
+
+    let mut user = User::new(login, email, None, None);
+
+    if let Some(name) = data["name"].as_str() {
+        let parts: Vec<&str> = name.split_whitespace().collect();
+        if !parts.is_empty() {
+            user.first_name = Some(parts[0].to_string());
+            if parts.len() > 1 {
+                user.last_name = Some(parts[1..].join(" "));
+            }
+        }
+    }
+
+    user.federated = true;
+    user.attributes = Some(data.clone());
+
+    Ok(user)
+}
+
+fn parse_twitter_user(data: &serde_json::Value) -> Result<User, String> {
+    let data_obj = data
+        .get("data")
+        .ok_or("Missing data object in Twitter response")?;
+
+    let username = data_obj["username"]
+        .as_str()
+        .ok_or("Missing username field")?
+        .to_string();
+    let email = "".to_string();
+
+    let mut user = User::new(username, email, None, None);
+
+    if let Some(name) = data_obj["name"].as_str() {
+        let parts: Vec<&str> = name.split_whitespace().collect();
+        if !parts.is_empty() {
+            user.first_name = Some(parts[0].to_string());
+            if parts.len() > 1 {
+                user.last_name = Some(parts[1..].join(" "));
+            }
+        }
+    }
+
+    user.federated = true;
+    user.attributes = Some(data.clone());
+
+    Ok(user)
 }
