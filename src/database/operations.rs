@@ -1844,9 +1844,10 @@ pub mod audit {
                 id, timestamp, event_type, user_id, session_id,
                 client_id, resource_type, resource_id, action,
                 status, details, ip_address, user_agent,
-                location_data, error_message, request_id, correlation_id
+                location_data, error_message, request_id, correlation_id,
+                realm_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
         "#;
 
         db.execute(
@@ -1872,6 +1873,7 @@ pub mod audit {
                 &event.error_message,
                 &event.request_id,
                 &event.correlation_id,
+                &event.realm_id,
             ],
         )
         .await?;
@@ -1884,6 +1886,7 @@ pub mod audit {
         db: &Database,
         user_id: Option<Uuid>,
         event_type: Option<&str>,
+        realm_id: Option<Uuid>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<AuditEvent>> {
@@ -1892,16 +1895,21 @@ pub mod audit {
                 id, timestamp, event_type, user_id, session_id,
                 client_id, resource_type, resource_id, action,
                 status, details, ip_address, user_agent,
-                location_data, error_message, request_id, correlation_id
+                location_data, error_message, request_id, correlation_id,
+                realm_id
             FROM audit_logs
             WHERE ($1::uuid IS NULL OR user_id = $1)
             AND ($2::text IS NULL OR event_type = $2)
+            AND ($3::uuid IS NULL OR realm_id = $3)
             ORDER BY timestamp DESC
-            LIMIT $3 OFFSET $4
+            LIMIT $4 OFFSET $5
         "#;
 
         let rows = db
-            .query(query, &[&user_id, &event_type, &limit, &offset])
+            .query(
+                query,
+                &[&user_id, &event_type, &realm_id, &limit, &offset],
+            )
             .await?;
         // Convert rows to Vec<AuditEvent>
         rows.into_iter()
@@ -1914,16 +1922,18 @@ pub mod audit {
         db: &Database,
         user_id: Option<Uuid>,
         event_type: Option<&str>,
+        realm_id: Option<Uuid>,
     ) -> Result<i64> {
         let query = r#"
             SELECT COUNT(*) FROM audit_logs
             WHERE ($1::uuid IS NULL OR user_id = $1)
             AND ($2::text IS NULL OR event_type = $2)
+            AND ($3::uuid IS NULL OR realm_id = $3)
         "#;
 
         let client = db.get_connection().await?;
         let count: i64 = client
-            .query_one(query, &[&user_id, &event_type])
+            .query_one(query, &[&user_id, &event_type, &realm_id])
             .await?
             .try_get(0)?;
         Ok(count)
