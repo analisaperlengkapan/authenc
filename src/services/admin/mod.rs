@@ -1639,15 +1639,48 @@ impl AdminService for AdminManager {
         match provider.provider_type {
             IdentityProviderType::SAML => {
                 let sso_url = provider.config.get("sso_url").and_then(|v| v.as_str());
-                if let Some(url) = sso_url {
-                    let client = reqwest::Client::builder()
-                        .timeout(std::time::Duration::from_secs(10))
-                        .build()
-                        .map_err(|e| e.to_string())?;
+                let metadata_url = provider
+                    .config
+                    .get("metadata_url")
+                    .and_then(|v| v.as_str());
 
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                if let Some(url) = metadata_url {
+                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    let status = res.status();
+                    details.insert(
+                        "metadata_status".to_string(),
+                        serde_json::Value::Number(status.as_u16().into()),
+                    );
+
+                    if status.is_success() {
+                        details.insert(
+                            "metadata_reachable".to_string(),
+                            serde_json::Value::Bool(true),
+                        );
+                        // Check if content looks like XML
+                        let content_type = res
+                            .headers()
+                            .get(reqwest::header::CONTENT_TYPE)
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("");
+                        if content_type.contains("xml") {
+                            details.insert(
+                                "metadata_valid_content_type".to_string(),
+                                serde_json::Value::Bool(true),
+                            );
+                        }
+                    }
+                }
+
+                if let Some(url) = sso_url {
                     let res = client.get(url).send().await.map_err(|e| e.to_string())?;
                     details.insert(
-                        "status".to_string(),
+                        "sso_status".to_string(),
                         serde_json::Value::Number(res.status().as_u16().into()),
                     );
                     details.insert("reachable".to_string(), serde_json::Value::Bool(true));
@@ -1664,24 +1697,78 @@ impl AdminService for AdminManager {
                     .get("authorization_url")
                     .and_then(|v| v.as_str());
                 let token_url = provider.config.get("token_url").and_then(|v| v.as_str());
+                let userinfo_url = provider
+                    .config
+                    .get("userinfo_url")
+                    .and_then(|v| v.as_str());
 
-                let url_to_check = discovery_url.or(auth_url).or(token_url);
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .map_err(|e| e.to_string())?;
 
-                if let Some(url) = url_to_check {
-                    let client = reqwest::Client::builder()
-                        .timeout(std::time::Duration::from_secs(10))
-                        .build()
-                        .map_err(|e| e.to_string())?;
+                let mut checked_any = false;
 
+                if let Some(url) = discovery_url {
                     let res = client.get(url).send().await.map_err(|e| e.to_string())?;
                     details.insert(
-                        "status".to_string(),
+                        "discovery_status".to_string(),
                         serde_json::Value::Number(res.status().as_u16().into()),
                     );
-                    details.insert("reachable".to_string(), serde_json::Value::Bool(true));
-                } else {
-                    return Err("No Discovery or Authorization URL configured".to_string());
+
+                    if res.status().is_success() {
+                        if let Ok(json) = res.json::<serde_json::Value>().await {
+                            details.insert(
+                                "discovery_valid_json".to_string(),
+                                serde_json::Value::Bool(true),
+                            );
+                            if let Some(issuer) = json.get("issuer") {
+                                details.insert("issuer".to_string(), issuer.clone());
+                            }
+                        } else {
+                            details.insert(
+                                "discovery_valid_json".to_string(),
+                                serde_json::Value::Bool(false),
+                            );
+                        }
+                    }
+                    checked_any = true;
                 }
+
+                if let Some(url) = auth_url {
+                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    details.insert(
+                        "auth_endpoint_status".to_string(),
+                        serde_json::Value::Number(res.status().as_u16().into()),
+                    );
+                    checked_any = true;
+                }
+
+                if let Some(url) = token_url {
+                    // Token endpoint usually requires POST, but we just check reachability with GET or check if it exists
+                    // Many token endpoints return 405 Method Not Allowed on GET, which confirms reachability
+                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    details.insert(
+                        "token_endpoint_status".to_string(),
+                        serde_json::Value::Number(res.status().as_u16().into()),
+                    );
+                    checked_any = true;
+                }
+
+                if let Some(url) = userinfo_url {
+                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    details.insert(
+                        "userinfo_endpoint_status".to_string(),
+                        serde_json::Value::Number(res.status().as_u16().into()),
+                    );
+                    checked_any = true;
+                }
+
+                if !checked_any {
+                    return Err("No Discovery, Authorization, Token or UserInfo URL configured".to_string());
+                }
+
+                details.insert("reachable".to_string(), serde_json::Value::Bool(true));
             }
             IdentityProviderType::LDAP => {
                 let server_url = provider
@@ -1700,38 +1787,78 @@ impl AdminService for AdminManager {
                     .get("bind_password")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
+                let use_tls = provider
+                    .config
+                    .get("use_tls")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
 
-                let result = tokio::task::spawn_blocking(move || {
-                    let settings = LdapConnSettings::new()
-                        .set_conn_timeout(std::time::Duration::from_secs(10));
-                    // LdapConn::with_settings is blocking
-                    let mut ldap = LdapConn::with_settings(settings, &server_url)?;
-                    match (bind_dn, bind_password) {
-                        (Some(dn), Some(pw)) => {
-                            ldap.simple_bind(&dn, &pw)?.success()?;
-                        }
-                        (None, None) => {
-                            ldap.simple_bind("", "")?.success()?;
-                        }
-                        _ => {
-                            return Err(Box::from("Incomplete LDAP credentials: both bind_dn and bind_password must be provided"));
-                        }
+                // Check for required credentials if not anonymous
+                if (bind_dn.is_some() && bind_password.is_none())
+                    || (bind_dn.is_none() && bind_password.is_some())
+                {
+                    return Err(
+                        "Incomplete LDAP credentials: both bind_dn and bind_password must be provided"
+                            .to_string(),
+                    );
+                }
+
+                // Basic URL validation
+                if !server_url.starts_with("ldap://") && !server_url.starts_with("ldaps://") {
+                    return Err("Server URL must start with ldap:// or ldaps://".to_string());
+                }
+
+                let settings = LdapConnSettings::new()
+                    .set_conn_timeout(std::time::Duration::from_secs(10));
+
+                let (conn, mut ldap) =
+                    ldap3::LdapConnAsync::with_settings(settings, &server_url)
+                        .await
+                        .map_err(|e| format!("Failed to connect to LDAP server: {}", e))?;
+
+                ldap3::drive!(conn);
+
+                if use_tls {
+                    // Attempt StartTLS if configured
+                    // Note: For ldaps://, the connection is already encrypted, so StartTLS is for ldap:// upgrade
+                    if server_url.starts_with("ldap://") {
+                        // StartTLS support requires specific feature flags in ldap3 crate which are causing build conflicts.
+                        // To ensure security, we reject non-LDAPS connections when TLS is requested if we cannot upgrade.
+                        return Err("StartTLS upgrade not supported. Please use ldaps:// protocol for secure connection.".to_string());
                     }
-                    Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-                })
-                .await
-                .map_err(|e| e.to_string())?; // JoinError
+                }
 
-                match result {
-                    Ok(_) => {
-                        details.insert("connected".to_string(), serde_json::Value::Bool(true));
-                        details.insert(
-                            "authenticated".to_string(),
-                            serde_json::Value::Bool(true),
+                match (bind_dn, bind_password) {
+                    (Some(dn), Some(pw)) => {
+                        ldap.simple_bind(&dn, &pw)
+                            .await
+                            .map_err(|e| format!("Bind failed: {}", e))?
+                            .success()
+                            .map_err(|e| format!("Bind error: {}", e))?;
+                    }
+                    (None, None) => {
+                        ldap.simple_bind("", "")
+                            .await
+                            .map_err(|e| format!("Anonymous bind failed: {}", e))?
+                            .success()
+                            .map_err(|e| format!("Anonymous bind error: {}", e))?;
+                    }
+                    _ => {
+                        return Err(
+                            "Incomplete LDAP credentials: both bind_dn and bind_password must be provided"
+                                .to_string(),
                         );
                     }
-                    Err(e) => return Err(format!("LDAP connection failed: {}", e)),
                 }
+
+                // Unbind gracefully
+                let _ = ldap.unbind().await;
+
+                details.insert("connected".to_string(), serde_json::Value::Bool(true));
+                details.insert(
+                    "authenticated".to_string(),
+                    serde_json::Value::Bool(true),
+                );
             }
             _ => {
                 details.insert("skipped".to_string(), serde_json::Value::Bool(true));
