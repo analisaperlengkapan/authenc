@@ -10564,7 +10564,10 @@ pub mod policies {
     pub async fn get_policies_by_realm(
         db: &Database,
         realm_id: Uuid,
+        page: u32,
+        limit: u32,
     ) -> Result<Vec<Policy>> {
+        let offset = (page.saturating_sub(1)) * limit;
         let query = r#"
             SELECT
                 id, name, description, policy_type, logic, config,
@@ -10572,9 +10575,15 @@ pub mod policies {
             FROM policies
             WHERE realm_id = $1
             ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&realm_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db
+            .query(
+                query,
+                &[&realm_id, &(limit as i64), &(offset as i64)],
+            )
+            .await?;
 
         let mut policies = Vec::new();
         for row in rows {

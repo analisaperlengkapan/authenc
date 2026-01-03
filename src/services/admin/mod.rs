@@ -54,7 +54,12 @@ pub trait AdminService: Send + Sync {
     async fn get_audit_logs(&self, filter: AuditLogFilter) -> Result<AuditLogResponse, String>;
 
     /// Get authorization policies
-    async fn get_policies(&self, realm_id: &Uuid) -> Result<Vec<PolicyResponse>, String>;
+    async fn get_policies(
+        &self,
+        realm_id: &Uuid,
+        page: u32,
+        limit: u32,
+    ) -> Result<Vec<PolicyResponse>, String>;
 
     /// Create policy
     async fn create_policy(&self, request: CreatePolicyRequest) -> Result<PolicyResponse, String>;
@@ -1346,8 +1351,13 @@ impl AdminService for AdminManager {
         })
     }
 
-    async fn get_policies(&self, realm_id: &Uuid) -> Result<Vec<PolicyResponse>, String> {
-        match operations::policies::get_policies_by_realm(&self.db, *realm_id).await {
+    async fn get_policies(
+        &self,
+        realm_id: &Uuid,
+        page: u32,
+        limit: u32,
+    ) -> Result<Vec<PolicyResponse>, String> {
+        match operations::policies::get_policies_by_realm(&self.db, *realm_id, page, limit).await {
             Ok(policies) => {
                 let responses = policies
                     .into_iter()
