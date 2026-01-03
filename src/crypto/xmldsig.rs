@@ -1676,7 +1676,10 @@ impl CrlManager {
                                 for gen_name in names {
                                     if let x509_parser::extensions::GeneralName::URI(uri) = gen_name
                                     {
-                                        urls.push(uri.to_string());
+                                        let uri_str = uri.to_string();
+                                        if !urls.contains(&uri_str) {
+                                            urls.push(uri_str);
+                                        }
                                     }
                                 }
                             }
@@ -1688,6 +1691,12 @@ impl CrlManager {
                     }
                 }
             }
+        }
+
+        if urls.is_empty() {
+            tracing::debug!("No CRL distribution points found in certificate extensions");
+        } else {
+            tracing::debug!("Found {} CRL distribution points", urls.len());
         }
 
         Ok(urls)
