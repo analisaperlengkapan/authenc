@@ -554,6 +554,43 @@ pub mod devices {
     }
 
     /// Update device trust score
+    /// Update device details
+    pub async fn update_device_details(
+        db: &Database,
+        device_id: Uuid,
+        device_name: Option<String>,
+    ) -> Result<()> {
+        let now = Utc::now();
+
+        // Check if there are updates
+        if device_name.is_none() {
+            return Ok(());
+        }
+
+        let mut query_builder = String::from("UPDATE devices SET updated_at = $2");
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+        params.push(Box::new(device_id));
+        params.push(Box::new(now));
+        let mut param_index = 3;
+
+        if let Some(name) = device_name {
+            query_builder.push_str(&format!(", device_name = ${}", param_index));
+            params.push(Box::new(name));
+        }
+
+        query_builder.push_str(" WHERE id = $1");
+
+        let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params.iter().map(|p| p.as_ref()).collect();
+
+        db.execute(&query_builder, &params_refs).await.map_err(|e| {
+            error!("Failed to update device details: {}", e);
+            AuthencError::database(format!("Failed to update device details: {}", e))
+        })?;
+
+        Ok(())
+    }
+
     /// Update device trust score with evaluation factors
     pub async fn update_trust_score(
         db: &Database,
