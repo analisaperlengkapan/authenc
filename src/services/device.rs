@@ -283,7 +283,7 @@ impl DeviceService {
                     created_at: model_device.created_at,
                     location: model_device
                         .location_data
-                        .and_then(|v| serde_json::from_value(v).ok()),
+                        .and_then(|d| serde_json::from_value(d).ok()),
                     security_features: DeviceSecurityFeatures {
                         has_biometrics: false, // TODO: Store in database - requires biometrics detection implementation
                         has_hardware_security: false,
@@ -336,7 +336,7 @@ impl DeviceService {
                 created_at: model_device.created_at,
                 location: model_device
                     .location_data
-                    .and_then(|v| serde_json::from_value(v).ok()),
+                    .and_then(|d| serde_json::from_value(d).ok()),
                 security_features: DeviceSecurityFeatures {
                     has_biometrics: false, // TODO: Store in database - requires biometrics detection implementation
                     has_hardware_security: false,
@@ -664,6 +664,7 @@ impl DeviceService {
         let location_json = session.location.as_ref().map(|loc| {
             serde_json::json!({
                 "country": loc.country,
+                "region": loc.region,
                 "city": loc.city,
                 "latitude": loc.latitude,
                 "longitude": loc.longitude

@@ -11,6 +11,7 @@ use openssl::pkey::{PKey, Public};
 use openssl::sign::Verifier;
 use openssl::x509::store::{X509Store, X509StoreBuilder};
 use openssl::x509::{X509, X509Crl, X509StoreContext};
+use x509_parser::prelude::*;
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::collections::HashMap;
@@ -823,6 +824,67 @@ mod issuer_tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_check_key_usage() -> Result<()> {
+        let (ca_cert, ca_key) = create_ca_cert()?;
+
+        // 1. Create cert WITH digitalSignature
+        let (ds_cert, _) = create_leaf_cert(&ca_cert, &ca_key)?; // create_leaf_cert has digitalSignature
+
+        // 2. Create cert WITHOUT digitalSignature (e.g. only keyEncipherment)
+        let rsa = Rsa::generate(2048)?;
+        let pkey = PKey::from_rsa(rsa)?;
+        let mut name_builder = X509NameBuilder::new()?;
+        name_builder.append_entry_by_text("CN", "No DS")?;
+        let name = name_builder.build();
+
+        let mut builder = X509::builder()?;
+        builder.set_version(2)?;
+        builder.set_subject_name(&name)?;
+        builder.set_issuer_name(ca_cert.subject_name())?;
+        builder.set_pubkey(&pkey)?;
+        let serial_3 = BigNum::from_u32(3)?.to_asn1_integer()?;
+        builder.set_serial_number(&serial_3)?;
+        let not_before = Asn1Time::days_from_now(0)?;
+        builder.set_not_before(&not_before)?;
+        let not_after = Asn1Time::days_from_now(365)?;
+        builder.set_not_after(&not_after)?;
+
+        builder.append_extension(
+            KeyUsage::new()
+                .critical()
+                .key_encipherment() // Only KeyEncipherment, no DigitalSignature
+                .build()?,
+        )?;
+        builder.sign(&ca_key, MessageDigest::sha256())?;
+        let no_ds_cert = builder.build();
+
+        // 3. Create cert WITHOUT KeyUsage extension
+        let mut builder = X509::builder()?;
+        builder.set_version(2)?;
+        builder.set_subject_name(&name)?;
+        builder.set_issuer_name(ca_cert.subject_name())?;
+        builder.set_pubkey(&pkey)?;
+        let serial_4 = BigNum::from_u32(4)?.to_asn1_integer()?;
+        builder.set_serial_number(&serial_4)?;
+        let not_before = Asn1Time::days_from_now(0)?;
+        builder.set_not_before(&not_before)?;
+        let not_after = Asn1Time::days_from_now(365)?;
+        builder.set_not_after(&not_after)?;
+        builder.sign(&ca_key, MessageDigest::sha256())?;
+        let no_ext_cert = builder.build();
+
+        // 4. Test
+        let store_builder = X509StoreBuilder::new()?;
+        let validator = CertificateValidator::new(store_builder.build());
+
+        assert!(validator.check_key_usage(&ds_cert)?, "Cert with digitalSignature should pass");
+        assert!(!validator.check_key_usage(&no_ds_cert)?, "Cert without digitalSignature should fail");
+        assert!(validator.check_key_usage(&no_ext_cert)?, "Cert without KeyUsage extension should pass");
+
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -1006,12 +1068,36 @@ impl CertificateValidator {
     }
 
     /// Check if certificate has digital signature key usage
-    pub fn check_key_usage(&self, _cert: &X509) -> Result<bool> {
-        // Try to get key usage extension
-        // This is a simplified check - production would parse the extension properly
+    pub fn check_key_usage(&self, cert: &X509) -> Result<bool> {
+        // Use x509-parser to parse the certificate DER and check extensions
+        // This avoids issues with OpenSSL crate missing extension accessors
 
-        // For now, return true (assume valid)
-        // TODO: Implement proper key usage extension parsing
+        let der = cert.to_der()
+            .map_err(|e| anyhow!("Failed to serialize certificate to DER: {}", e))?;
+
+        let (_, x509_cert) = x509_parser::parse_x509_certificate(&der)
+            .map_err(|e| anyhow!("Failed to parse X.509 certificate: {}", e))?;
+
+        // Find KeyUsage extension (OID 2.5.29.15)
+        // x509-parser defines OIDs. keyUsage is "2.5.29.15"
+        // Use OID constant comparison for standard compliance and optimization
+
+        for ext in x509_cert.extensions() {
+            if ext.oid == x509_parser::oid_registry::OID_X509_EXT_KEY_USAGE {
+                match ext.parsed_extension() {
+                    x509_parser::extensions::ParsedExtension::KeyUsage(usage) => {
+                        // usage is KeyUsage struct
+                        return Ok(usage.digital_signature());
+                    }
+                    _ => {
+                        // Failed to parse key usage or different type
+                        return Err(anyhow!("Failed to parse KeyUsage extension"));
+                    }
+                }
+            }
+        }
+
+        // If no key usage extension is present, assume valid
         Ok(true)
     }
 
@@ -1655,15 +1741,49 @@ impl CrlManager {
     }
 
     /// Extract CRL distribution point URLs from a certificate
-    pub fn extract_crl_distribution_points(&self, _cert: &X509) -> Result<Vec<String>> {
-        // OpenSSL Rust bindings don't provide direct access to CRL distribution points
-        // This would require parsing the cRLDistributionPoints extension (OID 2.5.29.31)
-        // manually using ASN.1 parsing
+    pub fn extract_crl_distribution_points(&self, cert: &X509) -> Result<Vec<String>> {
+        // Parse certificate using x509-parser to access extensions
+        let cert_der = cert
+            .to_der()
+            .map_err(|e| anyhow!("Failed to encode certificate to DER: {}", e))?;
 
-        // TODO: Implement proper CRL distribution point extraction
-        // For now, return empty list and allow caller to provide CRL URL manually
+        let (_, parsed_cert) = X509Certificate::from_der(&cert_der)
+            .map_err(|e| anyhow!("Failed to parse certificate DER: {}", e))?;
 
-        let urls = Vec::new();
+        let mut urls = Vec::new();
+
+        for ext in parsed_cert.extensions() {
+            if let ParsedExtension::CRLDistributionPoints(cdp) = ext.parsed_extension() {
+                for point in &cdp.points {
+                    if let Some(name) = &point.distribution_point {
+                        match name {
+                            x509_parser::extensions::DistributionPointName::FullName(names) => {
+                                for gen_name in names {
+                                    if let x509_parser::extensions::GeneralName::URI(uri) = gen_name
+                                    {
+                                        let uri_str = uri.to_string();
+                                        if !urls.contains(&uri_str) {
+                                            urls.push(uri_str);
+                                        }
+                                    }
+                                }
+                            }
+                            x509_parser::extensions::DistributionPointName::NameRelativeToCRLIssuer(_) => {
+                                // Relative names not supported for now as they require LDAP/Dir context
+                                tracing::debug!("Ignoring NameRelativeToCRLIssuer in CRL DP");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if urls.is_empty() {
+            tracing::debug!("No CRL distribution points found in certificate extensions");
+        } else {
+            tracing::debug!("Found {} CRL distribution points", urls.len());
+        }
+
         Ok(urls)
     }
 
@@ -1832,12 +1952,18 @@ impl OcspClient {
     ///
     /// Note: This is a placeholder implementation. Full implementation requires
     /// parsing the AuthorityInfoAccess extension (OID 1.3.6.1.5.5.7.1.1)
-    pub fn extract_ocsp_url(&self, _cert: &X509) -> Result<String> {
-        // TODO: Implement proper AIA extension parsing
-        // For now, return error requiring manual URL configuration
-        Err(anyhow!(
-            "OCSP URL extraction not yet implemented. Please configure OCSP responder URL manually."
-        ))
+    pub fn extract_ocsp_url(&self, cert: &X509) -> Result<String> {
+        let responders = cert
+            .ocsp_responders()
+            .map_err(|e| anyhow!("Failed to extract OCSP responders: {}", e))?;
+
+        if responders.is_empty() {
+            return Err(anyhow!("No OCSP responder URL found in AIA extension"));
+        }
+
+        // Return the first responder URL
+        // openssl::string::OpensslString implements Deref to &str
+        Ok(responders[0].to_string())
     }
 
     /// Build an OCSP request for a certificate
