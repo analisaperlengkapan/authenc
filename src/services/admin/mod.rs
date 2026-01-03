@@ -3,7 +3,6 @@ use crate::database::operations;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use ldap3::{LdapConn, LdapConnSettings};
-use reqwest;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
