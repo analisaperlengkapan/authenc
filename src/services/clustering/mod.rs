@@ -560,11 +560,17 @@ impl ClusterManager {
     /// Start cluster manager
     pub async fn start(&mut self) -> Result<()> {
         // Join the cluster
+        let node_address = match get_local_ip() {
+            Some(ip) => format!("{}:{}", ip, CLUSTER_PORT),
+            None => {
+                tracing::warn!("Failed to determine local IP address, falling back to localhost");
+                format!("127.0.0.1:{}", CLUSTER_PORT)
+            }
+        };
+
         let node = ClusterNode {
             node_id: self.node_id.clone(),
-            address: get_local_ip()
-                .map(|ip| format!("{}:7800", ip))
-                .unwrap_or_else(|| "127.0.0.1:7800".to_string()),
+            address: node_address,
             status: NodeStatus::Starting,
             last_seen: chrono::Utc::now(),
             metadata: HashMap::new(),
@@ -1318,10 +1324,29 @@ impl CacheStatistics {
     }
 }
 
+/// Default cluster communication port
+const CLUSTER_PORT: u16 = 7800;
+
 /// Helper function to get the local IP address
 fn get_local_ip() -> Option<String> {
-    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
-    // Connect to a public DNS server to determine local IP (doesn't actually send data)
-    socket.connect("8.8.8.8:80").ok()?;
-    socket.local_addr().ok().map(|addr| addr.ip().to_string())
+    match std::net::UdpSocket::bind("0.0.0.0:0") {
+        Ok(socket) => {
+            // Connect to a public DNS server to determine local IP (doesn't actually send data)
+            if let Err(e) = socket.connect("8.8.8.8:80") {
+                tracing::debug!("Failed to connect to public DNS for IP discovery: {}", e);
+                return None;
+            }
+            match socket.local_addr() {
+                Ok(addr) => Some(addr.ip().to_string()),
+                Err(e) => {
+                    tracing::debug!("Failed to get local address from socket: {}", e);
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            tracing::debug!("Failed to bind UDP socket for IP discovery: {}", e);
+            None
+        }
+    }
 }
