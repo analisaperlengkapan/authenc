@@ -823,6 +823,67 @@ mod issuer_tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_check_key_usage() -> Result<()> {
+        let (ca_cert, ca_key) = create_ca_cert()?;
+
+        // 1. Create cert WITH digitalSignature
+        let (ds_cert, _) = create_leaf_cert(&ca_cert, &ca_key)?; // create_leaf_cert has digitalSignature
+
+        // 2. Create cert WITHOUT digitalSignature (e.g. only keyEncipherment)
+        let rsa = Rsa::generate(2048)?;
+        let pkey = PKey::from_rsa(rsa)?;
+        let mut name_builder = X509NameBuilder::new()?;
+        name_builder.append_entry_by_text("CN", "No DS")?;
+        let name = name_builder.build();
+
+        let mut builder = X509::builder()?;
+        builder.set_version(2)?;
+        builder.set_subject_name(&name)?;
+        builder.set_issuer_name(ca_cert.subject_name())?;
+        builder.set_pubkey(&pkey)?;
+        let serial_3 = BigNum::from_u32(3)?.to_asn1_integer()?;
+        builder.set_serial_number(&serial_3)?;
+        let not_before = Asn1Time::days_from_now(0)?;
+        builder.set_not_before(&not_before)?;
+        let not_after = Asn1Time::days_from_now(365)?;
+        builder.set_not_after(&not_after)?;
+
+        builder.append_extension(
+            KeyUsage::new()
+                .critical()
+                .key_encipherment() // Only KeyEncipherment, no DigitalSignature
+                .build()?,
+        )?;
+        builder.sign(&ca_key, MessageDigest::sha256())?;
+        let no_ds_cert = builder.build();
+
+        // 3. Create cert WITHOUT KeyUsage extension
+        let mut builder = X509::builder()?;
+        builder.set_version(2)?;
+        builder.set_subject_name(&name)?;
+        builder.set_issuer_name(ca_cert.subject_name())?;
+        builder.set_pubkey(&pkey)?;
+        let serial_4 = BigNum::from_u32(4)?.to_asn1_integer()?;
+        builder.set_serial_number(&serial_4)?;
+        let not_before = Asn1Time::days_from_now(0)?;
+        builder.set_not_before(&not_before)?;
+        let not_after = Asn1Time::days_from_now(365)?;
+        builder.set_not_after(&not_after)?;
+        builder.sign(&ca_key, MessageDigest::sha256())?;
+        let no_ext_cert = builder.build();
+
+        // 4. Test
+        let store_builder = X509StoreBuilder::new()?;
+        let validator = CertificateValidator::new(store_builder.build());
+
+        assert!(validator.check_key_usage(&ds_cert)?, "Cert with digitalSignature should pass");
+        assert!(!validator.check_key_usage(&no_ds_cert)?, "Cert without digitalSignature should fail");
+        assert!(validator.check_key_usage(&no_ext_cert)?, "Cert without KeyUsage extension should pass");
+
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -1006,12 +1067,35 @@ impl CertificateValidator {
     }
 
     /// Check if certificate has digital signature key usage
-    pub fn check_key_usage(&self, _cert: &X509) -> Result<bool> {
-        // Try to get key usage extension
-        // This is a simplified check - production would parse the extension properly
+    pub fn check_key_usage(&self, cert: &X509) -> Result<bool> {
+        // Use x509-parser to parse the certificate DER and check extensions
+        // This avoids issues with OpenSSL crate missing extension accessors
 
-        // For now, return true (assume valid)
-        // TODO: Implement proper key usage extension parsing
+        let der = cert.to_der()
+            .map_err(|e| anyhow!("Failed to serialize certificate to DER: {}", e))?;
+
+        let (_, x509_cert) = x509_parser::parse_x509_certificate(&der)
+            .map_err(|e| anyhow!("Failed to parse X.509 certificate: {}", e))?;
+
+        // Find KeyUsage extension (OID 2.5.29.15)
+        // x509-parser defines OIDs. keyUsage is "2.5.29.15"
+
+        for ext in x509_cert.extensions() {
+            if ext.oid.to_id_string() == "2.5.29.15" {
+                match ext.parsed_extension() {
+                    x509_parser::extensions::ParsedExtension::KeyUsage(usage) => {
+                        // usage is KeyUsage struct
+                        return Ok(usage.digital_signature());
+                    }
+                    _ => {
+                        // Failed to parse key usage or different type
+                        return Err(anyhow!("Failed to parse KeyUsage extension"));
+                    }
+                }
+            }
+        }
+
+        // If no key usage extension is present, assume valid
         Ok(true)
     }
 
