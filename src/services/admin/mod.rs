@@ -1011,7 +1011,13 @@ impl AdminService for AdminManager {
                     realm_id: user.realm_id.unwrap_or_else(Uuid::new_v4),
                     organization_id: user.organization_id,
                     roles: role_names,
-                    groups: vec![], // TODO: Get user groups (operation not implemented yet)
+                    groups: {
+                        // Get user groups
+                        let user_groups = operations::groups::get_user_groups(&self.db, user.id)
+                            .await
+                            .unwrap_or_default();
+                        user_groups.iter().map(|g| g.name.clone()).collect()
+                    },
                     created_at: user.created_at,
                     last_login: user.last_login_at,
                     login_attempts: user.failed_login_attempts as u32,
@@ -1063,7 +1069,13 @@ impl AdminService for AdminManager {
                     realm_id: user.realm_id.unwrap_or_else(Uuid::new_v4),
                     organization_id: user.organization_id,
                     roles: role_names,
-                    groups: vec![], // TODO: Get user groups (operation not implemented yet)
+                    groups: {
+                        // Get user groups
+                        let user_groups = operations::groups::get_user_groups(&self.db, user.id)
+                            .await
+                            .unwrap_or_default();
+                        user_groups.iter().map(|g| g.name.clone()).collect()
+                    },
                     created_at: user.created_at,
                     last_login: user.last_login_at,
                     login_attempts: user.failed_login_attempts as u32,
