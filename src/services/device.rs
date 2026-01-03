@@ -242,8 +242,10 @@ impl DeviceService {
             devices::update_trust_score(&self.db, device_id, trust_score, factors).await?;
         }
 
-        // TODO: Implement other update fields (device_name, etc.)
-        // Currently only trust score updates are supported
+        if updates.device_name.is_some() {
+            devices::update_device_details(&self.db, device_id, updates.device_name).await?;
+        }
+
         Ok(())
     }
 
