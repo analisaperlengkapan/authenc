@@ -1329,6 +1329,13 @@ const CLUSTER_PORT: u16 = 7800;
 
 /// Helper function to get the local IP address
 fn get_local_ip() -> Option<String> {
+    // Check environment variable first (standard practice for containerized environments)
+    if let Ok(addr) = std::env::var("CLUSTER_ADVERTISE_ADDRESS") {
+        if !addr.is_empty() {
+            return Some(addr);
+        }
+    }
+
     match std::net::UdpSocket::bind("0.0.0.0:0") {
         Ok(socket) => {
             // Connect to a public DNS server to determine local IP (doesn't actually send data)
@@ -1367,5 +1374,14 @@ mod tests {
             // Basic validation that it looks like an IP
             assert!(addr.contains('.'));
         }
+    }
+
+    #[test]
+    fn test_get_local_ip_with_env_var() {
+        // Test that environment variable takes precedence
+        temp_env::with_var("CLUSTER_ADVERTISE_ADDRESS", Some("10.0.0.1"), || {
+            let ip = get_local_ip();
+            assert_eq!(ip, Some("10.0.0.1".to_string()));
+        });
     }
 }
