@@ -542,7 +542,7 @@ pub mod devices {
             SELECT
                 id, user_id, device_name, device_fingerprint, trust_score,
                 risk_level, os, os_version, browser, browser_version,
-                ip_address, user_agent, last_seen_at,
+                ip_address, user_agent, location_data, last_seen_at,
                 first_seen_at, created_at, updated_at
             FROM devices
             WHERE id = $1
