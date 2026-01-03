@@ -495,13 +495,14 @@ pub mod devices {
             INSERT INTO devices (
                 id, user_id, device_name, device_fingerprint, trust_score,
                 os, os_version, browser, browser_version, ip_address,
-                user_agent, first_seen_at, last_seen_at, created_at, updated_at
+                user_agent, security_features, first_seen_at, last_seen_at,
+                created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             RETURNING
                 id, user_id, device_name, device_fingerprint, trust_score,
                 risk_level, os, os_version, browser, browser_version,
-                ip_address, user_agent, last_seen_at,
+                ip_address, user_agent, location_data, security_features, last_seen_at,
                 first_seen_at, created_at, updated_at
         "#;
 
@@ -520,6 +521,7 @@ pub mod devices {
                     &device_info.browser_version,
                     &device_info.ip_address,
                     &device_info.user_agent,
+                    &device_info.security_features,
                     &now,
                     &now,
                     &now,
@@ -542,7 +544,7 @@ pub mod devices {
             SELECT
                 id, user_id, device_name, device_fingerprint, trust_score,
                 risk_level, os, os_version, browser, browser_version,
-                ip_address, user_agent, last_seen_at,
+                ip_address, user_agent, location_data, security_features, last_seen_at,
                 first_seen_at, created_at, updated_at
             FROM devices
             WHERE id = $1
@@ -618,7 +620,7 @@ pub mod devices {
             SELECT
                 id, user_id, device_name, device_fingerprint, trust_score,
                 risk_level, os, os_version, browser, browser_version,
-                ip_address, user_agent, location_data, last_seen_at,
+                ip_address, user_agent, location_data, security_features, last_seen_at,
                 first_seen_at, created_at, updated_at
             FROM devices
             WHERE user_id = $1

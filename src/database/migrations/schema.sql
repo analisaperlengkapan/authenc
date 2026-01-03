@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS devices (
     ip_address INET,
     user_agent TEXT,
     location_data JSONB, -- Geographic location data
+    security_features JSONB, -- Device security capabilities
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

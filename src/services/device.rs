@@ -253,6 +253,20 @@ impl DeviceService {
 
         match devices::get_device_by_id(&self.db, device_id).await? {
             Some(model_device) => {
+                // Parse security features from JSON
+                let security_features = model_device
+                    .security_features
+                    .clone()
+                    .and_then(|v| serde_json::from_value(v).ok())
+                    .unwrap_or(DeviceSecurityFeatures {
+                        has_biometrics: false,
+                        has_hardware_security: false,
+                        has_screen_lock: false,
+                        encryption_enabled: false,
+                        remote_wipe_capable: false,
+                        jailbreak_detected: false,
+                    });
+
                 // Convert model Device to service DeviceInfo
                 let device_info = DeviceInfo {
                     id: model_device.id,
@@ -282,14 +296,7 @@ impl DeviceService {
                     last_seen: model_device.last_seen_at,
                     created_at: model_device.created_at,
                     location: None, // TODO: Parse from location_data JSON - requires location tracking implementation
-                    security_features: DeviceSecurityFeatures {
-                        has_biometrics: false, // TODO: Store in database - requires biometrics detection implementation
-                        has_hardware_security: false,
-                        has_screen_lock: false,
-                        encryption_enabled: false,
-                        remote_wipe_capable: false,
-                        jailbreak_detected: false,
-                    },
+                    security_features,
                 };
                 Ok(Some(device_info))
             }
@@ -305,6 +312,20 @@ impl DeviceService {
 
         let mut service_devices = Vec::new();
         for model_device in model_devices {
+            // Parse security features from JSON
+            let security_features = model_device
+                .security_features
+                .clone()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or(DeviceSecurityFeatures {
+                    has_biometrics: false,
+                    has_hardware_security: false,
+                    has_screen_lock: false,
+                    encryption_enabled: false,
+                    remote_wipe_capable: false,
+                    jailbreak_detected: false,
+                });
+
             let device_info = DeviceInfo {
                 id: model_device.id,
                 user_id: model_device.user_id,
@@ -333,14 +354,7 @@ impl DeviceService {
                 last_seen: model_device.last_seen_at,
                 created_at: model_device.created_at,
                 location: None, // TODO: Parse from location_data JSON - requires location tracking implementation
-                security_features: DeviceSecurityFeatures {
-                    has_biometrics: false, // TODO: Store in database - requires biometrics detection implementation
-                    has_hardware_security: false,
-                    has_screen_lock: false,
-                    encryption_enabled: false,
-                    remote_wipe_capable: false,
-                    jailbreak_detected: false,
-                },
+                security_features,
             };
             service_devices.push(device_info);
         }
@@ -646,6 +660,7 @@ impl DeviceService {
             browser_version: device.browser_version.clone(),
             ip_address: device.ip_address.parse().ok(),
             user_agent: Some(device.user_agent.clone()),
+            security_features: serde_json::to_value(&device.security_features).ok(),
         };
 
         devices::register_device(&self.db, device.user_id, &model_device_info).await?;
