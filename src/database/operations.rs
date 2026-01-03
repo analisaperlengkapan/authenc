@@ -129,6 +129,44 @@ pub mod groups {
         }
     }
 
+    /// Get group by name in a realm
+    pub async fn get_group_by_name(
+        db: &Database,
+        realm_id: Uuid,
+        name: &str,
+    ) -> Result<Option<Group>> {
+        let query = r#"
+            SELECT
+                id, realm_id, parent_id, name, path,
+                description, attributes, created_at, updated_at
+            FROM groups
+            WHERE realm_id = $1 AND name = $2
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> =
+            db.query(query, &[&realm_id, &name]).await.map_err(|e| {
+                error!("Failed to get group by name: {}", e);
+                AuthencError::database(format!("Failed to get group by name: {}", e))
+            })?;
+
+        if rows.is_empty() {
+            Ok(None)
+        } else {
+            let row = &rows[0];
+            Ok(Some(Group {
+                id: row.get(0),
+                realm_id: row.get(1),
+                parent_id: row.get(2),
+                name: row.get(3),
+                path: row.get(4),
+                description: row.get(5),
+                attributes: row.get(6),
+                created_at: row.get(7),
+                updated_at: row.get(8),
+            }))
+        }
+    }
+
     /// Get all groups in a realm
     pub async fn get_groups_by_realm(
         db: &Database,
