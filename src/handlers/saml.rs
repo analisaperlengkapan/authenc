@@ -116,6 +116,7 @@ impl AdminService for MockAdminService {
                     last_name: user.last_name,
                     enabled: user.enabled,
                     realm_id: user.realm_id.unwrap_or_default(),
+                    organization_id: user.organization_id,
                     roles: user_roles.into_iter().map(|r| r.name).collect(),
                     groups: user_groups.into_iter().map(|g| g.name).collect(),
                     created_at: user.created_at,
