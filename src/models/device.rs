@@ -86,7 +86,7 @@ impl TryFrom<tokio_postgres::Row> for Device {
             browser_version: row.try_get("browser_version")?,
             ip_address: row.try_get("ip_address")?,
             user_agent: row.try_get("user_agent")?,
-            location_data: None, // Not selected in query to avoid JSONB deserialization issues
+            location_data: row.try_get("location_data").ok(),
             security_features: row.try_get("security_features").ok(),
             last_seen_at: row.try_get("last_seen_at")?,
             first_seen_at: row.try_get("first_seen_at")?,
