@@ -584,6 +584,7 @@ fn create_user_from_ldap_entry(entry: &SearchEntry, config: &LdapConfig) -> Resu
 pub struct SocialIdentityBroker {
     config: SocialConfig,
     provider_type: IdentityProviderType,
+    client: reqwest::Client,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -643,6 +644,7 @@ impl SocialIdentityBroker {
         Self {
             config,
             provider_type,
+            client: reqwest::Client::new(),
         }
     }
 }
@@ -656,7 +658,6 @@ impl IdentityBroker for SocialIdentityBroker {
     }
 
     async fn get_user_info(&self, identifier: &str) -> Result<Option<User>, String> {
-        let client = reqwest::Client::new();
         let url = match self.provider_type {
             IdentityProviderType::SocialGoogle => "https://www.googleapis.com/oauth2/v3/userinfo",
             IdentityProviderType::SocialFacebook => "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name,picture",
@@ -665,7 +666,7 @@ impl IdentityBroker for SocialIdentityBroker {
             _ => return Err(format!("Unsupported social provider type: {:?}", self.provider_type)),
         };
 
-        let response = client
+        let response = self.client
             .get(url)
             .header("Authorization", format!("Bearer {}", identifier))
             .send()
