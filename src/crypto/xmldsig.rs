@@ -1079,9 +1079,10 @@ impl CertificateValidator {
 
         // Find KeyUsage extension (OID 2.5.29.15)
         // x509-parser defines OIDs. keyUsage is "2.5.29.15"
+        // Use OID constant comparison for standard compliance and optimization
 
         for ext in x509_cert.extensions() {
-            if ext.oid.to_id_string() == "2.5.29.15" {
+            if ext.oid == x509_parser::oid_registry::OID_X509_EXT_KEY_USAGE {
                 match ext.parsed_extension() {
                     x509_parser::extensions::ParsedExtension::KeyUsage(usage) => {
                         // usage is KeyUsage struct
