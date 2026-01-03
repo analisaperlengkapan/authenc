@@ -562,7 +562,9 @@ impl ClusterManager {
         // Join the cluster
         let node = ClusterNode {
             node_id: self.node_id.clone(),
-            address: "localhost:7800".to_string(), // TODO: Get actual address
+            address: get_local_ip()
+                .map(|ip| format!("{}:7800", ip))
+                .unwrap_or_else(|| "127.0.0.1:7800".to_string()),
             status: NodeStatus::Starting,
             last_seen: chrono::Utc::now(),
             metadata: HashMap::new(),
@@ -1314,4 +1316,12 @@ impl CacheStatistics {
             0.0
         };
     }
+}
+
+/// Helper function to get the local IP address
+fn get_local_ip() -> Option<String> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    // Connect to a public DNS server to determine local IP (doesn't actually send data)
+    socket.connect("8.8.8.8:80").ok()?;
+    socket.local_addr().ok().map(|addr| addr.ip().to_string())
 }
