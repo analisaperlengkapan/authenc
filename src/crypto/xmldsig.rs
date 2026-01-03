@@ -1832,12 +1832,18 @@ impl OcspClient {
     ///
     /// Note: This is a placeholder implementation. Full implementation requires
     /// parsing the AuthorityInfoAccess extension (OID 1.3.6.1.5.5.7.1.1)
-    pub fn extract_ocsp_url(&self, _cert: &X509) -> Result<String> {
-        // TODO: Implement proper AIA extension parsing
-        // For now, return error requiring manual URL configuration
-        Err(anyhow!(
-            "OCSP URL extraction not yet implemented. Please configure OCSP responder URL manually."
-        ))
+    pub fn extract_ocsp_url(&self, cert: &X509) -> Result<String> {
+        let responders = cert
+            .ocsp_responders()
+            .map_err(|e| anyhow!("Failed to extract OCSP responders: {}", e))?;
+
+        if responders.is_empty() {
+            return Err(anyhow!("No OCSP responder URL found in AIA extension"));
+        }
+
+        // Return the first responder URL
+        // openssl::string::OpensslString implements Deref to &str
+        Ok(responders[0].to_string())
     }
 
     /// Build an OCSP request for a certificate
