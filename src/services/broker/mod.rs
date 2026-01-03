@@ -1,8 +1,10 @@
 use crate::models::user::User;
 use async_trait::async_trait;
+use chrono;
 use dashmap::DashMap;
 use ldap3::SearchEntry;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -661,9 +663,46 @@ impl IdentityBroker for SocialIdentityBroker {
         Ok(None)
     }
 
-    async fn sync_user(&self, _external_user: &ExternalUser) -> Result<User, String> {
-        // TODO: Implement social user sync
-        Err("Not implemented".to_string())
+    async fn sync_user(&self, external_user: &ExternalUser) -> Result<User, String> {
+        // Map external user attributes to local User model
+        let attributes = serde_json::to_value(&external_user.attributes)
+            .map_err(|e| format!("Failed to serialize attributes: {}", e))?;
+
+        let user = User {
+            id: Uuid::new_v4(),
+            username: external_user
+                .username
+                .clone()
+                .unwrap_or_else(|| external_user.external_id.clone()),
+            email: external_user.email.clone().unwrap_or_default(),
+            email_verified: true, // Social logins are typically pre-verified by the provider
+            first_name: external_user.first_name.clone(),
+            last_name: external_user.last_name.clone(),
+            phone_number: None,
+            phone_verified: false,
+            password_hash: None, // Social users don't have local passwords
+            totp_secret: None,
+            totp_backup_codes: None,
+            webauthn_enabled: false,
+            account_locked: false,
+            account_locked_until: None,
+            failed_login_attempts: 0,
+            last_login_at: None,
+            last_failed_login_at: None,
+            password_changed_at: None,
+            password_expires_at: None,
+            require_password_change: false,
+            realm_id: None,
+            organization_id: None,
+            attributes: Some(attributes),
+            enabled: true,
+            federated: true,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            deleted_at: None,
+            login_count: 0,
+        };
+        Ok(user)
     }
 
     fn provider_type(&self) -> IdentityProviderType {
