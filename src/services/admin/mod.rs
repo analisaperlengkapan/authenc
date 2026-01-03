@@ -2,6 +2,7 @@ use crate::database::Database;
 use crate::database::operations;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use ldap3::{LdapConn, LdapConnSettings};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -1551,17 +1552,132 @@ impl AdminService for AdminManager {
         &self,
         provider_id: &Uuid,
     ) -> Result<TestIdentityProviderResponse, String> {
-        // TODO: Implement actual identity provider testing
-        // This would test the connection, validate certificates, etc.
-        let _provider_id = provider_id; // Placeholder for future implementation
+        let provider = self
+            .get_identity_provider(provider_id)
+            .await
+            .map_err(|e| format!("Failed to get provider: {}", e))?;
+
+        let mut details = serde_json::Map::new();
+        let start = std::time::Instant::now();
+
+        match provider.provider_type {
+            IdentityProviderType::SAML => {
+                let sso_url = provider.config.get("sso_url").and_then(|v| v.as_str());
+                if let Some(url) = sso_url {
+                    let client = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(10))
+                        .build()
+                        .map_err(|e| e.to_string())?;
+
+                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    details.insert(
+                        "status".to_string(),
+                        serde_json::Value::Number(res.status().as_u16().into()),
+                    );
+                    details.insert("reachable".to_string(), serde_json::Value::Bool(true));
+                } else {
+                    return Err("No SSO URL configured".to_string());
+                }
+            }
+            IdentityProviderType::OIDC
+            | IdentityProviderType::SocialLogin
+            | IdentityProviderType::OAuth2 => {
+                let discovery_url = provider.config.get("discovery_url").and_then(|v| v.as_str());
+                let auth_url = provider
+                    .config
+                    .get("authorization_url")
+                    .and_then(|v| v.as_str());
+                let token_url = provider.config.get("token_url").and_then(|v| v.as_str());
+
+                let url_to_check = discovery_url.or(auth_url).or(token_url);
+
+                if let Some(url) = url_to_check {
+                    let client = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(10))
+                        .build()
+                        .map_err(|e| e.to_string())?;
+
+                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    details.insert(
+                        "status".to_string(),
+                        serde_json::Value::Number(res.status().as_u16().into()),
+                    );
+                    details.insert("reachable".to_string(), serde_json::Value::Bool(true));
+                } else {
+                    return Err("No Discovery or Authorization URL configured".to_string());
+                }
+            }
+            IdentityProviderType::LDAP => {
+                let server_url = provider
+                    .config
+                    .get("server_url")
+                    .and_then(|v| v.as_str())
+                    .ok_or("No server_url configured")?
+                    .to_string();
+                let bind_dn = provider
+                    .config
+                    .get("bind_dn")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let bind_password = provider
+                    .config
+                    .get("bind_password")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
+                let result = tokio::task::spawn_blocking(move || {
+                    let settings = LdapConnSettings::new()
+                        .set_conn_timeout(std::time::Duration::from_secs(10));
+                    // LdapConn::with_settings is blocking
+                    let mut ldap = LdapConn::with_settings(settings, &server_url)?;
+                    match (bind_dn, bind_password) {
+                        (Some(dn), Some(pw)) => {
+                            ldap.simple_bind(&dn, &pw)?.success()?;
+                        }
+                        (None, None) => {
+                            ldap.simple_bind("", "")?.success()?;
+                        }
+                        _ => {
+                            return Err(Box::from("Incomplete LDAP credentials: both bind_dn and bind_password must be provided"));
+                        }
+                    }
+                    Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+                })
+                .await
+                .map_err(|e| e.to_string())?; // JoinError
+
+                match result {
+                    Ok(_) => {
+                        details.insert("connected".to_string(), serde_json::Value::Bool(true));
+                        details.insert(
+                            "authenticated".to_string(),
+                            serde_json::Value::Bool(true),
+                        );
+                    }
+                    Err(e) => return Err(format!("LDAP connection failed: {}", e)),
+                }
+            }
+            _ => {
+                details.insert("skipped".to_string(), serde_json::Value::Bool(true));
+                details.insert(
+                    "message".to_string(),
+                    serde_json::Value::String(
+                        "Provider type check not implemented".to_string(),
+                    ),
+                );
+            }
+        }
+
+        let duration = start.elapsed().as_millis() as u64;
+        details.insert(
+            "connection_time_ms".to_string(),
+            serde_json::Value::Number(duration.into()),
+        );
+
         Ok(TestIdentityProviderResponse {
             success: true,
             message: "Identity provider connection test successful".to_string(),
-            details: Some(serde_json::json!({
-                "connection_time_ms": 150,
-                "certificate_valid": true,
-                "metadata_retrieved": true
-            })),
+            details: Some(serde_json::Value::Object(details)),
         })
     }
 }
