@@ -10,7 +10,6 @@ use openssl::ocsp::{OcspCertId, OcspCertStatus, OcspRequest, OcspResponse, OcspR
 use openssl::pkey::{PKey, Public};
 use openssl::sign::Verifier;
 use openssl::x509::store::{X509Store, X509StoreBuilder};
-use openssl::nid::Nid;
 use openssl::x509::{X509, X509Crl, X509StoreContext};
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -1834,19 +1833,17 @@ impl OcspClient {
     /// Note: This is a placeholder implementation. Full implementation requires
     /// parsing the AuthorityInfoAccess extension (OID 1.3.6.1.5.5.7.1.1)
     pub fn extract_ocsp_url(&self, cert: &X509) -> Result<String> {
-        let aia = cert
-            .authority_info()
-            .ok_or_else(|| anyhow!("No Authority Information Access extension found"))?;
+        let responders = cert
+            .ocsp_responders()
+            .map_err(|e| anyhow!("Failed to extract OCSP responders: {}", e))?;
 
-        for access in aia {
-            if access.method().nid() == Nid::AD_OCSP {
-                if let Some(url) = access.location().uri() {
-                    return Ok(url.to_string());
-                }
-            }
+        if responders.is_empty() {
+            return Err(anyhow!("No OCSP responder URL found in AIA extension"));
         }
 
-        Err(anyhow!("No OCSP responder URL found in AIA extension"))
+        // Return the first responder URL
+        // openssl::string::OpensslString implements Deref to &str
+        Ok(responders[0].to_string())
     }
 
     /// Build an OCSP request for a certificate
