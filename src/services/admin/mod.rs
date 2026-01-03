@@ -1293,6 +1293,7 @@ impl AdminService for AdminManager {
             &self.db,
             filter.user_id,
             filter.event_type.as_deref(),
+            filter.realm_id,
             filter.limit as i64,
             offset as i64,
         )
@@ -1304,6 +1305,7 @@ impl AdminService for AdminManager {
             &self.db,
             filter.user_id,
             filter.event_type.as_deref(),
+            filter.realm_id,
         )
         .await
         .map_err(|e| format!("Failed to count audit logs: {}", e))?;
@@ -1342,7 +1344,7 @@ impl AdminService for AdminManager {
                     .user_agent
                     .clone()
                     .unwrap_or_else(|| "Unknown".to_string()),
-                realm_id: Uuid::nil(), // TODO: Add realm_id to audit_logs table if needed
+                realm_id: event.realm_id.unwrap_or_else(Uuid::nil),
                 client_id: event.client_id.clone(),
                 details: event
                     .details
