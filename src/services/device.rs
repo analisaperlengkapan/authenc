@@ -281,7 +281,9 @@ impl DeviceService {
                     is_trusted: model_device.trust_score > 0.7,
                     last_seen: model_device.last_seen_at,
                     created_at: model_device.created_at,
-                    location: None, // TODO: Parse from location_data JSON - requires location tracking implementation
+                    location: model_device
+                        .location_data
+                        .and_then(|d| serde_json::from_value(d).ok()),
                     security_features: DeviceSecurityFeatures {
                         has_biometrics: false, // TODO: Store in database - requires biometrics detection implementation
                         has_hardware_security: false,
@@ -332,7 +334,9 @@ impl DeviceService {
                 is_trusted: model_device.trust_score > 0.7,
                 last_seen: model_device.last_seen_at,
                 created_at: model_device.created_at,
-                location: None, // TODO: Parse from location_data JSON - requires location tracking implementation
+                location: model_device
+                    .location_data
+                    .and_then(|d| serde_json::from_value(d).ok()),
                 security_features: DeviceSecurityFeatures {
                     has_biometrics: false, // TODO: Store in database - requires biometrics detection implementation
                     has_hardware_security: false,
@@ -660,6 +664,7 @@ impl DeviceService {
         let location_json = session.location.as_ref().map(|loc| {
             serde_json::json!({
                 "country": loc.country,
+                "region": loc.region,
                 "city": loc.city,
                 "latitude": loc.latitude,
                 "longitude": loc.longitude

@@ -116,6 +116,7 @@ impl AdminService for MockAdminService {
                     last_name: user.last_name,
                     enabled: user.enabled,
                     realm_id: user.realm_id.unwrap_or_default(),
+                    organization_id: user.organization_id,
                     roles: user_roles.into_iter().map(|r| r.name).collect(),
                     groups: user_groups.into_iter().map(|g| g.name).collect(),
                     created_at: user.created_at,
@@ -177,6 +178,8 @@ impl AdminService for MockAdminService {
     async fn get_policies(
         &self,
         _realm_id: &uuid::Uuid,
+        _page: u32,
+        _limit: u32,
     ) -> Result<Vec<crate::services::admin::PolicyResponse>, String> {
         Err("Not implemented".to_string())
     }
