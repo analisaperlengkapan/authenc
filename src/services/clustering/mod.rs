@@ -563,7 +563,7 @@ impl ClusterManager {
         let node_address = match get_local_ip() {
             Some(ip) => format!("{}:{}", ip, CLUSTER_PORT),
             None => {
-                tracing::warn!("Failed to determine local IP address, falling back to localhost");
+                tracing::warn!("Failed to determine local IP address, falling back to 127.0.0.1");
                 format!("127.0.0.1:{}", CLUSTER_PORT)
             }
         };
@@ -1347,6 +1347,25 @@ fn get_local_ip() -> Option<String> {
         Err(e) => {
             tracing::debug!("Failed to bind UDP socket for IP discovery: {}", e);
             None
+        }
+    }
+}
+#[cfg(test)]
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_local_ip() {
+        // This test verifies that get_local_ip runs without panic
+        // and returns either Some(ip) or None.
+        let ip = get_local_ip();
+        println!("Local IP: {:?}", ip);
+        if let Some(ref addr) = ip {
+            assert!(!addr.is_empty());
+            // Basic validation that it looks like an IP
+            assert!(addr.contains('.'));
         }
     }
 }
