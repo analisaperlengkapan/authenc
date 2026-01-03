@@ -10551,3 +10551,108 @@ pub mod themes {
         }))
     }
 }
+
+/// Database operations for policies
+pub mod policies {
+    use crate::database::Database;
+    use crate::error::{AuthencError, Result};
+    use crate::models::Policy;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    /// Get policies by realm
+    pub async fn get_policies_by_realm(
+        db: &Database,
+        realm_id: Uuid,
+    ) -> Result<Vec<Policy>> {
+        let query = r#"
+            SELECT
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+            FROM policies
+            WHERE realm_id = $1
+            ORDER BY created_at DESC
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&realm_id]).await?;
+
+        let mut policies = Vec::new();
+        for row in rows {
+            policies.push(Policy {
+                id: row.get("id"),
+                name: row.get("name"),
+                description: row.get("description"),
+                policy_type: row.get("policy_type"),
+                logic: row.get("logic"),
+                config: row.get("config"),
+                enabled: row.get("enabled"),
+                realm_id: row.get("realm_id"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            });
+        }
+
+        Ok(policies)
+    }
+
+    /// Create a new policy
+    pub async fn create_policy(
+        db: &Database,
+        name: &str,
+        description: Option<&str>,
+        policy_type: &str,
+        logic: &str,
+        config: &serde_json::Value,
+        enabled: bool,
+        realm_id: Uuid,
+    ) -> Result<Policy> {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO policies (
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &id,
+                    &name,
+                    &description,
+                    &policy_type,
+                    &logic,
+                    &config,
+                    &enabled,
+                    &realm_id,
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                // error!("Failed to create policy: {}", e);
+                AuthencError::database(format!("Failed to create policy: {}", e))
+            })?;
+
+        Ok(Policy {
+            id: row.get("id"),
+            name: row.get("name"),
+            description: row.get("description"),
+            policy_type: row.get("policy_type"),
+            logic: row.get("logic"),
+            config: row.get("config"),
+            enabled: row.get("enabled"),
+            realm_id: row.get("realm_id"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        })
+    }
+}
