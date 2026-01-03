@@ -408,6 +408,8 @@ pub struct CreatePolicyRequest {
     pub logic: String,
     /// Configuration for the new policy
     pub config: serde_json::Value,
+    /// Whether the policy is enabled
+    pub enabled: Option<bool>,
     /// ID of the realm for the new policy
     pub realm_id: Uuid,
 }
@@ -1346,14 +1348,57 @@ impl AdminService for AdminManager {
         })
     }
 
-    async fn get_policies(&self, _realm_id: &Uuid) -> Result<Vec<PolicyResponse>, String> {
-        // TODO: Implement policy listing
-        Ok(vec![])
+    async fn get_policies(&self, realm_id: &Uuid) -> Result<Vec<PolicyResponse>, String> {
+        match operations::policies::get_policies_by_realm(&self.db, *realm_id).await {
+            Ok(policies) => {
+                let responses = policies
+                    .into_iter()
+                    .map(|p| PolicyResponse {
+                        id: p.id,
+                        name: p.name,
+                        description: p.description,
+                        policy_type: p.policy_type,
+                        logic: p.logic,
+                        config: p.config,
+                        enabled: p.enabled,
+                        realm_id: p.realm_id,
+                        created_at: p.created_at,
+                        updated_at: p.updated_at,
+                    })
+                    .collect();
+                Ok(responses)
+            }
+            Err(e) => Err(format!("Failed to get policies: {}", e)),
+        }
     }
 
-    async fn create_policy(&self, _request: CreatePolicyRequest) -> Result<PolicyResponse, String> {
-        // TODO: Implement policy creation
-        Err("Not implemented".to_string())
+    async fn create_policy(&self, request: CreatePolicyRequest) -> Result<PolicyResponse, String> {
+        match operations::policies::create_policy(
+            &self.db,
+            &request.name,
+            &request.description,
+            &request.policy_type,
+            &request.logic,
+            &request.config,
+            request.enabled.unwrap_or(true),
+            request.realm_id,
+        )
+        .await
+        {
+            Ok(policy) => Ok(PolicyResponse {
+                id: policy.id,
+                name: policy.name,
+                description: policy.description,
+                policy_type: policy.policy_type,
+                logic: policy.logic,
+                config: policy.config,
+                enabled: policy.enabled,
+                realm_id: policy.realm_id,
+                created_at: policy.created_at,
+                updated_at: policy.updated_at,
+            }),
+            Err(e) => Err(format!("Failed to create policy: {}", e)),
+        }
     }
 
     async fn get_zero_trust_dashboard(

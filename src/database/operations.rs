@@ -10551,3 +10551,126 @@ pub mod themes {
         }))
     }
 }
+
+/// Database operations for authorization policies
+pub mod policies {
+    use crate::database::Database;
+    use crate::error::{AuthencError, Result};
+    use chrono::{DateTime, Utc};
+    use serde::{Deserialize, Serialize};
+    use uuid::Uuid;
+    use log::error;
+
+    /// Policy model matching the database table
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct Policy {
+        pub id: Uuid,
+        pub name: String,
+        pub description: String,
+        pub policy_type: String,
+        pub logic: String,
+        pub config: serde_json::Value,
+        pub enabled: bool,
+        pub realm_id: Uuid,
+        pub created_at: DateTime<Utc>,
+        pub updated_at: DateTime<Utc>,
+    }
+
+    /// Create a new policy
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_policy(
+        db: &Database,
+        name: &str,
+        description: &str,
+        policy_type: &str,
+        logic: &str,
+        config: &serde_json::Value,
+        enabled: bool,
+        realm_id: Uuid,
+    ) -> Result<Policy> {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO authorization_policies (
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &id,
+                    &name,
+                    &description,
+                    &policy_type,
+                    &logic,
+                    &config,
+                    &enabled,
+                    &realm_id,
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to create policy: {}", e);
+                AuthencError::database(format!("Failed to create policy: {}", e))
+            })?;
+
+        Ok(Policy {
+            id: row.get(0),
+            name: row.get(1),
+            description: row.get::<_, Option<String>>(2).unwrap_or_default(),
+            policy_type: row.get(3),
+            logic: row.get(4),
+            config: row.get(5),
+            enabled: row.get(6),
+            realm_id: row.get(7),
+            created_at: row.get(8),
+            updated_at: row.get(9),
+        })
+    }
+
+    /// Get policies by realm
+    pub async fn get_policies_by_realm(db: &Database, realm_id: Uuid) -> Result<Vec<Policy>> {
+        let query = r#"
+            SELECT
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+            FROM authorization_policies
+            WHERE realm_id = $1 AND deleted_at IS NULL
+            ORDER BY name
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> =
+            db.query(query, &[&realm_id]).await.map_err(|e| {
+                error!("Failed to get policies: {}", e);
+                AuthencError::database(format!("Failed to get policies: {}", e))
+            })?;
+
+        let mut policies = Vec::new();
+        for row in rows {
+            policies.push(Policy {
+                id: row.get(0),
+                name: row.get(1),
+                description: row.get::<_, Option<String>>(2).unwrap_or_default(),
+                policy_type: row.get(3),
+                logic: row.get(4),
+                config: row.get(5),
+                enabled: row.get(6),
+                realm_id: row.get(7),
+                created_at: row.get(8),
+                updated_at: row.get(9),
+            });
+        }
+
+        Ok(policies)
+    }
+}
