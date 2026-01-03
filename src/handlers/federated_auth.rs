@@ -155,6 +155,7 @@ impl AdminService for MockAdminService {
                     last_name: user.last_name,
                     enabled: user.enabled,
                     realm_id: user.realm_id.unwrap_or_default(),
+                    organization_id: user.organization_id,
                     roles,
                     groups,
                     created_at: user.created_at,

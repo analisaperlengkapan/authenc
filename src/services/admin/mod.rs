@@ -157,6 +157,8 @@ pub struct UserResponse {
     pub email_verified: bool,
     /// ID of the realm the user belongs to
     pub realm_id: Uuid,
+    /// ID of the organization the user belongs to
+    pub organization_id: Option<Uuid>,
     /// List of roles assigned to the user
     pub roles: Vec<String>,
     /// List of groups the user belongs to
@@ -188,6 +190,8 @@ pub struct CreateUserRequest {
     pub phone_number: Option<String>,
     /// ID of the realm for the new user
     pub realm_id: Uuid,
+    /// ID of the organization for the new user
+    pub organization_id: Option<Uuid>,
     /// List of roles to assign to the new user
     pub roles: Vec<String>,
     /// List of groups to assign to the new user
@@ -900,7 +904,8 @@ impl AdminService for AdminManager {
             .unwrap_or(0) as u64;
 
         // Query users with pagination
-        let users_query = "SELECT id, username, email, first_name, last_name, enabled, email_verified, realm_id, created_at, last_login, login_attempts, locked_until FROM users WHERE realm_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3";
+        // Added organization_id to the query
+        let users_query = "SELECT id, username, email, first_name, last_name, enabled, email_verified, realm_id, created_at, last_login, login_attempts, locked_until, organization_id FROM users WHERE realm_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3";
         let rows = self
             .db
             .query_raw(users_query, &[&realm_id, &(limit as i64), &(offset as i64)])
@@ -921,6 +926,7 @@ impl AdminService for AdminManager {
             let last_login: Option<DateTime<Utc>> = row.get(9);
             let login_attempts: i32 = row.get(10);
             let locked_until: Option<DateTime<Utc>> = row.get(11);
+            let organization_id: Option<Uuid> = row.get(12);
 
             // Get roles for user (using existing get_user_roles operation)
             let roles = crate::database::operations::roles::get_user_roles(&self.db, &id)
@@ -939,6 +945,7 @@ impl AdminService for AdminManager {
                 enabled,
                 email_verified,
                 realm_id: user_realm_id,
+                organization_id,
                 roles,
                 groups: {
                     // Get user groups
@@ -972,7 +979,7 @@ impl AdminService for AdminManager {
             last_name: request.last_name.clone(),
             phone_number: request.phone_number.clone(),
             realm_id: Some(request.realm_id),
-            organization_id: None, // TODO: Add organization support
+            organization_id: request.organization_id,
             attributes: request.attributes.clone(),
         };
 
@@ -996,6 +1003,7 @@ impl AdminService for AdminManager {
                     enabled: user.enabled,
                     email_verified: user.email_verified,
                     realm_id: user.realm_id.unwrap_or_else(Uuid::new_v4),
+                    organization_id: user.organization_id,
                     roles: role_names,
                     groups: vec![], // TODO: Get user groups (operation not implemented yet)
                     created_at: user.created_at,
@@ -1047,6 +1055,7 @@ impl AdminService for AdminManager {
                     enabled: user.enabled,
                     email_verified: user.email_verified,
                     realm_id: user.realm_id.unwrap_or_else(Uuid::new_v4),
+                    organization_id: user.organization_id,
                     roles: role_names,
                     groups: vec![], // TODO: Get user groups (operation not implemented yet)
                     created_at: user.created_at,
