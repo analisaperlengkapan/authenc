@@ -11,6 +11,7 @@ use openssl::pkey::{PKey, Public};
 use openssl::sign::Verifier;
 use openssl::x509::store::{X509Store, X509StoreBuilder};
 use openssl::x509::{X509, X509Crl, X509StoreContext};
+use x509_parser::prelude::*;
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::collections::HashMap;
@@ -1655,15 +1656,40 @@ impl CrlManager {
     }
 
     /// Extract CRL distribution point URLs from a certificate
-    pub fn extract_crl_distribution_points(&self, _cert: &X509) -> Result<Vec<String>> {
-        // OpenSSL Rust bindings don't provide direct access to CRL distribution points
-        // This would require parsing the cRLDistributionPoints extension (OID 2.5.29.31)
-        // manually using ASN.1 parsing
+    pub fn extract_crl_distribution_points(&self, cert: &X509) -> Result<Vec<String>> {
+        // Parse certificate using x509-parser to access extensions
+        let cert_der = cert
+            .to_der()
+            .map_err(|e| anyhow!("Failed to encode certificate to DER: {}", e))?;
 
-        // TODO: Implement proper CRL distribution point extraction
-        // For now, return empty list and allow caller to provide CRL URL manually
+        let (_, parsed_cert) = X509Certificate::from_der(&cert_der)
+            .map_err(|e| anyhow!("Failed to parse certificate DER: {}", e))?;
 
-        let urls = Vec::new();
+        let mut urls = Vec::new();
+
+        for ext in parsed_cert.extensions() {
+            if let ParsedExtension::CRLDistributionPoints(cdp) = ext.parsed_extension() {
+                for point in &cdp.points {
+                    if let Some(name) = &point.distribution_point {
+                        match name {
+                            x509_parser::extensions::DistributionPointName::FullName(names) => {
+                                for gen_name in names {
+                                    if let x509_parser::extensions::GeneralName::URI(uri) = gen_name
+                                    {
+                                        urls.push(uri.to_string());
+                                    }
+                                }
+                            }
+                            x509_parser::extensions::DistributionPointName::NameRelativeToCRLIssuer(_) => {
+                                // Relative names not supported for now as they require LDAP/Dir context
+                                tracing::debug!("Ignoring NameRelativeToCRLIssuer in CRL DP");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(urls)
     }
 
