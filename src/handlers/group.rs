@@ -24,7 +24,7 @@ pub struct GroupListQuery {
 
 /// Create a new group
 pub async fn create_group(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Json(req): Json<CreateGroupRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let group = groups::create_group(
@@ -54,7 +54,7 @@ pub async fn create_group(
 
 /// Get all groups in a realm
 pub async fn get_groups(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(realm_id): Path<Uuid>,
     Query(query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -81,7 +81,7 @@ pub async fn get_groups(
 
 /// Get a specific group by ID
 pub async fn get_group_by_id(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(group_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let group = groups::get_group_by_id(&db, group_id)
@@ -104,7 +104,7 @@ pub async fn get_group_by_id(
 
 /// Update a group
 pub async fn update_group(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(group_id): Path<Uuid>,
     Json(req): Json<UpdateGroupRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -134,7 +134,7 @@ pub async fn update_group(
 
 /// Delete a group
 pub async fn delete_group(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(group_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::delete_group(&db, group_id).await.map_err(|e| {
@@ -147,7 +147,7 @@ pub async fn delete_group(
 
 /// Get subgroups of a group
 pub async fn get_subgroups(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(group_id): Path<Uuid>,
     Query(query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -174,7 +174,7 @@ pub async fn get_subgroups(
 
 /// Add user to group
 pub async fn add_group_member(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path((group_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::add_user_to_group(&db, user_id, group_id, None, None)
@@ -189,7 +189,7 @@ pub async fn add_group_member(
 
 /// Remove user from group
 pub async fn remove_group_member(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path((group_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::remove_user_from_group(&db, user_id, group_id)
@@ -204,7 +204,7 @@ pub async fn remove_group_member(
 
 /// Get members of a group
 pub async fn get_group_members(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(group_id): Path<Uuid>,
     Query(query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -220,7 +220,7 @@ pub async fn get_group_members(
 
 /// Get user's groups
 pub async fn get_user_groups(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let user_groups = groups::get_user_groups(&db, user_id)

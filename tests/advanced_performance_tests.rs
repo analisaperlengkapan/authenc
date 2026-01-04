@@ -280,7 +280,7 @@ async fn test_database_connection_pooling() {
 
     assert!(pool_size > 0);
     assert!(active_connections <= pool_size);
-    assert!(idle_connections >= 0);
+    // idle_connections is u64 so always >= 0
     assert!(
         avg_connection_time < 50.0,
         "Connection acquisition too slow: {}ms",
