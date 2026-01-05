@@ -4,6 +4,7 @@ use crate::database::Database;
 use crate::database::operations::oauth2;
 use crate::error::AuthencError;
 use crate::services::stores::consent_store::ConsentStoreTrait;
+use crate::services::stores::user_store::UserStoreTrait;
 use crate::utils::crypto_monitor::CryptoMonitor;
 use crate::utils::crypto::password::verify_password;
 use axum::{
@@ -631,10 +632,10 @@ pub async fn test_oauth2_token(
     let now = Utc::now().timestamp();
 
     match params.grant_type.as_str() {
-        "authorization_code" => handle_authorization_code_grant(params, state, now).await,
-        "client_credentials" => handle_client_credentials_grant(params, state, now).await,
-        "password" => handle_password_grant(params, state, now).await,
-        "refresh_token" => handle_refresh_token_grant(params, state, now).await,
+        "authorization_code" => handle_authorization_code_grant(params, stores.clone(), now).await,
+        "client_credentials" => handle_client_credentials_grant(params, stores.clone(), now).await,
+        "password" => handle_password_grant(params, state.clone(), now).await,
+        "refresh_token" => handle_refresh_token_grant(params, stores.clone(), now).await,
         _ => Err(AuthencError::validation("Unsupported grant_type")),
     }
 }
@@ -648,10 +649,10 @@ pub async fn oauth2_token(
     let now = Utc::now().timestamp();
 
     match params.grant_type.as_str() {
-        "authorization_code" => handle_authorization_code_grant(params, state, now).await,
-        "client_credentials" => handle_client_credentials_grant(params, state, now).await,
-        "password" => handle_password_grant(params, state, now).await,
-        "refresh_token" => handle_refresh_token_grant(params, state, now).await,
+        "authorization_code" => handle_authorization_code_grant(params, stores.clone(), now).await,
+        "client_credentials" => handle_client_credentials_grant(params, stores.clone(), now).await,
+        "password" => handle_password_grant(params, state.clone(), now).await,
+        "refresh_token" => handle_refresh_token_grant(params, stores.clone(), now).await,
         _ => Err(AuthencError::validation("Unsupported grant_type")),
     }
 }
@@ -849,6 +850,7 @@ async fn handle_password_grant(
     state: Arc<OAuth2AppState>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
+    let stores = &state.oauth2_stores;
     let username = params
         .username
         .ok_or(AuthencError::validation("username required"))?;
@@ -864,11 +866,45 @@ async fn handle_password_grant(
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
-    // In a real implementation, validate username/password against user store
-    // For demonstration, accept demo credentials
-    if username != "demo_user" || password != "demo_password" {
-        return Err(AuthencError::validation("Invalid username or password"));
+    // Validate user against user store or fall back to demo credentials
+    let user_opt = state
+        .app_state
+        .user_store
+        .get_user_by_username(&username)
+        .await
+        .map_err(|e| AuthencError::database(format!("Database error: {}", e)))?;
+
+    let mut authenticated_user = None;
+    if let Some(user) = user_opt {
+        if let Some(hash) = &user.password_hash {
+            if verify_password(hash, &password).unwrap_or(false) {
+                authenticated_user = Some(user);
+            } else {
+                tracing::warn!("Failed password verification for user: {}", username);
+            }
+        } else {
+            tracing::warn!("User has no password hash: {}", username);
+        }
     }
+
+    let (sub, email, name) = if let Some(user) = authenticated_user {
+        tracing::info!("User authenticated successfully: {}", username);
+        (
+            user.id.to_string(),
+            Some(user.email.clone()),
+            Some(user.full_name()),
+        )
+    } else if username == "demo_user" && password == "demo_password" {
+        tracing::warn!("Using demo credentials for user: demo_user");
+        (
+            username.clone(),
+            Some("user@example.com".to_string()),
+            Some("Demo User".to_string()),
+        )
+    } else {
+        tracing::warn!("Authentication failed for user: {}", username);
+        return Err(AuthencError::validation("Invalid username or password"));
+    };
 
     // Validate scope
     let scopes = validate_scope(params.scope.as_deref(), &client_id)?;
@@ -877,7 +913,7 @@ async fn handle_password_grant(
     // Generate tokens
     let access_token_claims = AccessTokenClaims {
         iss: "http://localhost:8080/v1".to_string(),
-        sub: username.clone(),
+        sub: sub.clone(),
         aud: client_id.clone(),
         client_id: client_id.clone(),
         exp: now + 3600,
@@ -902,7 +938,7 @@ async fn handle_password_grant(
     let refresh_entry = RefreshTokenEntry {
         token: refresh_token.clone(),
         client_id: client_id.clone(),
-        user_id: username.clone(),
+        user_id: sub.clone(),
         scope: Some(scope_str.clone()),
         expires_at: now + 86400 * 30,
         revoked: false,
@@ -915,10 +951,10 @@ async fn handle_password_grant(
 
     // Generate ID token
     let id_token = generate_id_token(
-        &username,
+        &sub,
         &client_id,
-        Some("user@example.com"),
-        Some("Demo User"),
+        email.as_deref(),
+        name.as_deref(),
         Some("user"),
         None,
     );
