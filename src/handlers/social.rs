@@ -56,7 +56,7 @@ pub struct SocialUserProfile {
 
 /// Handler for initiating social login
 pub async fn initiate_login(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     Json(request): Json<InitiateLoginRequest>,
 ) -> Result<Json<InitiateLoginResponse>, StatusCode> {
     // Create social login manager with configurations
@@ -135,7 +135,7 @@ pub async fn initiate_login(
 
 /// Handler for social login callback
 pub async fn social_callback(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     Query(query): Query<CallbackQuery>,
 ) -> Result<Json<SocialUserProfile>, StatusCode> {
     // Create social login manager with configurations

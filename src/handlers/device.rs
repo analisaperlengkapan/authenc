@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::app::AppState;
 
 /// Create device management routes
-pub fn create_device_routes() -> Router<Arc<AppState>> {
+pub fn create_device_routes() -> Router<Database> {
     Router::new()
         .route("/", post(register_device))
         .route("/", get(list_devices))

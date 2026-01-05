@@ -7,7 +7,7 @@ use axum::{
     response::{IntoResponse, Json},
 };
 use serde::Deserialize;
-use std::sync::Arc;
+
 use tracing::error;
 use uuid::Uuid;
 
@@ -149,7 +149,7 @@ pub async fn delete_group(
 pub async fn get_subgroups(
     State(db): State<Database>,
     Path(group_id): Path<Uuid>,
-    Query(query): Query<GroupListQuery>,
+    Query(_query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let subgroups = groups::get_subgroups(&db, group_id, true)
         .await

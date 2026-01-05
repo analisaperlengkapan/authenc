@@ -1,6 +1,5 @@
 use authenc::config::DatabaseConfig;
 use authenc::database::Database;
-use authenc::database::operations::users;
 use authenc::models::webauthn::*;
 use authenc::services::webauthn::*;
 use base64ct::{Base64UrlUnpadded, Encoding};
@@ -72,7 +71,6 @@ async fn test_webauthn_registration_challenge_generation() {
     // Create test user first
     use authenc::database::operations::users;
     use authenc::models::user::CreateUserRequest;
-    use uuid::Uuid;
 
     let create_user_request = CreateUserRequest {
         username: "testuser".to_string(),
@@ -336,7 +334,7 @@ async fn test_webauthn_credential_registration() {
         .await
         .unwrap();
     let challenge_data: serde_json::Value = challenge_response.0;
-    let challenge_id = challenge_data.get("challengeId").unwrap().as_str().unwrap();
+    let _challenge_id = challenge_data.get("challengeId").unwrap().as_str().unwrap();
 
     // Simulate a WebAuthn credential creation response
     let credential_response = WebauthnRegistrationResponse {
@@ -392,7 +390,7 @@ async fn test_webauthn_credential_authentication() {
         .await
         .unwrap();
     let challenge_data: serde_json::Value = challenge_response.0;
-    let challenge_id = challenge_data.get("challengeId").unwrap().as_str().unwrap();
+    let _challenge_id = challenge_data.get("challengeId").unwrap().as_str().unwrap();
 
     // Simulate a WebAuthn assertion response
     let assertion_response = WebauthnAuthenticationResponse {
@@ -433,13 +431,13 @@ async fn test_webauthn_credential_listing() {
     };
 
     let database = Arc::new(Database::new(&database_config).await.unwrap());
-    let webauthn_service = WebAuthnService::new(
+    let _webauthn_service = WebAuthnService::new(
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
     );
 
-    let user_id = Uuid::new_v4();
+    let _user_id = Uuid::new_v4();
 
     // Test that the service can be created successfully
     // Since most methods are private, we'll just verify service creation works
@@ -463,13 +461,13 @@ async fn test_webauthn_credential_deletion() {
     };
 
     let database = Arc::new(Database::new(&database_config).await.unwrap());
-    let webauthn_service = WebAuthnService::new(
+    let _webauthn_service = WebAuthnService::new(
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
     );
 
-    let credential_id = Uuid::new_v4();
+    let _credential_id = Uuid::new_v4();
 
     // Test that the service can be created successfully
     // Since delete_credential is private, we'll just verify service creation works
@@ -492,7 +490,7 @@ async fn test_webauthn_challenge_expiration() {
     };
 
     let database = Arc::new(Database::new(&database_config).await.unwrap());
-    let webauthn_service = WebAuthnService::new(
+    let _webauthn_service = WebAuthnService::new(
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
@@ -519,13 +517,13 @@ async fn test_webauthn_multiple_credentials_per_user() {
     };
 
     let database = Arc::new(Database::new(&database_config).await.unwrap());
-    let webauthn_service = WebAuthnService::new(
+    let _webauthn_service = WebAuthnService::new(
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
     );
 
-    let user_id = Uuid::new_v4();
+    let _user_id = Uuid::new_v4();
 
     // Test that the service can be created successfully
     // Since list_user_credentials is private, we'll just verify service creation works
@@ -548,14 +546,14 @@ async fn test_webauthn_credential_metadata() {
     };
 
     let database = Arc::new(Database::new(&database_config).await.unwrap());
-    let webauthn_service = WebAuthnService::new(
+    let _webauthn_service = WebAuthnService::new(
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
     );
 
     // Test credential metadata retrieval
-    let credential_id = Uuid::new_v4();
+    let _credential_id = Uuid::new_v4();
 
     // Test that the service can be created successfully
     // Since get_credential_metadata is private, we'll just verify service creation works
@@ -580,13 +578,13 @@ async fn test_webauthn_service_initialization() {
     let database = Arc::new(Database::new(&database_config).await.unwrap());
 
     // Test service initialization with different relying party configurations
-    let service1 = WebAuthnService::new(
+    let _service1 = WebAuthnService::new(
         Arc::clone(&database),
         "example.com".to_string(),
         "Example App".to_string(),
     );
 
-    let service2 = WebAuthnService::new(
+    let _service2 = WebAuthnService::new(
         Arc::clone(&database),
         "auth.example.com".to_string(),
         "Auth Service".to_string(),

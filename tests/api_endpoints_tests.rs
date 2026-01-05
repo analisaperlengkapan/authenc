@@ -3,10 +3,8 @@
 
 use axum::{
     Router,
-    body::Body,
     extract::{Json, Path, Query, State},
-    http::{Method, Request, StatusCode, header},
-    middleware,
+    http::StatusCode,
     response::Json as AxumJson,
     routing::{delete, get, post, put},
 };
@@ -14,8 +12,8 @@ use axum_test::TestServer;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::time::{Duration, sleep};
 use uuid::Uuid;
+
 
 // Shared test state for API tests
 type SharedState = Arc<Mutex<HashMap<String, serde_json::Value>>>;
@@ -278,7 +276,7 @@ async fn check_permission(
         if let Some(user_roles) = user.get("roles").and_then(|r| r.as_array()) {
             // Check if any of user's roles has the required permission
             user_roles.iter().any(|role_entry| {
-                if let Some(role_id) = role_entry.get("id").and_then(|id| id.as_str()) {
+                if let Some(_role_id) = role_entry.get("id").and_then(|id| id.as_str()) {
                     // This is a simplified check - in real implementation,
                     // you'd check role-permission mappings
                     permissions.values().any(|perm| {

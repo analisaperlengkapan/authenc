@@ -1348,7 +1348,7 @@ pub mod organizations {
         if let Some(row) = row {
             // Convert row to Organization
             let attributes_json: serde_json::Value = row.get(10);
-            let attributes: HashMap<String, String> =
+            let _attributes: HashMap<String, String> =
                 serde_json::from_value(attributes_json).unwrap_or_default();
 
             Ok(Some(Organization {
@@ -5513,7 +5513,7 @@ pub mod events {
                     "success": row.get::<_, bool>(8),
                     "error_message": row.get::<_, Option<String>>(9),
                     "correlation_id": row.get::<_, Option<Uuid>>(10),
-                    "created_at": row.get::<_, DateTime<Utc>>(11),
+                    "created_at": row.get::<_, chrono::NaiveDateTime>(11).to_string(),
                 })
             })
             .collect())
@@ -5621,8 +5621,11 @@ pub mod events {
             WHERE realm_id = $1 AND created_at >= $2 AND created_at <= $3
         "#;
 
+        let from_naive = from_date.naive_utc();
+        let to_naive = to_date.naive_utc();
+        
         match db
-            .query_opt(query, &[&realm_id, &from_date, &to_date])
+            .query_opt(query, &[&realm_id, &from_naive, &to_naive])
             .await?
         {
             Some(row) => Ok(serde_json::json!({
@@ -5707,7 +5710,7 @@ pub mod protocol_mappers {
         "#;
 
         let mapper_id = Uuid::new_v4();
-        let now = Utc::now();
+        let now = Utc::now().naive_utc();
 
         let rows = db
             .query_raw(
@@ -5837,7 +5840,7 @@ pub mod protocol_mappers {
             WHERE id = $3
         "#;
 
-        let now = Utc::now();
+        let now = Utc::now().naive_utc();
         db.execute(query, &[&config, &now, &mapper_id]).await?;
 
         Ok(())
@@ -5851,7 +5854,7 @@ pub mod protocol_mappers {
             WHERE id = $3
         "#;
 
-        let now = Utc::now();
+        let now = Utc::now().naive_utc();
         db.execute(query, &[&enabled, &now, &mapper_id]).await?;
 
         Ok(())
@@ -5915,6 +5918,7 @@ pub mod protocol_mappers {
 
         if rows.is_empty() {
             return Ok(serde_json::json!({
+                "total_mappers": 0,
                 "total_enabled": 0,
                 "total_disabled": 0,
                 "unique_protocols": 0,
@@ -5926,6 +5930,7 @@ pub mod protocol_mappers {
 
         let row = &rows[0];
         Ok(serde_json::json!({
+            "total_mappers": row.get::<_, i64>(0) + row.get::<_, i64>(1),
             "total_enabled": row.get::<_, i64>(0),
             "total_disabled": row.get::<_, i64>(1),
             "unique_protocols": row.get::<_, i64>(2),
@@ -6262,7 +6267,7 @@ pub mod authenticators {
             "total_attempts": row.get::<_, i64>(0),
             "successful_attempts": row.get::<_, i64>(1),
             "failed_attempts": row.get::<_, i64>(2),
-            "unique_users": row.get::<_, i64>(3),
+            "unique_users": row.get::<_, Option<i64>>(3).unwrap_or(0),
             "avg_duration_ms": row.get::<_, Option<f64>>(4).unwrap_or(0.0),
         }))
     }

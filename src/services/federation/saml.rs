@@ -69,7 +69,7 @@ pub struct SamlIdentityProvider {
     /// IdP entity ID
     entity_id: String,
     /// SSO service URL (used for generating authentication redirect URLs)
-    sso_url: String,
+    _sso_url: String,
     /// Logout service URL
     logout_url: String,
     /// X.509 certificate for signature validation
@@ -154,7 +154,7 @@ impl SamlIdentityProvider {
         Ok(Self {
             config,
             entity_id,
-            sso_url,
+            _sso_url: sso_url,
             logout_url,
             certificate,
             db,

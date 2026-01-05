@@ -321,7 +321,7 @@ pub async fn social_authenticate(
     };
 
     // Parse provider type
-    let provider_type = match request.provider.as_str() {
+    let _provider_type = match request.provider.as_str() {
         "google" => crate::spi::social::SocialProviderType::Google,
         "facebook" => crate::spi::social::SocialProviderType::Facebook,
         "twitter" => crate::spi::social::SocialProviderType::Twitter,

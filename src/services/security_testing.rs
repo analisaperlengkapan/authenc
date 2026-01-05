@@ -85,10 +85,10 @@ pub mod security_tests {
                 "<svg onload=alert('XSS')>",
             ];
 
-            let mut all_passed = true;
+            let mut _all_passed = true;
             for pattern in xss_patterns {
                 if !test_input_sanitization(pattern) {
-                    all_passed = false;
+                    _all_passed = false;
                     break;
                 }
             }
@@ -130,7 +130,7 @@ pub mod security_tests {
 
             // Check if timing variance is minimal (< 1ms)
             let avg_time = timings.iter().sum::<Duration>() / timings.len() as u32;
-            let max_variance = timings
+            let _max_variance = timings
                 .iter()
                 .map(|t| {
                     if *t > avg_time {

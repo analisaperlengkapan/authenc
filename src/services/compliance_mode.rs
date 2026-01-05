@@ -311,7 +311,7 @@ impl ComplianceModeService {
 
         // Run GDPR checks if enabled
         if config.frameworks.contains(&ComplianceFramework::GDPR) {
-            let gdpr_checks = GDPRComplianceChecks::new();
+            let _gdpr_checks = GDPRComplianceChecks::new();
             results.push(
                 GDPRComplianceChecks::data_encryption_check()
                     .execute()

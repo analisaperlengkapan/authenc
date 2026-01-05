@@ -438,7 +438,7 @@ impl ComplianceCheck for GDPRDataRetentionCheck {
             match crate::database::operations::audit::get_audit_log_count(db, None, None, None).await {
                 Ok(total_count) => {
                     // Check for very old logs (> 90 days ago)
-                    let ninety_days_ago = (Utc::now() - Duration::days(90))
+                    let _ninety_days_ago = (Utc::now() - Duration::days(90))
                         .format("%Y-%m-%d %H:%M:%S%.3f")
                         .to_string();
 
@@ -563,7 +563,7 @@ impl ComplianceCheck for GDPRConsentManagementCheck {
         let mut status = ComplianceStatus::NonCompliant;
 
         // Check if ConsentStore is integrated
-        if let Some(consent_store) = &self.consent_store {
+        if let Some(_consent_store) = &self.consent_store {
             evidence.push("Consent management system integrated".to_string());
             score += 40.0;
 

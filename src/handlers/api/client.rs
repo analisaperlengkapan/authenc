@@ -181,7 +181,7 @@ pub async fn update_client(
     };
 
     // Store the old representation for the event
-    let old_representation = serde_json::to_string(&client).unwrap_or_default();
+    let _old_representation = serde_json::to_string(&client).unwrap_or_default();
 
     // Update the client fields
     if let Some(client_secret) = req.client_secret {
