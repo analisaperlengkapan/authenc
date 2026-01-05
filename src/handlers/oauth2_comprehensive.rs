@@ -848,23 +848,30 @@ async fn handle_password_grant(
         if let Some(hash) = &user.password_hash {
             if verify_password(hash, &password).unwrap_or(false) {
                 authenticated_user = Some(user);
+            } else {
+                tracing::warn!("Failed password verification for user: {}", username);
             }
+        } else {
+            tracing::warn!("User has no password hash: {}", username);
         }
     }
 
     let (sub, email, name) = if let Some(user) = authenticated_user {
+        tracing::info!("User authenticated successfully: {}", username);
         (
             user.id.to_string(),
             Some(user.email.clone()),
             Some(user.full_name()),
         )
     } else if username == "demo_user" && password == "demo_password" {
+        tracing::warn!("Using demo credentials for user: demo_user");
         (
             username.clone(),
             Some("user@example.com".to_string()),
             Some("Demo User".to_string()),
         )
     } else {
+        tracing::warn!("Authentication failed for user: {}", username);
         return Err(AuthencError::validation("Invalid username or password"));
     };
 
