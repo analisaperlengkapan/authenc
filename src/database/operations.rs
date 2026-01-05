@@ -948,9 +948,12 @@ pub mod oauth2 {
             WHERE client_id = $1 AND deleted_at IS NULL
         "#;
 
-        let row: tokio_postgres::Row = db.query_one(query, &[&client_id]).await?;
-        // Convert row to OAuth2Client
-        Ok(Some(row.try_into()?))
+        let row_opt = db.query_opt(query, &[&client_id]).await?;
+
+        match row_opt {
+            Some(row) => Ok(Some(row.try_into()?)),
+            None => Ok(None),
+        }
     }
 
     /// Store authorization code
