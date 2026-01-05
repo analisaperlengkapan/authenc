@@ -8,44 +8,44 @@
 
 ---
 
-## ⚠️ PERINGATAN / WARNING
+## ⚠️ IMPORTANT NOTICE
 
 > [!CAUTION]
-> **🚧 PROJECT INI MASIH DALAM TAHAP PENGEMBANGAN AKTIF 🚧**
+> **🚧 THIS PROJECT IS UNDER ACTIVE DEVELOPMENT 🚧**
 >
-> - ❌ **TIDAK SIAP UNTUK PRODUCTION**
-> - ❌ **API BELUM STABIL** - Breaking changes dapat terjadi kapan saja
-> - ❌ **BELUM DIAUDIT KEAMANAN SECARA LENGKAP**
-> - ❌ **DOKUMENTASI BELUM LENGKAP**
+> - ❌ **NOT PRODUCTION READY**
+> - ❌ **UNSTABLE API** - Breaking changes may occur at any time
+> - ❌ **NOT FULLY SECURITY AUDITED**
+> - ❌ **INCOMPLETE DOCUMENTATION**
 >
-> Gunakan hanya untuk pengembangan dan pengujian. **JANGAN GUNAKAN UNTUK DATA SENSITIF ATAU SISTEM PRODUCTION.**
+> Use only for development and testing purposes. **DO NOT USE FOR SENSITIVE DATA OR PRODUCTION SYSTEMS.**
 
 ---
 
-## 📖 Tentang Authenc
+## 📖 About Authenc
 
-**Authenc** adalah platform Identity and Access Management (IAM) enterprise-grade yang dibangun dengan Rust, menyediakan solusi autentikasi dan otorisasi lengkap untuk aplikasi modern.
+**Authenc** is an enterprise-grade Identity and Access Management (IAM) platform built with Rust, providing comprehensive authentication and authorization solutions for modern applications.
 
-### 🎯 Fitur Utama
+### 🎯 Key Features
 
-#### 🔑 Autentikasi
+#### 🔑 Authentication
 - **OAuth 2.0** - Authorization Code, Client Credentials, PKCE, Device Flow
 - **OpenID Connect (OIDC)** - Discovery, JWKS, Userinfo endpoints
 - **SAML 2.0** - SP-Initiated, IdP-Initiated SSO
 - **WebAuthn/FIDO2** - Passwordless authentication
 - **TOTP/HOTP** - Two-factor authentication
-- **Social Login** - Google, GitHub, Facebook, Microsoft, dll.
+- **Social Login** - Google, GitHub, Facebook, Microsoft, and more
 
-#### 🛡️ Keamanan
+#### 🛡️ Security
 - **Zero Trust Architecture** - Continuous verification
-- **Brute Force Protection** - Rate limiting dan account lockout
+- **Brute Force Protection** - Rate limiting and account lockout
 - **CSRF Protection** - Token-based protection
-- **mTLS** - Mutual TLS untuk client authentication
+- **mTLS** - Mutual TLS for client authentication
 - **DPoP** - Demonstrating Proof of Possession
 
-#### 🔐 Kriptografi
-| Algoritma | Penggunaan |
-|-----------|------------|
+#### 🔐 Cryptography
+| Algorithm | Usage |
+|-----------|-------|
 | Ed25519 | JWT signing, default key type |
 | ECDSA P-256/P-384/P-521 | Token signing |
 | Ed448 | High-security signing |
@@ -64,7 +64,7 @@
 
 ---
 
-## 🏗️ Arsitektur
+## 🏗️ Architecture
 
 ```
 authenc/
@@ -115,7 +115,7 @@ authenc/
 │   │   └── federation.rs       # Federation SPI
 │   │
 │   └── vault/              # 🔒 Secret management
-│       └── hashicorp.rs        # HashiCorp Vault
+│       └── hashicorp.rs        # HashiCorp Vault integration
 │
 ├── migrations/             # 📁 Database migrations (008-021)
 ├── tests/                  # 🧪 Integration tests
@@ -130,7 +130,7 @@ authenc/
 
 - **Rust** 1.90+
 - **PostgreSQL** 14+
-- **OpenSSL** (untuk crypto operations)
+- **OpenSSL** (for crypto operations)
 
 ### Installation
 
@@ -250,7 +250,7 @@ cargo test -- --nocapture
 | SAML 2.0 | ✅ Implemented | SP & IdP modes |
 | WebAuthn | 🔶 Partial | Basic support |
 | TOTP | ✅ Implemented | RFC 6238 compliant |
-| Social Login | 🔶 Partial | Needs configuration |
+| Social Login | 🔶 Partial | Requires configuration |
 | Zero Trust | 🔶 Partial | Policy engine WIP |
 | OID4VC | ✅ Implemented | 4 credential types |
 | Post-Quantum | 🔬 Experimental | ML-DSA, ML-KEM |
@@ -263,11 +263,11 @@ cargo test -- --nocapture
 
 ## 🔒 Security Considerations
 
-1. **Change default secrets** - JWT_SECRET, ENCRYPTION_KEY
-2. **Use TLS** - Always enable HTTPS in production
-3. **Database encryption** - Enable PostgreSQL encryption
-4. **Regular updates** - Keep dependencies updated
-5. **Audit logs** - Enable and monitor event logging
+1. **Change default secrets** - Always update JWT_SECRET and ENCRYPTION_KEY
+2. **Use TLS** - Always enable HTTPS in production environments
+3. **Database encryption** - Enable PostgreSQL encryption at rest
+4. **Regular updates** - Keep dependencies updated for security patches
+5. **Audit logs** - Enable and monitor event logging for security incidents
 
 ---
 
