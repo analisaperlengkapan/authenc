@@ -1,4 +1,4 @@
-use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
+use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk, verify_ed25519};
 use crate::app::AppState;
 use crate::database::Database;
 use crate::database::operations::oauth2;
@@ -336,6 +336,46 @@ pub fn generate_access_token(claims: &AccessTokenClaims) -> String {
 
         format!("{}.{}", signing_input, signature_b64)
     })
+}
+
+/// Verify and decode JWT access token
+pub fn verify_and_decode_jwt(token: &str) -> Result<AccessTokenClaims, AuthencError> {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return Err(AuthencError::validation("Invalid token format"));
+    }
+
+    let header_b64 = parts[0];
+    let payload_b64 = parts[1];
+    let signature_b64 = parts[2];
+
+    let signing_input = format!("{}.{}", header_b64, payload_b64);
+
+    // Decode signature
+    let signature_bytes = Base64UrlUnpadded::decode_vec(signature_b64)
+        .map_err(|_| AuthencError::validation("Invalid signature encoding"))?;
+
+    let signature = Signature::from_slice(&signature_bytes)
+        .map_err(|_| AuthencError::validation("Invalid signature format"))?;
+
+    // Verify signature
+    verify_ed25519(signing_input.as_bytes(), &signature)
+        .map_err(|_| AuthencError::validation("Invalid signature"))?;
+
+    // Decode payload
+    let payload_bytes = Base64UrlUnpadded::decode_vec(payload_b64)
+        .map_err(|_| AuthencError::validation("Invalid payload encoding"))?;
+
+    let claims: AccessTokenClaims = serde_json::from_slice(&payload_bytes)
+        .map_err(|_| AuthencError::validation("Invalid payload format"))?;
+
+    // Check expiration
+    let now = Utc::now().timestamp();
+    if claims.exp < now {
+        return Err(AuthencError::validation("Token expired"));
+    }
+
+    Ok(claims)
 }
 
 /// Generate Ed25519 JWT for ID tokens
@@ -1096,16 +1136,13 @@ pub async fn oauth2_introspect(
     let stores = &state.oauth2_stores;
 
     // Try to find access token
-    let claims = {
+    let claims = if let Ok(claims) = verify_and_decode_jwt(&params.token) {
+        // Token is validly signed and not expired.
+        // Now check if it exists in the store (not revoked).
         let tokens = stores.access_tokens.read().await;
-        tokens
-            .values()
-            .find(|claims| {
-                // In a real implementation, you'd decode and validate the JWT
-                // For demonstration, we'll do a simple lookup
-                claims.jti == params.token || claims.sub == params.token
-            })
-            .cloned()
+        tokens.get(&claims.jti).cloned()
+    } else {
+        None
     };
 
     if let Some(claims) = claims {
@@ -1209,17 +1246,15 @@ pub async fn oauth2_userinfo(
         .ok_or(AuthencError::unauthorized("Unauthorized"))?;
 
     // Validate access token
-    let claims = {
+    let claims = if let Ok(claims) = verify_and_decode_jwt(auth_header) {
         let tokens = stores.access_tokens.read().await;
         tokens
-            .values()
-            .find(|claims| {
-                // In a real implementation, you'd decode and validate the JWT
-                claims.jti == auth_header || claims.sub == auth_header
-            })
+            .get(&claims.jti)
             .cloned()
-    }
-    .ok_or(AuthencError::unauthorized("Invalid access token"))?;
+            .ok_or(AuthencError::unauthorized("Invalid or revoked access token"))?
+    } else {
+        return Err(AuthencError::unauthorized("Invalid access token"));
+    };
 
     // Return user info based on scope
     let mut userinfo = serde_json::json!({
@@ -1331,4 +1366,63 @@ pub async fn test_oauth2_authorize(
     }
 
     Ok(Redirect::to(&redirect_uri))
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_verify_and_decode_jwt() {
+        // Create a valid token
+        let now = Utc::now().timestamp();
+        let claims = AccessTokenClaims {
+            iss: "test_iss".to_string(),
+            sub: "test_sub".to_string(),
+            aud: "test_aud".to_string(),
+            client_id: "test_client".to_string(),
+            exp: now + 3600,
+            iat: now,
+            nbf: now,
+            jti: "test_jti".to_string(),
+            scope: None,
+            roles: None,
+            groups: None,
+        };
+
+        let token = generate_access_token(&claims);
+
+        // Verify it
+        let decoded = verify_and_decode_jwt(&token).expect("Token should be valid");
+        assert_eq!(decoded.jti, "test_jti");
+        assert_eq!(decoded.sub, "test_sub");
+
+        // Test tampered token
+        let parts: Vec<&str> = token.split('.').collect();
+        let mut tampered_payload = Base64UrlUnpadded::decode_vec(parts[1]).unwrap();
+        // modify the JSON
+        let s = String::from_utf8(tampered_payload).unwrap();
+        let s = s.replace("test_sub", "evil_sub");
+        tampered_payload = s.into_bytes();
+        let tampered_payload_b64 = Base64UrlUnpadded::encode_string(&tampered_payload);
+
+        let tampered_token = format!("{}.{}.{}", parts[0], tampered_payload_b64, parts[2]);
+        assert!(verify_and_decode_jwt(&tampered_token).is_err());
+
+        // Test expired token
+         let expired_claims = AccessTokenClaims {
+            iss: "test_iss".to_string(),
+            sub: "test_sub".to_string(),
+            aud: "test_aud".to_string(),
+            client_id: "test_client".to_string(),
+            exp: now - 3600,
+            iat: now - 7200,
+            nbf: now - 7200,
+            jti: "expired_jti".to_string(),
+            scope: None,
+            roles: None,
+            groups: None,
+        };
+        let expired_token = generate_access_token(&expired_claims);
+        assert!(verify_and_decode_jwt(&expired_token).is_err());
+    }
 }
