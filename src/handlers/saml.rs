@@ -1,4 +1,5 @@
 use crate::database::Database;
+use crate::app::AppState;
 use crate::error::AuthencError;
 use crate::models::user::JITUserProvisioningRequest;
 use crate::services::admin::AdminService;
@@ -240,7 +241,7 @@ impl AdminService for MockAdminService {
 }
 
 /// Create SAML routes
-pub fn create_saml_routes() -> Router<Arc<Database>> {
+pub fn create_saml_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/sp/metadata", get(sp_metadata))
         .route("/idp/metadata", get(idp_metadata))
@@ -275,10 +276,10 @@ fn get_default_idp_config() -> SamlIdentityProvider {
 
 /// SAML service provider metadata endpoint
 pub async fn sp_metadata(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> std::result::Result<Html<String>, AuthencError> {
-    let mut service = SamlService::new(db);
+    let mut service = SamlService::new(Arc::new(db));
 
     // In production, load from configuration
     let sp = get_default_sp_config();
@@ -295,10 +296,10 @@ pub async fn sp_metadata(
 
 /// SAML identity provider metadata endpoint
 pub async fn idp_metadata(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> std::result::Result<Html<String>, AuthencError> {
-    let mut service = SamlService::new(db);
+    let mut service = SamlService::new(Arc::new(db));
 
     // In production, load from configuration
     // Note: For IDP metadata, we might want to use "authenc" entity ID instead of external "idp" entity ID
@@ -328,10 +329,10 @@ pub async fn idp_metadata(
 
 /// SAML authentication initiation
 pub async fn saml_auth(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> std::result::Result<Redirect, AuthencError> {
-    let mut service = SamlService::new(db);
+    let mut service = SamlService::new(Arc::new(db));
 
     // Register service provider
     let sp = get_default_sp_config();
@@ -360,11 +361,11 @@ pub async fn saml_auth(
 
 /// SAML assertion consumer service (ACS) endpoint
 pub async fn saml_acs(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Query(params): Query<std::collections::HashMap<String, String>>,
     _body: String,
 ) -> std::result::Result<Html<String>, AuthencError> {
-    let mut service = SamlService::new(db.clone());
+    let mut service = SamlService::new(Arc::new(db.clone()));
 
     // Extract SAMLResponse from form data or query parameters
     let saml_response = if let Some(response) = params.get("SAMLResponse") {
@@ -406,9 +407,9 @@ pub async fn saml_acs(
     {
         Ok(user_info) => {
             // Create JIT provisioning service
-            let admin_service = Arc::new(MockAdminService::new(db.clone()));
+            let admin_service = Arc::new(MockAdminService::new(Arc::new(db.clone())));
             let jit_service = Arc::new(DefaultJITProvisioningService::new(
-                db.clone(),
+                Arc::new(db.clone()),
                 admin_service,
             ));
 
@@ -503,7 +504,7 @@ pub async fn saml_acs(
 
 /// SAML single logout endpoint
 pub async fn saml_slo(
-    State(_db): State<Arc<Database>>,
+    State(_db): State<Database>,
     Query(_params): Query<std::collections::HashMap<String, String>>,
 ) -> std::result::Result<Redirect, AuthencError> {
     // In production, implement SAML logout

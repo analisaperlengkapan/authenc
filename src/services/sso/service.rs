@@ -288,7 +288,7 @@ impl SsoService for DefaultSsoService {
 
     async fn refresh_session(&self, session_id: &str) -> Result<SsoSession> {
         // Get current session
-        let session = self
+        let _session = self
             .session_manager
             .get_session(session_id)
             .await?

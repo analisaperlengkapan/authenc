@@ -1,25 +1,21 @@
 use axum::{
     Router,
-    body::Body,
-    extract::{Path, Query, State},
-    http::{Method, Request, StatusCode, header},
-    middleware,
+    extract::Query,
+    http::StatusCode,
     response::Json,
-    routing::{delete, get, post, put},
+    routing::{get, post},
 };
 use axum_test::TestServer;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::time::{Duration, Instant, sleep};
-use uuid::Uuid;
 
 // Shared test state
 type SharedState = Arc<Mutex<HashMap<String, serde_json::Value>>>;
 
 #[derive(Clone)]
 struct AppState {
-    data: SharedState,
+    _data: SharedState,
 }
 
 // Mock handlers for Keycloak-like features
@@ -54,7 +50,7 @@ async fn jwks_endpoint() -> Json<serde_json::Value> {
 
 async fn create_test_app() -> TestServer {
     let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
+        _data: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let app = Router::new()
@@ -133,7 +129,7 @@ async fn device_authorization() -> Json<serde_json::Value> {
 #[tokio::test]
 async fn test_device_authorization_flow() {
     let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
+        _data: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let app = Router::new()
@@ -201,7 +197,7 @@ async fn authorize_endpoint(Query(params): Query<HashMap<String, String>>) -> Re
 #[tokio::test]
 async fn test_token_exchange_rfc8693() {
     let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
+        _data: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let app = Router::new()
@@ -254,7 +250,7 @@ async fn test_ed25519_signature_verification() {
 #[tokio::test]
 async fn test_authorization_code_flow() {
     let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
+        _data: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let app = Router::new()
@@ -319,7 +315,7 @@ async fn webauthn_register_challenge() -> Json<serde_json::Value> {
 #[tokio::test]
 async fn test_webauthn_endpoints_security() {
     let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
+        _data: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let app = Router::new()

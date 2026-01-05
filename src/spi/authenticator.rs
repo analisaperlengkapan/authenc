@@ -149,7 +149,7 @@ impl Authenticator for UsernamePasswordAuthenticator {
         let username = context.parameters.get("username");
         let password = context.parameters.get("password");
 
-        if let (Some(username), Some(password)) = (username, password) {
+        if let (Some(_username), Some(_password)) = (username, password) {
             // In a real implementation, this would validate against the user store
             // For now, return a placeholder result
             Ok(AuthenticationResult {
@@ -211,7 +211,7 @@ impl Authenticator for OTPAuthenticator {
         // Extract OTP code from parameters
         let code = context.parameters.get("otp");
 
-        if let Some(code) = code {
+        if let Some(_code) = code {
             // In a real implementation, this would validate the TOTP code
             // For now, return a placeholder result
             Ok(AuthenticationResult {
@@ -232,7 +232,7 @@ impl Authenticator for OTPAuthenticator {
         }
     }
 
-    fn is_configured_for(&self, context: &AuthenticationContext) -> bool {
+    fn is_configured_for(&self, _context: &AuthenticationContext) -> bool {
         // Check if user has TOTP configured
         // For now, assume it's available
         true
@@ -353,7 +353,7 @@ impl AuthenticatorProvider for DefaultAuthenticatorProvider {
 
     async fn get_authenticators_for_flow(
         &self,
-        flow_type: AuthenticationFlowType,
+        _flow_type: AuthenticationFlowType,
     ) -> Result<Vec<Box<dyn Authenticator + Send + Sync>>> {
         let all_authenticators = self.get_authenticators().await?;
         // For now, return all authenticators for all flows

@@ -174,7 +174,7 @@ pub trait ComponentFactory<CreatedType, ProviderType: Provider + ?Sized>:
     async fn create_component(&self, model: &ComponentModel) -> Result<CreatedType>;
 
     /// Validate component configuration
-    async fn validate_configuration(&self, model: &ComponentModel) -> Result<()> {
+    async fn validate_configuration(&self, _model: &ComponentModel) -> Result<()> {
         Ok(())
     }
 

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+
     use crate::config::EventsConfig;
     use crate::database::Database;
     use crate::services::event_retention::EventRetentionService;
@@ -20,7 +20,7 @@ mod tests {
 
         // For this test, we'll create a mock database connection
         // In a real test, you'd set up a test database
-        let database_url = std::env::var("DATABASE_URL")
+        let _database_url = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://test:test@localhost:5432/test".to_string());
 
         // Skip test if database is not available

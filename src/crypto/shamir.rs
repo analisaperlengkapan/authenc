@@ -880,7 +880,7 @@ mod tests {
 
         // Serialize and deserialize share
         let share_bytes = shares[0].to_bytes().unwrap();
-        let mut reconstructed_share = Share::from_bytes(&share_bytes).unwrap();
+        let reconstructed_share = Share::from_bytes(&share_bytes).unwrap();
         assert_eq!(reconstructed_share.x(), shares[0].x());
 
         // Serialize and deserialize commitment

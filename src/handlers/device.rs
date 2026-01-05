@@ -12,9 +12,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
+use crate::app::AppState;
 
 /// Create device management routes
-pub fn create_device_routes() -> Router<Arc<Database>> {
+pub fn create_device_routes() -> Router<Database> {
     Router::new()
         .route("/", post(register_device))
         .route("/", get(list_devices))
@@ -64,10 +65,10 @@ pub struct RegisterDeviceRequest {
 
 /// Register device handler
 pub async fn register_device(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Json(request): Json<RegisterDeviceRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(db);
+    let service = DeviceService::new(Arc::new(db));
 
     // In production, get user ID from authentication context
     let user_id = Uuid::new_v4();
@@ -101,10 +102,10 @@ pub async fn register_device(
 
 /// List devices handler
 pub async fn list_devices(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Query(_params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(db);
+    let service = DeviceService::new(Arc::new(db));
 
     // In production, get user ID from authentication context
     let user_id = Uuid::new_v4();
@@ -120,10 +121,10 @@ pub async fn list_devices(
 
 /// Get device handler
 pub async fn get_device(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(db);
+    let service = DeviceService::new(Arc::new(db));
 
     match service.get_device(id).await {
         Ok(Some(device)) => Ok(Json(serde_json::json!({
@@ -137,11 +138,11 @@ pub async fn get_device(
 
 /// Update device handler
 pub async fn update_device(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
     Json(updates): Json<DeviceUpdateRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(db);
+    let service = DeviceService::new(Arc::new(db));
 
     match service.update_device(id, updates).await {
         Ok(_) => Ok(Json(serde_json::json!({
@@ -154,10 +155,10 @@ pub async fn update_device(
 
 /// Delete device handler
 pub async fn delete_device(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let _service = DeviceService::new(db);
+    let _service = DeviceService::new(Arc::new(db));
 
     // In production, implement device deletion
     Ok(Json(serde_json::json!({
@@ -185,11 +186,11 @@ pub struct EvaluateTrustRequest {
 
 /// Evaluate device trust handler
 pub async fn evaluate_trust(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
     Json(request): Json<EvaluateTrustRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(db);
+    let service = DeviceService::new(Arc::new(db));
 
     let device = match service.get_device(id).await {
         Ok(Some(device)) => device,
@@ -217,10 +218,10 @@ pub async fn evaluate_trust(
 
 /// Get device sessions handler
 pub async fn get_device_sessions(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(db);
+    let service = DeviceService::new(Arc::new(db));
 
     match service.get_device_sessions(id).await {
         Ok(sessions) => Ok(Json(serde_json::json!({
@@ -242,11 +243,11 @@ pub struct CreateSessionRequest {
 
 /// Create device session handler
 pub async fn create_session(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
     Json(request): Json<CreateSessionRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(db);
+    let service = DeviceService::new(Arc::new(db));
 
     // In production, get user ID from authentication context
     let user_id = Uuid::new_v4();
@@ -265,10 +266,10 @@ pub async fn create_session(
 
 /// Update session activity handler
 pub async fn update_session_activity(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(db);
+    let service = DeviceService::new(Arc::new(db));
 
     match service.update_session_activity(session_id).await {
         Ok(_) => Ok(Json(serde_json::json!({
@@ -281,10 +282,10 @@ pub async fn update_session_activity(
 
 /// End session handler
 pub async fn end_session(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(db);
+    let service = DeviceService::new(Arc::new(db));
 
     match service.end_session(session_id).await {
         Ok(_) => Ok(Json(serde_json::json!({

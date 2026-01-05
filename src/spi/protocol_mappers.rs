@@ -264,7 +264,7 @@ impl ProtocolMapper for UserRoleProtocolMapper {
 
     async fn evaluate(
         &self,
-        context: &ProtocolMapperContext,
+        _context: &ProtocolMapperContext,
     ) -> Result<HashMap<String, serde_json::Value>> {
         let mut claims = HashMap::new();
 
