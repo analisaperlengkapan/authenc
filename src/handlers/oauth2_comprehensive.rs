@@ -50,6 +50,7 @@ pub struct OidcIdTokenClaims {
     /// The user's role
     pub role: Option<String>,
     /// The nonce for replay attack protection
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
 }
 
