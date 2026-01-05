@@ -53,6 +53,9 @@ pub struct OidcIdTokenClaims {
     pub name: Option<String>,
     /// The user's role
     pub role: Option<String>,
+    /// The nonce for replay attack protection
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
 }
 
 /// Comprehensive OAuth2 Authorization Request
@@ -352,7 +355,7 @@ pub fn generate_id_token(
         kid: "authence-ed25519-key".to_string(),
     };
 
-    let mut claims = OidcIdTokenClaims {
+    let claims = OidcIdTokenClaims {
         iss: "http://localhost:8080/v1".to_string(),
         sub: sub.to_string(),
         aud: aud.to_string(),
@@ -361,18 +364,8 @@ pub fn generate_id_token(
         email: email.map(|e| e.to_string()),
         name: name.map(|n| n.to_string()),
         role: role.map(|r| r.to_string()),
+        nonce: nonce.map(|n| n.to_string()),
     };
-
-    // Add nonce if provided
-    if let Some(nonce_val) = nonce {
-        // Note: In a real implementation, you'd extend the claims struct
-        // For now, we'll add it to the email field temporarily
-        claims.email = Some(format!(
-            "{}:{}",
-            claims.email.unwrap_or_default(),
-            nonce_val
-        ));
-    }
 
     CryptoMonitor::monitor_rsa_operation("ed25519_id_token_signing", || {
         // SAFETY NOTE: These serializations are safe to unwrap because:
