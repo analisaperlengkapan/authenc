@@ -1,8 +1,11 @@
 use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
 use crate::app::AppState;
+use crate::database::Database;
+use crate::database::operations::oauth2;
 use crate::error::AuthencError;
 use crate::services::stores::consent_store::ConsentStoreTrait;
 use crate::utils::crypto_monitor::CryptoMonitor;
+use crate::utils::crypto::password::verify_password;
 use axum::{
     debug_handler,
     extract::{Extension, Query, State},
@@ -390,9 +393,40 @@ pub fn generate_id_token(
 }
 
 /// Validate client credentials
-pub fn validate_client(client_id: &str, client_secret: Option<&str>) -> Result<bool, AuthencError> {
-    // In production, this would validate against a client registry
-    // For demonstration, accept demo client and test client
+pub async fn validate_client(
+    db: &Database,
+    client_id: &str,
+    client_secret: Option<&str>,
+) -> Result<bool, AuthencError> {
+    // Try to find client in database
+    if let Ok(Some(client)) = oauth2::get_client_by_id(db, client_id).await {
+        if !client.enabled {
+            return Ok(false);
+        }
+
+        if let Some(secret) = client_secret {
+            // Verify secret
+            // If client_secret_hash is stored as a hash, verify it
+            // If it's stored plain (not recommended but possible in dev), compare directly
+            // For this implementation we assume hashed
+            if verify_password(&client.client_secret_hash, secret).unwrap_or(false) {
+                return Ok(true);
+            }
+
+            // Fallback for simple comparison (e.g. if hash is just the secret in some tests/configs)
+            // or if verify_password failed (e.g. invalid hash format)
+            if client.client_secret_hash == secret {
+                return Ok(true);
+            }
+        } else {
+            // Public client check
+            if client.client_type == "public" {
+                return Ok(true);
+            }
+        }
+    }
+
+    // Fallback: For demonstration/backward compatibility, accept demo client and test client
     if client_id == "demo_client" || client_id == "test-client" {
         if let Some(secret) = client_secret {
             return Ok(secret == "demo_secret");
@@ -492,7 +526,7 @@ pub async fn oauth2_authorize(
     }
 
     // Validate client
-    if !validate_client(&params.client_id, None)? {
+    if !validate_client(&state.app_state.database, &params.client_id, None).await? {
         return Err(AuthencError::validation("Invalid client_id"));
     }
 
@@ -595,13 +629,12 @@ pub async fn test_oauth2_token(
     Json(params): Json<OAuth2TokenRequest>,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
     let now = Utc::now().timestamp();
-    let stores = &state.oauth2_stores;
 
     match params.grant_type.as_str() {
-        "authorization_code" => handle_authorization_code_grant(params, stores.clone(), now).await,
-        "client_credentials" => handle_client_credentials_grant(params, stores.clone(), now).await,
-        "password" => handle_password_grant(params, stores.clone(), now).await,
-        "refresh_token" => handle_refresh_token_grant(params, stores.clone(), now).await,
+        "authorization_code" => handle_authorization_code_grant(params, state, now).await,
+        "client_credentials" => handle_client_credentials_grant(params, state, now).await,
+        "password" => handle_password_grant(params, state, now).await,
+        "refresh_token" => handle_refresh_token_grant(params, state, now).await,
         _ => Err(AuthencError::validation("Unsupported grant_type")),
     }
 }
@@ -613,13 +646,12 @@ pub async fn oauth2_token(
     Json(params): Json<OAuth2TokenRequest>,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
     let now = Utc::now().timestamp();
-    let stores = &state.oauth2_stores;
 
     match params.grant_type.as_str() {
-        "authorization_code" => handle_authorization_code_grant(params, stores.clone(), now).await,
-        "client_credentials" => handle_client_credentials_grant(params, stores.clone(), now).await,
-        "password" => handle_password_grant(params, stores.clone(), now).await,
-        "refresh_token" => handle_refresh_token_grant(params, stores.clone(), now).await,
+        "authorization_code" => handle_authorization_code_grant(params, state, now).await,
+        "client_credentials" => handle_client_credentials_grant(params, state, now).await,
+        "password" => handle_password_grant(params, state, now).await,
+        "refresh_token" => handle_refresh_token_grant(params, state, now).await,
         _ => Err(AuthencError::validation("Unsupported grant_type")),
     }
 }
@@ -627,7 +659,7 @@ pub async fn oauth2_token(
 /// Handle Authorization Code Grant with PKCE
 async fn handle_authorization_code_grant(
     params: OAuth2TokenRequest,
-    stores: Arc<OAuth2Stores>,
+    state: Arc<OAuth2AppState>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
     let code = params
@@ -638,13 +670,13 @@ async fn handle_authorization_code_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(&client_id, params.client_secret.as_deref())? {
+    if !validate_client(&state.app_state.database, &client_id, params.client_secret.as_deref()).await? {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
     // Retrieve and validate authorization code
     let code_entry = {
-        let codes = stores.auth_codes.read().await;
+        let codes = state.oauth2_stores.auth_codes.read().await;
         codes.get(&code).cloned()
     }
     .ok_or(AuthencError::validation("Invalid authorization code"))?;
@@ -685,7 +717,7 @@ async fn handle_authorization_code_grant(
 
     // Mark code as used
     {
-        let mut codes = stores.auth_codes.write().await;
+        let mut codes = state.oauth2_stores.auth_codes.write().await;
         if let Some(entry) = codes.get_mut(&code) {
             entry.used = true;
         }
@@ -715,7 +747,7 @@ async fn handle_authorization_code_grant(
 
     // Store access token
     {
-        let mut tokens = stores.access_tokens.write().await;
+        let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
 
@@ -731,7 +763,7 @@ async fn handle_authorization_code_grant(
     };
 
     {
-        let mut refresh_tokens = stores.refresh_tokens.write().await;
+        let mut refresh_tokens = state.oauth2_stores.refresh_tokens.write().await;
         refresh_tokens.insert(refresh_token.clone(), refresh_entry);
     }
 
@@ -760,7 +792,7 @@ async fn handle_authorization_code_grant(
 /// Handle Client Credentials Grant
 async fn handle_client_credentials_grant(
     params: OAuth2TokenRequest,
-    stores: Arc<OAuth2Stores>,
+    state: Arc<OAuth2AppState>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
     let client_id = params
@@ -768,7 +800,7 @@ async fn handle_client_credentials_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client credentials
-    if !validate_client(&client_id, params.client_secret.as_deref())? {
+    if !validate_client(&state.app_state.database, &client_id, params.client_secret.as_deref()).await? {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
@@ -795,7 +827,7 @@ async fn handle_client_credentials_grant(
 
     // Store access token
     {
-        let mut tokens = stores.access_tokens.write().await;
+        let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
 
@@ -814,7 +846,7 @@ async fn handle_client_credentials_grant(
 /// Handle Resource Owner Password Credentials Grant
 async fn handle_password_grant(
     params: OAuth2TokenRequest,
-    stores: Arc<OAuth2Stores>,
+    state: Arc<OAuth2AppState>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
     let username = params
@@ -828,7 +860,7 @@ async fn handle_password_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(&client_id, params.client_secret.as_deref())? {
+    if !validate_client(&state.app_state.database, &client_id, params.client_secret.as_deref()).await? {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
@@ -861,7 +893,7 @@ async fn handle_password_grant(
 
     // Store access token
     {
-        let mut tokens = stores.access_tokens.write().await;
+        let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
 
@@ -877,7 +909,7 @@ async fn handle_password_grant(
     };
 
     {
-        let mut refresh_tokens = stores.refresh_tokens.write().await;
+        let mut refresh_tokens = state.oauth2_stores.refresh_tokens.write().await;
         refresh_tokens.insert(refresh_token.clone(), refresh_entry);
     }
 
@@ -906,7 +938,7 @@ async fn handle_password_grant(
 /// Handle Refresh Token Grant
 async fn handle_refresh_token_grant(
     params: OAuth2TokenRequest,
-    stores: Arc<OAuth2Stores>,
+    state: Arc<OAuth2AppState>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
     let refresh_token = params
@@ -917,13 +949,13 @@ async fn handle_refresh_token_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(&client_id, params.client_secret.as_deref())? {
+    if !validate_client(&state.app_state.database, &client_id, params.client_secret.as_deref()).await? {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
     // Retrieve and validate refresh token
     let refresh_entry = {
-        let tokens = stores.refresh_tokens.read().await;
+        let tokens = state.oauth2_stores.refresh_tokens.read().await;
         tokens.get(&refresh_token).cloned()
     }
     .ok_or(AuthencError::validation("Invalid refresh token"))?;
@@ -981,7 +1013,7 @@ async fn handle_refresh_token_grant(
 
     // Store access token
     {
-        let mut tokens = stores.access_tokens.write().await;
+        let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
 
@@ -998,7 +1030,7 @@ async fn handle_refresh_token_grant(
 
     // Revoke old refresh token and store new one
     {
-        let mut refresh_tokens = stores.refresh_tokens.write().await;
+        let mut refresh_tokens = state.oauth2_stores.refresh_tokens.write().await;
         refresh_tokens.remove(&refresh_token); // Remove old token
         refresh_tokens.insert(new_refresh_token.clone(), new_refresh_entry);
     }
@@ -1194,7 +1226,7 @@ pub async fn test_oauth2_authorize(
     }
 
     // Validate client
-    if !validate_client(&params.client_id, None)? {
+    if !validate_client(&state.app_state.database, &params.client_id, None).await? {
         return Err(AuthencError::validation("Invalid client_id"));
     }
 
