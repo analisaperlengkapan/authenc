@@ -59,6 +59,9 @@ impl FederationRegistry {
 // Example stub provider (in-memory, for demo)
 /// Dummy federation provider for testing and demonstration purposes
 pub struct DummyFederationProvider;
+
+const FEDERATED_PASSWORD_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$upp7kNAs9Mqcq+N2/3fUlw$UBWDAYQ5u/9b2KYLcYB1DlTbiczJnJjH7Flz8edIkH0";
+
 impl FederationProvider for DummyFederationProvider {
     fn get_user_by_username(&self, username: &str) -> Option<User> {
         if username == "federated" {
@@ -71,7 +74,7 @@ impl FederationProvider for DummyFederationProvider {
                 last_name: None,
                 phone_number: None,
                 phone_verified: false,
-                password_hash: Some("federatedpass".into()),
+                password_hash: Some(FEDERATED_PASSWORD_HASH.into()),
                 totp_secret: None,
                 totp_backup_codes: None,
                 webauthn_enabled: false,
@@ -107,15 +110,13 @@ impl FederationProvider for DummyFederationProvider {
     fn verify_password(&self, username: &str, password: &str) -> bool {
         // Expected credentials (hashed)
         let expected_username = b"federated";
-        // Argon2 hash for "federatedpass"
-        let expected_password_hash = "$argon2id$v=19$m=19456,t=2,p=1$upp7kNAs9Mqcq+N2/3fUlw$UBWDAYQ5u/9b2KYLcYB1DlTbiczJnJjH7Flz8edIkH0";
 
         // Constant-time comparison for username
         let username_match = username.as_bytes().ct_eq(expected_username);
 
         // Verify password hash unconditionally to prevent timing attacks based on username validity.
         // Even if the username is incorrect, we perform the expensive hash verification.
-        let password_match_bool = verify_password(expected_password_hash, password).unwrap_or(false);
+        let password_match_bool = verify_password(FEDERATED_PASSWORD_HASH, password).unwrap_or(false);
         let password_match = Choice::from(password_match_bool as u8);
 
         // Both must match - using & for constant-time evaluation of the Choice types
