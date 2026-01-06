@@ -1,4 +1,3 @@
-use crate::database::Database;
 use crate::app::AppState;
 use crate::error::{AuthencError, Result};
 use crate::services::webauthn::WebAuthnService;
@@ -9,7 +8,6 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
-use crate::app::AppState;
 
 /// Create WebAuthn routes
 pub fn create_webauthn_routes() -> Router<Arc<AppState>> {
@@ -22,13 +20,15 @@ pub fn create_webauthn_routes() -> Router<Arc<AppState>> {
 
 /// WebAuthn registration challenge handler
 pub async fn register_challenge(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<crate::services::webauthn::WebAuthnRegistrationRequest>,
 ) -> Result<Json<serde_json::Value>> {
     let webauthn_service = WebAuthnService::new(
-        Arc::new(db),
+        state.database.clone(),
         "localhost".to_string(), // In production, use actual domain
         "Authenc Identity".to_string(),
+        state.config.security.jwt_secret.clone(),
+        state.config.security.webauthn_encryption_key.clone(),
     );
 
     match webauthn_service
@@ -42,7 +42,7 @@ pub async fn register_challenge(
 
 /// WebAuthn registration verification handler
 pub async fn register_verify(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
     Json(response): Json<crate::models::webauthn::WebauthnRegistrationResponse>,
 ) -> Result<Json<serde_json::Value>> {
@@ -50,8 +50,13 @@ pub async fn register_verify(
         .get("username")
         .ok_or(AuthencError::validation("Bad request"))?;
 
-    let webauthn_service =
-        WebAuthnService::new(Arc::new(db), "localhost".to_string(), "Authenc Identity".to_string());
+    let webauthn_service = WebAuthnService::new(
+        state.database.clone(),
+        "localhost".to_string(),
+        "Authenc Identity".to_string(),
+        state.config.security.jwt_secret.clone(),
+        state.config.security.webauthn_encryption_key.clone(),
+    );
 
     match webauthn_service
         .verify_registration(username, response)
@@ -64,11 +69,16 @@ pub async fn register_verify(
 
 /// WebAuthn authentication challenge handler
 pub async fn authenticate_challenge(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<crate::services::webauthn::WebAuthnAuthenticationRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let webauthn_service =
-        WebAuthnService::new(Arc::new(db), "localhost".to_string(), "Authenc Identity".to_string());
+    let webauthn_service = WebAuthnService::new(
+        state.database.clone(),
+        "localhost".to_string(),
+        "Authenc Identity".to_string(),
+        state.config.security.jwt_secret.clone(),
+        state.config.security.webauthn_encryption_key.clone(),
+    );
 
     match webauthn_service
         .generate_authentication_challenge(request)
@@ -81,7 +91,7 @@ pub async fn authenticate_challenge(
 
 /// WebAuthn authentication verification handler
 pub async fn authenticate_verify(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
     Json(response): Json<crate::models::webauthn::WebauthnAuthenticationResponse>,
 ) -> Result<Json<serde_json::Value>> {
@@ -89,8 +99,13 @@ pub async fn authenticate_verify(
         .get("username")
         .ok_or(AuthencError::validation("Bad request"))?;
 
-    let webauthn_service =
-        WebAuthnService::new(Arc::new(db), "localhost".to_string(), "Authenc Identity".to_string());
+    let webauthn_service = WebAuthnService::new(
+        state.database.clone(),
+        "localhost".to_string(),
+        "Authenc Identity".to_string(),
+        state.config.security.jwt_secret.clone(),
+        state.config.security.webauthn_encryption_key.clone(),
+    );
 
     match webauthn_service
         .verify_authentication(username, response)

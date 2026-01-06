@@ -428,6 +428,9 @@ pub struct BasicSecurityConfig {
     /// Secret key for JWT signing and validation
     pub jwt_secret: String,
 
+    /// Encryption key for WebAuthn credentials (optional, defaults to derived from jwt_secret)
+    pub webauthn_encryption_key: Option<String>,
+
     /// JWT token expiration time in seconds
     #[serde(default = "default_jwt_expiry")]
     pub jwt_expiry: u64,
@@ -465,6 +468,7 @@ impl Default for BasicSecurityConfig {
     fn default() -> Self {
         Self {
             jwt_secret: "default_jwt_secret_change_in_production".to_string(),
+            webauthn_encryption_key: None,
             jwt_expiry: default_jwt_expiry(),
             password_min_length: default_password_min_length(),
             rate_limit_requests: default_rate_limit_requests(),
@@ -635,6 +639,10 @@ impl AppConfig {
             config.security.jwt_secret = secret;
         }
 
+        if let Ok(key) = env::var("WEBAUTHN_ENCRYPTION_KEY") {
+            config.security.webauthn_encryption_key = Some(key);
+        }
+
         if let Ok(allow_origins) = env::var("CORS_ALLOWED_ORIGINS") {
             config.server.cors_allowed_origins = allow_origins
                 .split(',')
@@ -801,6 +809,7 @@ impl Default for AppConfig {
             security: BasicSecurityConfig {
                 jwt_secret: env::var("JWT_SECRET")
                     .unwrap_or_else(|_| "default_jwt_secret_change_in_production".to_string()),
+                webauthn_encryption_key: None,
                 jwt_expiry: default_jwt_expiry(),
                 password_min_length: default_password_min_length(),
                 rate_limit_requests: default_rate_limit_requests(),

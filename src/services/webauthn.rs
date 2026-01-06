@@ -1,3 +1,4 @@
+use crate::crypto::aes_gcm::{AesGcmService, EncryptedData};
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
 use crate::models::webauthn::*;
@@ -15,6 +16,7 @@ pub struct WebAuthnService {
     db: Arc<Database>,
     relying_party_id: String,
     relying_party_name: String,
+    encryption: AesGcmService,
 }
 
 /// WebAuthn registration request
@@ -35,11 +37,30 @@ pub struct WebAuthnAuthenticationRequest {
 
 impl WebAuthnService {
     /// Create new WebAuthn service
-    pub fn new(db: Arc<Database>, rp_id: String, rp_name: String) -> Self {
+    pub fn new(
+        db: Arc<Database>,
+        rp_id: String,
+        rp_name: String,
+        jwt_secret: String,
+        encryption_key: Option<String>,
+    ) -> Self {
+        let key = if let Some(key_str) = encryption_key {
+            // Use dedicated encryption key if provided
+            AesGcmService::derive_key_from_password(&key_str, b"webauthn_credential_storage_v1")
+                .unwrap_or_else(|_| AesGcmService::generate_key())
+        } else {
+            // Fallback to deriving from JWT secret
+            AesGcmService::derive_key_from_password(&jwt_secret, b"webauthn_credential_storage_v1")
+                .unwrap_or_else(|_| AesGcmService::generate_key())
+        };
+
+        let encryption = AesGcmService::with_key(&key).unwrap_or_default();
+
         Self {
             db,
             relying_party_id: rp_id,
             relying_party_name: rp_name,
+            encryption,
         }
     }
 
@@ -409,7 +430,6 @@ impl WebAuthnService {
         credential: &WebauthnCredential,
     ) -> Result<()> {
         use crate::database::operations::users;
-        use crate::database::operations::webauthn as webauthn_db;
 
         // Get user ID from username
         let user = users::get_user_by_username(&self.db, username)
@@ -436,8 +456,7 @@ impl WebAuthnService {
             enabled: credential.enabled,
         };
 
-        webauthn_db::store_credential(&self.db, user.id, &model_credential).await?;
-        Ok(())
+        self.store_credential_db(&model_credential).await
     }
 
     /// Get all WebAuthn credentials for user
@@ -452,10 +471,10 @@ impl WebAuthnService {
 
         let model_credentials = webauthn_db::get_user_credentials(&self.db, user.id).await?;
 
-        // Convert model credentials to service credentials
-        let service_credentials = model_credentials
-            .into_iter()
-            .map(|mc| WebauthnCredential {
+        // Convert model credentials to service credentials and decrypt
+        let mut service_credentials = Vec::new();
+        for mc in model_credentials {
+            let mut cred = WebauthnCredential {
                 id: mc.id,
                 user_id: mc.user_id,
                 credential_id: mc.credential_id,
@@ -472,8 +491,10 @@ impl WebAuthnService {
                 created_at: mc.created_at,
                 last_used_at: mc.last_used_at,
                 enabled: mc.enabled,
-            })
-            .collect();
+            };
+            self.decrypt_credential(&mut cred);
+            service_credentials.push(cred);
+        }
 
         Ok(service_credentials)
     }
@@ -488,24 +509,30 @@ impl WebAuthnService {
 
         let model_credential = webauthn_db::get_credential_by_id(&self.db, credential_id).await?;
 
-        Ok(model_credential.map(|mc| WebauthnCredential {
-            id: mc.id,
-            user_id: mc.user_id,
-            credential_id: mc.credential_id,
-            public_key: mc.public_key,
-            public_key_algorithm: mc.public_key_algorithm,
-            signature_counter: mc.signature_counter,
-            attestation_object: mc.attestation_object,
-            authenticator_data: mc.authenticator_data,
-            user_handle: mc.user_handle,
-            credential_type: mc.credential_type,
-            transports: mc.transports,
-            aaguid: mc.aaguid,
-            attestation_format: mc.attestation_format,
-            created_at: mc.created_at,
-            last_used_at: mc.last_used_at,
-            enabled: mc.enabled,
-        }))
+        if let Some(mc) = model_credential {
+            let mut cred = WebauthnCredential {
+                id: mc.id,
+                user_id: mc.user_id,
+                credential_id: mc.credential_id,
+                public_key: mc.public_key,
+                public_key_algorithm: mc.public_key_algorithm,
+                signature_counter: mc.signature_counter,
+                attestation_object: mc.attestation_object,
+                authenticator_data: mc.authenticator_data,
+                user_handle: mc.user_handle,
+                credential_type: mc.credential_type,
+                transports: mc.transports,
+                aaguid: mc.aaguid,
+                attestation_format: mc.attestation_format,
+                created_at: mc.created_at,
+                last_used_at: mc.last_used_at,
+                enabled: mc.enabled,
+            };
+            self.decrypt_credential(&mut cred);
+            Ok(Some(cred))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Update WebAuthn credential signature count
@@ -525,5 +552,83 @@ impl WebAuthnService {
     fn verify_origin(&self, origin: &str) -> bool {
         // In production, verify against allowed origins
         origin.starts_with("https://") || origin.starts_with("http://localhost")
+    }
+
+    /// Decrypt credential fields if they are encrypted
+    fn decrypt_credential(&self, credential: &mut WebauthnCredential) {
+        // Try to decrypt attestation_object
+        if let Some(data) = &credential.attestation_object {
+            if let Ok(encrypted_data) = serde_json::from_slice::<EncryptedData>(data) {
+                if let Ok(decrypted) = self.encryption.decrypt(&encrypted_data) {
+                    credential.attestation_object = Some(decrypted);
+                }
+            }
+        }
+
+        // Try to decrypt authenticator_data
+        if let Some(data) = &credential.authenticator_data {
+            if let Ok(encrypted_data) = serde_json::from_slice::<EncryptedData>(data) {
+                if let Ok(decrypted) = self.encryption.decrypt(&encrypted_data) {
+                    credential.authenticator_data = Some(decrypted);
+                }
+            }
+        }
+
+        // Try to decrypt user_handle
+        if let Some(data) = &credential.user_handle {
+            if let Ok(encrypted_data) = serde_json::from_slice::<EncryptedData>(data) {
+                if let Ok(decrypted) = self.encryption.decrypt(&encrypted_data) {
+                    credential.user_handle = Some(decrypted);
+                }
+            }
+        }
+    }
+
+    /// Store WebAuthn credential in database securely
+    pub async fn store_credential_db(&self, credential: &WebauthnCredential) -> Result<()> {
+        use crate::database::operations::webauthn as webauthn_db;
+
+        // Encrypt sensitive fields
+        let mut encrypted_credential = credential.clone();
+
+        // Encrypt attestation_object
+        if let Some(attestation_object) = &credential.attestation_object {
+            let encrypted = self.encryption.encrypt(attestation_object)?;
+            let encrypted_json = serde_json::to_vec(&encrypted).map_err(|e| {
+                AuthencError::SerializationError {
+                    message: format!("Failed to serialize encrypted attestation object: {}", e),
+                }
+            })?;
+            encrypted_credential.attestation_object = Some(encrypted_json);
+        }
+
+        // Encrypt authenticator_data
+        if let Some(authenticator_data) = &credential.authenticator_data {
+            let encrypted = self.encryption.encrypt(authenticator_data)?;
+            let encrypted_json = serde_json::to_vec(&encrypted).map_err(|e| {
+                AuthencError::SerializationError {
+                    message: format!("Failed to serialize encrypted authenticator data: {}", e),
+                }
+            })?;
+            encrypted_credential.authenticator_data = Some(encrypted_json);
+        }
+
+        // Encrypt user_handle
+        if let Some(user_handle) = &credential.user_handle {
+            let encrypted = self.encryption.encrypt(user_handle)?;
+            let encrypted_json = serde_json::to_vec(&encrypted).map_err(|e| {
+                AuthencError::SerializationError {
+                    message: format!("Failed to serialize encrypted user handle: {}", e),
+                }
+            })?;
+            encrypted_credential.user_handle = Some(encrypted_json);
+        }
+
+        // Note: Device binding is implicitly handled via aaguid and user association.
+        // Explicit device binding would require schema changes to link to the devices table.
+        // We preserve the aaguid as is.
+
+        webauthn_db::store_credential(&self.db, credential.user_id, &encrypted_credential).await?;
+        Ok(())
     }
 }
