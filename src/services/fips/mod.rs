@@ -547,6 +547,16 @@ pub struct FipsKeyStoreManager {
     keystore_type: String,
 }
 
+impl std::fmt::Debug for FipsKeyStoreManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FipsKeyStoreManager")
+            .field("keystore_path", &self.keystore_path)
+            .field("keystore_password", &"<redacted>")
+            .field("keystore_type", &self.keystore_type)
+            .finish()
+    }
+}
+
 impl FipsKeyStoreManager {
     /// Creates a new FIPS keystore manager with the specified configuration.
     ///
@@ -1147,16 +1157,6 @@ pub struct FipsApplianceBootstrap {
 impl Default for FipsApplianceBootstrap {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl std::fmt::Debug for FipsKeyStoreManager {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FipsKeyStoreManager")
-            .field("keystore_path", &self.keystore_path)
-            .field("keystore_password", &"<redacted>")
-            .field("keystore_type", &self.keystore_type)
-            .finish()
     }
 }
 
