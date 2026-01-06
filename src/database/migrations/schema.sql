@@ -681,3 +681,22 @@ VALUES (
     true
 )
 ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
+-- SPI CONFIGURATION TABLES
+-- ============================================================================
+
+-- SPI provider configurations
+CREATE TABLE IF NOT EXISTS spi_provider_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    spi_name VARCHAR(255) NOT NULL,
+    provider_id VARCHAR(255) NOT NULL,
+    config JSONB NOT NULL DEFAULT '{}',
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(spi_name, provider_id)
+);
+
+-- Update trigger for spi_provider_configs
+CREATE TRIGGER update_spi_provider_configs_updated_at BEFORE UPDATE ON spi_provider_configs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
