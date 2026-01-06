@@ -249,6 +249,22 @@ impl DeviceService {
         Ok(())
     }
 
+    /// Update device trust score in the database
+    ///
+    /// This method updates the trust score for a device and records the history
+    /// including any risk assessment factors or anomaly detection data.
+    pub async fn update_trust_score_db(
+        &self,
+        device_id: Uuid,
+        score: f64,
+        factors: Option<serde_json::Value>,
+    ) -> Result<()> {
+        use crate::database::operations::devices;
+
+        let factors_json = factors.unwrap_or_else(|| serde_json::json!({}));
+        devices::update_trust_score(&self.db, device_id, score, factors_json).await
+    }
+
     /// Get device by ID
     pub async fn get_device(&self, device_id: Uuid) -> Result<Option<DeviceInfo>> {
         use crate::database::operations::devices;

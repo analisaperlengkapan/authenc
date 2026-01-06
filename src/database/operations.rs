@@ -642,19 +642,31 @@ pub mod devices {
     ) -> Result<()> {
         let now = Utc::now();
 
+        // Calculate risk level based on score
+        let risk_level = if new_score >= 0.7 {
+            "low"
+        } else if new_score < 0.4 {
+            "high"
+        } else {
+            "medium"
+        };
+
         // First, get the current score for history
         let current_query = "SELECT trust_score FROM devices WHERE id = $1";
         let current_row: tokio_postgres::Row = db.query_one(current_query, &[&device_id]).await?;
         let current_score: f64 = current_row.get(0);
 
-        // Update the device trust score
+        // Update the device trust score and risk level
         let update_query = r#"
             UPDATE devices
-            SET trust_score = $2, updated_at = $3
+            SET trust_score = $2, risk_level = $4, updated_at = $3
             WHERE id = $1
         "#;
-        db.execute(update_query, &[&device_id, &new_score, &now])
-            .await?;
+        db.execute(
+            update_query,
+            &[&device_id, &new_score, &now, &risk_level],
+        )
+        .await?;
 
         // Insert trust score history
         let history_query = r#"
