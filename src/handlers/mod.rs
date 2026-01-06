@@ -75,6 +75,8 @@ pub mod oid4vc;
 pub mod sso;
 /// Zero Trust security model handlers and endpoints
 pub mod zero_trust;
+/// FIPS management handlers
+pub mod fips;
 
 /// Create the main application router with all routes
 pub fn create_router(state: Arc<AppState>) -> Router {
@@ -178,6 +180,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .nest(
             "/api/v1/auth/zero-trust",
             zero_trust::create_zero_trust_routes(),
+        )
+        // FIPS management routes
+        .nest(
+            "/api/v1/admin/fips",
+            fips::create_fips_routes().with_state(state.clone()),
         )
         // Temporarily disabled broker routes due to Axum migration
         .nest(

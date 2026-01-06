@@ -1008,7 +1008,8 @@ impl FipsSecurityProvider for AdvancedFipsSecurityProvider {
         let is_approved = state
             .current_profile
             .approved_algorithms
-            .contains(&algorithm.to_string());
+            .iter()
+            .any(|a| a == algorithm);
 
         let security_strength = if is_approved {
             state.current_profile.security_strength
@@ -1120,7 +1121,8 @@ impl FipsSecurityProfileProvider for AdvancedFipsSecurityProvider {
         if !state
             .current_profile
             .approved_algorithms
-            .contains(&algorithm.to_string())
+            .iter()
+            .any(|a| a == algorithm)
         {
             return Ok(false);
         }
