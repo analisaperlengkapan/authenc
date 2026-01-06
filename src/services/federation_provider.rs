@@ -1,10 +1,12 @@
+use crate::models::user::User;
+use crate::utils::crypto::password::verify_password;
+use subtle::{Choice, ConstantTimeEq};
+
 impl Default for FederationRegistry {
     fn default() -> Self {
         Self::new()
     }
 }
-use crate::models::user::User;
-use subtle::ConstantTimeEq;
 
 /// Trait for federation providers that can authenticate users from external systems
 pub trait FederationProvider: Send + Sync {
@@ -103,15 +105,43 @@ impl FederationProvider for DummyFederationProvider {
     /// - Attacker cannot infer password by measuring response time
     /// - In production, passwords should be hashed with bcrypt/argon2
     fn verify_password(&self, username: &str, password: &str) -> bool {
-        // Expected credentials (in production, these should be hashed)
+        // Expected credentials (hashed)
         let expected_username = b"federated";
-        let expected_password = b"federatedpass";
+        // Argon2 hash for "federatedpass"
+        let expected_password_hash = "$argon2id$v=19$m=19456,t=2,p=1$upp7kNAs9Mqcq+N2/3fUlw$UBWDAYQ5u/9b2KYLcYB1DlTbiczJnJjH7Flz8edIkH0";
 
-        // Constant-time comparison for both username and password
+        // Constant-time comparison for username
         let username_match = username.as_bytes().ct_eq(expected_username);
-        let password_match = password.as_bytes().ct_eq(expected_password);
 
-        // Both must match - using & instead of && for constant-time evaluation
+        // Verify password hash unconditionally to prevent timing attacks based on username validity.
+        // Even if the username is incorrect, we perform the expensive hash verification.
+        let password_match_bool = verify_password(expected_password_hash, password).unwrap_or(false);
+        let password_match = Choice::from(password_match_bool as u8);
+
+        // Both must match - using & for constant-time evaluation of the Choice types
         (username_match & password_match).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_verify_password_success() {
+        let provider = DummyFederationProvider;
+        assert!(provider.verify_password("federated", "federatedpass"));
+    }
+
+    #[test]
+    fn test_verify_password_wrong_password() {
+        let provider = DummyFederationProvider;
+        assert!(!provider.verify_password("federated", "wrongpass"));
+    }
+
+    #[test]
+    fn test_verify_password_wrong_username() {
+        let provider = DummyFederationProvider;
+        assert!(!provider.verify_password("wronguser", "federatedpass"));
     }
 }
