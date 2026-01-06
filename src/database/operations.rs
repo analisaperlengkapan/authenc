@@ -611,7 +611,7 @@ pub mod devices {
         let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
         params.push(Box::new(device_id));
         params.push(Box::new(now));
-        let mut param_index = 3;
+        let param_index = 3;
 
         if let Some(name) = device_name {
             query_builder.push_str(&format!(", device_name = ${}", param_index));
@@ -1071,9 +1071,34 @@ pub mod oauth2 {
             WHERE token_hash = $1 AND revoked = false AND expires_at > NOW()
         "#;
 
-        let row: tokio_postgres::Row = db.query_one(query, &[&token_hash]).await?;
-        // Convert row to OAuth2AccessToken
-        Ok(Some(row.try_into()?))
+        let row_opt = db.query_opt(query, &[&token_hash]).await?;
+
+        match row_opt {
+            Some(row) => Ok(Some(row.try_into()?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Get access token by refresh token hash
+    pub async fn get_access_token_by_refresh_token(
+        db: &Database,
+        refresh_token_hash: &str,
+    ) -> Result<Option<OAuth2AccessToken>> {
+        let query = r#"
+            SELECT
+                id, token_hash, refresh_token_hash, client_id, user_id,
+                scopes, expires_at, refresh_expires_at, revoked,
+                revoked_at, created_at, last_used_at
+            FROM oauth2_access_tokens
+            WHERE refresh_token_hash = $1 AND revoked = false
+        "#;
+
+        let row_opt = db.query_opt(query, &[&refresh_token_hash]).await?;
+
+        match row_opt {
+            Some(row) => Ok(Some(row.try_into()?)),
+            None => Ok(None),
+        }
     }
 
     /// Revoke access token

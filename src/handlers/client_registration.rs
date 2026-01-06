@@ -16,7 +16,6 @@ use crate::models::client_registration::{
 use crate::services::client_registration::{
     ClientRegistrationService, DefaultClientRegistrationService,
 };
-use serde::Deserialize;
 
 /// Create client registration routes (RFC 7591/7592)
 pub fn create_client_registration_routes() -> Router<Arc<AppState>> {

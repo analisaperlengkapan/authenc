@@ -76,6 +76,8 @@ pub struct AppState {
     pub observability_service: Arc<crate::services::observability::ObservabilityService>,
     /// Compliance mode service
     pub compliance_mode_service: Arc<crate::services::compliance_mode::ComplianceModeService>,
+    /// OAuth2 service for token persistence
+    pub oauth2_service: Arc<crate::services::oauth2::OAuth2Service>,
 }
 
 // Support extraction of database for health checks
@@ -456,6 +458,11 @@ impl AppState {
             ),
         );
 
+        // Initialize OAuth2 service
+        let oauth2_service = Arc::new(crate::services::oauth2::OAuth2Service::new(
+            database.clone(),
+        ));
+
         Ok(Self {
             config,
             database,
@@ -489,6 +496,7 @@ impl AppState {
             cluster_manager,
             observability_service,
             compliance_mode_service,
+            oauth2_service,
         })
     }
 
