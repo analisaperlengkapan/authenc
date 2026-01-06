@@ -16,7 +16,10 @@ async fn test_social_sync_user() {
 
     // Create a sample ExternalUser
     let mut attributes = HashMap::new();
-    attributes.insert("picture".to_string(), "http://example.com/pic.jpg".to_string());
+    attributes.insert(
+        "picture".to_string(),
+        "http://example.com/pic.jpg".to_string(),
+    );
     attributes.insert("locale".to_string(), "en-US".to_string());
 
     let external_user = ExternalUser {

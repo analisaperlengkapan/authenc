@@ -83,7 +83,8 @@ impl PgEventStoreProvider {
             .map_err(|e| Error::database(e.to_string()))?;
 
         // Add realm_name column to admin_events if it doesn't exist (migration)
-        let alter_admin_events_table = "ALTER TABLE admin_events ADD COLUMN IF NOT EXISTS realm_name VARCHAR(255)";
+        let alter_admin_events_table =
+            "ALTER TABLE admin_events ADD COLUMN IF NOT EXISTS realm_name VARCHAR(255)";
         self.database
             .execute(alter_admin_events_table, &[])
             .await

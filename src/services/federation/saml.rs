@@ -46,8 +46,8 @@ impl SamlToken {
             Ok(b) => b,
             Err(_) => {
                 // Fallback to standard if needed (legacy or different encoding)
-                 use base64::engine::general_purpose::STANDARD;
-                 STANDARD.decode(token)?
+                use base64::engine::general_purpose::STANDARD;
+                STANDARD.decode(token)?
             }
         };
 

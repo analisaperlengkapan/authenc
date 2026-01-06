@@ -1,5 +1,5 @@
-use crate::database::operations::groups;
 use crate::database::Database;
+use crate::database::operations::groups;
 use crate::models::group::{CreateGroupRequest, GroupResponse, UpdateGroupRequest};
 use axum::{
     extract::{Path, Query, State},
@@ -42,7 +42,9 @@ pub async fn create_group(
     })?;
 
     // Get member and subgroup counts
-    let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+    let member_count = groups::count_group_members(&db, group.id)
+        .await
+        .unwrap_or(0);
     let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
 
     let mut response = GroupResponse::from(group);
@@ -67,9 +69,11 @@ pub async fn get_groups(
 
     let mut responses = Vec::new();
     for group in groups {
-        let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+        let member_count = groups::count_group_members(&db, group.id)
+            .await
+            .unwrap_or(0);
         let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
-        
+
         let mut response = GroupResponse::from(group);
         response.member_count = member_count;
         response.subgroup_count = subgroup_count;
@@ -92,7 +96,9 @@ pub async fn get_group_by_id(
         })?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Group not found".to_string()))?;
 
-    let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+    let member_count = groups::count_group_members(&db, group.id)
+        .await
+        .unwrap_or(0);
     let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
 
     let mut response = GroupResponse::from(group);
@@ -122,7 +128,9 @@ pub async fn update_group(
         (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
 
-    let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+    let member_count = groups::count_group_members(&db, group.id)
+        .await
+        .unwrap_or(0);
     let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
 
     let mut response = GroupResponse::from(group);
@@ -160,9 +168,11 @@ pub async fn get_subgroups(
 
     let mut responses = Vec::new();
     for group in subgroups {
-        let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+        let member_count = groups::count_group_members(&db, group.id)
+            .await
+            .unwrap_or(0);
         let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
-        
+
         let mut response = GroupResponse::from(group);
         response.member_count = member_count;
         response.subgroup_count = subgroup_count;
@@ -223,18 +233,18 @@ pub async fn get_user_groups(
     State(db): State<Database>,
     Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let user_groups = groups::get_user_groups(&db, user_id)
-        .await
-        .map_err(|e| {
-            error!("Failed to get user groups: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        })?;
+    let user_groups = groups::get_user_groups(&db, user_id).await.map_err(|e| {
+        error!("Failed to get user groups: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
 
     let mut responses = Vec::new();
     for group in user_groups {
-        let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+        let member_count = groups::count_group_members(&db, group.id)
+            .await
+            .unwrap_or(0);
         let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
-        
+
         let mut response = GroupResponse::from(group);
         response.member_count = member_count;
         response.subgroup_count = subgroup_count;

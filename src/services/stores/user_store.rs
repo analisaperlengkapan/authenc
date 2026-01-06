@@ -57,8 +57,11 @@ pub trait UserStoreTrait: Send + Sync {
     async fn get_users_by_realm(&self, realm_id: Uuid) -> Result<Vec<User>, AuthencError>;
 
     /// Update user password
-    async fn update_password(&self, user_id: Uuid, password_hash: String)
-        -> Result<(), AuthencError>;
+    async fn update_password(
+        &self,
+        user_id: Uuid,
+        password_hash: String,
+    ) -> Result<(), AuthencError>;
 }
 
 /// Implementation of UserStoreTrait for UserStore

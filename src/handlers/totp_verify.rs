@@ -48,7 +48,11 @@ pub async fn verify_totp(
                     if totp.check_current(&req.code).unwrap_or(false) {
                         tracing::debug!("TOTP verification successful for user: {}", user_id);
                         if let Err(e) = totp_store.record_usage(&user_id) {
-                            tracing::error!("Failed to record TOTP usage for user {}: {}", user_id, e);
+                            tracing::error!(
+                                "Failed to record TOTP usage for user {}: {}",
+                                user_id,
+                                e
+                            );
                         }
                         (
                             StatusCode::OK,

@@ -1358,7 +1358,6 @@ fn get_local_ip() -> Option<String> {
     }
 }
 #[cfg(test)]
-
 #[cfg(test)]
 mod tests {
     use super::*;

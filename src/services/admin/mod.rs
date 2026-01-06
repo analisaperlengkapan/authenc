@@ -759,11 +759,11 @@ impl AdminManager {
             LIMIT 10
         "#;
 
-        let event_rows: Vec<tokio_postgres::Row> = self
-            .db
-            .query(events_query, &[realm_id])
-            .await
-            .map_err(|e| format!("Failed to query security events: {}", e))?;
+        let event_rows: Vec<tokio_postgres::Row> =
+            self.db
+                .query(events_query, &[realm_id])
+                .await
+                .map_err(|e| format!("Failed to query security events: {}", e))?;
 
         let mut security_events = Vec::new();
         for row in event_rows {
@@ -825,15 +825,13 @@ impl AdminManager {
         // 5. Adaptive Controls Stats
         // We'll run a few separate counts, filtering by realm_id
         // user_sessions has realm_id
-        let active_sessions_query =
-            "SELECT COUNT(*)::bigint FROM user_sessions WHERE realm_id = $1 AND expires_at > NOW() AND NOT revoked";
+        let active_sessions_query = "SELECT COUNT(*)::bigint FROM user_sessions WHERE realm_id = $1 AND expires_at > NOW() AND NOT revoked";
 
         // user_sessions has realm_id
         let mfa_sessions_query = "SELECT COUNT(*)::bigint FROM user_sessions WHERE realm_id = $1 AND (authentication_method ILIKE '%mfa%' OR authentication_method ILIKE '%totp%' OR authentication_method ILIKE '%webauthn%') AND expires_at > NOW()";
 
         // device_sessions needs join with users
-        let device_verification_query =
-            "SELECT COUNT(ds.id)::bigint FROM device_sessions ds JOIN users u ON ds.user_id = u.id WHERE u.realm_id = $1 AND ds.is_active = true";
+        let device_verification_query = "SELECT COUNT(ds.id)::bigint FROM device_sessions ds JOIN users u ON ds.user_id = u.id WHERE u.realm_id = $1 AND ds.is_active = true";
 
         // audit_logs needs join with users
         let blocked_actions_query = "SELECT COUNT(a.id)::bigint FROM audit_logs a LEFT JOIN users u ON a.user_id = u.id WHERE u.realm_id = $1 AND (a.action = 'BLOCK' OR a.status = 'DENIED') AND a.timestamp > NOW() - INTERVAL '24 hours'";
@@ -1012,11 +1010,7 @@ impl AdminService for AdminManager {
                         operations::groups::get_group_by_name(&self.db, realm_id, group_name).await
                     {
                         let _ = operations::groups::add_user_to_group(
-                            &self.db,
-                            user.id,
-                            group.id,
-                            None,
-                            None,
+                            &self.db, user.id, group.id, None, None,
                         )
                         .await;
                     }
@@ -1033,8 +1027,7 @@ impl AdminService for AdminManager {
                 let user_groups = operations::groups::get_user_groups(&self.db, user.id)
                     .await
                     .unwrap_or_default();
-                let group_names: Vec<String> =
-                    user_groups.iter().map(|g| g.name.clone()).collect();
+                let group_names: Vec<String> = user_groups.iter().map(|g| g.name.clone()).collect();
 
                 // Convert to admin response
                 Ok(UserResponse {
@@ -1096,11 +1089,7 @@ impl AdminService for AdminManager {
                                 .await
                         {
                             let _ = operations::groups::add_user_to_group(
-                                &self.db,
-                                user.id,
-                                group.id,
-                                None,
-                                None,
+                                &self.db, user.id, group.id, None, None,
                             )
                             .await;
                         }
@@ -1118,8 +1107,7 @@ impl AdminService for AdminManager {
                 let user_groups = operations::groups::get_user_groups(&self.db, user.id)
                     .await
                     .unwrap_or_default();
-                let group_names: Vec<String> =
-                    user_groups.iter().map(|g| g.name.clone()).collect();
+                let group_names: Vec<String> = user_groups.iter().map(|g| g.name.clone()).collect();
 
                 // Convert to admin response
                 Ok(UserResponse {
@@ -1697,10 +1685,7 @@ impl AdminService for AdminManager {
         match provider.provider_type {
             IdentityProviderType::SAML => {
                 let sso_url = provider.config.get("sso_url").and_then(|v| v.as_str());
-                let metadata_url = provider
-                    .config
-                    .get("metadata_url")
-                    .and_then(|v| v.as_str());
+                let metadata_url = provider.config.get("metadata_url").and_then(|v| v.as_str());
 
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(10))
@@ -1749,16 +1734,16 @@ impl AdminService for AdminManager {
             IdentityProviderType::OIDC
             | IdentityProviderType::SocialLogin
             | IdentityProviderType::OAuth2 => {
-                let discovery_url = provider.config.get("discovery_url").and_then(|v| v.as_str());
+                let discovery_url = provider
+                    .config
+                    .get("discovery_url")
+                    .and_then(|v| v.as_str());
                 let auth_url = provider
                     .config
                     .get("authorization_url")
                     .and_then(|v| v.as_str());
                 let token_url = provider.config.get("token_url").and_then(|v| v.as_str());
-                let userinfo_url = provider
-                    .config
-                    .get("userinfo_url")
-                    .and_then(|v| v.as_str());
+                let userinfo_url = provider.config.get("userinfo_url").and_then(|v| v.as_str());
 
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(10))
@@ -1823,7 +1808,9 @@ impl AdminService for AdminManager {
                 }
 
                 if !checked_any {
-                    return Err("No Discovery, Authorization, Token or UserInfo URL configured".to_string());
+                    return Err(
+                        "No Discovery, Authorization, Token or UserInfo URL configured".to_string(),
+                    );
                 }
 
                 details.insert("reachable".to_string(), serde_json::Value::Bool(true));
@@ -1866,13 +1853,12 @@ impl AdminService for AdminManager {
                     return Err("Server URL must start with ldap:// or ldaps://".to_string());
                 }
 
-                let settings = LdapConnSettings::new()
-                    .set_conn_timeout(std::time::Duration::from_secs(10));
+                let settings =
+                    LdapConnSettings::new().set_conn_timeout(std::time::Duration::from_secs(10));
 
-                let (conn, mut ldap) =
-                    ldap3::LdapConnAsync::with_settings(settings, &server_url)
-                        .await
-                        .map_err(|e| format!("Failed to connect to LDAP server: {}", e))?;
+                let (conn, mut ldap) = ldap3::LdapConnAsync::with_settings(settings, &server_url)
+                    .await
+                    .map_err(|e| format!("Failed to connect to LDAP server: {}", e))?;
 
                 ldap3::drive!(conn);
 
@@ -1913,18 +1899,13 @@ impl AdminService for AdminManager {
                 let _ = ldap.unbind().await;
 
                 details.insert("connected".to_string(), serde_json::Value::Bool(true));
-                details.insert(
-                    "authenticated".to_string(),
-                    serde_json::Value::Bool(true),
-                );
+                details.insert("authenticated".to_string(), serde_json::Value::Bool(true));
             }
             _ => {
                 details.insert("skipped".to_string(), serde_json::Value::Bool(true));
                 details.insert(
                     "message".to_string(),
-                    serde_json::Value::String(
-                        "Provider type check not implemented".to_string(),
-                    ),
+                    serde_json::Value::String("Provider type check not implemented".to_string()),
                 );
             }
         }

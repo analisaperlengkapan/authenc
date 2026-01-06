@@ -11,12 +11,12 @@ use openssl::pkey::{PKey, Public};
 use openssl::sign::Verifier;
 use openssl::x509::store::{X509Store, X509StoreBuilder};
 use openssl::x509::{X509, X509Crl, X509StoreContext};
-use x509_parser::prelude::*;
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
+use x509_parser::prelude::*;
 
 /// Supported canonicalization methods
 #[derive(Debug, Clone, PartialEq)]
@@ -648,10 +648,10 @@ mod issuer_tests {
     use openssl::asn1::Asn1Time;
     use openssl::bn::BigNum;
     use openssl::rsa::Rsa;
+    use openssl::x509::X509NameBuilder;
     use openssl::x509::extension::{
         AuthorityKeyIdentifier, BasicConstraints, KeyUsage, SubjectKeyIdentifier,
     };
-    use openssl::x509::X509NameBuilder;
 
     fn create_ca_cert() -> Result<(X509, PKey<openssl::pkey::Private>)> {
         let rsa = Rsa::generate(2048)?;
@@ -879,9 +879,18 @@ mod issuer_tests {
         let store_builder = X509StoreBuilder::new()?;
         let validator = CertificateValidator::new(store_builder.build());
 
-        assert!(validator.check_key_usage(&ds_cert)?, "Cert with digitalSignature should pass");
-        assert!(!validator.check_key_usage(&no_ds_cert)?, "Cert without digitalSignature should fail");
-        assert!(validator.check_key_usage(&no_ext_cert)?, "Cert without KeyUsage extension should pass");
+        assert!(
+            validator.check_key_usage(&ds_cert)?,
+            "Cert with digitalSignature should pass"
+        );
+        assert!(
+            !validator.check_key_usage(&no_ds_cert)?,
+            "Cert without digitalSignature should fail"
+        );
+        assert!(
+            validator.check_key_usage(&no_ext_cert)?,
+            "Cert without KeyUsage extension should pass"
+        );
 
         Ok(())
     }
@@ -1072,7 +1081,8 @@ impl CertificateValidator {
         // Use x509-parser to parse the certificate DER and check extensions
         // This avoids issues with OpenSSL crate missing extension accessors
 
-        let der = cert.to_der()
+        let der = cert
+            .to_der()
             .map_err(|e| anyhow!("Failed to serialize certificate to DER: {}", e))?;
 
         let (_, x509_cert) = x509_parser::parse_x509_certificate(&der)

@@ -6,7 +6,7 @@
 //! NOTE: RSA support has been removed due to security vulnerabilities
 //! (RUSTSEC-2023-0071). All JWT signing uses Ed25519 (EdDSA).
 
-use crate::crypto::ed25519_keys::{get_ed25519_jwk, ED25519_KEYPAIR};
+use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
 use crate::handlers::oidc_ed25519::OidcIdTokenClaims;
 use crate::models::audit_log::AuditLog;
 use crate::services::oidc_client_store::OidcClientStore;
@@ -14,11 +14,11 @@ use crate::services::oidc_code_store::OidcCodeStore;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;
 use axum::{
+    Form, Router,
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json, Redirect, Response},
     routing::{get, post},
-    Form, Router,
 };
 use axum_extra::extract::CookieJar;
 use base64ct::{Base64UrlUnpadded, Encoding};
@@ -99,15 +99,15 @@ fn verify_ed25519_jwt(token: &str) -> Result<OidcIdTokenClaims, &'static str> {
 
     // Verify signature
     let signing_input = format!("{}.{}", header_b64, payload_b64);
-    let signature_bytes = Base64UrlUnpadded::decode_vec(signature_b64)
-        .map_err(|_| "Invalid signature encoding")?;
-    
+    let signature_bytes =
+        Base64UrlUnpadded::decode_vec(signature_b64).map_err(|_| "Invalid signature encoding")?;
+
     if signature_bytes.len() != 64 {
         return Err("Invalid signature length");
     }
 
-    let signature = Signature::from_slice(&signature_bytes)
-        .map_err(|_| "Invalid signature format")?;
+    let signature =
+        Signature::from_slice(&signature_bytes).map_err(|_| "Invalid signature format")?;
 
     // Get public key from keypair
     let public_key = ED25519_KEYPAIR.verifying_key();
@@ -116,10 +116,10 @@ fn verify_ed25519_jwt(token: &str) -> Result<OidcIdTokenClaims, &'static str> {
         .map_err(|_| "Signature verification failed")?;
 
     // Decode and parse claims
-    let claims_bytes = Base64UrlUnpadded::decode_vec(payload_b64)
-        .map_err(|_| "Invalid payload encoding")?;
-    let claims: OidcIdTokenClaims = serde_json::from_slice(&claims_bytes)
-        .map_err(|_| "Invalid claims format")?;
+    let claims_bytes =
+        Base64UrlUnpadded::decode_vec(payload_b64).map_err(|_| "Invalid payload encoding")?;
+    let claims: OidcIdTokenClaims =
+        serde_json::from_slice(&claims_bytes).map_err(|_| "Invalid claims format")?;
 
     // Verify expiration
     let now = Utc::now().timestamp();
@@ -545,7 +545,7 @@ pub async fn oidc_authorize(
         .clone()
         .map(|s| s.split_whitespace().map(String::from).collect())
         .unwrap_or_else(|| vec!["openid".to_string()]);
-    
+
     if let Err(e) = state
         .code_store
         .insert(
@@ -764,23 +764,28 @@ pub async fn oidc_userinfo(
     use crate::services::stores::user_store::UserStoreTrait;
 
     // Get user info
-    let user = state.user_store.get_user_by_username(&claims.sub).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "server_error".to_string(),
-                error_description: Some("Database error".to_string()),
-            }),
-        )
-    })?.ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "invalid_token".to_string(),
-                error_description: Some("User not found".to_string()),
-            }),
-        )
-    })?;
+    let user = state
+        .user_store
+        .get_user_by_username(&claims.sub)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "server_error".to_string(),
+                    error_description: Some("Database error".to_string()),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "invalid_token".to_string(),
+                    error_description: Some("User not found".to_string()),
+                }),
+            )
+        })?;
 
     // Log successful userinfo request
     let _ = state
@@ -816,10 +821,7 @@ pub async fn oidc_jwks() -> Json<serde_json::Value> {
 /// Create OIDC provider routes for the application (Ed25519-based)
 pub fn create_oidc_provider_routes() -> Router<Arc<OidcProviderState>> {
     Router::new()
-        .route(
-            "/.well-known/openid-configuration",
-            get(oidc_discovery),
-        )
+        .route("/.well-known/openid-configuration", get(oidc_discovery))
         .route("/oidc/login", get(oidc_login))
         .route("/oidc/login", post(oidc_login_post))
         .route("/oidc/authorize", get(oidc_authorize))

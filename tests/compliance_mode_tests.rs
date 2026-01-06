@@ -227,16 +227,20 @@ mod tests {
 
         // Find consent management check by looking for specific evidence string
         // defined in GDPRConsentManagementCheck::execute
-        let consent_check = results.iter().find(|r|
-            r.evidence.contains(&"Consent management system integrated".to_string())
-        );
+        let consent_check = results.iter().find(|r| {
+            r.evidence
+                .contains(&"Consent management system integrated".to_string())
+        });
 
-        assert!(consent_check.is_some(), "Consent management check should be present and passed");
+        assert!(
+            consent_check.is_some(),
+            "Consent management check should be present and passed"
+        );
         let check = consent_check.unwrap();
 
         // Should be Compliant because consent_store is Some(_)
         match check.status {
-            authenc::services::compliance::ComplianceStatus::Compliant => {},
+            authenc::services::compliance::ComplianceStatus::Compliant => {}
             _ => panic!("Expected Compliant status, got {:?}", check.status),
         }
     }

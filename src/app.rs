@@ -692,11 +692,6 @@ mod tests {
     }
 }
 
-
-
-
-
-
 use axum::extract::FromRef;
 impl FromRef<Arc<AppState>> for crate::database::Database {
     fn from_ref(state: &Arc<AppState>) -> Self {

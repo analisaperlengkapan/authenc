@@ -662,13 +662,23 @@ impl IdentityBroker for SocialIdentityBroker {
     async fn get_user_info(&self, identifier: &str) -> Result<Option<User>, String> {
         let url = match self.provider_type {
             IdentityProviderType::SocialGoogle => "https://www.googleapis.com/oauth2/v3/userinfo",
-            IdentityProviderType::SocialFacebook => "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name,picture",
+            IdentityProviderType::SocialFacebook => {
+                "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name,picture"
+            }
             IdentityProviderType::SocialGitHub => "https://api.github.com/user",
-            IdentityProviderType::SocialTwitter => "https://api.twitter.com/2/users/me?user.fields=profile_image_url,name,username",
-            _ => return Err(format!("Unsupported social provider type: {:?}", self.provider_type)),
+            IdentityProviderType::SocialTwitter => {
+                "https://api.twitter.com/2/users/me?user.fields=profile_image_url,name,username"
+            }
+            _ => {
+                return Err(format!(
+                    "Unsupported social provider type: {:?}",
+                    self.provider_type
+                ));
+            }
         };
 
-        let response = self.client
+        let response = self
+            .client
             .get(url)
             .header("Authorization", format!("Bearer {}", identifier))
             .send()
@@ -748,10 +758,7 @@ fn parse_google_user(data: &serde_json::Value) -> Result<User, String> {
     let username = if !email.is_empty() {
         email.clone()
     } else {
-        data["sub"]
-            .as_str()
-            .ok_or("Missing sub field")?
-            .to_string()
+        data["sub"].as_str().ok_or("Missing sub field")?.to_string()
     };
 
     let mut user = User::new(username, email, None, None);

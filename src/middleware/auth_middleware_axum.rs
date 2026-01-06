@@ -79,7 +79,7 @@ fn validate_token(token: &str, _secret: &str) -> Result<AuthUser, AuthencError> 
         // This can happen for tokens generated before the enhancement
         format!("{}@unknown.local", claims.sub)
     });
-    
+
     let roles = claims.roles.unwrap_or_else(|| {
         // Default role if not specified in token
         vec!["user".to_string()]
@@ -174,7 +174,10 @@ mod tests {
 
         let app = Router::new()
             .route("/protected", get(|| async { "Protected content" }))
-            .layer(axum::middleware::from_fn_with_state(state.clone(), auth_middleware));
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                auth_middleware,
+            ));
 
         // 1. Test missing token
         let response = app
@@ -530,7 +533,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK, "Manually constructed valid token should pass");
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Manually constructed valid token should pass"
+        );
 
         // 2. Test expired token
         let expired_claims = Claims {
@@ -552,6 +559,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "Expired token should be rejected");
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "Expired token should be rejected"
+        );
     }
 }
