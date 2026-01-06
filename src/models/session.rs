@@ -10,7 +10,7 @@ use uuid::Uuid;
 /// # Fields
 /// * `id` - Unique session identifier (UUID)
 /// * `user_id` - ID of the authenticated user
-/// * `realm_id` - ID of the realm this session belongs to
+/// * `realm_id` - ID of the realm the session belongs to
 /// * `token` - JWT access token for API authentication
 /// * `refresh_token` - Optional refresh token for token renewal
 /// * `expires_at` - Session expiration timestamp
@@ -32,7 +32,7 @@ pub struct Session {
     pub id: Uuid,
     /// ID of the authenticated user
     pub user_id: Uuid,
-    /// ID of the realm this session belongs to
+    /// ID of the realm the session belongs to
     pub realm_id: Uuid,
     /// JWT access token for API authentication
     pub token: String,
@@ -91,7 +91,7 @@ pub struct CreateSessionRequest {
 /// # Fields
 /// * `id` - Unique session identifier
 /// * `user_id` - ID of the authenticated user
-/// * `realm_id` - ID of the realm
+/// * `realm_id` - ID of the realm the session belongs to
 /// * `expires_at` - Session expiration timestamp
 /// * `created_at` - Session creation timestamp
 /// * `last_accessed` - Last activity timestamp
@@ -109,7 +109,7 @@ pub struct SessionResponse {
     pub id: Uuid,
     /// ID of the authenticated user
     pub user_id: Uuid,
-    /// ID of the realm
+    /// ID of the realm the session belongs to
     pub realm_id: Uuid,
     /// Session expiration timestamp
     pub expires_at: DateTime<Utc>,
@@ -147,6 +147,7 @@ impl Session {
     /// # Arguments
     /// * `request` - Session creation parameters
     /// * `token` - Generated JWT access token
+    /// * `realm_id` - ID of the realm the session belongs to
     ///
     /// # Returns
     /// A new Session instance ready for use
@@ -155,12 +156,12 @@ impl Session {
     /// - Generates cryptographically secure UUID for session ID
     /// - Sets appropriate expiration based on request
     /// - Records creation and access timestamps
-    pub fn new(request: CreateSessionRequest, token: String) -> Self {
+    pub fn new(request: CreateSessionRequest, token: String, realm_id: Uuid) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
             user_id: request.user_id,
-            realm_id: request.realm_id,
+            realm_id,
             token,
             refresh_token: None,
             expires_at: now + chrono::Duration::seconds(request.expires_in),
