@@ -3,20 +3,22 @@
 //! This module provides endpoints for querying and exporting audit logs
 //! with filtering and pagination support.
 
+use crate::database::operations;
 use crate::models::audit_log::AuditLog;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;
 use axum::{
-    Router,
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{Json, Response},
     routing::get,
+    Router,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Query parameters for audit log filtering
 #[derive(Debug, Deserialize)]
@@ -82,15 +84,39 @@ fn extract_token(headers: &HeaderMap) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// Check if user is admin (simplified - in production use proper JWT validation)
-/// Note: This is a synchronous placeholder. In production, use async JWT validation.
-fn is_admin(headers: &HeaderMap, _user_store: &UserStore) -> bool {
-    // In production, this should:
-    // 1. Decode the JWT token from headers
-    // 2. Validate the token signature
-    // 3. Check user roles/permissions
-    // For now, just check if a token is present (placeholder)
-    extract_token(headers).is_some()
+/// Check if user is admin using async JWT validation
+async fn is_admin(headers: &HeaderMap, user_store: &UserStore) -> bool {
+    let token = match extract_token(headers) {
+        Some(t) => t,
+        None => return false,
+    };
+
+    // 1. Decode and validate the JWT token
+    let claims = match crate::utils::crypto::jwt::verify_jwt(&token) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("JWT verification failed: {}", e);
+            return false;
+        }
+    };
+
+    // 2. Extract user ID
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(uid) => uid,
+        Err(e) => {
+            tracing::warn!("Invalid user ID in token claims: {}", e);
+            return false;
+        }
+    };
+
+    // 3. Check user roles from database to ensure up-to-date permissions
+    match operations::roles::get_user_roles(user_store.database(), &user_id).await {
+        Ok(roles) => roles.iter().any(|r| r.name == "admin"),
+        Err(e) => {
+            tracing::error!("Failed to fetch roles for user {}: {}", user_id, e);
+            false
+        }
+    }
 }
 
 /// Apply filters to audit logs
@@ -141,7 +167,7 @@ pub async fn get_audit_logs(
     }
 
     // Check admin authorization
-    if !is_admin(&headers, &state.user_store) {
+    if !is_admin(&headers, &state.user_store).await {
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
@@ -195,7 +221,7 @@ pub async fn export_audit_logs_csv(
     }
 
     // Check admin authorization
-    if !is_admin(&headers, &state.user_store) {
+    if !is_admin(&headers, &state.user_store).await {
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
