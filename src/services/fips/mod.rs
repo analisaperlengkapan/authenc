@@ -3,6 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use zeroize::Zeroizing;
 
 /// FIPS 140-3 compliance levels (updated standard)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd)]
@@ -540,7 +541,7 @@ pub struct FipsKeyStoreManager {
     keystore_path: String,
     /// Password for accessing the keystore
     #[allow(dead_code)]
-    keystore_password: String,
+    keystore_password: Zeroizing<String>,
     /// Type of keystore format (PKCS12 or BCFKS)
     #[allow(dead_code)]
     keystore_type: String,
@@ -569,9 +570,23 @@ impl FipsKeyStoreManager {
     pub fn new(keystore_path: String, keystore_password: String, keystore_type: String) -> Self {
         Self {
             keystore_path,
-            keystore_password,
+            keystore_password: Zeroizing::new(keystore_password),
             keystore_type,
         }
+    }
+
+    /// Creates a new FIPS keystore manager loading the password from environment.
+    ///
+    /// This constructor looks for `FIPS_KEYSTORE_PASSWORD` environment variable.
+    ///
+    /// # Arguments
+    /// * `keystore_path` - Path to the keystore file on disk
+    /// * `keystore_type` - Type of keystore format (PKCS12 or BCFKS)
+    pub fn from_env(keystore_path: String, keystore_type: String) -> Result<Self> {
+        let password = std::env::var("FIPS_KEYSTORE_PASSWORD")
+            .map_err(|_| anyhow::anyhow!("FIPS_KEYSTORE_PASSWORD environment variable not set"))?;
+
+        Ok(Self::new(keystore_path, password, keystore_type))
     }
 
     /// Create FIPS compliant keystore
@@ -1132,6 +1147,16 @@ pub struct FipsApplianceBootstrap {
 impl Default for FipsApplianceBootstrap {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl std::fmt::Debug for FipsKeyStoreManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FipsKeyStoreManager")
+            .field("keystore_path", &self.keystore_path)
+            .field("keystore_password", &"<redacted>")
+            .field("keystore_type", &self.keystore_type)
+            .finish()
     }
 }
 
