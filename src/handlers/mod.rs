@@ -124,7 +124,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         ))
         .with_state(oauth2_state.clone());
 
-    let mut router = Router::new()
+    let router = Router::new()
         .merge(health::create_health_routes().with_state(state.database.clone()))
         // OAuth2 authorization endpoint (accessible without auth)
         .nest(
