@@ -270,12 +270,21 @@ mod tests {
     fn test_extract_registration_token() {
         // Test with valid Bearer token
         let mut headers = HeaderMap::new();
-        headers.insert("authorization", HeaderValue::from_static("Bearer some.jwt.token"));
-        assert_eq!(extract_registration_token(&headers), Some("some.jwt.token".to_string()));
+        headers.insert(
+            "authorization",
+            HeaderValue::from_static("Bearer some.jwt.token"),
+        );
+        assert_eq!(
+            extract_registration_token(&headers),
+            Some("some.jwt.token".to_string())
+        );
 
         // Test with invalid prefix
         let mut headers = HeaderMap::new();
-        headers.insert("authorization", HeaderValue::from_static("Basic some.jwt.token"));
+        headers.insert(
+            "authorization",
+            HeaderValue::from_static("Basic some.jwt.token"),
+        );
         assert_eq!(extract_registration_token(&headers), None);
 
         // Test with no authorization header

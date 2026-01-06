@@ -50,10 +50,13 @@ impl TotpStore {
             .write()
             .map_err(|e| format!("Lock poisoned: {e}"))?;
 
-        entries.insert(user_id.to_string(), TotpEntry {
-            secret: secret.to_string(),
-            created_at: Utc::now(),
-        });
+        entries.insert(
+            user_id.to_string(),
+            TotpEntry {
+                secret: secret.to_string(),
+                created_at: Utc::now(),
+            },
+        );
 
         Ok(())
     }
@@ -131,7 +134,9 @@ impl TotpStore {
             .entries
             .read()
             .map_err(|e| format!("Lock poisoned: {e}"))?;
-        Ok(entries.get(user_id).map(|e| (e.secret.clone(), e.created_at)))
+        Ok(entries
+            .get(user_id)
+            .map(|e| (e.secret.clone(), e.created_at)))
     }
 
     /// Record TOTP usage timestamp for user

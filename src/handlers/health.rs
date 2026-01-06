@@ -144,7 +144,12 @@ mod tests {
         let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
-            .oneshot(Request::builder().uri("/ready").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/ready")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -157,11 +162,20 @@ mod tests {
 
         // Test case 2: Database is unhealthy
         // Verify that the health check correctly handles database errors
-        let db = Database::mock().await.with_mock_status(MockStatus::Unhealthy("Database connection failed".to_string()));
+        let db = Database::mock()
+            .await
+            .with_mock_status(MockStatus::Unhealthy(
+                "Database connection failed".to_string(),
+            ));
         let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
-            .oneshot(Request::builder().uri("/ready").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/ready")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 

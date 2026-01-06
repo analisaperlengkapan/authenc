@@ -148,7 +148,10 @@ fn convert_to_ldap_user_info(user: crate::models::User) -> LdapUserInfo {
             if let Some(val) = attrs.get(key) {
                 match val {
                     serde_json::Value::Array(arr) => {
-                        groups.extend(arr.iter().filter_map(|v| v.as_str().map(ToString::to_string)));
+                        groups.extend(
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(ToString::to_string)),
+                        );
                     }
                     serde_json::Value::String(s) => {
                         groups.push(s.clone());
@@ -247,10 +250,8 @@ pub async fn ldap_search_users(
     let limit = request.limit.unwrap_or(50);
     match provider.search_users(&request.query, limit).await {
         Ok(users) => {
-            let users: Vec<LdapUserInfo> = users
-                .into_iter()
-                .map(convert_to_ldap_user_info)
-                .collect();
+            let users: Vec<LdapUserInfo> =
+                users.into_iter().map(convert_to_ldap_user_info).collect();
             let total = users.len();
 
             Ok(Json(LdapUserSearchResponse { users, total }))
@@ -489,7 +490,7 @@ mod tests {
 
     #[test]
     fn test_extract_groups_single_string() {
-         let attributes = json!({
+        let attributes = json!({
             "groups": "group1",
             "memberOf": "group2"
         });
@@ -529,7 +530,10 @@ mod tests {
         config.server.public_prefix = "/api/v1".to_string();
 
         let uri = construct_social_callback_uri(&config);
-        assert_eq!(uri, "https://auth.example.com/api/v1/auth/federation/social/callback");
+        assert_eq!(
+            uri,
+            "https://auth.example.com/api/v1/auth/federation/social/callback"
+        );
     }
 
     #[test]
@@ -541,6 +545,9 @@ mod tests {
         config.server.public_prefix = "/api/v1/".to_string();
 
         let uri = construct_social_callback_uri(&config);
-        assert_eq!(uri, "https://auth.example.com/api/v1/auth/federation/social/callback");
+        assert_eq!(
+            uri,
+            "https://auth.example.com/api/v1/auth/federation/social/callback"
+        );
     }
 }

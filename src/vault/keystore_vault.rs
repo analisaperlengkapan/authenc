@@ -46,9 +46,7 @@ impl KeystoreVault {
     /// # Note
     /// This is currently a placeholder. All operations will return `NotImplemented`.
     pub fn new() -> Self {
-        KeystoreVault {
-            path: None,
-        }
+        KeystoreVault { path: None }
     }
 
     /// Create a new keystore vault with a specific path
@@ -92,11 +90,7 @@ impl Vault for KeystoreVault {
         ))
     }
 
-    async fn delete_secret(
-        &self,
-        key: &str,
-        realm: Option<&str>,
-    ) -> Result<(), VaultError> {
+    async fn delete_secret(&self, key: &str, realm: Option<&str>) -> Result<(), VaultError> {
         tracing::warn!(
             "KeystoreVault.delete_secret called but not implemented. key={}, realm={:?}, path={:?}",
             key,

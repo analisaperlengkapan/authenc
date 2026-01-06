@@ -338,7 +338,10 @@ impl SamlService {
 
     /// Get Issuer and raw XML from SAML Response without full validation
     /// This is useful for identifying the IdP to load its configuration
-    pub fn get_issuer_and_xml_from_response(&self, saml_response: &str) -> Result<(String, String)> {
+    pub fn get_issuer_and_xml_from_response(
+        &self,
+        saml_response: &str,
+    ) -> Result<(String, String)> {
         let xml = self.decode_saml_response(saml_response)?;
 
         // Parse XML to SamlResponse
@@ -433,7 +436,8 @@ impl SamlService {
         expected_idp_entity_id: &str,
     ) -> Result<SamlUserInfo> {
         let xml = self.decode_saml_response(saml_response)?;
-        self.process_xml_response(&xml, relay_state, expected_idp_entity_id).await
+        self.process_xml_response(&xml, relay_state, expected_idp_entity_id)
+            .await
     }
 
     /// Generate SAML metadata for Service Provider

@@ -14,8 +14,8 @@ fn test_p521_end_to_end_flow() {
     let verifying_key = VerifyingKey::from(&*ECDSA_P521_KEYPAIR);
 
     // 4. Verify the JWT
-    let (decoded_header, decoded_payload) = verify_jwt_p521(&token, &verifying_key)
-        .expect("Failed to verify JWT");
+    let (decoded_header, decoded_payload) =
+        verify_jwt_p521(&token, &verifying_key).expect("Failed to verify JWT");
 
     // 5. Assertions
     assert_eq!(decoded_header, header);

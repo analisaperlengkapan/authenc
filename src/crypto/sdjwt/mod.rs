@@ -377,8 +377,7 @@ impl IssuerSignedJwt {
         );
 
         let full_payload = self.get_payload_as_value()?;
-        let payload_b64 =
-            Base64UrlUnpadded::encode_string(full_payload.to_string().as_bytes());
+        let payload_b64 = Base64UrlUnpadded::encode_string(full_payload.to_string().as_bytes());
 
         let message = format!("{}.{}", header_b64, payload_b64);
         let signature = keypair.sign(message.as_bytes());
@@ -389,37 +388,31 @@ impl IssuerSignedJwt {
 
     /// Serialize to SD-JWT format
     pub fn to_sd_jwt(&self) -> String {
-        let full_payload = self
-            .get_payload_as_value()
-            .unwrap_or(json!({}));
+        let full_payload = self.get_payload_as_value().unwrap_or(json!({}));
 
         format!(
             "{}.{}.{}",
             Base64UrlUnpadded::encode_string(
                 serde_json::to_string(&self.header).unwrap().as_bytes()
             ),
-            Base64UrlUnpadded::encode_string(
-                full_payload.to_string().as_bytes()
-            ),
+            Base64UrlUnpadded::encode_string(full_payload.to_string().as_bytes()),
             self.signature
         )
     }
 
     /// Helper to merge payload and array claims into a single JSON value
     pub fn get_payload_as_value(&self) -> Result<Value, AuthencError> {
-        let mut full_payload = serde_json::to_value(&self.payload).map_err(|_| {
-            AuthencError::SerializationError {
+        let mut full_payload =
+            serde_json::to_value(&self.payload).map_err(|_| AuthencError::SerializationError {
                 message: "Failed to serialize payload".to_string(),
-            }
-        })?;
+            })?;
 
         if let Some(payload_obj) = full_payload.as_object_mut() {
             for (k, v) in &self.array_claims {
-                let array_value = serde_json::to_value(v).map_err(|_| {
-                    AuthencError::SerializationError {
+                let array_value =
+                    serde_json::to_value(v).map_err(|_| AuthencError::SerializationError {
                         message: "Failed to serialize array claim".to_string(),
-                    }
-                })?;
+                    })?;
                 payload_obj.insert(k.clone(), array_value);
             }
         }
@@ -526,7 +519,9 @@ impl SdJwt {
         for (key, value) in raw_payload {
             if value.is_array() {
                 // Try to parse as array claim
-                if let Ok(elements) = serde_json::from_value::<Vec<SdJwtArrayElement>>(value.clone()) {
+                if let Ok(elements) =
+                    serde_json::from_value::<Vec<SdJwtArrayElement>>(value.clone())
+                {
                     array_claims.insert(key, elements);
                 } else {
                     // Fallback to trying to parse as SdJwtClaim (unlikely for array but possible if SdJwtClaim changes)
@@ -1180,14 +1175,13 @@ mod tests {
         let mut issuer_signed = IssuerSignedJwt::new("issuer", "subject", "audience");
 
         // Add an array claim
-        let elements = vec![
-            json!("undisclosed_elem"),
-            json!("disclosed_elem"),
-        ];
+        let elements = vec![json!("undisclosed_elem"), json!("disclosed_elem")];
         // Only one salt, so first element is undisclosed (if i < salts.len()), others disclosed
         let salts = vec![SdJwtSalt::new()];
 
-        issuer_signed.add_selective_array_claim("test_array".to_string(), elements, salts).unwrap();
+        issuer_signed
+            .add_selective_array_claim("test_array".to_string(), elements, salts)
+            .unwrap();
 
         // Sign it (this should now include array_claims in the JSON payload)
         issuer_signed.sign(&keypair).unwrap();
@@ -1199,7 +1193,11 @@ mod tests {
         let parsed_sd_jwt = SdJwt::from_string(&sd_jwt_str).expect("Failed to parse SD-JWT");
 
         // Verify array claims are present and correct
-        let array = parsed_sd_jwt.issuer_signed.array_claims.get("test_array").expect("test_array missing");
+        let array = parsed_sd_jwt
+            .issuer_signed
+            .array_claims
+            .get("test_array")
+            .expect("test_array missing");
         assert_eq!(array.len(), 2);
 
         match &array[0] {

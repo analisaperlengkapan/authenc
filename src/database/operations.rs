@@ -623,10 +623,12 @@ pub mod devices {
         let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
             params.iter().map(|p| p.as_ref()).collect();
 
-        db.execute(&query_builder, &params_refs).await.map_err(|e| {
-            error!("Failed to update device details: {}", e);
-            AuthencError::database(format!("Failed to update device details: {}", e))
-        })?;
+        db.execute(&query_builder, &params_refs)
+            .await
+            .map_err(|e| {
+                error!("Failed to update device details: {}", e);
+                AuthencError::database(format!("Failed to update device details: {}", e))
+            })?;
 
         Ok(())
     }
@@ -1948,10 +1950,7 @@ pub mod audit {
         "#;
 
         let rows = db
-            .query(
-                query,
-                &[&user_id, &event_type, &realm_id, &limit, &offset],
-            )
+            .query(query, &[&user_id, &event_type, &realm_id, &limit, &offset])
             .await?;
         // Convert rows to Vec<AuditEvent>
         rows.into_iter()
@@ -2009,10 +2008,7 @@ pub mod users {
         let password_hash = request
             .password
             .as_ref()
-            .map(|p| {
-                crate::utils::crypto::password::hash_password(p)
-                    .unwrap_or_default()
-            });
+            .map(|p| crate::utils::crypto::password::hash_password(p).unwrap_or_default());
         let realm_id = request.realm_id;
         let organization_id = request.organization_id;
         let _attributes_json = request
@@ -5626,7 +5622,7 @@ pub mod events {
 
         let from_naive = from_date.naive_utc();
         let to_naive = to_date.naive_utc();
-        
+
         match db
             .query_opt(query, &[&realm_id, &from_naive, &to_naive])
             .await?
@@ -10674,10 +10670,7 @@ pub mod policies {
         "#;
 
         let rows: Vec<tokio_postgres::Row> = db
-            .query(
-                query,
-                &[&realm_id, &(limit as i64), &(offset as i64)],
-            )
+            .query(query, &[&realm_id, &(limit as i64), &(offset as i64)])
             .await?;
 
         let mut policies = Vec::new();
@@ -10741,9 +10734,7 @@ pub mod policies {
                 ],
             )
             .await
-            .map_err(|e| {
-                AuthencError::database(format!("Failed to create policy: {}", e))
-            })?;
+            .map_err(|e| AuthencError::database(format!("Failed to create policy: {}", e)))?;
 
         Ok(Policy {
             id: row.get("id"),

@@ -7,11 +7,11 @@ use crate::models::audit_log::AuditLog;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;
 use axum::{
+    Router,
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{Json, Response},
     routing::get,
-    Router,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

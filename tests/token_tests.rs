@@ -295,7 +295,7 @@ async fn test_token_hash_consistency() {
         .generate_token_pair(user_id, client_id.clone(), None, false)
         .await
         .unwrap();
-    
+
     let token2 = token_manager
         .generate_token_pair(user_id, client_id, None, false)
         .await

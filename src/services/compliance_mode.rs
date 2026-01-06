@@ -336,7 +336,9 @@ impl ComplianceModeService {
 #[async_trait::async_trait]
 impl ComplianceEventManager for RwLock<EventManager> {
     async fn fire_event(&self, event: Event) -> Result<(), AuthencError> {
-        self.read().await.fire_event(event)
+        self.read()
+            .await
+            .fire_event(event)
             .await
             .map_err(|e| AuthencError::internal(format!("Event firing failed: {}", e)))
     }

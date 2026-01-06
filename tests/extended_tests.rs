@@ -16,7 +16,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-static AUDIT_LOGS: Lazy<Arc<Mutex<Vec<serde_json::Value>>>> = Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
+static AUDIT_LOGS: Lazy<Arc<Mutex<Vec<serde_json::Value>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
 
 #[axum::debug_handler]
 async fn create_user_handler(

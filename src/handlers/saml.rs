@@ -1,5 +1,6 @@
-use crate::database::Database;
 use crate::app::AppState;
+use crate::database::Database;
+use crate::database::operations::identity_providers::get_identity_provider_by_entity_id;
 use crate::error::AuthencError;
 use crate::models::user::JITUserProvisioningRequest;
 use crate::services::admin::AdminService;
@@ -7,7 +8,6 @@ use crate::services::federation::jit_provisioning::{
     DefaultJITProvisioningService, JITProvisioningService,
 };
 use crate::services::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
-use crate::database::operations::identity_providers::get_identity_provider_by_entity_id;
 use async_trait::async_trait;
 use axum::{
     Router,
@@ -80,22 +80,27 @@ impl AdminService for MockAdminService {
                         if let Some(role) = all_roles.iter().find(|r| r.name == *role_name) {
                             roles::assign_role_to_user(&self.db, &user.id, &role.id)
                                 .await
-                                .map_err(|e| format!("Failed to assign role {}: {}", role_name, e))?;
+                                .map_err(|e| {
+                                    format!("Failed to assign role {}: {}", role_name, e)
+                                })?;
                         }
                     }
                 }
 
                 // Assign groups if provided
                 if !request.groups.is_empty() {
-                    let all_groups = groups::get_groups_by_realm(&self.db, request.realm_id, None, None)
-                        .await
-                        .map_err(|e| format!("Failed to fetch realm groups: {}", e))?;
+                    let all_groups =
+                        groups::get_groups_by_realm(&self.db, request.realm_id, None, None)
+                            .await
+                            .map_err(|e| format!("Failed to fetch realm groups: {}", e))?;
 
                     for group_name in &request.groups {
                         if let Some(group) = all_groups.iter().find(|g| g.name == *group_name) {
                             groups::add_user_to_group(&self.db, user.id, group.id, None, None)
                                 .await
-                                .map_err(|e| format!("Failed to add user to group {}: {}", group_name, e))?;
+                                .map_err(|e| {
+                                    format!("Failed to add user to group {}: {}", group_name, e)
+                                })?;
                         }
                     }
                 }
@@ -394,9 +399,10 @@ pub async fn saml_acs(
         })?;
 
     // Register IDP configuration with service
-    let idp_config: SamlIdentityProvider = serde_json::from_value(idp_data.config.clone()).map_err(|e| {
-        AuthencError::internal(format!("Invalid Identity Provider configuration: {}", e))
-    })?;
+    let idp_config: SamlIdentityProvider = serde_json::from_value(idp_data.config.clone())
+        .map_err(|e| {
+            AuthencError::internal(format!("Invalid Identity Provider configuration: {}", e))
+        })?;
 
     service.register_identity_provider(idp_config);
 
@@ -414,7 +420,10 @@ pub async fn saml_acs(
             ));
 
             // Prepare JIT provisioning request using realm_id from IDP config
-            log::info!("Preparing JIT provisioning request for IDP: {}", idp_data.id);
+            log::info!(
+                "Preparing JIT provisioning request for IDP: {}",
+                idp_data.id
+            );
             let jit_request = JITUserProvisioningRequest {
                 identity_provider_id: idp_data.id,
                 external_id: user_info.name_id.clone(),

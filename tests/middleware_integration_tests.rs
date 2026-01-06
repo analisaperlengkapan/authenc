@@ -1,14 +1,14 @@
+use authenc::middleware::auth_middleware_axum::{AuthState, AuthUserExt, auth_middleware};
 use axum::{
     Router,
+    body::Body,
     extract::Request,
     http::{StatusCode, header},
-    routing::get,
     middleware,
-    body::Body,
+    routing::get,
 };
 use axum_test::TestServer;
 use std::sync::Arc;
-use authenc::middleware::auth_middleware_axum::{auth_middleware, AuthState, AuthUserExt};
 
 // Middleware Integration Tests
 // Validating end-to-end integration of the authentication middleware with the router
@@ -59,9 +59,7 @@ async fn test_protected_api_access_with_token() {
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
 
     // 4. Test with Missing Token
-    let response = server
-        .get("/api/protected")
-        .await;
+    let response = server.get("/api/protected").await;
 
     assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
 }
@@ -75,17 +73,23 @@ async fn test_public_vs_protected_routes_integration() {
 
     let app = Router::new()
         .route("/api/public", get(|| async { "Public Area" }))
-        .route("/api/private", get(|req: Request<Body>| async move {
-            let user = req.auth_user().ok_or(StatusCode::UNAUTHORIZED)?;
-            Ok::<String, StatusCode>(format!("Private Area for {}", user.id))
-        }))
+        .route(
+            "/api/private",
+            get(|req: Request<Body>| async move {
+                let user = req.auth_user().ok_or(StatusCode::UNAUTHORIZED)?;
+                Ok::<String, StatusCode>(format!("Private Area for {}", user.id))
+            }),
+        )
         // Note: The middleware logic has a hardcoded list of public endpoints in `is_public_endpoint`.
         // Ideally, we should be able to configure this, but for this integration test,
         // we are testing the `auth_layer` application.
         // Since `is_public_endpoint` is internal and hardcoded to /health*,
         // we expect /api/public to actually *require* auth unless we modify the middleware or the path matches.
         // Let's verify standard behavior: if it's not in the allowlist, it requires auth.
-        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ));
 
     let server = TestServer::new(app).unwrap();
 

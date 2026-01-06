@@ -11,7 +11,7 @@ use crate::models::client_registration::{
 };
 use crate::models::oidc_client::OidcClient;
 use crate::services::oidc_client_store::OidcClientStore;
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use jsonwebtoken::{DecodingKey, Validation, decode};
 
 /// Service for handling OAuth 2.0 Dynamic Client Registration (RFC 7591/7592)
 #[async_trait]
@@ -46,10 +46,7 @@ pub trait ClientRegistrationService: Send + Sync {
     ) -> Result<()>;
 
     /// Validate software statement
-    async fn validate_software_statement(
-        &self,
-        token: &str,
-    ) -> Result<SoftwareStatement>;
+    async fn validate_software_statement(&self, token: &str) -> Result<SoftwareStatement>;
 }
 
 /// Default implementation of Client Registration Service
@@ -267,9 +264,10 @@ impl ClientRegistrationService for DefaultClientRegistrationService {
         // Merge software statement metadata if present (RFC 7591)
         let request = if let Some(stmt) = &parsed_stmt {
             // Serialize request to Value to allow merging
-            let mut request_value = serde_json::to_value(&request).map_err(|e| AuthencError::SerializationError {
-                message: format!("Failed to serialize request: {}", e),
-            })?;
+            let mut request_value =
+                serde_json::to_value(&request).map_err(|e| AuthencError::SerializationError {
+                    message: format!("Failed to serialize request: {}", e),
+                })?;
 
             // Merge metadata from software statement
             if let Some(obj) = request_value.as_object_mut() {
@@ -427,10 +425,7 @@ impl ClientRegistrationService for DefaultClientRegistrationService {
         Ok(())
     }
 
-    async fn validate_software_statement(
-        &self,
-        token: &str,
-    ) -> Result<SoftwareStatement> {
+    async fn validate_software_statement(&self, token: &str) -> Result<SoftwareStatement> {
         validate_software_statement_token(token, self.validation_secret.as_deref())
     }
 }
@@ -447,7 +442,8 @@ fn validate_software_statement_token(
     } else {
         // If validation is strictly required but no key is configured, this is an error
         return Err(AuthencError::ConfigurationError {
-            message: "Software statement validation is required but no key is configured".to_string(),
+            message: "Software statement validation is required but no key is configured"
+                .to_string(),
         });
     };
 
@@ -456,12 +452,10 @@ fn validate_software_statement_token(
     let mut validation = Validation::default();
     validation.required_spec_claims.remove("exp");
 
-    let token_data = decode::<SoftwareStatement>(
-        token,
-        &key,
-        &validation,
-    ).map_err(|e| AuthencError::ValidationError {
-        message: format!("Invalid software statement: {}", e),
+    let token_data = decode::<SoftwareStatement>(token, &key, &validation).map_err(|e| {
+        AuthencError::ValidationError {
+            message: format!("Invalid software statement: {}", e),
+        }
     })?;
 
     Ok(token_data.claims)
@@ -470,7 +464,7 @@ fn validate_software_statement_token(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jsonwebtoken::{encode, EncodingKey, Header};
+    use jsonwebtoken::{EncodingKey, Header, encode};
     use serde_json::json;
 
     #[test]
@@ -481,9 +475,9 @@ mod tests {
         let payload = SoftwareStatement {
             software_id: Some("test_software".to_string()),
             software_version: Some("1.0".to_string()),
-            client_metadata: [
-                ("client_name".to_string(), json!("Test Client")),
-            ].into_iter().collect(),
+            client_metadata: [("client_name".to_string(), json!("Test Client"))]
+                .into_iter()
+                .collect(),
         };
 
         // Create a valid token
@@ -491,7 +485,8 @@ mod tests {
             &Header::default(),
             &payload,
             &EncodingKey::from_secret(secret),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Test valid token
         let result = validate_software_statement_token(&token, Some(secret));
@@ -501,7 +496,11 @@ mod tests {
 
         // Test invalid signature
         let result = validate_software_statement_token(&token, Some(b"wrong_secret"));
-        assert!(result.is_err(), "Expected error for invalid signature, got {:?}", result);
+        assert!(
+            result.is_err(),
+            "Expected error for invalid signature, got {:?}",
+            result
+        );
         match result {
             Err(AuthencError::ValidationError { message }) => {
                 // The error message from jsonwebtoken depends on the error type.

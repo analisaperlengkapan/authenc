@@ -4,9 +4,9 @@ use aes_gcm::{
     Aes256Gcm, Key, Nonce,
     aead::{Aead, KeyInit},
 };
-use rand::rngs::OsRng;
 use base64ct::{Base64UrlUnpadded, Encoding};
 use rand::RngCore;
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -68,9 +68,10 @@ impl AesGcmService {
             });
         }
 
-        let key = Key::<Aes256Gcm>::try_from(key_data).map_err(|_| AuthencError::ValidationError {
-            message: "Invalid AES key length".to_string(),
-        })?;
+        let key =
+            Key::<Aes256Gcm>::try_from(key_data).map_err(|_| AuthencError::ValidationError {
+                message: "Invalid AES key length".to_string(),
+            })?;
         Ok(Self { key })
     }
 
@@ -82,7 +83,8 @@ impl AesGcmService {
             // Generate random nonce
             let mut nonce_bytes = [0u8; 12];
             OsRng.fill_bytes(&mut nonce_bytes);
-            let nonce = Nonce::try_from(nonce_bytes.as_slice()).map_err(|_| AuthencError::CryptographicError)?;
+            let nonce = Nonce::try_from(nonce_bytes.as_slice())
+                .map_err(|_| AuthencError::CryptographicError)?;
 
             // Encrypt the data
             let ciphertext = cipher
@@ -143,7 +145,8 @@ impl AesGcmService {
             let mut full_ciphertext = ciphertext.clone();
             full_ciphertext.extend_from_slice(&tag);
 
-            let nonce = Nonce::try_from(nonce_bytes.as_slice()).map_err(|_| AuthencError::CryptographicError)?;
+            let nonce = Nonce::try_from(nonce_bytes.as_slice())
+                .map_err(|_| AuthencError::CryptographicError)?;
 
             // Decrypt
             let plaintext = cipher

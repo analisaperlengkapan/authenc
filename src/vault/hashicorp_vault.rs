@@ -403,7 +403,8 @@ impl HsmVault for HashiCorpVault {
                             .and_then(|d| d.get("signature"))
                             .and_then(|s| s.as_str())
                         {
-                            return base64::engine::general_purpose::STANDARD.decode(signature)
+                            return base64::engine::general_purpose::STANDARD
+                                .decode(signature)
                                 .map_err(|e| VaultError::InvalidFormat(e.to_string()));
                         }
                     }
@@ -467,7 +468,8 @@ impl HsmVault for HashiCorpVault {
                             .and_then(|d| d.get("plaintext"))
                             .and_then(|p| p.as_str())
                         {
-                            return base64::engine::general_purpose::STANDARD.decode(plaintext)
+                            return base64::engine::general_purpose::STANDARD
+                                .decode(plaintext)
                                 .map_err(|e| VaultError::InvalidFormat(e.to_string()));
                         }
                     }

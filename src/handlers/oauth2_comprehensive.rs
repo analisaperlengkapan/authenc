@@ -1,12 +1,12 @@
-use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk, verify_ed25519};
 use crate::app::AppState;
+use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk, verify_ed25519};
 use crate::database::Database;
 use crate::database::operations::oauth2;
 use crate::error::AuthencError;
 use crate::services::stores::consent_store::ConsentStoreTrait;
 use crate::services::stores::user_store::UserStoreTrait;
-use crate::utils::crypto_monitor::CryptoMonitor;
 use crate::utils::crypto::password::verify_password;
+use crate::utils::crypto_monitor::CryptoMonitor;
 use axum::{
     debug_handler,
     extract::{Extension, Query, State},
@@ -665,10 +665,10 @@ pub async fn test_oauth2_token(
     let now = Utc::now().timestamp();
 
     match params.grant_type.as_str() {
-        "authorization_code" => handle_authorization_code_grant(params, stores.clone(), now).await,
-        "client_credentials" => handle_client_credentials_grant(params, stores.clone(), now).await,
+        "authorization_code" => handle_authorization_code_grant(params, state.clone(), now).await,
+        "client_credentials" => handle_client_credentials_grant(params, state.clone(), now).await,
         "password" => handle_password_grant(params, state.clone(), now).await,
-        "refresh_token" => handle_refresh_token_grant(params, stores.clone(), now).await,
+        "refresh_token" => handle_refresh_token_grant(params, state.clone(), now).await,
         _ => Err(AuthencError::validation("Unsupported grant_type")),
     }
 }
@@ -682,10 +682,10 @@ pub async fn oauth2_token(
     let now = Utc::now().timestamp();
 
     match params.grant_type.as_str() {
-        "authorization_code" => handle_authorization_code_grant(params, stores.clone(), now).await,
-        "client_credentials" => handle_client_credentials_grant(params, stores.clone(), now).await,
+        "authorization_code" => handle_authorization_code_grant(params, state.clone(), now).await,
+        "client_credentials" => handle_client_credentials_grant(params, state.clone(), now).await,
         "password" => handle_password_grant(params, state.clone(), now).await,
-        "refresh_token" => handle_refresh_token_grant(params, stores.clone(), now).await,
+        "refresh_token" => handle_refresh_token_grant(params, state.clone(), now).await,
         _ => Err(AuthencError::validation("Unsupported grant_type")),
     }
 }
@@ -704,7 +704,13 @@ async fn handle_authorization_code_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(&state.app_state.database, &client_id, params.client_secret.as_deref()).await? {
+    if !validate_client(
+        &state.app_state.database,
+        &client_id,
+        params.client_secret.as_deref(),
+    )
+    .await?
+    {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
@@ -834,7 +840,13 @@ async fn handle_client_credentials_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client credentials
-    if !validate_client(&state.app_state.database, &client_id, params.client_secret.as_deref()).await? {
+    if !validate_client(
+        &state.app_state.database,
+        &client_id,
+        params.client_secret.as_deref(),
+    )
+    .await?
+    {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
@@ -895,7 +907,13 @@ async fn handle_password_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(&state.app_state.database, &client_id, params.client_secret.as_deref()).await? {
+    if !validate_client(
+        &state.app_state.database,
+        &client_id,
+        params.client_secret.as_deref(),
+    )
+    .await?
+    {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
@@ -1018,7 +1036,13 @@ async fn handle_refresh_token_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(&state.app_state.database, &client_id, params.client_secret.as_deref()).await? {
+    if !validate_client(
+        &state.app_state.database,
+        &client_id,
+        params.client_secret.as_deref(),
+    )
+    .await?
+    {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
@@ -1302,9 +1326,10 @@ pub async fn oauth2_userinfo(
         tokens
             .get(&decoded.jti)
             .cloned()
-            .ok_or(AuthencError::unauthorized("Invalid or revoked access token"))?
+            .ok_or(AuthencError::unauthorized(
+                "Invalid or revoked access token",
+            ))?
     };
-
 
     // Return user info based on scope
     let mut userinfo = serde_json::json!({
@@ -1417,97 +1442,70 @@ pub async fn test_oauth2_authorize(
 
     Ok(Redirect::to(&redirect_uri))
 }
-<<<<<<< HEAD
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64ct::Base64UrlUnpadded;
+    use uuid::Uuid;
 
     #[test]
-    fn test_verify_and_decode_jwt() {
-        // Create a valid token
+    fn test_verify_and_decode_jwt_valid() {
         let now = Utc::now().timestamp();
         let claims = AccessTokenClaims {
             iss: "test_iss".to_string(),
             sub: "test_sub".to_string(),
             aud: "test_aud".to_string(),
-=======
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use uuid::Uuid;
-
-    #[test]
-    fn test_jwt_verification() {
-        // Create sample claims
-        let now = Utc::now().timestamp();
-        let claims = AccessTokenClaims {
-            iss: "test_issuer".to_string(),
-            sub: "test_subject".to_string(),
-            aud: "test_audience".to_string(),
->>>>>>> 1fdc5e2 (feat: implement real JWT validation for UserInfo endpoint)
             client_id: "test_client".to_string(),
             exp: now + 3600,
             iat: now,
             nbf: now,
-<<<<<<< HEAD
             jti: "test_jti".to_string(),
-=======
-            jti: Uuid::new_v4().to_string(),
-            scope: Some("openid profile".to_string()),
-            roles: None,
-            groups: None,
-        };
-
-        // Generate token
-        let token = generate_access_token(&claims);
-
-        // Verify valid token
-        let verified_claims = verify_jwt(&token).expect("Token verification failed");
-        assert_eq!(verified_claims.sub, claims.sub);
-        assert_eq!(verified_claims.jti, claims.jti);
-    }
-
-    #[test]
-    fn test_jwt_expired() {
-        let now = Utc::now().timestamp();
-        let claims = AccessTokenClaims {
-            iss: "test_issuer".to_string(),
-            sub: "test_subject".to_string(),
-            aud: "test_audience".to_string(),
-            client_id: "test_client".to_string(),
-            exp: now - 3600, // Expired
-            iat: now - 7200,
-            nbf: now - 7200,
-            jti: Uuid::new_v4().to_string(),
->>>>>>> 1fdc5e2 (feat: implement real JWT validation for UserInfo endpoint)
             scope: None,
             roles: None,
             groups: None,
         };
 
         let token = generate_access_token(&claims);
-
-<<<<<<< HEAD
-        // Verify it
         let decoded = verify_and_decode_jwt(&token).expect("Token should be valid");
-        assert_eq!(decoded.jti, "test_jti");
-        assert_eq!(decoded.sub, "test_sub");
+        assert_eq!(decoded.sub, claims.sub);
+        assert_eq!(decoded.jti, claims.jti);
+    }
 
-        // Test tampered token
+    #[test]
+    fn test_verify_and_decode_jwt_tampered() {
+        let now = Utc::now().timestamp();
+        let claims = AccessTokenClaims {
+            iss: "test_iss".to_string(),
+            sub: "test_sub".to_string(),
+            aud: "test_aud".to_string(),
+            client_id: "test_client".to_string(),
+            exp: now + 3600,
+            iat: now,
+            nbf: now,
+            jti: Uuid::new_v4().to_string(),
+            scope: None,
+            roles: None,
+            groups: None,
+        };
+
+        let token = generate_access_token(&claims);
         let parts: Vec<&str> = token.split('.').collect();
-        let mut tampered_payload = Base64UrlUnpadded::decode_vec(parts[1]).unwrap();
-        // modify the JSON
-        let s = String::from_utf8(tampered_payload).unwrap();
-        let s = s.replace("test_sub", "evil_sub");
-        tampered_payload = s.into_bytes();
-        let tampered_payload_b64 = Base64UrlUnpadded::encode_string(&tampered_payload);
 
+        let mut payload_bytes = Base64UrlUnpadded::decode_vec(parts[1]).unwrap();
+        let s = String::from_utf8(payload_bytes).unwrap();
+        let s = s.replace(&claims.sub, "evil_sub");
+        payload_bytes = s.into_bytes();
+        let tampered_payload_b64 = Base64UrlUnpadded::encode_string(&payload_bytes);
         let tampered_token = format!("{}.{}.{}", parts[0], tampered_payload_b64, parts[2]);
-        assert!(verify_and_decode_jwt(&tampered_token).is_err());
 
-        // Test expired token
-         let expired_claims = AccessTokenClaims {
+        assert!(verify_and_decode_jwt(&tampered_token).is_err());
+    }
+
+    #[test]
+    fn test_verify_and_decode_jwt_expired() {
+        let now = Utc::now().timestamp();
+        let expired_claims = AccessTokenClaims {
             iss: "test_iss".to_string(),
             sub: "test_sub".to_string(),
             aud: "test_aud".to_string(),
@@ -1516,44 +1514,12 @@ mod tests {
             iat: now - 7200,
             nbf: now - 7200,
             jti: "expired_jti".to_string(),
-=======
-        // Verification should fail due to expiration
-        match verify_jwt(&token) {
-            Err(AuthencError::Unauthorized { message }) => assert_eq!(message, "Token expired"),
-            _ => panic!("Expected token expired error"),
-        }
-    }
-
-    #[test]
-    fn test_jwt_tampered_signature() {
-        let now = Utc::now().timestamp();
-        let claims = AccessTokenClaims {
-            iss: "test_issuer".to_string(),
-            sub: "test_subject".to_string(),
-            aud: "test_audience".to_string(),
-            client_id: "test_client".to_string(),
-            exp: now + 3600,
-            iat: now,
-            nbf: now,
-            jti: Uuid::new_v4().to_string(),
->>>>>>> 1fdc5e2 (feat: implement real JWT validation for UserInfo endpoint)
             scope: None,
             roles: None,
             groups: None,
         };
-<<<<<<< HEAD
+
         let expired_token = generate_access_token(&expired_claims);
         assert!(verify_and_decode_jwt(&expired_token).is_err());
-=======
-
-        let token = generate_access_token(&claims);
-        let parts: Vec<&str> = token.split('.').collect();
-
-        // Construct tampered token by replacing signature
-        let tampered_token = format!("{}.{}.{}", parts[0], parts[1], "invalid_signature");
-
-        // Verification should fail
-        assert!(verify_jwt(&tampered_token).is_err());
->>>>>>> 1fdc5e2 (feat: implement real JWT validation for UserInfo endpoint)
     }
 }

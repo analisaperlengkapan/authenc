@@ -14,7 +14,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-
 // Shared test state for API tests
 type SharedState = Arc<Mutex<HashMap<String, serde_json::Value>>>;
 

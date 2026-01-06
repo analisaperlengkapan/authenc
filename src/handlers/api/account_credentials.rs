@@ -64,7 +64,6 @@ pub async fn get_account_credentials(
         last_used_at: user.last_login_at,
     });
 
-
     // Check if TOTP is configured using atomic retrieval
     let user_id_str = user_id.to_string();
     if let Ok(Some((_, created_at))) = state.totp_store.get_totp_info(&user_id_str) {
@@ -81,7 +80,6 @@ pub async fn get_account_credentials(
             last_used_at: totp_last_used_at,
         });
     }
-
 
     Ok(Json(credentials))
 }
@@ -126,8 +124,9 @@ pub async fn update_account_password(
     }
 
     // Hash the new password
-    let new_password_hash = crate::utils::crypto::password::hash_password(&password_request.new_password)
-        .map_err(|e| AuthencError::internal(format!("Failed to hash password: {}", e)))?;
+    let new_password_hash =
+        crate::utils::crypto::password::hash_password(&password_request.new_password)
+            .map_err(|e| AuthencError::internal(format!("Failed to hash password: {}", e)))?;
 
     // Update the password
     state
@@ -164,7 +163,9 @@ pub async fn remove_account_credential(
             }
         }
         "password" => {
-            return Err(AuthencError::validation("Cannot delete password credential"));
+            return Err(AuthencError::validation(
+                "Cannot delete password credential",
+            ));
         }
         _ => {
             return Err(AuthencError::resource_not_found("Credential not found"));

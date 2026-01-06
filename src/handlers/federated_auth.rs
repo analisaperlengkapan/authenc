@@ -107,22 +107,27 @@ impl AdminService for MockAdminService {
                         if let Some(role) = all_roles.iter().find(|r| r.name == *role_name) {
                             roles::assign_role_to_user(&self.db, &user.id, &role.id)
                                 .await
-                                .map_err(|e| format!("Failed to assign role {}: {}", role_name, e))?;
+                                .map_err(|e| {
+                                    format!("Failed to assign role {}: {}", role_name, e)
+                                })?;
                         }
                     }
                 }
 
                 // Assign groups if provided
                 if !request.groups.is_empty() {
-                    let all_groups = groups::get_groups_by_realm(&self.db, request.realm_id, None, None)
-                        .await
-                        .map_err(|e| format!("Failed to fetch realm groups: {}", e))?;
+                    let all_groups =
+                        groups::get_groups_by_realm(&self.db, request.realm_id, None, None)
+                            .await
+                            .map_err(|e| format!("Failed to fetch realm groups: {}", e))?;
 
                     for group_name in &request.groups {
                         if let Some(group) = all_groups.iter().find(|g| g.name == *group_name) {
                             groups::add_user_to_group(&self.db, user.id, group.id, None, None)
                                 .await
-                                .map_err(|e| format!("Failed to add user to group {}: {}", group_name, e))?;
+                                .map_err(|e| {
+                                    format!("Failed to add user to group {}: {}", group_name, e)
+                                })?;
                         }
                     }
                 }
@@ -144,7 +149,6 @@ impl AdminService for MockAdminService {
                     .into_iter()
                     .map(|g| g.name)
                     .collect();
-
 
                 Ok(crate::services::admin::UserResponse {
                     id: user.id,
