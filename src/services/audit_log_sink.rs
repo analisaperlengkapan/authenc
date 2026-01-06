@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+use tokio::io::AsyncWriteExt;
+
 use crate::models::audit_log::AuditLog;
 
 /// Trait for audit log sinks that can receive and process audit logs
@@ -103,7 +106,92 @@ impl AuditLogSink for PgAuditLogSink {
     }
 }
 
-// TODO: Future implementations could include:
-// - FileAuditLogSink for local file storage
-// - SyslogAuditLogSink for system logging integration
-// - SplunkAuditLogSink for Splunk SIEM integration
+/// File audit log sink for local file storage
+pub struct FileAuditLogSink {
+    path: PathBuf,
+}
+
+impl FileAuditLogSink {
+    /// Create new file audit log sink
+    ///
+    /// # Arguments
+    /// * `path` - Path to the log file
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+}
+
+impl AuditLogSink for FileAuditLogSink {
+    fn send(&self, log: &AuditLog) {
+        let path = self.path.clone();
+        let log = log.clone();
+        tokio::spawn(async move {
+            let json = serde_json::to_string(&log).unwrap_or_default();
+            // Append newline
+            let entry = format!("{}\n", json);
+
+            // Use tokio fs to append
+            if let Ok(mut file) = tokio::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .await
+            {
+                let _ = file.write_all(entry.as_bytes()).await;
+            } else {
+                tracing::error!("Failed to write audit log to file: {:?}", path);
+            }
+        });
+    }
+}
+
+/// Splunk audit log sink for Splunk SIEM integration
+#[cfg(feature = "reqwest")]
+pub struct SplunkAuditLogSink {
+    client: reqwest::Client,
+    url: String,
+    token: String,
+}
+
+#[cfg(feature = "reqwest")]
+impl SplunkAuditLogSink {
+    /// Create new Splunk audit log sink
+    ///
+    /// # Arguments
+    /// * `url` - Splunk HEC URL
+    /// * `token` - Splunk HEC token
+    pub fn new(url: String, token: String) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            url,
+            token,
+        }
+    }
+}
+
+#[cfg(feature = "reqwest")]
+impl AuditLogSink for SplunkAuditLogSink {
+    fn send(&self, log: &AuditLog) {
+        let client = self.client.clone();
+        let url = self.url.clone();
+        let token = self.token.clone();
+        let log = log.clone();
+
+        tokio::spawn(async move {
+            // Splunk HEC format
+            let payload = serde_json::json!({
+                "time": log.timestamp.timestamp(),
+                "event": log,
+                "sourcetype": "_json"
+            });
+
+            let _ = client
+                .post(&url)
+                .header("Authorization", format!("Splunk {}", token))
+                .json(&payload)
+                .send()
+                .await
+                .map_err(|e| tracing::error!("Failed to send audit log to Splunk: {}", e));
+        });
+    }
+}
