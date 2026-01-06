@@ -92,6 +92,8 @@ async fn test_webauthn_registration_challenge_generation() {
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
+        "test_secret".to_string(),
+        None,
     );
 
     // Test registration challenge generation
@@ -275,6 +277,8 @@ async fn test_webauthn_authentication_challenge_generation() {
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
+        "test_secret".to_string(),
+        None,
     );
 
     // Test authentication challenge generation
@@ -321,6 +325,8 @@ async fn test_webauthn_credential_registration() {
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
+        "test_secret".to_string(),
+        None,
     );
 
     // First, generate a registration challenge
@@ -378,6 +384,8 @@ async fn test_webauthn_credential_authentication() {
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
+        "test_secret".to_string(),
+        None,
     );
 
     // First, generate an authentication challenge
@@ -435,6 +443,8 @@ async fn test_webauthn_credential_listing() {
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
+        "test_secret".to_string(),
+        None,
     );
 
     let _user_id = Uuid::new_v4();
@@ -465,6 +475,8 @@ async fn test_webauthn_credential_deletion() {
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
+        "test_secret".to_string(),
+        None,
     );
 
     let _credential_id = Uuid::new_v4();
@@ -494,6 +506,8 @@ async fn test_webauthn_challenge_expiration() {
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
+        "test_secret".to_string(),
+        None,
     );
 
     // Test that the service can be created successfully
@@ -521,6 +535,8 @@ async fn test_webauthn_multiple_credentials_per_user() {
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
+        "test_secret".to_string(),
+        None,
     );
 
     let _user_id = Uuid::new_v4();
@@ -550,6 +566,8 @@ async fn test_webauthn_credential_metadata() {
         database,
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
+        "test_secret".to_string(),
+        None,
     );
 
     // Test credential metadata retrieval
@@ -582,12 +600,16 @@ async fn test_webauthn_service_initialization() {
         Arc::clone(&database),
         "example.com".to_string(),
         "Example App".to_string(),
+        "test_secret".to_string(),
+        None,
     );
 
     let _service2 = WebAuthnService::new(
         Arc::clone(&database),
         "auth.example.com".to_string(),
         "Auth Service".to_string(),
+        "test_secret".to_string(),
+        None,
     );
 
     // Services should be properly initialized
