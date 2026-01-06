@@ -195,18 +195,17 @@ impl SessionStore {
     /// * `Result<(), AuthencError>` indicating success or failure
     pub async fn store_session(&self, session: Session) -> Result<(), AuthencError> {
         // Store in memory for fast access
-        let mut full_sessions = self
-            .full_sessions
-            .write()
-            .map_err(|_| AuthencError::internal("Lock poisoned"))?;
+        {
+            let mut full_sessions = self
+                .full_sessions
+                .write()
+                .map_err(|_| AuthencError::internal("Lock poisoned"))?;
 
-        full_sessions.insert(session.id, session.clone());
+            full_sessions.insert(session.id, session.clone());
+        } // Drop lock explicitly before async operation
 
         // Also persist to database for durability
-        // Note: This assumes the session has a realm_id field that needs to be added to the Session model
-        // For now, we'll use a default realm_id or make it optional
-        // This is a placeholder - actual implementation needs to handle realm_id properly
-        drop(full_sessions); // Release lock before async operation
+        db_ops::sessions::store_session(&self.db, &session).await?;
 
         Ok(())
     }

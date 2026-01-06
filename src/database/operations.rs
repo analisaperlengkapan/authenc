@@ -9705,6 +9705,51 @@ pub mod sessions {
     use super::*;
     use sha2::{Digest, Sha256};
 
+    /// Store a session in the database
+    pub async fn store_session(db: &Database, session: &crate::models::session::Session) -> Result<()> {
+        let token_hash = hash_token(&session.token);
+        let refresh_token_hash = session.refresh_token.as_ref().map(|t| hash_token(t));
+
+        let query = r#"
+            INSERT INTO user_sessions (
+                id, user_id, realm_id, token_hash, refresh_token_hash,
+                expires_at, ip_address, user_agent, created_at,
+                last_activity_at, revoked
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ON CONFLICT (id) DO UPDATE SET
+                last_activity_at = EXCLUDED.last_activity_at,
+                revoked = EXCLUDED.revoked,
+                ip_address = EXCLUDED.ip_address,
+                user_agent = EXCLUDED.user_agent
+        "#;
+
+        let ip_addr: Option<std::net::IpAddr> = session
+            .ip_address
+            .as_ref()
+            .and_then(|ip| ip.parse().ok());
+
+        db.execute(
+            query,
+            &[
+                &session.id,
+                &session.user_id,
+                &session.realm_id,
+                &token_hash,
+                &refresh_token_hash,
+                &session.expires_at,
+                &ip_addr,
+                &session.user_agent,
+                &session.created_at,
+                &session.last_accessed,
+                &session.revoked,
+            ],
+        )
+        .await?;
+
+        Ok(())
+    }
+
     /// Create a new user session
     pub async fn create_user_session(
         db: &Database,
