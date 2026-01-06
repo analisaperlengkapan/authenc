@@ -78,6 +78,8 @@ pub struct AppState {
     pub compliance_mode_service: Arc<crate::services::compliance_mode::ComplianceModeService>,
     /// OAuth2 service for token persistence
     pub oauth2_service: Arc<crate::services::oauth2::OAuth2Service>,
+    /// FIPS security provider
+    pub fips_provider: Arc<crate::services::fips::AdvancedFipsSecurityProvider>,
 }
 
 // Support extraction of database for health checks
@@ -463,6 +465,9 @@ impl AppState {
             database.clone(),
         ));
 
+        // Initialize FIPS provider
+        let fips_provider = Arc::new(crate::services::fips::AdvancedFipsSecurityProvider::new());
+
         Ok(Self {
             config,
             database,
@@ -497,6 +502,7 @@ impl AppState {
             observability_service,
             compliance_mode_service,
             oauth2_service,
+            fips_provider,
         })
     }
 
