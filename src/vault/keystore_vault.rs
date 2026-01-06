@@ -16,6 +16,34 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
+/// Helper struct to manage temporary password files securely.
+/// Deletes the file when dropped.
+struct PasswordFile {
+    path: PathBuf,
+}
+
+impl PasswordFile {
+    /// Creates a new temporary file containing the password.
+    async fn new(password: &str) -> Result<Self, VaultError> {
+        let mut path = std::env::temp_dir();
+        path.push(format!("authenc_pass_{}", uuid::Uuid::new_v4()));
+
+        tokio::fs::write(&path, password).await.map_err(|e| {
+             VaultError::Other(format!("Failed to create secure password file: {}", e))
+        })?;
+
+        Ok(Self { path })
+    }
+}
+
+impl Drop for PasswordFile {
+    fn drop(&mut self) {
+        // Best effort cleanup. We use std::fs here because Drop cannot be async.
+        // This is a blocking operation but acceptable for temp file cleanup in this context.
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 /// Keystore-based vault provider for secure secret storage
 ///
 /// This vault integrates with Java KeyStore (JKS) and PKCS#12 files.
@@ -100,7 +128,10 @@ impl KeystoreVault {
 
             let password = self.password.as_deref().unwrap_or("");
 
-            // keytool -importkeystore -srckeystore <jks> -destkeystore <p12> -srcstoretype JKS -deststoretype PKCS12 -srcstorepass <pass> -deststorepass <pass>
+            // Use temporary file for password to avoid process listing exposure
+            let pass_file = PasswordFile::new(password).await?;
+
+            // keytool -importkeystore -srckeystore <jks> -destkeystore <p12> -srcstoretype JKS -deststoretype PKCS12 -srcstorepass:file <path> ...
             let mut cmd = Command::new("keytool");
             cmd.arg("-importkeystore")
                 .arg("-srckeystore")
@@ -113,9 +144,9 @@ impl KeystoreVault {
                 .arg("PKCS12")
                 .arg("-noprompt");
 
-            // Pass passwords directly as arguments for reliability
-            cmd.arg("-srcstorepass").arg(password);
-            cmd.arg("-deststorepass").arg(password);
+            // Pass passwords via file for security
+            cmd.arg("-srcstorepass:file").arg(&pass_file.path);
+            cmd.arg("-deststorepass:file").arg(&pass_file.path);
 
             let output = cmd.output().await.map_err(|e| {
                 VaultError::Unavailable(format!("Failed to execute keytool: {}", e))
