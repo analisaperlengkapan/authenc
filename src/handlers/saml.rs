@@ -307,16 +307,10 @@ pub async fn idp_metadata(
     let mut service = SamlService::new(Arc::new(db));
 
     // In production, load from configuration
-    // Note: For IDP metadata, we might want to use "authenc" entity ID instead of external "idp" entity ID
-    // but sticking to existing pattern for now where we seem to be configuring "our" IDP representation?
-    // Actually, looking at previous code:
-    // idp_metadata used "https://authenc.example.com/saml/idp"
-    // saml_auth used "https://idp.example.com/saml/idp"
-    // The previous `idp_metadata` implementation used a DIFFERENT entity ID than `saml_auth`.
-    // I should respect that difference.
 
     let mut idp = get_default_idp_config();
-    // Override for local metadata generation as per previous implementation
+    // Override default IDP config (which points to external IDP) with "authenc" details
+    // to represent the local Identity Provider configuration.
     idp.entity_id = "https://authenc.example.com/saml/idp".to_string();
     idp.sso_url = "https://authenc.example.com/saml/auth".to_string();
     idp.slo_url = Some("https://authenc.example.com/saml/slo".to_string());
