@@ -652,23 +652,15 @@ impl DeviceService {
 
     // Database operations
     /// Register a device in the PostgreSQL database including fingerprinting and trust scores
-    pub async fn register_device_db(&self, device: &DeviceInfo) -> Result<crate::models::device::Device> {
+    pub async fn register_device_db(
+        &self,
+        device: &DeviceInfo,
+    ) -> Result<crate::models::device::Device> {
         use crate::database::operations::devices;
         use crate::models::device::DeviceInfo as ModelDeviceInfo;
 
-        // Convert service DeviceInfo to model DeviceInfo
-        let model_device_info = ModelDeviceInfo {
-            device_name: Some(device.device_name.clone()),
-            fingerprint: device.fingerprint.clone(),
-            os: Some(device.os.clone()),
-            os_version: Some(device.os_version.clone()),
-            browser: device.browser.clone(),
-            browser_version: device.browser_version.clone(),
-            ip_address: device.ip_address.parse().ok(),
-            user_agent: Some(device.user_agent.clone()),
-            security_features: serde_json::to_value(&device.security_features).ok(),
-            trust_score: Some(device.trust_score),
-        };
+        // Convert service DeviceInfo to model DeviceInfo using From implementation
+        let model_device_info: ModelDeviceInfo = device.into();
 
         devices::register_device(&self.db, device.user_id, &model_device_info).await
     }
@@ -772,4 +764,21 @@ pub enum TrustResult {
     ChallengeRequired(Vec<String>),
     /// Login is denied for this device
     Denied,
+}
+
+impl From<&DeviceInfo> for crate::models::device::DeviceInfo {
+    fn from(device: &DeviceInfo) -> Self {
+        crate::models::device::DeviceInfo {
+            device_name: Some(device.device_name.clone()),
+            fingerprint: device.fingerprint.clone(),
+            os: Some(device.os.clone()),
+            os_version: Some(device.os_version.clone()),
+            browser: device.browser.clone(),
+            browser_version: device.browser_version.clone(),
+            ip_address: device.ip_address.parse().ok(),
+            user_agent: Some(device.user_agent.clone()),
+            security_features: serde_json::to_value(&device.security_features).ok(),
+            trust_score: Some(device.trust_score),
+        }
+    }
 }
