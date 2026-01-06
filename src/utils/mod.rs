@@ -40,20 +40,6 @@ pub mod plugin;
 /// Provides utilities for authentication flow management and user state tracking.
 pub mod auth_context;
 
-// Legacy modules (to be refactored)
-
-/// Core utility functions (legacy - to be refactored)
-///
-/// Contains legacy utility functions that need refactoring.
-/// These utilities are maintained for backward compatibility during migration.
-pub mod core;
-
-/// Integration utilities for external systems (legacy - to be refactored)
-///
-/// Utilities for integrating with external authentication systems.
-/// Contains legacy integration code that needs modernization.
-pub mod integration;
-
 // Re-exports for convenience
 pub use auth_context::*;
 pub use i18n::*;
