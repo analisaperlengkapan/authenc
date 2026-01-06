@@ -552,7 +552,7 @@ pub mod devices {
                     &user_id,
                     &device_info.device_name,
                     &device_info.fingerprint,
-                    &0.5f64, // Initial trust score
+                    &device_info.trust_score.unwrap_or(0.5f64),
                     &device_info.os,
                     &device_info.os_version,
                     &device_info.browser,

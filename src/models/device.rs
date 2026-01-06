@@ -26,6 +26,8 @@ pub struct DeviceInfo {
     pub user_agent: Option<String>,
     /// Security features available on the device
     pub security_features: Option<serde_json::Value>,
+    /// Initial trust score for the device
+    pub trust_score: Option<f64>,
 }
 
 /// Device model

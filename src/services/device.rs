@@ -651,8 +651,8 @@ impl DeviceService {
     }
 
     // Database operations
-    /// Store device information in the database
-    async fn store_device(&self, device: &DeviceInfo) -> Result<()> {
+    /// Register a device in the PostgreSQL database including fingerprinting and trust scores
+    pub async fn register_device_db(&self, device: &DeviceInfo) -> Result<crate::models::device::Device> {
         use crate::database::operations::devices;
         use crate::models::device::DeviceInfo as ModelDeviceInfo;
 
@@ -667,9 +667,15 @@ impl DeviceService {
             ip_address: device.ip_address.parse().ok(),
             user_agent: Some(device.user_agent.clone()),
             security_features: serde_json::to_value(&device.security_features).ok(),
+            trust_score: Some(device.trust_score),
         };
 
-        devices::register_device(&self.db, device.user_id, &model_device_info).await?;
+        devices::register_device(&self.db, device.user_id, &model_device_info).await
+    }
+
+    /// Store device information in the database
+    async fn store_device(&self, device: &DeviceInfo) -> Result<()> {
+        self.register_device_db(device).await?;
         Ok(())
     }
 
