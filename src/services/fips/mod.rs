@@ -779,12 +779,19 @@ impl FipsAuditLogger {
         Ok(())
     }
 }
-/// Advanced FIPS Security Provider with FIPS 140-3 support
-pub struct AdvancedFipsSecurityProvider {
+/// Internal state for AdvancedFipsSecurityProvider
+#[derive(Debug)]
+struct AdvancedFipsProviderState {
     /// Whether FIPS mode is currently enabled in the provider
     fips_mode_enabled: bool,
     /// Current active security profile for compliance validation
     current_profile: SecurityProfile,
+}
+
+/// Advanced FIPS Security Provider with FIPS 140-3 support
+pub struct AdvancedFipsSecurityProvider {
+    /// Mutable state protected by a read-write lock
+    state: tokio::sync::RwLock<AdvancedFipsProviderState>,
     /// Available security profiles that can be activated
     security_profiles: Vec<SecurityProfile>,
 }
@@ -960,42 +967,51 @@ impl AdvancedFipsSecurityProvider {
             ],
         });
 
+        let initial_profile = profiles[0].clone();
+
         Self {
-            fips_mode_enabled: false,
-            current_profile: profiles[0].clone(), // Default to Level 1
+            state: tokio::sync::RwLock::new(AdvancedFipsProviderState {
+                fips_mode_enabled: false,
+                current_profile: initial_profile, // Default to Level 1
+            }),
             security_profiles: profiles,
         }
     }
 
     /// Enable FIPS mode for this provider
-    pub fn enable_fips_mode(&mut self) {
-        self.fips_mode_enabled = true;
+    pub async fn enable_fips_mode(&self) {
+        let mut state = self.state.write().await;
+        state.fips_mode_enabled = true;
     }
 
     /// Disable FIPS mode for this provider
-    pub fn disable_fips_mode(&mut self) {
-        self.fips_mode_enabled = false;
+    pub async fn disable_fips_mode(&self) {
+        let mut state = self.state.write().await;
+        state.fips_mode_enabled = false;
     }
 }
 
 #[async_trait]
 impl FipsSecurityProvider for AdvancedFipsSecurityProvider {
     async fn is_fips_mode(&self) -> Result<bool> {
-        Ok(self.fips_mode_enabled)
+        let state = self.state.read().await;
+        Ok(state.fips_mode_enabled)
     }
 
     async fn get_fips_level(&self) -> Result<FipsLevel> {
-        Ok(self.current_profile.fips_level.clone())
+        let state = self.state.read().await;
+        Ok(state.current_profile.fips_level.clone())
     }
 
     async fn validate_algorithm(&self, algorithm: &str) -> Result<AlgorithmValidation> {
-        let is_approved = self
+        let state = self.state.read().await;
+        let is_approved = state
             .current_profile
             .approved_algorithms
             .contains(&algorithm.to_string());
 
         let security_strength = if is_approved {
-            self.current_profile.security_strength
+            state.current_profile.security_strength
         } else {
             0
         };
@@ -1016,11 +1032,12 @@ impl FipsSecurityProvider for AdvancedFipsSecurityProvider {
 
     async fn perform_compliance_check(&self) -> Result<Vec<FipsComplianceCheck>> {
         let mut checks = Vec::new();
+        let state = self.state.read().await;
 
         // Check FIPS mode
         checks.push(FipsComplianceCheck {
             check_name: "FIPS Mode".to_string(),
-            status: if self.fips_mode_enabled {
+            status: if state.fips_mode_enabled {
                 FipsComplianceStatus::Compliant
             } else {
                 FipsComplianceStatus::NonCompliant
@@ -1030,21 +1047,21 @@ impl FipsSecurityProvider for AdvancedFipsSecurityProvider {
         });
 
         // Check approved algorithms
-        for algorithm in &self.current_profile.approved_algorithms {
+        for algorithm in &state.current_profile.approved_algorithms {
             checks.push(FipsComplianceCheck {
                 check_name: format!("Algorithm: {}", algorithm),
                 status: FipsComplianceStatus::Compliant,
                 details: format!(
                     "{} is approved for FIPS {}",
                     algorithm,
-                    self.current_profile.fips_level.clone() as u8
+                    state.current_profile.fips_level.clone() as u8
                 ),
                 recommendations: vec![],
             });
         }
 
         // Check key sizes
-        for (algorithm, sizes) in &self.current_profile.key_sizes {
+        for (algorithm, sizes) in &state.current_profile.key_sizes {
             let min_size = sizes.iter().min().unwrap_or(&0);
             checks.push(FipsComplianceCheck {
                 check_name: format!("Key Size: {}", algorithm),
@@ -1062,7 +1079,8 @@ impl FipsSecurityProvider for AdvancedFipsSecurityProvider {
     }
 
     async fn get_approved_algorithms(&self) -> Result<Vec<String>> {
-        Ok(self.current_profile.approved_algorithms.clone())
+        let state = self.state.read().await;
+        Ok(state.current_profile.approved_algorithms.clone())
     }
 }
 
@@ -1073,21 +1091,22 @@ impl FipsSecurityProfileProvider for AdvancedFipsSecurityProvider {
     }
 
     async fn get_current_profile(&self) -> Result<SecurityProfile, AuthencError> {
-        Ok(self.current_profile.clone())
+        let state = self.state.read().await;
+        Ok(state.current_profile.clone())
     }
 
     async fn set_security_profile(&self, profile_name: &str) -> Result<(), AuthencError> {
-        // Note: This would need mutable access in a real implementation
-        // For now, just validate the profile exists
-        if !self
+        let profile = self
             .security_profiles
             .iter()
-            .any(|p| p.name == profile_name)
-        {
-            return Err(AuthencError::ValidationError {
+            .find(|p| p.name == profile_name)
+            .ok_or_else(|| AuthencError::ValidationError {
                 message: format!("Security profile not found: {}", profile_name),
-            });
-        }
+            })?
+            .clone();
+
+        let mut state = self.state.write().await;
+        state.current_profile = profile;
         Ok(())
     }
 
@@ -1096,8 +1115,9 @@ impl FipsSecurityProfileProvider for AdvancedFipsSecurityProvider {
         algorithm: &str,
         key_size: Option<usize>,
     ) -> Result<bool, AuthencError> {
+        let state = self.state.read().await;
         // Check if algorithm is approved
-        if !self
+        if !state
             .current_profile
             .approved_algorithms
             .contains(&algorithm.to_string())
@@ -1107,7 +1127,7 @@ impl FipsSecurityProfileProvider for AdvancedFipsSecurityProvider {
 
         // Check key size if provided
         if let Some(size) = key_size {
-            if let Some(allowed_sizes) = self.current_profile.key_sizes.get(algorithm) {
+            if let Some(allowed_sizes) = state.current_profile.key_sizes.get(algorithm) {
                 if !allowed_sizes.contains(&size) {
                     return Ok(false);
                 }
