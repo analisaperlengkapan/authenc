@@ -10787,3 +10787,81 @@ pub mod policies {
         })
     }
 }
+
+/// Database operations for SPI configuration
+pub mod spi {
+    use crate::{
+        database::Database,
+        error::{AuthencError, Result},
+    };
+    use chrono::Utc;
+    use log::error;
+    use serde_json::Value;
+
+    /// Upsert SPI provider configuration (Atomic)
+    pub async fn upsert_provider_config(
+        db: &Database,
+        spi_name: &str,
+        provider_id: &str,
+        config: Value,
+        enabled: bool,
+    ) -> Result<()> {
+        let now = Utc::now();
+        let query = r#"
+            INSERT INTO spi_provider_configs (
+                spi_name, provider_id, config, enabled, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $5)
+            ON CONFLICT (spi_name, provider_id)
+            DO UPDATE SET
+                config = EXCLUDED.config,
+                enabled = EXCLUDED.enabled,
+                updated_at = EXCLUDED.updated_at
+        "#;
+
+        db.execute(query, &[&spi_name, &provider_id, &config, &enabled, &now])
+            .await
+            .map_err(|e| {
+                error!("Failed to upsert SPI provider config: {}", e);
+                AuthencError::database(format!("Failed to upsert SPI provider config: {}", e))
+            })?;
+
+        Ok(())
+    }
+
+    /// Get all SPI provider configurations for a given SPI
+    pub async fn get_all_provider_configs(
+        db: &Database,
+        spi_name: &str,
+    ) -> Result<std::collections::HashMap<String, (Value, bool)>> {
+        let query =
+            "SELECT provider_id, config, enabled FROM spi_provider_configs WHERE spi_name = $1";
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&spi_name]).await?;
+
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let pid: String = row.get(0);
+            let config: Value = row.get(1);
+            let enabled: bool = row.get(2);
+            map.insert(pid, (config, enabled));
+        }
+        Ok(map)
+    }
+
+    /// Get SPI provider configuration
+    pub async fn get_provider_config(
+        db: &Database,
+        spi_name: &str,
+        provider_id: &str,
+    ) -> Result<Option<(Value, bool)>> {
+        let query = "SELECT config, enabled FROM spi_provider_configs WHERE spi_name = $1 AND provider_id = $2";
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&spi_name, &provider_id]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+        Ok(Some((row.get(0), row.get(1))))
+    }
+}
