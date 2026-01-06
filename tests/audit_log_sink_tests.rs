@@ -1,18 +1,11 @@
 
 #[cfg(test)]
 mod tests {
-    /*
-    // TODO: Tests disabled due to dependency conflicts in elliptic-curve/primeorder/p256 crates.
-    // The current environment pulls in conflicting versions of subtle/crypto-bigint causing
-    // "Scalar: Retrieve is not satisfied" errors during test compilation.
-    // Re-enable these tests once the dependency tree is stabilized.
-
     use authenc::services::audit_log_sink::{AuditLogSink, FileAuditLogSink};
     #[cfg(feature = "reqwest")]
     use authenc::services::audit_log_sink::SplunkAuditLogSink;
     use authenc::models::audit_log::AuditLog;
     use chrono::Utc;
-    use std::path::PathBuf;
     use std::time::Duration;
     use tokio::io::AsyncReadExt;
     use serde_json::Value;
@@ -97,5 +90,4 @@ mod tests {
         assert_eq!(payload["event"]["event"], "test_event");
         assert_eq!(payload["sourcetype"], "_json");
     }
-    */
 }

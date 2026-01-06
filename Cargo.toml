@@ -39,7 +39,7 @@ default = [
     "flate2",
     "totp-rs",
     "rdkafka",
-    "dep:reqwest", "test"
+    "reqwest", "test"
 ]
 axum = ["dep:axum", "dep:tower", "dep:tower-http"]
 
@@ -63,7 +63,7 @@ dev = [
     "oidc",
     "db",
     "metrics",
-    "dep:reqwest",
+    "reqwest",
     "rdkafka",
     "totp-rs",
     "flate2",
@@ -74,7 +74,8 @@ dev = [
 # RBAC feature
 rbac = []
 flate2 = ["dep:flate2"]
-test = ["dep:reqwest"]
+reqwest = ["dep:reqwest"]
+test = ["reqwest"]
 admin_console = []
 
 # Quantum-resistant cryptography features
