@@ -4,15 +4,16 @@
 //! with filtering and pagination support.
 
 use crate::database::operations;
+use crate::middleware::auth_middleware_axum::AuthUser;
 use crate::models::audit_log::AuditLog;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;
 use axum::{
     extract::{Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{Json, Response},
     routing::get,
-    Router,
+    Extension, Router,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -75,41 +76,19 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
-/// Extract Bearer token from Authorization header
-fn extract_token(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get("Authorization")
-        .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
-        .map(|s| s.to_string())
-}
-
-/// Check if user is admin using async JWT validation
-async fn is_admin(headers: &HeaderMap, user_store: &UserStore) -> bool {
-    let token = match extract_token(headers) {
-        Some(t) => t,
-        None => return false,
-    };
-
-    // 1. Decode and validate the JWT token
-    let claims = match crate::utils::crypto::jwt::verify_jwt(&token) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!("JWT verification failed: {}", e);
-            return false;
-        }
-    };
-
-    // 2. Extract user ID
-    let user_id = match Uuid::parse_str(&claims.sub) {
+/// Check if user is admin using AuthUser from middleware and DB verification
+async fn is_admin(user: &AuthUser, user_store: &UserStore) -> bool {
+    // 1. Extract user ID
+    let user_id = match Uuid::parse_str(&user.id) {
         Ok(uid) => uid,
         Err(e) => {
-            tracing::warn!("Invalid user ID in token claims: {}", e);
+            tracing::warn!("Invalid user ID in auth user: {}", e);
             return false;
         }
     };
 
-    // 3. Check user roles from database to ensure up-to-date permissions
+    // 2. Check user roles from database to ensure up-to-date permissions
+    // Note: We check DB instead of trusting the token roles immediately for higher security on admin actions
     match operations::roles::get_user_roles(user_store.database(), &user_id).await {
         Ok(roles) => roles.iter().any(|r| r.name == "admin"),
         Err(e) => {
@@ -153,21 +132,11 @@ fn apply_filters(mut logs: Vec<AuditLog>, query: &AuditLogQuery) -> Vec<AuditLog
 /// GET /logs
 pub async fn get_audit_logs(
     State(state): State<Arc<AuditHandlerState>>,
+    Extension(user): Extension<AuthUser>,
     Query(query): Query<AuditLogQuery>,
-    headers: HeaderMap,
 ) -> Result<Json<AuditLogResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Check authentication
-    if extract_token(&headers).is_none() {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Invalid or missing token".to_string(),
-            }),
-        ));
-    }
-
     // Check admin authorization
-    if !is_admin(&headers, &state.user_store).await {
+    if !is_admin(&user, &state.user_store).await {
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
@@ -207,21 +176,11 @@ pub async fn get_audit_logs(
 /// GET /logs/export
 pub async fn export_audit_logs_csv(
     State(state): State<Arc<AuditHandlerState>>,
+    Extension(user): Extension<AuthUser>,
     Query(query): Query<AuditLogQuery>,
-    headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
-    // Check authentication
-    if extract_token(&headers).is_none() {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Invalid or missing token".to_string(),
-            }),
-        ));
-    }
-
     // Check admin authorization
-    if !is_admin(&headers, &state.user_store).await {
+    if !is_admin(&user, &state.user_store).await {
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
