@@ -567,40 +567,52 @@ impl FipsSecretStore {
     /// Each secret is encrypted with a unique key derived from the password and a random salt.
     /// The salt is stored alongside the encrypted data to allow for correct key derivation during retrieval.
     pub async fn store_secret(&self, alias: &str, secret: &str) -> Result<()> {
-        use rand::RngCore;
-        use std::fs;
+        let storage_path = self.storage_path.clone();
+        let password = self.password.clone();
+        let alias_str = alias.to_string();
+        let secret = secret.to_string();
 
-        let mut secrets: HashMap<String, SecretEntry> =
-            if std::path::Path::new(&self.storage_path).exists() {
-                let data = fs::read(&self.storage_path)?;
-                bincode::deserialize(&data).unwrap_or_else(|_| HashMap::new())
-            } else {
-                HashMap::new()
-            };
+        let alias_clone = alias_str.clone();
+        tokio::task::spawn_blocking(move || {
+            use rand::RngCore;
+            use std::fs;
 
-        // Generate salt for key derivation
-        let mut salt = [0u8; 16];
-        rand::thread_rng().fill_bytes(&mut salt);
+            // Use std::fs inside spawn_blocking which is appropriate
+            let mut secrets: HashMap<String, SecretEntry> =
+                if std::path::Path::new(&storage_path).exists() {
+                    let data = fs::read(&storage_path)?;
+                    bincode::deserialize(&data).unwrap_or_else(|_| HashMap::new())
+                } else {
+                    HashMap::new()
+                };
 
-        // Derive key from password and salt
-        let key = AesGcmService::derive_key_from_password(&self.password, &salt)?;
-        let aes_service = AesGcmService::with_key(&key)?;
+            // Generate salt for key derivation
+            let mut salt = [0u8; 16];
+            rand::thread_rng().fill_bytes(&mut salt);
 
-        // Encrypt the secret
-        let encrypted_data = aes_service.encrypt(secret.as_bytes())?;
+            // Derive key from password and salt (CPU intensive - Argon2)
+            let key = AesGcmService::derive_key_from_password(&password, &salt)?;
+            let aes_service = AesGcmService::with_key(&key)?;
 
-        // Store with salt
-        secrets.insert(
-            alias.to_string(),
-            SecretEntry {
-                salt: salt.to_vec(),
-                encrypted_data,
-            },
-        );
+            // Encrypt the secret
+            let encrypted_data = aes_service.encrypt(secret.as_bytes())?;
 
-        // Serialize and save
-        let data = bincode::serialize(&secrets)?;
-        fs::write(&self.storage_path, data)?;
+            // Store with salt
+            secrets.insert(
+                alias_clone,
+                SecretEntry {
+                    salt: salt.to_vec(),
+                    encrypted_data,
+                },
+            );
+
+            // Serialize and save
+            let data = bincode::serialize(&secrets)?;
+            fs::write(&storage_path, data)?;
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .await??;
 
         tracing::info!("Stored secret '{}' in FIPS secret store", alias);
         Ok(())
@@ -608,27 +620,36 @@ impl FipsSecretStore {
 
     /// Retrieve a secret from the encrypted store.
     pub async fn retrieve_secret(&self, alias: &str) -> Result<Option<String>> {
-        use std::fs;
+        let storage_path = self.storage_path.clone();
+        let password = self.password.clone();
+        let alias = alias.to_string();
 
-        if !std::path::Path::new(&self.storage_path).exists() {
-            return Ok(None);
-        }
+        let result = tokio::task::spawn_blocking(move || {
+            use std::fs;
 
-        let data = fs::read(&self.storage_path)?;
-        let secrets: HashMap<String, SecretEntry> = bincode::deserialize(&data)?;
+            if !std::path::Path::new(&storage_path).exists() {
+                return Ok::<Option<String>, anyhow::Error>(None);
+            }
 
-        if let Some(entry) = secrets.get(alias) {
-            // Derive key using the stored salt
-            let key = AesGcmService::derive_key_from_password(&self.password, &entry.salt)?;
-            let aes_service = AesGcmService::with_key(&key)?;
+            let data = fs::read(&storage_path)?;
+            let secrets: HashMap<String, SecretEntry> = bincode::deserialize(&data)?;
 
-            // Decrypt
-            let decrypted = aes_service.decrypt(&entry.encrypted_data)?;
-            let secret = String::from_utf8(decrypted)?;
-            Ok(Some(secret))
-        } else {
-            Ok(None)
-        }
+            if let Some(entry) = secrets.get(&alias) {
+                // Derive key using the stored salt (CPU intensive - Argon2)
+                let key = AesGcmService::derive_key_from_password(&password, &entry.salt)?;
+                let aes_service = AesGcmService::with_key(&key)?;
+
+                // Decrypt
+                let decrypted = aes_service.decrypt(&entry.encrypted_data)?;
+                let secret = String::from_utf8(decrypted)?;
+                Ok(Some(secret))
+            } else {
+                Ok(None)
+            }
+        })
+        .await??;
+
+        Ok(result)
     }
 }
 
@@ -675,43 +696,51 @@ impl FipsKeyStoreManager {
 
     /// Create FIPS compliant keystore
     pub async fn create_keystore(&self) -> Result<()> {
-        use openssl::pkcs12::Pkcs12;
-        use openssl::pkey::PKey;
-        use openssl::rsa::Rsa;
-        use openssl::x509::X509;
-        use std::fs;
+        let password = self.keystore_password.clone();
+        let path = self.keystore_path.clone();
 
-        // Generate a FIPS-compliant RSA key pair (2048-bit minimum)
-        let rsa = Rsa::generate(2048)?;
-        let pkey = PKey::from_rsa(rsa)?;
+        tokio::task::spawn_blocking(move || {
+            use openssl::pkcs12::Pkcs12;
+            use openssl::pkey::PKey;
+            use openssl::rsa::Rsa;
+            use openssl::x509::X509;
+            use std::fs;
 
-        // Create a self-signed certificate
-        let mut builder = X509::builder()?;
-        builder.set_version(2)?;
-        builder.set_pubkey(&pkey)?;
+            // Generate a FIPS-compliant RSA key pair (2048-bit minimum)
+            let rsa = Rsa::generate(2048)?;
+            let pkey = PKey::from_rsa(rsa)?;
 
-        // Set validity period
-        use openssl::asn1::Asn1Time;
-        let not_before = Asn1Time::days_from_now(0)?;
-        let not_after = Asn1Time::days_from_now(365)?;
-        builder.set_not_before(&not_before)?;
-        builder.set_not_after(&not_after)?;
+            // Create a self-signed certificate
+            let mut builder = X509::builder()?;
+            builder.set_version(2)?;
+            builder.set_pubkey(&pkey)?;
 
-        // Self-sign the certificate
-        use openssl::hash::MessageDigest;
-        builder.sign(&pkey, MessageDigest::sha256())?;
-        let cert = builder.build();
+            // Set validity period
+            use openssl::asn1::Asn1Time;
+            let not_before = Asn1Time::days_from_now(0)?;
+            let not_after = Asn1Time::days_from_now(365)?;
+            builder.set_not_before(&not_before)?;
+            builder.set_not_after(&not_after)?;
 
-        // Create PKCS12 keystore
-        let pkcs12 = Pkcs12::builder()
-            .name("fips-keystore")
-            .pkey(&pkey)
-            .cert(&cert)
-            .build2(&self.keystore_password)?;
+            // Self-sign the certificate
+            use openssl::hash::MessageDigest;
+            builder.sign(&pkey, MessageDigest::sha256())?;
+            let cert = builder.build();
 
-        // Write to file
-        let der = pkcs12.to_der()?;
-        fs::write(&self.keystore_path, der)?;
+            // Create PKCS12 keystore
+            let pkcs12 = Pkcs12::builder()
+                .name("fips-keystore")
+                .pkey(&pkey)
+                .cert(&cert)
+                .build2(&password)?;
+
+            // Write to file
+            let der = pkcs12.to_der()?;
+            fs::write(&path, der)?;
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .await??;
 
         tracing::info!("Created FIPS-compliant keystore at: {}", self.keystore_path);
         Ok(())
