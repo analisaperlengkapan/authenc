@@ -1,3 +1,4 @@
+use crate::crypto::aes_gcm::{AesGcmService, EncryptedData};
 use crate::error::AuthencError;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -533,6 +534,104 @@ pub enum FipsProviderType {
     Custom,
 }
 
+/// FIPS-compliant secret store for arbitrary secrets
+///
+/// This separates secret storage from the PKCS12 keystore which is intended
+/// only for keys and certificates.
+pub struct FipsSecretStore {
+    storage_path: String,
+    password: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SecretEntry {
+    salt: Vec<u8>,
+    encrypted_data: EncryptedData,
+}
+
+impl FipsSecretStore {
+    /// Creates a new FIPS secret store.
+    ///
+    /// # Arguments
+    /// * `storage_path` - Path to the file where secrets will be stored
+    /// * `password` - Password used to encrypt the secrets
+    pub fn new(storage_path: String, password: String) -> Self {
+        Self {
+            storage_path,
+            password,
+        }
+    }
+
+    /// Store a secret in the encrypted store.
+    ///
+    /// Each secret is encrypted with a unique key derived from the password and a random salt.
+    /// The salt is stored alongside the encrypted data to allow for correct key derivation during retrieval.
+    pub async fn store_secret(&self, alias: &str, secret: &str) -> Result<()> {
+        use rand::RngCore;
+        use std::fs;
+
+        let mut secrets: HashMap<String, SecretEntry> =
+            if std::path::Path::new(&self.storage_path).exists() {
+                let data = fs::read(&self.storage_path)?;
+                bincode::deserialize(&data).unwrap_or_else(|_| HashMap::new())
+            } else {
+                HashMap::new()
+            };
+
+        // Generate salt for key derivation
+        let mut salt = [0u8; 16];
+        rand::thread_rng().fill_bytes(&mut salt);
+
+        // Derive key from password and salt
+        let key = AesGcmService::derive_key_from_password(&self.password, &salt)?;
+        let aes_service = AesGcmService::with_key(&key)?;
+
+        // Encrypt the secret
+        let encrypted_data = aes_service.encrypt(secret.as_bytes())?;
+
+        // Store with salt
+        secrets.insert(
+            alias.to_string(),
+            SecretEntry {
+                salt: salt.to_vec(),
+                encrypted_data,
+            },
+        );
+
+        // Serialize and save
+        let data = bincode::serialize(&secrets)?;
+        fs::write(&self.storage_path, data)?;
+
+        tracing::info!("Stored secret '{}' in FIPS secret store", alias);
+        Ok(())
+    }
+
+    /// Retrieve a secret from the encrypted store.
+    pub async fn retrieve_secret(&self, alias: &str) -> Result<Option<String>> {
+        use std::fs;
+
+        if !std::path::Path::new(&self.storage_path).exists() {
+            return Ok(None);
+        }
+
+        let data = fs::read(&self.storage_path)?;
+        let secrets: HashMap<String, SecretEntry> = bincode::deserialize(&data)?;
+
+        if let Some(entry) = secrets.get(alias) {
+            // Derive key using the stored salt
+            let key = AesGcmService::derive_key_from_password(&self.password, &entry.salt)?;
+            let aes_service = AesGcmService::with_key(&key)?;
+
+            // Decrypt
+            let decrypted = aes_service.decrypt(&entry.encrypted_data)?;
+            let secret = String::from_utf8(decrypted)?;
+            Ok(Some(secret))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 /// FIPS keystore manager for secure key storage
 pub struct FipsKeyStoreManager {
     /// Path to the keystore file on disk
@@ -551,7 +650,7 @@ impl FipsKeyStoreManager {
     ///
     /// This constructor initializes the keystore manager with the path to the keystore file,
     /// the password for keystore access, and the keystore type (PKCS12 or BCFKS).
-    /// The manager provides FIPS-compliant key and secret storage capabilities.
+    /// The manager provides FIPS-compliant key storage capabilities.
     ///
     /// # Arguments
     /// * `keystore_path` - Path to the keystore file on disk
@@ -618,83 +717,20 @@ impl FipsKeyStoreManager {
         Ok(())
     }
 
-    /// Store secret in FIPS keystore
+    /// Store secret in FIPS secret store (separately from keystore)
     pub async fn store_secret(&self, alias: &str, secret: &str) -> Result<()> {
-        use std::fs;
-
-        // Note: PKCS12 is designed for certificates and keys, not arbitrary secrets
-        // For production, consider using a proper secret management system
-        // This implementation stores secrets in a separate encrypted file alongside the keystore
-
+        // Delegate to FipsSecretStore
         let secret_file = format!("{}.secrets", self.keystore_path);
-        let mut secrets = if std::path::Path::new(&secret_file).exists() {
-            let data = fs::read(&secret_file)?;
-            bincode::deserialize(&data).unwrap_or_else(|_| HashMap::new())
-        } else {
-            HashMap::new()
-        };
-
-        // Encrypt the secret using AES-256
-        use crate::crypto::aes_gcm::AesGcmService;
-
-        // Derive key from password
-        let mut salt = [0u8; 16];
-        use rand::RngCore;
-        rand::thread_rng().fill_bytes(&mut salt);
-        let key = AesGcmService::derive_key_from_password(&self.keystore_password, &salt)?;
-        let aes_service = AesGcmService::with_key(&key)?;
-
-        let encrypted = aes_service.encrypt(secret.as_bytes())?;
-        let encrypted_json = serde_json::to_string(&encrypted)?;
-        use base64::Engine;
-        let encrypted_b64 =
-            base64::engine::general_purpose::STANDARD.encode(encrypted_json.as_bytes());
-
-        secrets.insert(alias.to_string(), encrypted_b64);
-
-        // Serialize and save
-        let data = bincode::serialize(&secrets)?;
-        fs::write(&secret_file, data)?;
-
-        tracing::info!("Stored secret '{}' in FIPS keystore", alias);
-        Ok(())
+        let store = FipsSecretStore::new(secret_file, self.keystore_password.clone());
+        store.store_secret(alias, secret).await
     }
 
-    /// Retrieve secret from FIPS keystore
+    /// Retrieve secret from FIPS secret store (separately from keystore)
     pub async fn retrieve_secret(&self, alias: &str) -> Result<Option<String>> {
-        use std::fs;
-
+        // Delegate to FipsSecretStore
         let secret_file = format!("{}.secrets", self.keystore_path);
-        if !std::path::Path::new(&secret_file).exists() {
-            return Ok(None);
-        }
-
-        let data = fs::read(&secret_file)?;
-        let secrets: HashMap<String, String> = bincode::deserialize(&data)?;
-
-        if let Some(encrypted_b64) = secrets.get(alias) {
-            // Decrypt the secret
-            use base64::Engine;
-            let encrypted_json_bytes =
-                base64::engine::general_purpose::STANDARD.decode(encrypted_b64)?;
-            let encrypted_json = String::from_utf8(encrypted_json_bytes)?;
-
-            use crate::crypto::aes_gcm::{AesGcmService, EncryptedData};
-            let encrypted_data: EncryptedData = serde_json::from_str(&encrypted_json)?;
-
-            // Derive key from password (same salt used during encryption)
-            let mut salt = [0u8; 16];
-            use rand::RngCore;
-            rand::thread_rng().fill_bytes(&mut salt);
-            let key = AesGcmService::derive_key_from_password(&self.keystore_password, &salt)?;
-            let aes_service = AesGcmService::with_key(&key)?;
-
-            let decrypted = aes_service.decrypt(&encrypted_data)?;
-            let secret = String::from_utf8(decrypted)?;
-            Ok(Some(secret))
-        } else {
-            Ok(None)
-        }
+        let store = FipsSecretStore::new(secret_file, self.keystore_password.clone());
+        store.retrieve_secret(alias).await
     }
 }
 

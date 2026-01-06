@@ -17,7 +17,7 @@ pub struct AesGcmService {
 }
 
 /// Encrypted data structure containing ciphertext, nonce, and authentication tag
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptedData {
     /// Base64-encoded ciphertext
     pub ciphertext: String,
