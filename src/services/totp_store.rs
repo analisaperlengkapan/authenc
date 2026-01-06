@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -13,6 +13,8 @@ struct TotpEntry {
 pub struct TotpStore {
     /// user_id -> TOTP entry mapping
     entries: Arc<RwLock<HashMap<String, TotpEntry>>>,
+    /// user_id -> TOTP entry mapping (temporary)
+    temporary_entries: Arc<RwLock<HashMap<String, TotpEntry>>>,
     /// user_id -> hashed backup codes mapping
     backup_codes: Arc<RwLock<HashMap<String, Vec<String>>>>,
     /// user_id -> last used timestamp mapping
@@ -26,10 +28,14 @@ impl Default for TotpStore {
 }
 
 impl TotpStore {
+    /// TTL for temporary secrets (10 minutes)
+    const TEMPORARY_SECRET_TTL_MINUTES: i64 = 10;
+
     /// Create new TOTP store for managing Time-based One-Time Password secrets
     pub fn new() -> Self {
         TotpStore {
             entries: Arc::new(RwLock::new(HashMap::new())),
+            temporary_entries: Arc::new(RwLock::new(HashMap::new())),
             backup_codes: Arc::new(RwLock::new(HashMap::new())),
             last_used_at: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -61,6 +67,32 @@ impl TotpStore {
         Ok(())
     }
 
+    /// Set temporary TOTP secret for user during setup
+    ///
+    /// # Arguments
+    /// * `user_id` - The user identifier
+    /// * `secret` - The base32-encoded TOTP secret
+    ///
+    /// # Returns
+    /// * `Ok(())` on successful storage
+    /// * `Err(String)` if there's a lock poisoning error
+    pub fn set_temporary_secret(&self, user_id: &str, secret: &str) -> Result<(), String> {
+        let mut entries = self
+            .temporary_entries
+            .write()
+            .map_err(|e| format!("Lock poisoned: {e}"))?;
+
+        entries.insert(
+            user_id.to_string(),
+            TotpEntry {
+                secret: secret.to_string(),
+                created_at: Utc::now(),
+            },
+        );
+
+        Ok(())
+    }
+
     /// Get TOTP secret for user
     ///
     /// # Arguments
@@ -76,6 +108,34 @@ impl TotpStore {
             .read()
             .map_err(|e| format!("Lock poisoned: {e}"))?;
         Ok(entries.get(user_id).map(|e| e.secret.clone()))
+    }
+
+    /// Get temporary TOTP secret for user, respecting TTL
+    ///
+    /// # Arguments
+    /// * `user_id` - The user identifier
+    ///
+    /// # Returns
+    /// * `Ok(Some(String))` containing the base32-encoded secret if it exists and is valid
+    /// * `Ok(None)` if no secret is found for the user or if it has expired
+    /// * `Err(String)` if there's a lock poisoning error
+    pub fn get_temporary_secret(&self, user_id: &str) -> Result<Option<String>, String> {
+        let mut entries = self
+            .temporary_entries
+            .write()
+            .map_err(|e| format!("Lock poisoned: {e}"))?;
+
+        if let Some(entry) = entries.get(user_id) {
+            let expiration_time = entry.created_at + Duration::minutes(Self::TEMPORARY_SECRET_TTL_MINUTES);
+            if Utc::now() > expiration_time {
+                // Expired, remove it
+                entries.remove(user_id);
+                return Ok(None);
+            }
+            return Ok(Some(entry.secret.clone()));
+        }
+
+        Ok(None)
     }
 
     /// Remove TOTP secret for user
@@ -99,6 +159,24 @@ impl TotpStore {
             .write()
             .map_err(|e| format!("Lock poisoned: {e}"))?;
         last_used_at.remove(user_id);
+
+        Ok(removed)
+    }
+
+    /// Remove temporary TOTP secret for user
+    ///
+    /// # Arguments
+    /// * `user_id` - The user identifier
+    ///
+    /// # Returns
+    /// * `Ok(bool)` true if secret was removed, false if it didn't exist
+    /// * `Err(String)` if there's a lock poisoning error
+    pub fn remove_temporary_secret(&self, user_id: &str) -> Result<bool, String> {
+        let mut entries = self
+            .temporary_entries
+            .write()
+            .map_err(|e| format!("Lock poisoned: {e}"))?;
+        let removed = entries.remove(user_id).is_some();
 
         Ok(removed)
     }
@@ -321,5 +399,57 @@ mod tests {
 
         assert!(store.get_last_used_at(user_id).unwrap().is_none());
         assert!(store.get_secret(user_id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_temporary_secret_flow() {
+        let store = TotpStore::new();
+        let user_id = "user_temp";
+        let secret = "temp_secret";
+
+        // Should be empty initially
+        assert!(store.get_temporary_secret(user_id).unwrap().is_none());
+        assert!(store.get_secret(user_id).unwrap().is_none());
+
+        // Set temporary secret
+        store.set_temporary_secret(user_id, secret).unwrap();
+
+        // Should be in temporary store but not permanent
+        assert_eq!(store.get_temporary_secret(user_id).unwrap().unwrap(), secret);
+        assert!(store.get_secret(user_id).unwrap().is_none());
+
+        // Remove temporary secret
+        store.remove_temporary_secret(user_id).unwrap();
+
+        // Should be gone
+        assert!(store.get_temporary_secret(user_id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_temporary_secret_expiration() {
+        let store = TotpStore::new();
+        let user_id = "user_expired";
+        let secret = "expired_secret";
+
+        // Set manually with an old timestamp
+        {
+            let mut entries = store.temporary_entries.write().unwrap();
+            entries.insert(
+                user_id.to_string(),
+                TotpEntry {
+                    secret: secret.to_string(),
+                    created_at: Utc::now() - chrono::Duration::minutes(15), // 15 minutes old > 10 min TTL
+                },
+            );
+        }
+
+        // Should be expired and removed
+        assert!(store.get_temporary_secret(user_id).unwrap().is_none());
+
+        // Verify it was actually removed from the map
+        {
+            let entries = store.temporary_entries.read().unwrap();
+            assert!(entries.get(user_id).is_none());
+        }
     }
 }
