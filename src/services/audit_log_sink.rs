@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::mpsc;
 
 use crate::models::audit_log::AuditLog;
 
@@ -108,7 +109,7 @@ impl AuditLogSink for PgAuditLogSink {
 
 /// File audit log sink for local file storage
 pub struct FileAuditLogSink {
-    path: PathBuf,
+    sender: mpsc::UnboundedSender<AuditLog>,
 }
 
 impl FileAuditLogSink {
@@ -117,40 +118,50 @@ impl FileAuditLogSink {
     /// # Arguments
     /// * `path` - Path to the log file
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into() }
-    }
-}
+        let path = path.into();
+        let (sender, mut receiver) = mpsc::unbounded_channel::<AuditLog>();
 
-impl AuditLogSink for FileAuditLogSink {
-    fn send(&self, log: &AuditLog) {
-        let path = self.path.clone();
-        let log = log.clone();
         tokio::spawn(async move {
-            let json = serde_json::to_string(&log).unwrap_or_default();
-            // Append newline
-            let entry = format!("{}\n", json);
-
-            // Use tokio fs to append
-            if let Ok(mut file) = tokio::fs::OpenOptions::new()
+            let mut file = match tokio::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&path)
                 .await
             {
-                let _ = file.write_all(entry.as_bytes()).await;
-            } else {
-                tracing::error!("Failed to write audit log to file: {:?}", path);
+                Ok(f) => f,
+                Err(e) => {
+                    tracing::error!("Failed to open audit log file {:?}: {}", path, e);
+                    return;
+                }
+            };
+
+            while let Some(log) = receiver.recv().await {
+                let json = serde_json::to_string(&log).unwrap_or_default();
+                let entry = format!("{}\n", json);
+                if let Err(e) = file.write_all(entry.as_bytes()).await {
+                    tracing::error!("Failed to write audit log to file: {}", e);
+                    // Try to reopen file on error? For simplicity, we log and continue,
+                    // but in production we might want to attempt reconnection or rotation.
+                }
             }
         });
+
+        Self { sender }
+    }
+}
+
+impl AuditLogSink for FileAuditLogSink {
+    fn send(&self, log: &AuditLog) {
+        if let Err(e) = self.sender.send(log.clone()) {
+            tracing::error!("Failed to queue audit log for file writing: {}", e);
+        }
     }
 }
 
 /// Splunk audit log sink for Splunk SIEM integration
 #[cfg(feature = "reqwest")]
 pub struct SplunkAuditLogSink {
-    client: reqwest::Client,
-    url: String,
-    token: String,
+    sender: mpsc::UnboundedSender<AuditLog>,
 }
 
 #[cfg(feature = "reqwest")]
@@ -161,37 +172,36 @@ impl SplunkAuditLogSink {
     /// * `url` - Splunk HEC URL
     /// * `token` - Splunk HEC token
     pub fn new(url: String, token: String) -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            url,
-            token,
-        }
+        let (sender, mut receiver) = mpsc::unbounded_channel::<AuditLog>();
+        let client = reqwest::Client::new();
+
+        tokio::spawn(async move {
+            while let Some(log) = receiver.recv().await {
+                let payload = serde_json::json!({
+                    "time": log.timestamp.timestamp(),
+                    "event": log,
+                    "sourcetype": "_json"
+                });
+
+                let _ = client
+                    .post(&url)
+                    .header("Authorization", format!("Splunk {}", token))
+                    .json(&payload)
+                    .send()
+                    .await
+                    .map_err(|e| tracing::error!("Failed to send audit log to Splunk: {}", e));
+            }
+        });
+
+        Self { sender }
     }
 }
 
 #[cfg(feature = "reqwest")]
 impl AuditLogSink for SplunkAuditLogSink {
     fn send(&self, log: &AuditLog) {
-        let client = self.client.clone();
-        let url = self.url.clone();
-        let token = self.token.clone();
-        let log = log.clone();
-
-        tokio::spawn(async move {
-            // Splunk HEC format
-            let payload = serde_json::json!({
-                "time": log.timestamp.timestamp(),
-                "event": log,
-                "sourcetype": "_json"
-            });
-
-            let _ = client
-                .post(&url)
-                .header("Authorization", format!("Splunk {}", token))
-                .json(&payload)
-                .send()
-                .await
-                .map_err(|e| tracing::error!("Failed to send audit log to Splunk: {}", e));
-        });
+        if let Err(e) = self.sender.send(log.clone()) {
+            tracing::error!("Failed to queue audit log for Splunk: {}", e);
+        }
     }
 }
