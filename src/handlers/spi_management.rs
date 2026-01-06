@@ -250,58 +250,56 @@ pub async fn list_spi_providers(
     State(state): State<Arc<AppState>>,
     Path(spi_name): Path<String>,
 ) -> std::result::Result<Json<Vec<SpiProviderInfo>>, (StatusCode, Json<serde_json::Value>)> {
+    let overrides = crate::database::operations::spi::get_all_provider_configs(
+        &state.database,
+        &spi_name,
+    )
+    .await
+    .unwrap_or_default();
+
+    let map_provider = |provider: &crate::config::SpiProviderConfig, name_prefix: &str| {
+        let (config, enabled) = if let Some((c, e)) = overrides.get(&provider.id) {
+            (c.clone(), *e)
+        } else {
+            (provider.config.clone(), provider.enabled)
+        };
+        SpiProviderInfo {
+            id: provider.id.clone(),
+            name: format!("{} {}", name_prefix, provider.id),
+            enabled,
+            priority: provider.priority,
+            config,
+        }
+    };
+
     let providers = match spi_name.as_str() {
         "organization" => state
             .config
             .spi
             .organization
             .iter()
-            .map(|provider| SpiProviderInfo {
-                id: provider.id.clone(),
-                name: format!("Organization Provider {}", provider.id),
-                enabled: provider.enabled,
-                priority: provider.priority,
-                config: provider.config.clone(),
-            })
+            .map(|p| map_provider(p, "Organization Provider"))
             .collect(),
         "rich-authorization" => state
             .config
             .spi
             .rich_authorization
             .iter()
-            .map(|provider| SpiProviderInfo {
-                id: provider.id.clone(),
-                name: format!("Rich Authorization Provider {}", provider.id),
-                enabled: provider.enabled,
-                priority: provider.priority,
-                config: provider.config.clone(),
-            })
+            .map(|p| map_provider(p, "Rich Authorization Provider"))
             .collect(),
         "migration" => state
             .config
             .spi
             .migration
             .iter()
-            .map(|provider| SpiProviderInfo {
-                id: provider.id.clone(),
-                name: format!("Migration Provider {}", provider.id),
-                enabled: provider.enabled,
-                priority: provider.priority,
-                config: provider.config.clone(),
-            })
+            .map(|p| map_provider(p, "Migration Provider"))
             .collect(),
         "hostname" => state
             .config
             .spi
             .hostname
             .iter()
-            .map(|provider| SpiProviderInfo {
-                id: provider.id.clone(),
-                name: format!("Hostname Provider {}", provider.id),
-                enabled: provider.enabled,
-                priority: provider.priority,
-                config: provider.config.clone(),
-            })
+            .map(|p| map_provider(p, "Hostname Provider"))
             .collect(),
         _ => {
             return Err((
@@ -400,7 +398,7 @@ pub async fn update_provider_config(
     // to a database or configuration file. For now, we acknowledge the update.
     // The configuration would need to be reloaded or the SPI provider reinstantiated.
 
-    // Check if record exists in DB to determine if we need to provide default enabled status
+    // Check if record exists in DB to determine enabled status
     let db_config = crate::database::operations::spi::get_provider_config(
         &state.database,
         &spi_name,
@@ -414,12 +412,12 @@ pub async fn update_provider_config(
         )
     })?;
 
-    let enabled_arg = if db_config.is_some() {
-        None
+    let enabled = if let Some((_, e)) = db_config {
+        e
     } else {
         // Resolve static default
         let (_, enabled) = get_static_provider_details(&state.config, &spi_name, &provider_id);
-        Some(enabled)
+        enabled
     };
 
     // Persist configuration to database
@@ -427,8 +425,8 @@ pub async fn update_provider_config(
         &state.database,
         &spi_name,
         &provider_id,
-        Some(update.config.clone()),
-        enabled_arg,
+        update.config.clone(),
+        enabled,
     )
     .await
     {
@@ -456,7 +454,7 @@ pub async fn update_provider_status(
     // at runtime. For now, we acknowledge the update.
     // The status change would need to be applied to the SPI registry.
 
-    // Check if record exists in DB to determine if we need to provide default config
+    // Check if record exists in DB to determine config
     let db_config = crate::database::operations::spi::get_provider_config(
         &state.database,
         &spi_name,
@@ -470,12 +468,12 @@ pub async fn update_provider_status(
         )
     })?;
 
-    let config_arg = if db_config.is_some() {
-        None
+    let config = if let Some((c, _)) = db_config {
+        c
     } else {
         // Resolve static default
         let (config, _) = get_static_provider_details(&state.config, &spi_name, &provider_id);
-        Some(config)
+        config
     };
 
     // Persist status to database
@@ -483,8 +481,8 @@ pub async fn update_provider_status(
         &state.database,
         &spi_name,
         &provider_id,
-        config_arg,
-        Some(update.enabled),
+        config,
+        update.enabled,
     )
     .await
     {

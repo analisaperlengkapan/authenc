@@ -10798,60 +10798,54 @@ pub mod spi {
     use log::error;
     use serde_json::Value;
 
-    /// Upsert SPI provider configuration
+    /// Upsert SPI provider configuration (Atomic)
     pub async fn upsert_provider_config(
         db: &Database,
         spi_name: &str,
         provider_id: &str,
-        config: Option<Value>,
-        enabled: Option<bool>,
+        config: Value,
+        enabled: bool,
     ) -> Result<()> {
         let now = Utc::now();
-
-        // Check if record exists
-        let check_query = "SELECT id FROM spi_provider_configs WHERE spi_name = $1 AND provider_id = $2";
-        let rows: Vec<tokio_postgres::Row> =
-            db.query(check_query, &[&spi_name, &provider_id]).await?;
-
-        if rows.is_empty() {
-            // Insert new record
-            let insert_query = r#"
-                INSERT INTO spi_provider_configs (
-                    spi_name, provider_id, config, enabled, created_at, updated_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $5)
-            "#;
-            let config_val = config.unwrap_or(serde_json::json!({}));
-            let enabled_val = enabled.unwrap_or(true);
-
-            db.execute(insert_query, &[&spi_name, &provider_id, &config_val, &enabled_val, &now])
-                .await
-                .map_err(|e| {
-                    error!("Failed to insert SPI provider config: {}", e);
-                    AuthencError::database(format!("Failed to insert SPI provider config: {}", e))
-                })?;
-        } else {
-            // Update existing record
-            let update_query = r#"
-                UPDATE spi_provider_configs
-                SET config = COALESCE($3, config),
-                    enabled = COALESCE($4, enabled),
-                    updated_at = $5
-                WHERE spi_name = $1 AND provider_id = $2
-            "#;
-
-            db.execute(
-                update_query,
-                &[&spi_name, &provider_id, &config, &enabled, &now],
+        let query = r#"
+            INSERT INTO spi_provider_configs (
+                spi_name, provider_id, config, enabled, created_at, updated_at
             )
+            VALUES ($1, $2, $3, $4, $5, $5)
+            ON CONFLICT (spi_name, provider_id)
+            DO UPDATE SET
+                config = EXCLUDED.config,
+                enabled = EXCLUDED.enabled,
+                updated_at = EXCLUDED.updated_at
+        "#;
+
+        db.execute(query, &[&spi_name, &provider_id, &config, &enabled, &now])
             .await
             .map_err(|e| {
-                error!("Failed to update SPI provider config: {}", e);
-                AuthencError::database(format!("Failed to update SPI provider config: {}", e))
+                error!("Failed to upsert SPI provider config: {}", e);
+                AuthencError::database(format!("Failed to upsert SPI provider config: {}", e))
             })?;
-        }
 
         Ok(())
+    }
+
+    /// Get all SPI provider configurations for a given SPI
+    pub async fn get_all_provider_configs(
+        db: &Database,
+        spi_name: &str,
+    ) -> Result<std::collections::HashMap<String, (Value, bool)>> {
+        let query =
+            "SELECT provider_id, config, enabled FROM spi_provider_configs WHERE spi_name = $1";
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&spi_name]).await?;
+
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let pid: String = row.get(0);
+            let config: Value = row.get(1);
+            let enabled: bool = row.get(2);
+            map.insert(pid, (config, enabled));
+        }
+        Ok(map)
     }
 
     /// Get SPI provider configuration
