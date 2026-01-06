@@ -1231,6 +1231,52 @@ pub async fn oauth2_jwks() -> Result<Json<serde_json::Value>, AuthencError> {
     Ok(Json(jwks))
 }
 
+/// Verify and decode JWT token
+fn verify_jwt(token: &str) -> Result<AccessTokenClaims, AuthencError> {
+    // 1. Verify JWT structure
+    let token_parts: Vec<&str> = token.split('.').collect();
+    if token_parts.len() != 3 {
+        return Err(AuthencError::unauthorized("Invalid token format"));
+    }
+
+    let header_b64 = token_parts[0];
+    let payload_b64 = token_parts[1];
+    let signature_b64 = token_parts[2];
+
+    // 2. Reconstruct signing input
+    let signing_input = format!("{}.{}", header_b64, payload_b64);
+
+    // 3. Decode signature
+    let signature_bytes = Base64UrlUnpadded::decode_vec(signature_b64)
+        .map_err(|_| AuthencError::unauthorized("Invalid signature encoding"))?;
+
+    let signature = Signature::from_bytes(
+        signature_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| AuthencError::unauthorized("Invalid signature length"))?,
+    );
+
+    // 4. Verify signature
+    verify_ed25519(signing_input.as_bytes(), &signature)
+        .map_err(|_| AuthencError::unauthorized("Invalid signature"))?;
+
+    // 5. Decode payload
+    let payload_bytes = Base64UrlUnpadded::decode_vec(payload_b64)
+        .map_err(|_| AuthencError::unauthorized("Invalid payload encoding"))?;
+
+    let claims: AccessTokenClaims = serde_json::from_slice(&payload_bytes)
+        .map_err(|_| AuthencError::unauthorized("Invalid payload JSON"))?;
+
+    // 6. Check expiration
+    let now = Utc::now().timestamp();
+    if claims.exp < now {
+        return Err(AuthencError::unauthorized("Token expired"));
+    }
+
+    Ok(claims)
+}
+
 /// Enhanced UserInfo endpoint
 pub async fn oauth2_userinfo(
     headers: HeaderMap,
@@ -1246,15 +1292,19 @@ pub async fn oauth2_userinfo(
         .ok_or(AuthencError::unauthorized("Unauthorized"))?;
 
     // Validate access token
-    let claims = if let Ok(claims) = verify_and_decode_jwt(auth_header) {
+    let decoded = verify_and_decode_jwt(auth_header)
+        .map_err(|_| AuthencError::unauthorized("Invalid access token"))?;
+
+    // Check if the token is known in our store (revocation check)
+    // Use server-side stored claims to ensure token wasn't revoked
+    let claims = {
         let tokens = stores.access_tokens.read().await;
         tokens
-            .get(&claims.jti)
+            .get(&decoded.jti)
             .cloned()
             .ok_or(AuthencError::unauthorized("Invalid or revoked access token"))?
-    } else {
-        return Err(AuthencError::unauthorized("Invalid access token"));
     };
+
 
     // Return user info based on scope
     let mut userinfo = serde_json::json!({
@@ -1367,6 +1417,7 @@ pub async fn test_oauth2_authorize(
 
     Ok(Redirect::to(&redirect_uri))
 }
+<<<<<<< HEAD
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1379,11 +1430,57 @@ mod tests {
             iss: "test_iss".to_string(),
             sub: "test_sub".to_string(),
             aud: "test_aud".to_string(),
+=======
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_jwt_verification() {
+        // Create sample claims
+        let now = Utc::now().timestamp();
+        let claims = AccessTokenClaims {
+            iss: "test_issuer".to_string(),
+            sub: "test_subject".to_string(),
+            aud: "test_audience".to_string(),
+>>>>>>> 1fdc5e2 (feat: implement real JWT validation for UserInfo endpoint)
             client_id: "test_client".to_string(),
             exp: now + 3600,
             iat: now,
             nbf: now,
+<<<<<<< HEAD
             jti: "test_jti".to_string(),
+=======
+            jti: Uuid::new_v4().to_string(),
+            scope: Some("openid profile".to_string()),
+            roles: None,
+            groups: None,
+        };
+
+        // Generate token
+        let token = generate_access_token(&claims);
+
+        // Verify valid token
+        let verified_claims = verify_jwt(&token).expect("Token verification failed");
+        assert_eq!(verified_claims.sub, claims.sub);
+        assert_eq!(verified_claims.jti, claims.jti);
+    }
+
+    #[test]
+    fn test_jwt_expired() {
+        let now = Utc::now().timestamp();
+        let claims = AccessTokenClaims {
+            iss: "test_issuer".to_string(),
+            sub: "test_subject".to_string(),
+            aud: "test_audience".to_string(),
+            client_id: "test_client".to_string(),
+            exp: now - 3600, // Expired
+            iat: now - 7200,
+            nbf: now - 7200,
+            jti: Uuid::new_v4().to_string(),
+>>>>>>> 1fdc5e2 (feat: implement real JWT validation for UserInfo endpoint)
             scope: None,
             roles: None,
             groups: None,
@@ -1391,6 +1488,7 @@ mod tests {
 
         let token = generate_access_token(&claims);
 
+<<<<<<< HEAD
         // Verify it
         let decoded = verify_and_decode_jwt(&token).expect("Token should be valid");
         assert_eq!(decoded.jti, "test_jti");
@@ -1418,11 +1516,44 @@ mod tests {
             iat: now - 7200,
             nbf: now - 7200,
             jti: "expired_jti".to_string(),
+=======
+        // Verification should fail due to expiration
+        match verify_jwt(&token) {
+            Err(AuthencError::Unauthorized { message }) => assert_eq!(message, "Token expired"),
+            _ => panic!("Expected token expired error"),
+        }
+    }
+
+    #[test]
+    fn test_jwt_tampered_signature() {
+        let now = Utc::now().timestamp();
+        let claims = AccessTokenClaims {
+            iss: "test_issuer".to_string(),
+            sub: "test_subject".to_string(),
+            aud: "test_audience".to_string(),
+            client_id: "test_client".to_string(),
+            exp: now + 3600,
+            iat: now,
+            nbf: now,
+            jti: Uuid::new_v4().to_string(),
+>>>>>>> 1fdc5e2 (feat: implement real JWT validation for UserInfo endpoint)
             scope: None,
             roles: None,
             groups: None,
         };
+<<<<<<< HEAD
         let expired_token = generate_access_token(&expired_claims);
         assert!(verify_and_decode_jwt(&expired_token).is_err());
+=======
+
+        let token = generate_access_token(&claims);
+        let parts: Vec<&str> = token.split('.').collect();
+
+        // Construct tampered token by replacing signature
+        let tampered_token = format!("{}.{}.{}", parts[0], parts[1], "invalid_signature");
+
+        // Verification should fail
+        assert!(verify_jwt(&tampered_token).is_err());
+>>>>>>> 1fdc5e2 (feat: implement real JWT validation for UserInfo endpoint)
     }
 }

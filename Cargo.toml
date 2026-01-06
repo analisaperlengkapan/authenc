@@ -140,10 +140,10 @@ aes-gcm = "0.11.0-rc.2"
 base64 = "0.22"
 base64ct = "1.8"  # Constant-time base64 for security-critical operations
 ed25519-dalek = { version = "2.1", features = ["rand_core", "serde"] }
-p256 = { version = "0.14.0-rc.2", features = ["ecdsa"] }
-p384 = { version = "0.14.0-rc.2", features = ["ecdsa"] }
-p521 = { version = "0.14.0-rc.2", features = ["ecdsa"] }
-ecdsa = { version = "0.17.0-rc.10" }
+p256 = { version = "0.13.2", features = ["ecdsa"] }
+p384 = { version = "0.13.0", features = ["ecdsa"] }
+p521 = { version = "0.13.3", features = ["ecdsa"] }
+ecdsa = { version = "0.16.9" }
 ed448-goldilocks = "0.9.0"
 x509-parser = "0.15"
 sha2 = "0.10"

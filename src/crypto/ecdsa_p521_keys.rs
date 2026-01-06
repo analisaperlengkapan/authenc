@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub static ECDSA_P521_KEYPAIR: Lazy<SigningKey> = Lazy::new(|| {
     // In production, load from secure storage or environment
     // For demo purposes, generate a new key each time
-    SigningKey::generate()
+    SigningKey::random(&mut OsRng)
 });
 
 /// JSON Web Key Set containing ECDSA P-521 public keys
