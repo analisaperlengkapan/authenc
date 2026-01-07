@@ -1,303 +1,117 @@
-# 🔐 Authenc
+# Authenc
 
-> **Enterprise-grade Identity and Access Management (IAM) Platform**
+Authenc is a modular Identity and Access Management (IAM) service developed for the SIMPelv2 platform. It provides a comprehensive set of authentication and authorization protocols, including OAuth 2.0, OpenID Connect, SAML 2.0, and WebAuthn.
 
-[![Rust](https://img.shields.io/badge/rust-1.90%2B-orange.svg)](https://www.rust-lang.org)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](Cargo.toml)
+## Features
 
----
+*   **OAuth 2.0 & OpenID Connect (OIDC)**
+    *   Supports standard flows: Authorization Code, Client Credentials, Device Flow.
+    *   JWT-based tokens signed with Ed25519 (high-performance Edwards-curve Digital Signature Algorithm).
+    *   OIDC Discovery endpoints (`/.well-known/openid-configuration`).
+*   **SAML 2.0**
+    *   Functions as both Identity Provider (IdP) and Service Provider (SP).
+    *   Supports SSO (Single Sign-On) flows.
+*   **WebAuthn / FIDO2**
+    *   Passwordless authentication support.
+    *   Hardware security key integration.
+*   **Multi-Factor Authentication (MFA)**
+    *   TOTP (Time-based One-Time Password) support (RFC 6238).
+*   **Security & Compliance**
+    *   FIPS-compliant cryptography options.
+    *   Audit logging with Kafka and Splunk HEC support.
+    *   Zero Trust architecture components.
+    *   Post-Quantum Cryptography (experimental support for ML-DSA, ML-KEM).
+*   **Infrastructure**
+    *   Built in Rust for performance and memory safety.
+    *   Clustering support via Raft/Infinispan.
+    *   Kubernetes Operator support.
 
-## ⚠️ IMPORTANT NOTICE
+## Tech Stack
 
-> [!CAUTION]
-> **🚧 THIS PROJECT IS UNDER ACTIVE DEVELOPMENT 🚧**
->
-> - ❌ **NOT PRODUCTION READY**
-> - ❌ **UNSTABLE API** - Breaking changes may occur at any time
-> - ❌ **NOT FULLY SECURITY AUDITED**
-> - ❌ **INCOMPLETE DOCUMENTATION**
->
-> Use only for development and testing purposes. **DO NOT USE FOR SENSITIVE DATA OR PRODUCTION SYSTEMS.**
+*   **Language:** Rust 1.90+
+*   **Web Framework:** Axum 0.8
+*   **Database:** PostgreSQL (via `tokio-postgres` and `deadpool`)
+*   **Runtime:** Tokio
+*   **Cryptography:** `ed25519-dalek`, `ring`, `p256`, `aes-gcm`, `pqcrypto` (optional)
 
----
+## Prerequisites
 
-## 📖 About Authenc
+*   **Rust Toolchain:** Version 1.90 or later.
+*   **PostgreSQL:** Version 14 or later.
+*   **OpenSSL:** Required for certain cryptographic operations (PKCS12).
 
-**Authenc** is an enterprise-grade Identity and Access Management (IAM) platform built with Rust, providing comprehensive authentication and authorization solutions for modern applications.
+## Installation
 
-### 🎯 Key Features
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/analisaperlengkapan/simpel2.git
+    cd authenc
+    ```
 
-#### 🔑 Authentication
-- **OAuth 2.0** - Authorization Code, Client Credentials, PKCE, Device Flow
-- **OpenID Connect (OIDC)** - Discovery, JWKS, Userinfo endpoints
-- **SAML 2.0** - SP-Initiated, IdP-Initiated SSO
-- **WebAuthn/FIDO2** - Passwordless authentication
-- **TOTP/HOTP** - Two-factor authentication
-- **Social Login** - Google, GitHub, Facebook, Microsoft, and more
+2.  **Set up the database:**
+    Ensure you have a PostgreSQL instance running. Create a database named `authenc` (or as configured).
 
-#### 🛡️ Security
-- **Zero Trust Architecture** - Continuous verification
-- **Brute Force Protection** - Rate limiting and account lockout
-- **CSRF Protection** - Token-based protection
-- **mTLS** - Mutual TLS for client authentication
-- **DPoP** - Demonstrating Proof of Possession
+3.  **Configure Environment Variables:**
+    Create a `.env` file in the root directory. You can use the example below as a template.
 
-#### 🔐 Cryptography
-| Algorithm | Usage |
-|-----------|-------|
-| Ed25519 | JWT signing, default key type |
-| ECDSA P-256/P-384/P-521 | Token signing |
-| Ed448 | High-security signing |
-| AES-256-GCM | Encryption at rest |
-| Argon2id | Password hashing |
-| Shamir Secret Sharing | Key splitting |
-| **Post-Quantum (Experimental)** | ML-DSA, ML-KEM, Falcon |
+## Configuration
 
-#### 🏢 Enterprise Features
-- **Multi-tenancy** - Realm-based isolation
-- **Federation** - LDAP, Active Directory, External IdP
-- **Identity Brokering** - External identity provider integration
-- **Protocol Mappers** - Custom claim mapping
-- **Event System** - Audit logging, webhooks
-- **OID4VC** - OpenID for Verifiable Credentials
+The application is configured via environment variables.
 
----
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HOST` | Server host address | `0.0.0.0` |
+| `PORT` | Server port | `3000` |
+| `BASE_URL` | Public base URL of the service | `http://localhost:3000` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgres://postgres:postgres@localhost:5432/authenc` |
+| `JWT_SECRET` | Secret key for JWT signing | *Required* |
+| `LOG_LEVEL` | Logging verbosity (trace, debug, info, warn, error) | `INFO` |
+| `TLS_ENABLED` | Enable HTTPS | `false` |
+| `TLS_CERT_PATH` | Path to TLS certificate | - |
+| `TLS_KEY_PATH` | Path to TLS private key | - |
+| `ENABLED_FEATURES` | Comma-separated list of enabled features | - |
 
-## 🏗️ Architecture
-
-```
-authenc/
-├── src/
-│   ├── app.rs              # Application state & configuration
-│   ├── main.rs             # Entry point
-│   ├── lib.rs              # Library exports
-│   │
-│   ├── crypto/             # 🔐 Cryptographic operations
-│   │   ├── ed25519_keys.rs     # Ed25519 key management
-│   │   ├── ecdsa_*.rs          # ECDSA key variants
-│   │   ├── aes_gcm.rs          # AES-GCM encryption
-│   │   ├── shamir.rs           # Secret sharing
-│   │   ├── pqc.rs              # Post-quantum crypto
-│   │   └── xmldsig.rs          # XML signature for SAML
-│   │
-│   ├── database/           # 💾 Database layer
-│   │   ├── operations.rs       # CRUD operations
-│   │   └── migrations/         # Schema files
-│   │
-│   ├── handlers/           # 🌐 HTTP handlers
-│   │   ├── api/                # REST API endpoints
-│   │   ├── oauth2_*.rs         # OAuth2 endpoints
-│   │   ├── oidc_*.rs           # OIDC endpoints
-│   │   ├── saml.rs             # SAML endpoints
-│   │   └── health.rs           # Health checks
-│   │
-│   ├── services/           # ⚙️ Business logic
-│   │   ├── auth_flow.rs        # Authentication flows
-│   │   ├── webauthn.rs         # WebAuthn service
-│   │   ├── device.rs           # Device management
-│   │   ├── oid4vc.rs           # Verifiable Credentials
-│   │   ├── saml.rs             # SAML processing
-│   │   ├── password_policy.rs  # Password policies
-│   │   ├── federation/         # Identity federation
-│   │   ├── sso/                # Single Sign-On
-│   │   └── zero_trust/         # Zero Trust
-│   │
-│   ├── middleware/         # 🔧 HTTP middleware
-│   │   ├── auth_middleware.rs  # JWT validation
-│   │   ├── rate_limit.rs       # Rate limiting
-│   │   ├── csrf_protection.rs  # CSRF protection
-│   │   └── security_headers.rs # Security headers
-│   │
-│   ├── spi/                # 🔌 Service Provider Interface
-│   │   ├── authenticator.rs    # Custom authenticators
-│   │   ├── protocol_mappers.rs # Protocol mapping
-│   │   └── federation.rs       # Federation SPI
-│   │
-│   └── vault/              # 🔒 Secret management
-│       └── hashicorp.rs        # HashiCorp Vault integration
-│
-├── migrations/             # 📁 Database migrations (008-021)
-├── tests/                  # 🧪 Integration tests
-└── Cargo.toml              # 📦 Dependencies
-```
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- **Rust** 1.90+
-- **PostgreSQL** 14+
-- **OpenSSL** (for crypto operations)
-
-### Installation
-
-```bash
-# Clone repository
-git clone https://github.com/analisaperlengkapan/authenc.git
-cd authenc
-
-# Copy environment file
-cp .env.example .env
-
-# Edit configuration
-nano .env
-```
-
-### Configuration (.env)
+**Example `.env`:**
 
 ```env
-# Database
-DATABASE_URL=postgresql://postgres:password@localhost/authenc
-
-# Server
-SERVER_PORT=3000
-SERVER_HOST=0.0.0.0
-
-# Security
-JWT_SECRET=your-super-secret-key-change-in-production
-ENCRYPTION_KEY=32-byte-encryption-key-here
-
-# Features (optional)
-ENABLE_RATE_LIMITING=true
-ENABLE_CSRF_PROTECTION=true
+HOST=0.0.0.0
+PORT=3000
+DATABASE_URL=postgres://user:password@localhost:5432/authenc
+JWT_SECRET=change_this_to_a_secure_random_string
+LOG_LEVEL=info
 ```
 
-### Running
+## Running the Application
 
+**Development Mode:**
 ```bash
-# Development mode
 cargo run
+```
 
-# Production build
+**Production Build:**
+```bash
 cargo build --release
 ./target/release/authenc
-
-# With specific features
-cargo run --features "quantum,admin_console"
 ```
 
-### Docker (Coming Soon)
-
+**With Specific Features:**
+To enable optional features like the admin console or post-quantum crypto:
 ```bash
-docker-compose up -d
+cargo run --features "admin_console,quantum"
 ```
 
----
+## Testing
 
-## 🔌 API Endpoints
-
-### Health & Monitoring
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Basic health check |
-| `/health/ready` | GET | Readiness check (DB) |
-| `/health/live` | GET | Liveness check |
-
-### OAuth 2.0 / OIDC
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/.well-known/openid_configuration` | GET | OIDC Discovery |
-| `/oauth2/authorize` | GET | Authorization endpoint |
-| `/oauth2/token` | POST | Token endpoint |
-| `/oauth2/introspect` | POST | Token introspection |
-| `/oauth2/revoke` | POST | Token revocation |
-| `/oauth2/jwks` | GET | JSON Web Key Set |
-| `/oauth2/userinfo` | GET | User info endpoint |
-
-### Admin API
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/admin/stats` | GET | System statistics |
-| `/api/v1/auth/realms` | CRUD | Realm management |
-| `/api/v1/auth/users` | CRUD | User management |
-| `/api/v1/auth/roles` | CRUD | Role management |
-| `/api/v1/auth/clients` | CRUD | Client management |
-
-### Advanced Features
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/realms/{id}/event-listeners` | CRUD | Event listeners |
-| `/api/v1/realms/{id}/protocol-mappers` | CRUD | Protocol mappers |
-| `/api/v1/realms/{id}/authenticators` | CRUD | Authenticators |
-| `/oid4vc/.well-known/openid-credential-issuer` | GET | VC Issuer metadata |
-
----
-
-## 🧪 Testing
+Run the test suite using `cargo test`.
 
 ```bash
 # Run all tests
 cargo test
 
-# Run specific test suite
-cargo test --test session5_rest_api_tests
-
-# Run with output
-cargo test -- --nocapture
+# Run tests for a specific package/module
+cargo test --package authenc --lib
 ```
 
----
+## License
 
-## 📊 Features Matrix
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| OAuth 2.0 | ✅ Implemented | Core flows working |
-| OIDC | ✅ Implemented | Ed25519 signing |
-| SAML 2.0 | ✅ Implemented | SP & IdP modes |
-| WebAuthn | 🔶 Partial | Basic support |
-| TOTP | ✅ Implemented | RFC 6238 compliant |
-| Social Login | 🔶 Partial | Requires configuration |
-| Zero Trust | 🔶 Partial | Policy engine WIP |
-| OID4VC | ✅ Implemented | 4 credential types |
-| Post-Quantum | 🔬 Experimental | ML-DSA, ML-KEM |
-| Clustering | ⏳ Planned | HA support |
-| Admin UI | ⏳ Planned | Web console |
-
-**Legend:** ✅ Ready | 🔶 Partial | 🔬 Experimental | ⏳ Planned
-
----
-
-## 🔒 Security Considerations
-
-1. **Change default secrets** - Always update JWT_SECRET and ENCRYPTION_KEY
-2. **Use TLS** - Always enable HTTPS in production environments
-3. **Database encryption** - Enable PostgreSQL encryption at rest
-4. **Regular updates** - Keep dependencies updated for security patches
-5. **Audit logs** - Enable and monitor event logging for security incidents
-
----
-
-## 📝 License
-
-This project is licensed under the **Apache License 2.0** - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read our contributing guidelines before submitting PRs.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📞 Support
-
-- 📧 Email: security@kejaksaan.go.id
-- 📖 Documentation: [docs.simpel.kejaksaan.go.id/authenc](https://docs.simpel.kejaksaan.go.id/authenc)
-- 🐛 Issues: [GitHub Issues](https://github.com/analisaperlengkapan/authenc/issues)
-
----
-
-<p align="center">
-  <b>Built with ❤️ in Rust</b><br>
-  <sub>© 2024-2026 SIMPelv2 Team</sub>
-</p>
+This project is licensed under the Apache-2.0 License.
