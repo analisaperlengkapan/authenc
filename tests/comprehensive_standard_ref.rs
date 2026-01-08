@@ -18,7 +18,7 @@ struct AppState {
     _data: SharedState,
 }
 
-// Mock handlers for Keycloak-like features
+// Mock handlers for Standard IAM-like features
 async fn oidc_discovery() -> Json<serde_json::Value> {
     Json(json!({
         "issuer": "https://authenc.example.com",
@@ -90,7 +90,7 @@ async fn test_jwks_security_headers() {
     let response = server.get("/oauth2/jwks").await;
     assert_eq!(response.status_code(), StatusCode::OK);
 
-    // Keycloak standard: Check for proper content type
+    // Standard IAM: Check for proper content type
     assert_eq!(
         response
             .headers()
@@ -351,7 +351,7 @@ async fn test_webauthn_endpoints_security() {
     assert!(body.get("challenge").is_some());
     assert_eq!(body["rp"]["id"], "authenc.example.com");
 
-    // Keycloak/FIPS check: Ensure strong algorithms are requested
+    // Standard IAM/FIPS check: Ensure strong algorithms are requested
     let algs = body["pubKeyCredParams"].as_array().unwrap();
     assert!(algs.iter().any(|a| a["alg"] == -8)); // Ed25519 check
 }

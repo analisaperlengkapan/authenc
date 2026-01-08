@@ -291,8 +291,8 @@ Contributions are welcome! Please read our contributing guidelines before submit
 
 ## 📞 Support
 
-- 📧 Email: security@kejaksaan.go.id
-- 📖 Documentation: [docs.simpel.kejaksaan.go.id/authenc](https://docs.simpel.kejaksaan.go.id/authenc)
+- 📧 Email: security@authenc.dev
+- 📖 Documentation: [docs.authenc.dev](https://docs.authenc.dev)
 - 🐛 Issues: [GitHub Issues](https://github.com/analisaperlengkapan/authenc/issues)
 
 ---
