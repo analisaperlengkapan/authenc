@@ -6,12 +6,12 @@ members = ["."]
 version = "0.4.0"
 edition = "2024"
 rust-version = "1.90"
-authors = ["SIMPelv2 Team <security@kejaksaan.go.id>"]
+authors = ["Authenc Team <security@authenc.dev>"]
 license = "Apache-2.0"
-description = "Enterprise-grade Identity and Access Management (IAM) service for SIMPelv2"
-repository = "https://github.com/analisaperlengkapan/simpel2"
-homepage = "https://simpel.kejaksaan.go.id"
-documentation = "https://docs.simpel.kejaksaan.go.id/authenc"
+description = "Enterprise-grade Identity and Access Management (IAM) service"
+repository = "https://github.com/authenc/authenc"
+homepage = "https://authenc.dev"
+documentation = "https://docs.authenc.dev"
 keywords = ["iam", "authentication", "authorization", "security", "rust"]
 categories = ["authentication", "cryptography", "web-programming"]
 

@@ -775,7 +775,7 @@ impl FipsKeyStoreManager {
     pub async fn store_secret(&self, alias: &str, secret: &str) -> Result<()> {
         // Delegate to FipsSecretStore
         let secret_file = format!("{}.secrets", self.keystore_path);
-        let store = FipsSecretStore::new(secret_file, self.keystore_password.clone());
+        let store = FipsSecretStore::new(secret_file, self.keystore_password.to_string());
         store.store_secret(alias, secret).await
     }
 
@@ -783,7 +783,7 @@ impl FipsKeyStoreManager {
     pub async fn retrieve_secret(&self, alias: &str) -> Result<Option<String>> {
         // Delegate to FipsSecretStore
         let secret_file = format!("{}.secrets", self.keystore_path);
-        let store = FipsSecretStore::new(secret_file, self.keystore_password.clone());
+        let store = FipsSecretStore::new(secret_file, self.keystore_password.to_string());
         store.retrieve_secret(alias).await
     }
 }
