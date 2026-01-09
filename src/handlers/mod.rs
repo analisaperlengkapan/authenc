@@ -54,8 +54,7 @@ pub mod broker;
 /// OAuth 2.0 Dynamic Client Registration (RFC 7591/7592)
 pub mod client_registration;
 /// Device management handlers
-// Temporarily disabled device module due to Handler trait mismatch
-// pub mod device;
+pub mod device;
 /// Federated authentication handlers with JIT provisioning
 pub mod federated_auth;
 /// SPI-based federation handlers for LDAP and social providers
@@ -314,6 +313,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 api::account_credentials::AccountCredentialsState {
                     user_store: state.user_store.clone(),
                     totp_store: state.totp_store.clone(),
+                    session_store: state.session_store.clone(),
                 },
             ),
         )
@@ -322,8 +322,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         //     "/api/v1/organizations",
         //     organization::create_organization_routes(),
         // )
-        // Temporarily disabled device routes due to Axum migration
-        // .nest("/api/v1/devices", device::create_device_routes())
+        // Device management routes
+        .nest("/api/v1/devices", device::create_device_routes().with_state(state.clone()))
         // Temporarily disabled SAML routes due to Axum migration
         // .nest("/saml", saml::create_saml_routes())
         .nest(

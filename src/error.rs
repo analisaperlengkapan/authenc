@@ -257,6 +257,13 @@ impl AuthencError {
         }
     }
 
+    /// Create a not implemented error
+    pub fn not_implemented<T: Into<String>>(message: T) -> Self {
+        Self::InternalError {
+            message: format!("Not implemented: {}", message.into()),
+        }
+    }
+
     /// Check if the error should be logged as an error (vs warning)
     pub fn should_log_as_error(&self) -> bool {
         matches!(
