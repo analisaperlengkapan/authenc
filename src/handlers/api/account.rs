@@ -116,7 +116,7 @@ pub async fn get_account_profile(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<Json<UserResponse>, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
@@ -139,7 +139,7 @@ pub async fn update_account_profile(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(update_request): Json<UpdateUserRequest>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -160,7 +160,7 @@ pub async fn get_account_sessions(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<Json<Vec<SessionResponse>>, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
@@ -182,7 +182,7 @@ pub async fn revoke_account_session(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(session_id): Path<Uuid>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -228,7 +228,7 @@ pub async fn get_account_applications(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(_auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(_auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<Json<Vec<ApplicationResponse>>, AuthencError> {
     // For now, return all clients as "authorized applications"
     // In a production system, this should only return clients that have active tokens/consents
@@ -257,7 +257,7 @@ pub async fn revoke_application_access(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(client_id): Path<String>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -284,7 +284,7 @@ pub async fn export_account_data(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<Response<String>, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
@@ -357,7 +357,7 @@ pub async fn delete_account(
             Arc<SocialAccountStore>,
         ),
     >,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
@@ -418,7 +418,7 @@ pub async fn setup_totp(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(_request): Json<TotpSetupRequest>,
 ) -> Result<Json<TotpSetupResponse>, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -497,7 +497,7 @@ pub async fn get_totp_status(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<Json<TotpStatusResponse>, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
@@ -533,7 +533,7 @@ pub async fn disable_totp(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
@@ -574,7 +574,7 @@ pub async fn get_linked_social_accounts(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<Json<Vec<SocialAccountResponse>>, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
@@ -609,7 +609,7 @@ pub async fn unlink_social_account(
         Arc<PgAuditLogStore>,
         Arc<SocialAccountStore>,
     )>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(provider): Path<String>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -651,7 +651,7 @@ pub async fn unlink_social_account(
 /// Get user consents for current user
 pub async fn get_user_consents(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<Json<Vec<ConsentResponse>>, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
@@ -683,7 +683,7 @@ pub async fn get_user_consents(
 /// Revoke consent for a specific client
 pub async fn revoke_consent(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(client_id): Path<String>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)

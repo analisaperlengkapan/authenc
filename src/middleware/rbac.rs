@@ -60,7 +60,7 @@ where
     }
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
-        use crate::middleware::auth_middleware_axum::AuthUser;
+        use crate::middleware::auth::AuthUser;
 
         // Get the authenticated user from request extensions
         let user = req.extensions().get::<AuthUser>();
@@ -139,7 +139,7 @@ impl<S> RbacMiddleware<S> {
     /// # Example
     /// # Example
     /// ```rust
-    /// use authenc::middleware::rbac_axum::RbacMiddleware;
+    /// use authenc::middleware::rbac::RbacMiddleware;
     /// use tower::service_fn;
     /// use std::convert::Infallible;
     /// use axum::http::Request;
@@ -172,7 +172,7 @@ where
     }
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
-        use crate::middleware::auth_middleware_axum::AuthUser;
+        use crate::middleware::auth::AuthUser;
 
         // Get the authenticated user from request extensions
         let user = req.extensions().get::<AuthUser>();
@@ -242,7 +242,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rbac_middleware() {
-        use crate::middleware::auth_middleware_axum::AuthUser;
+        use crate::middleware::auth::AuthUser;
 
         // Create a test service with RBAC protection
         let app = Router::new()

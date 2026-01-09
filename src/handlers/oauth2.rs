@@ -320,12 +320,12 @@ pub fn generate_access_token(claims: &AccessTokenClaims) -> String {
     };
 
     CryptoMonitor::monitor_rsa_operation("ed25519_access_token_signing", || {
-        // SAFETY NOTE: These serializations are safe to unwrap because:
+        // SAFETY NOTE: These serializations are safe to expect because:
         // 1. Ed25519JwtHeader and OAuth2Claims have simple string fields
         // 2. String serialization to JSON cannot fail for well-formed structs
         // 3. If serialization fails, it indicates a critical bug that should be caught in testing
-        let header_json = serde_json::to_string(&header).unwrap();
-        let claims_json = serde_json::to_string(&claims).unwrap();
+        let header_json = serde_json::to_string(&header).expect("Failed to serialize header");
+        let claims_json = serde_json::to_string(&claims).expect("Failed to serialize claims");
 
         let header_b64 = Base64UrlUnpadded::encode_string(header_json.as_bytes());
         let payload_b64 = Base64UrlUnpadded::encode_string(claims_json.as_bytes());
@@ -408,12 +408,12 @@ pub fn generate_id_token(
     };
 
     CryptoMonitor::monitor_rsa_operation("ed25519_id_token_signing", || {
-        // SAFETY NOTE: These serializations are safe to unwrap because:
+        // SAFETY NOTE: These serializations are safe to expect because:
         // 1. Ed25519JwtHeader and OAuth2IdTokenClaims have simple string fields
         // 2. String serialization to JSON cannot fail for well-formed structs
         // 3. If serialization fails, it indicates a critical bug that should be caught in testing
-        let header_json = serde_json::to_string(&header).unwrap();
-        let claims_json = serde_json::to_string(&claims).unwrap();
+        let header_json = serde_json::to_string(&header).expect("Failed to serialize header");
+        let claims_json = serde_json::to_string(&claims).expect("Failed to serialize claims");
 
         let header_b64 = Base64UrlUnpadded::encode_string(header_json.as_bytes());
         let payload_b64 = Base64UrlUnpadded::encode_string(claims_json.as_bytes());
@@ -545,7 +545,7 @@ pub async fn oauth2_discovery() -> Result<Json<serde_json::Value>, AuthencError>
 pub async fn oauth2_authorize(
     Query(params): Query<OAuth2AuthorizeRequest>,
     State(state): State<Arc<OAuth2AppState>>,
-    auth_user: Option<Extension<crate::middleware::auth_middleware_axum::AuthUser>>,
+    auth_user: Option<Extension<crate::middleware::auth::AuthUser>>,
 ) -> Result<Redirect, AuthencError> {
     // Validate response type
     if !["code", "id_token", "token id_token"].contains(&params.response_type.as_str()) {
@@ -1492,8 +1492,8 @@ mod tests {
         let token = generate_access_token(&claims);
         let parts: Vec<&str> = token.split('.').collect();
 
-        let mut payload_bytes = Base64UrlUnpadded::decode_vec(parts[1]).unwrap();
-        let s = String::from_utf8(payload_bytes).unwrap();
+        let mut payload_bytes = Base64UrlUnpadded::decode_vec(parts[1]).expect("Failed to decode payload");
+        let s = String::from_utf8(payload_bytes).expect("Failed to convert payload to string");
         let s = s.replace(&claims.sub, "evil_sub");
         payload_bytes = s.into_bytes();
         let tampered_payload_b64 = Base64UrlUnpadded::encode_string(&payload_bytes);

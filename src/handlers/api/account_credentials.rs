@@ -42,7 +42,7 @@ pub fn create_account_credentials_routes() -> Router<AccountCredentialsState> {
 /// Get current user's credentials
 pub async fn get_account_credentials(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<Json<Vec<CredentialResponse>>, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
@@ -96,7 +96,7 @@ pub struct UpdatePasswordRequest {
 /// Update the authenticated user's account password
 pub async fn update_account_password(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(password_request): Json<UpdatePasswordRequest>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -139,7 +139,7 @@ pub async fn update_account_password(
 /// Remove a credential from current user's account
 pub async fn remove_account_credential(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(credential_id): Path<String>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -197,7 +197,7 @@ pub struct SetupTotpResponse {
 #[axum::debug_handler]
 pub async fn setup_totp(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(setup_request): Json<SetupTotpRequest>,
 ) -> Result<Json<SetupTotpResponse>, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -253,7 +253,7 @@ pub struct VerifyTotpSetupRequest {
 /// Verify TOTP setup by validating a provided code against the stored secret
 pub async fn verify_totp_setup(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(verify_request): Json<VerifyTotpSetupRequest>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -309,7 +309,7 @@ pub async fn verify_totp_setup(
 /// Disable TOTP for current user
 pub async fn disable_totp(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;

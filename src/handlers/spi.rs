@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Create SPI management routes
-pub fn create_spi_management_routes() -> Router<Arc<AppState>> {
+pub fn create_spi_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/spis", get(list_spis))
         .route("/spis/{spi_name}", get(get_spi_info))

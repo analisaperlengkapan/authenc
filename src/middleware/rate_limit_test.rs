@@ -1,4 +1,4 @@
-use super::rate_limit_axum::{RateLimitConfig, RateLimiterState};
+use super::rate_limit::{RateLimitConfig, RateLimiterState};
 use axum::{
     body::Body,
     http::Request,

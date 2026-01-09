@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::error::AuthencError;
-use crate::middleware::auth_middleware_axum::AuthUser;
+use crate::middleware::auth::AuthUser;
 use crate::models::events::{Event, EventType};
 use crate::services::stores::consent_store::ConsentStoreTrait;
 
