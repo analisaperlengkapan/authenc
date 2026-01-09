@@ -38,20 +38,26 @@ pub async fn login(
     State(state): State<Arc<crate::app::AppState>>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, AuthencError> {
-    // Get user by username from database
+    // Determine realm_id. In a real scenario, this should come from the request (header/param)
+    // or defaulted to master realm if not present.
+    // For this endpoint, let's assume master realm if `req.realm` matches, otherwise error or lookup realm by name.
+    // req.realm is a string name. We need to resolve it to UUID.
+    // Assuming "master" or specific ID passed as string.
+
+    let realm_id = if req.realm == "master" {
+        Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap() // Safe unwrap for constant
+    } else {
+        // Here we should look up realm by name. Since we don't have realm store in state yet (or exposed easily),
+        // we might fail or try to parse as UUID.
+        Uuid::parse_str(&req.realm).map_err(|_| AuthencError::validation("Invalid realm"))?
+    };
+
+    // Get user by username from database, filtering by realm
     let user = state
         .user_store
-        .get_user_by_username(&req.username)
+        .get_user_by_username(&realm_id, &req.username)
         .await?
         .ok_or_else(|| AuthencError::unauthorized("Invalid credentials"))?;
-
-    // Check if user belongs to the requested realm
-    // For now, just check if the user has a realm_id that matches the master realm
-    let master_realm_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")
-        .map_err(|_| AuthencError::internal("Invalid master realm ID"))?;
-    if user.realm_id != Some(master_realm_id) {
-        return Err(AuthencError::unauthorized("Invalid credentials"));
-    }
 
     // Verify password (temporarily disabled for testing)
     // if let Some(ref password_hash) = user.password_hash {
@@ -129,10 +135,13 @@ pub async fn login(
 pub async fn test_login(
     State(state): State<Arc<crate::app::AppState>>,
 ) -> Result<Json<LoginResponse>, AuthencError> {
+    // Use master realm for test
+    let realm_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap();
+
     // Check if test user exists
     let test_user = state
         .user_store
-        .get_user_by_username("testuser")
+        .get_user_by_username(&realm_id, "testuser")
         .await?
         .ok_or_else(|| AuthencError::internal("Test user not found"))?;
 

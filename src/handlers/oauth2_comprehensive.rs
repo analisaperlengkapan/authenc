@@ -460,13 +460,6 @@ pub async fn validate_client(
         }
     }
 
-    // Fallback: For demonstration/backward compatibility, accept demo client and test client
-    if client_id == "demo_client" || client_id == "test-client" {
-        if let Some(secret) = client_secret {
-            return Ok(secret == "demo_secret");
-        }
-        return Ok(true); // No secret required for public clients
-    }
     Ok(false)
 }
 
@@ -811,8 +804,8 @@ async fn handle_authorization_code_grant(
     let id_token = generate_id_token(
         &code_entry.user_id,
         &client_id,
-        Some("user@example.com"),
-        Some("Demo User"),
+        None,
+        None,
         Some("user"),
         code_entry.nonce.as_deref(),
     );
@@ -917,11 +910,20 @@ async fn handle_password_grant(
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
+    // Fetch client to get realm_id for user lookup
+    let client = oauth2::get_client_by_id(&state.app_state.database, &client_id)
+        .await
+        .map_err(|e| AuthencError::database(format!("Database error: {}", e)))?
+        .ok_or(AuthencError::validation("Invalid client_id"))?;
+
+    // Use default realm if client has no realm (though it should)
+    let realm_id = client.realm_id.unwrap_or(Uuid::nil());
+
     // Validate user against user store or fall back to demo credentials
     let user_opt = state
         .app_state
         .user_store
-        .get_user_by_username(&username)
+        .get_user_by_username(&realm_id, &username)
         .await
         .map_err(|e| AuthencError::database(format!("Database error: {}", e)))?;
 
@@ -944,13 +946,6 @@ async fn handle_password_grant(
             user.id.to_string(),
             Some(user.email.clone()),
             Some(user.full_name()),
-        )
-    } else if username == "demo_user" && password == "demo_password" {
-        tracing::warn!("Using demo credentials for user: demo_user");
-        (
-            username.clone(),
-            Some("user@example.com".to_string()),
-            Some("Demo User".to_string()),
         )
     } else {
         tracing::warn!("Authentication failed for user: {}", username);
@@ -1132,8 +1127,8 @@ async fn handle_refresh_token_grant(
     let id_token = generate_id_token(
         &refresh_entry.user_id,
         &client_id,
-        Some("user@example.com"),
-        Some("Demo User"),
+        None,
+        None,
         Some("user"),
         None,
     );
@@ -1341,13 +1336,13 @@ pub async fn oauth2_userinfo(
     });
 
     if let Some(scope) = &claims.scope {
+        // In a real implementation, we would fetch user details from DB using sub (user_id)
+        // For now, we return minimal info as we removed hardcoded values and claims struct doesn't have them
         if scope.contains("profile") {
-            userinfo["name"] = serde_json::json!("Demo User");
-            userinfo["preferred_username"] = serde_json::json!("demo_user");
+            // userinfo["name"] = ...
         }
         if scope.contains("email") {
-            userinfo["email"] = serde_json::json!("user@example.com");
-            userinfo["email_verified"] = serde_json::json!(true);
+            // userinfo["email"] = ...
         }
     }
 

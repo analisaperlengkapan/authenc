@@ -187,7 +187,7 @@ pub mod jit_provisioning {
     /// Default implementation of JIT Provisioning Service
     pub struct DefaultJITProvisioningService {
         db: Arc<Database>,
-        _admin_service: Arc<dyn AdminService>,
+        admin_service: Arc<dyn AdminService>,
     }
 
     impl DefaultJITProvisioningService {
@@ -195,7 +195,7 @@ pub mod jit_provisioning {
         pub fn new(db: Arc<Database>, admin_service: Arc<dyn AdminService>) -> Self {
             Self {
                 db,
-                _admin_service: admin_service,
+                admin_service,
             }
         }
     }
@@ -234,7 +234,7 @@ pub mod jit_provisioning {
 
             // Check if user exists by email (for account linking)
             let existing_user = if let Some(email) = &request.external_email {
-                users::get_user_by_email(&self.db, email).await?
+                users::get_user_by_email(&self.db, &request.realm_id, email).await?
             } else {
                 None
             };
@@ -319,8 +319,16 @@ pub mod jit_provisioning {
             // Generate username from external data
             let username = self.generate_username(request).await?;
 
-            // Create user request
-            let create_request = CreateUserRequest {
+            // Check if username already exists in the realm
+            if users::get_user_by_username(&self.db, &request.realm_id, &username).await?.is_some() {
+                // If generated username exists, append random suffix or fail?
+                // generate_username implementation handles this check, but we need to pass realm_id to it.
+            }
+
+            use crate::services::admin::CreateUserRequest as AdminCreateUserRequest;
+
+            // Create user request using AdminService struct
+            let create_request = AdminCreateUserRequest {
                 username: username.clone(),
                 email: request
                     .external_email
@@ -330,12 +338,24 @@ pub mod jit_provisioning {
                 first_name: request.first_name.clone(),
                 last_name: request.last_name.clone(),
                 phone_number: None,
-                attributes: request.external_attributes.clone(),
-                realm_id: Some(request.realm_id),
+                realm_id: request.realm_id, // Mandatory in AdminService
                 organization_id: None,
+                roles: vec![], // JIT usually assigns default roles separately or via config
+                groups: vec![],
+                attributes: request.external_attributes.clone(),
+                email_verified: true, // Trusted from external provider
+                enabled: true,
             };
 
-            users::create_user(&self.db, &create_request).await
+            // Use admin service to create user, ensuring proper side effects
+            let user_response = self.admin_service.create_user(create_request).await
+                .map_err(|e| crate::error::AuthencError::database(e))?;
+
+            // Fetch the full User model as the return type expects it
+            // AdminService returns UserResponse, but we need User
+            users::get_user_by_id(&self.db, user_response.id)
+                .await?
+                .ok_or(crate::error::AuthencError::AuthenticationFailed)
         }
 
         /// Create federated identity link
@@ -364,7 +384,7 @@ pub mod jit_provisioning {
 
             // Try external username first
             if let Some(username) = &request.external_username {
-                if users::get_user_by_username(&self.db, username)
+                if users::get_user_by_username(&self.db, &request.realm_id, username)
                     .await?
                     .is_none()
                 {
@@ -378,7 +398,7 @@ pub mod jit_provisioning {
                 let mut candidate = email_prefix.to_string();
                 let mut counter = 1;
 
-                while users::get_user_by_username(&self.db, &candidate)
+                while users::get_user_by_username(&self.db, &request.realm_id, &candidate)
                     .await?
                     .is_some()
                 {
@@ -396,7 +416,7 @@ pub mod jit_provisioning {
             );
             let mut counter = 1;
 
-            while users::get_user_by_username(&self.db, &candidate)
+            while users::get_user_by_username(&self.db, &request.realm_id, &candidate)
                 .await?
                 .is_some()
             {

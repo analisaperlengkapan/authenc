@@ -180,6 +180,7 @@ impl DefaultClientRegistrationService {
                 .client_name
                 .clone()
                 .unwrap_or_else(|| "Dynamic Client".to_string()),
+            realm_id: Uuid::nil(), // Default to global/nil realm for dynamic registration unless context provided
             enabled: true,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

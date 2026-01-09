@@ -2208,7 +2208,11 @@ pub mod users {
     }
 
     /// Get user by username
-    pub async fn get_user_by_username(db: &Database, username: &str) -> Result<Option<User>> {
+    pub async fn get_user_by_username(
+        db: &Database,
+        realm_id: &Uuid,
+        username: &str,
+    ) -> Result<Option<User>> {
         let client = db.get_connection().await?;
         let query = r#"
             SELECT
@@ -2220,10 +2224,10 @@ pub mod users {
                 require_password_change, realm_id, organization_id, attributes,
                 enabled, federated, created_at, updated_at, deleted_at, login_count
             FROM users
-            WHERE username = $1 AND deleted_at IS NULL
+            WHERE username = $2 AND realm_id = $1 AND deleted_at IS NULL
         "#;
 
-        let row = client.query_opt(query, &[&username]).await?;
+        let row = client.query_opt(query, &[realm_id, &username]).await?;
         Ok(row.map(|r| User {
             id: r.get("id"),
             username: r.get("username"),
@@ -2258,7 +2262,11 @@ pub mod users {
     }
 
     /// Get user by email
-    pub async fn get_user_by_email(db: &Database, email: &str) -> Result<Option<User>> {
+    pub async fn get_user_by_email(
+        db: &Database,
+        realm_id: &Uuid,
+        email: &str,
+    ) -> Result<Option<User>> {
         let query = r#"
             SELECT
                 id, username, email, email_verified, first_name, last_name,
@@ -2269,11 +2277,11 @@ pub mod users {
                 require_password_change, realm_id, organization_id, attributes,
                 enabled, federated, created_at, updated_at, deleted_at, last_login_at, login_count
             FROM users
-            WHERE email = $1 AND deleted_at IS NULL
+            WHERE email = $2 AND realm_id = $1 AND deleted_at IS NULL
         "#;
 
-        let row = db.query_one(query, &[&email]).await?;
-        Ok(Some(row_to_user(&row)))
+        let row = db.query_opt(query, &[realm_id, &email]).await?;
+        Ok(row.map(|r| row_to_user(&r)))
     }
 
     /// Update user

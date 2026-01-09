@@ -190,8 +190,11 @@ impl AuthenticationManager for DefaultAuthenticationManager {
             .await?;
 
         // Load user from database
+        // Need to parse realm_id
+        let realm_uuid = uuid::Uuid::parse_str(realm_id).map_err(|e| Error::validation(format!("Invalid realm ID: {}", e)))?;
+
         let user_opt =
-            crate::database::operations::users::get_user_by_username(&self.database, username)
+            crate::database::operations::users::get_user_by_username(&self.database, &realm_uuid, username)
                 .await?;
 
         // Check if user exists and password is valid
