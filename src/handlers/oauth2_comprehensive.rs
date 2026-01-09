@@ -1336,13 +1336,18 @@ pub async fn oauth2_userinfo(
     });
 
     if let Some(scope) = &claims.scope {
-        // In a real implementation, we would fetch user details from DB using sub (user_id)
-        // For now, we return minimal info as we removed hardcoded values and claims struct doesn't have them
-        if scope.contains("profile") {
-            // userinfo["name"] = ...
-        }
-        if scope.contains("email") {
-            // userinfo["email"] = ...
+        // Fetch user details from DB using sub (user_id)
+        if let Ok(user_id) = Uuid::parse_str(&claims.sub) {
+            if let Ok(Some(user)) = state.app_state.user_store.get_user(user_id).await {
+                if scope.contains("profile") {
+                    userinfo["name"] = serde_json::json!(user.full_name());
+                    userinfo["preferred_username"] = serde_json::json!(user.username);
+                }
+                if scope.contains("email") {
+                    userinfo["email"] = serde_json::json!(user.email);
+                    userinfo["email_verified"] = serde_json::json!(user.email_verified);
+                }
+            }
         }
     }
 

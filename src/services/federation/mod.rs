@@ -319,12 +319,6 @@ pub mod jit_provisioning {
             // Generate username from external data
             let username = self.generate_username(request).await?;
 
-            // Check if username already exists in the realm
-            if users::get_user_by_username(&self.db, &request.realm_id, &username).await?.is_some() {
-                // If generated username exists, append random suffix or fail?
-                // generate_username implementation handles this check, but we need to pass realm_id to it.
-            }
-
             use crate::services::admin::CreateUserRequest as AdminCreateUserRequest;
 
             // Create user request using AdminService struct
