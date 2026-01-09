@@ -104,6 +104,7 @@ pub async fn create_client(
         client_secret: req.client_secret.clone(),
         redirect_uris: req.redirect_uris.clone(),
         name: req.name.clone(),
+        realm_id: realm_obj.id,
         enabled: req.enabled.unwrap_or(true),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),

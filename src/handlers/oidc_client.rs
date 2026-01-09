@@ -77,6 +77,7 @@ pub async fn create_oidc_client(
         client_secret: req.client_secret,
         redirect_uris: req.redirect_uris,
         name: req.name,
+        realm_id: uuid::Uuid::nil(), // Default/Global realm for simple OIDC clients
         enabled: true,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),

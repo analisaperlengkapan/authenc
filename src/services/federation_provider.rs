@@ -11,7 +11,7 @@ impl Default for FederationRegistry {
 /// Trait for federation providers that can authenticate users from external systems
 pub trait FederationProvider: Send + Sync {
     /// Get user by username from external system
-    fn get_user_by_username(&self, username: &str) -> Option<User>;
+    fn get_user_by_username(&self, realm_id: &uuid::Uuid, username: &str) -> Option<User>;
     /// Verify user password against external system
     fn verify_password(&self, username: &str, password: &str) -> bool;
 }
@@ -36,9 +36,9 @@ impl FederationRegistry {
     }
 
     /// Get user by username across all providers
-    pub fn get_user_by_username(&self, username: &str) -> Option<User> {
+    pub fn get_user_by_username(&self, realm_id: &uuid::Uuid, username: &str) -> Option<User> {
         for p in &self.providers {
-            if let Some(u) = p.get_user_by_username(username) {
+            if let Some(u) = p.get_user_by_username(realm_id, username) {
                 return Some(u);
             }
         }
@@ -63,7 +63,7 @@ pub struct DummyFederationProvider;
 const FEDERATED_PASSWORD_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$upp7kNAs9Mqcq+N2/3fUlw$UBWDAYQ5u/9b2KYLcYB1DlTbiczJnJjH7Flz8edIkH0";
 
 impl FederationProvider for DummyFederationProvider {
-    fn get_user_by_username(&self, username: &str) -> Option<User> {
+    fn get_user_by_username(&self, realm_id: &uuid::Uuid, username: &str) -> Option<User> {
         if username == "federated" {
             Some(User {
                 id: uuid::Uuid::new_v4(),

@@ -48,7 +48,14 @@ pub async fn register_verify(
 ) -> Result<Json<serde_json::Value>> {
     let username = params
         .get("username")
-        .ok_or(AuthencError::validation("Bad request"))?;
+        .ok_or(AuthencError::validation("Bad request: Missing username"))?;
+
+    let realm_id_str = params
+        .get("realm_id")
+        .ok_or(AuthencError::validation("Bad request: Missing realm_id"))?;
+
+    let realm_id = uuid::Uuid::parse_str(realm_id_str)
+        .map_err(|_| AuthencError::validation("Invalid realm_id format"))?;
 
     let webauthn_service = WebAuthnService::new(
         state.database.clone(),
@@ -59,7 +66,7 @@ pub async fn register_verify(
     );
 
     match webauthn_service
-        .verify_registration(username, response)
+        .verify_registration(&realm_id, username, response)
         .await
     {
         Ok(result) => Ok(result),
@@ -97,7 +104,14 @@ pub async fn authenticate_verify(
 ) -> Result<Json<serde_json::Value>> {
     let username = params
         .get("username")
-        .ok_or(AuthencError::validation("Bad request"))?;
+        .ok_or(AuthencError::validation("Bad request: Missing username"))?;
+
+    let realm_id_str = params
+        .get("realm_id")
+        .ok_or(AuthencError::validation("Bad request: Missing realm_id"))?;
+
+    let realm_id = uuid::Uuid::parse_str(realm_id_str)
+        .map_err(|_| AuthencError::validation("Invalid realm_id format"))?;
 
     let webauthn_service = WebAuthnService::new(
         state.database.clone(),
@@ -108,7 +122,7 @@ pub async fn authenticate_verify(
     );
 
     match webauthn_service
-        .verify_authentication(username, response)
+        .verify_authentication(&realm_id, username, response)
         .await
     {
         Ok(result) => Ok(result),

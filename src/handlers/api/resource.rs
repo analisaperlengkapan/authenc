@@ -136,7 +136,7 @@ pub async fn update_resource_permissions(
     for permission in request.permissions {
         // Get user
         let user = user_store
-            .get_user_by_username(&permission.username)
+            .get_user_by_username(&resource.realm_id, &permission.username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found".to_string()))?;
 
@@ -223,18 +223,25 @@ pub struct UserQuery {
 
 /// Get user information by username or email for permission management
 pub async fn get_user_info(
-    State((_, _, _, user_store)): State<(
+    State((resource_store, _, _, user_store)): State<(
         Arc<ResourceStore>,
         Arc<PermissionTicketStore>,
         Arc<ScopeStore>,
         Arc<UserStore>,
     )>,
+    Path(resource_id): Path<Uuid>,
     Query(query): Query<UserQuery>,
 ) -> Result<Json<UserResponse>, AuthencError> {
-    // Try to find user by username first, then by email
-    let user = if let Some(user) = user_store.get_user_by_username(&query.value).await? {
+    // Need resource to get realm_id
+    let resource = resource_store
+        .get_resource(resource_id)
+        .await?
+        .ok_or_else(|| AuthencError::resource_not_found("Resource not found".to_string()))?;
+
+    // Try to find user by username first, then by email, filtering by realm
+    let user = if let Some(user) = user_store.get_user_by_username(&resource.realm_id, &query.value).await? {
         user
-    } else if let Some(user) = user_store.get_user_by_email(&query.value).await? {
+    } else if let Some(user) = user_store.get_user_by_email(&resource.realm_id, &query.value).await? {
         user
     } else {
         return Err(AuthencError::resource_not_found(

@@ -26,6 +26,8 @@ pub struct WebAuthnRegistrationRequest {
     pub username: String,
     /// Display name for the user
     pub display_name: String,
+    /// Realm ID for the user
+    pub realm_id: Uuid,
 }
 
 /// WebAuthn authentication request
@@ -33,6 +35,8 @@ pub struct WebAuthnRegistrationRequest {
 pub struct WebAuthnAuthenticationRequest {
     /// Username to authenticate
     pub username: String,
+    /// Realm ID for the user
+    pub realm_id: Uuid,
 }
 
 impl WebAuthnService {
@@ -120,7 +124,7 @@ impl WebAuthnService {
         };
 
         // Store challenge in database for verification
-        self.store_challenge(&request.username, &challenge_bytes)
+        self.store_challenge(&request.realm_id, &request.username, &challenge_bytes)
             .await?;
 
         // Return proper WebAuthn registration options format
@@ -166,12 +170,13 @@ impl WebAuthnService {
     /// Verify WebAuthn registration response
     pub async fn verify_registration(
         &self,
+        realm_id: &Uuid,
         username: &str,
         response: WebauthnRegistrationResponse,
     ) -> Result<Json<serde_json::Value>> {
         // Retrieve stored challenge
         let stored_challenge = self
-            .get_challenge(username)
+            .get_challenge(realm_id, username)
             .await?
             .ok_or_else(|| AuthencError::unauthorized("No challenge found for user"))?;
 
@@ -220,10 +225,10 @@ impl WebAuthnService {
         };
 
         // Store credential
-        self.store_credential(username, &credential).await?;
+        self.store_credential(realm_id, username, &credential).await?;
 
         // Remove used challenge
-        self.delete_challenge(username).await?;
+        self.delete_challenge(realm_id, username).await?;
 
         Ok(Json(serde_json::json!({
             "success": true,
@@ -238,7 +243,7 @@ impl WebAuthnService {
         request: WebAuthnAuthenticationRequest,
     ) -> Result<Json<serde_json::Value>> {
         // Get user's credentials
-        let credentials = self.get_user_credentials(&request.username).await?;
+        let credentials = self.get_user_credentials(&request.realm_id, &request.username).await?;
 
         if credentials.is_empty() {
             return Err(AuthencError::unauthorized(
@@ -290,7 +295,7 @@ impl WebAuthnService {
         };
 
         // Store challenge
-        self.store_challenge(&request.username, &challenge_bytes)
+        self.store_challenge(&request.realm_id, &request.username, &challenge_bytes)
             .await?;
 
         Ok(Json(serde_json::to_value(auth_challenge).unwrap()))
@@ -299,12 +304,13 @@ impl WebAuthnService {
     /// Verify WebAuthn authentication response
     pub async fn verify_authentication(
         &self,
+        realm_id: &Uuid,
         username: &str,
         response: WebauthnAuthenticationResponse,
     ) -> Result<Json<serde_json::Value>> {
         // Retrieve stored challenge
         let stored_challenge = self
-            .get_challenge(username)
+            .get_challenge(realm_id, username)
             .await?
             .ok_or_else(|| AuthencError::unauthorized("No challenge found for user"))?;
 
@@ -324,7 +330,7 @@ impl WebAuthnService {
 
         // Get credential
         let _credential = self
-            .get_credential(username, &response.id)
+            .get_credential(username, &response.id) // Credential ID is unique enough? Or need realm?
             .await?
             .ok_or_else(|| AuthencError::unauthorized("Credential not found"))?;
 
@@ -340,7 +346,7 @@ impl WebAuthnService {
         .await?;
 
         // Remove used challenge
-        self.delete_challenge(username).await?;
+        self.delete_challenge(realm_id, username).await?;
 
         Ok(Json(serde_json::json!({
             "success": true,
@@ -351,11 +357,11 @@ impl WebAuthnService {
 
     // Database operations
     /// Store WebAuthn challenge for user
-    async fn store_challenge(&self, username: &str, challenge: &[u8]) -> Result<()> {
+    async fn store_challenge(&self, realm_id: &Uuid, username: &str, challenge: &[u8]) -> Result<()> {
         use crate::database::operations::users;
 
         // Get user ID from username
-        let user = users::get_user_by_username(&self.db, username)
+        let user = users::get_user_by_username(&self.db, realm_id, username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
@@ -378,11 +384,11 @@ impl WebAuthnService {
     }
 
     /// Get stored WebAuthn challenge for user
-    async fn get_challenge(&self, username: &str) -> Result<Option<Vec<u8>>> {
+    async fn get_challenge(&self, realm_id: &Uuid, username: &str) -> Result<Option<Vec<u8>>> {
         use crate::database::operations::users;
 
         // Get user ID from username
-        let user = users::get_user_by_username(&self.db, username)
+        let user = users::get_user_by_username(&self.db, realm_id, username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
@@ -404,11 +410,11 @@ impl WebAuthnService {
     }
 
     /// Delete stored WebAuthn challenge for user
-    async fn delete_challenge(&self, username: &str) -> Result<()> {
+    async fn delete_challenge(&self, realm_id: &Uuid, username: &str) -> Result<()> {
         use crate::database::operations::users;
 
         // Get user ID from username
-        let user = users::get_user_by_username(&self.db, username)
+        let user = users::get_user_by_username(&self.db, realm_id, username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
@@ -426,13 +432,14 @@ impl WebAuthnService {
     /// Store WebAuthn credential for user
     async fn store_credential(
         &self,
+        realm_id: &Uuid,
         username: &str,
         credential: &WebauthnCredential,
     ) -> Result<()> {
         use crate::database::operations::users;
 
         // Get user ID from username
-        let user = users::get_user_by_username(&self.db, username)
+        let user = users::get_user_by_username(&self.db, realm_id, username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
@@ -460,12 +467,12 @@ impl WebAuthnService {
     }
 
     /// Get all WebAuthn credentials for user
-    async fn get_user_credentials(&self, username: &str) -> Result<Vec<WebauthnCredential>> {
+    async fn get_user_credentials(&self, realm_id: &Uuid, username: &str) -> Result<Vec<WebauthnCredential>> {
         use crate::database::operations::users;
         use crate::database::operations::webauthn as webauthn_db;
 
         // Get user ID from username
-        let user = users::get_user_by_username(&self.db, username)
+        let user = users::get_user_by_username(&self.db, realm_id, username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
