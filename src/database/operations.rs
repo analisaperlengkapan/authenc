@@ -9921,6 +9921,46 @@ pub mod sessions {
         Ok(sessions)
     }
 
+    /// Get sessions for a specific device
+    pub async fn get_device_sessions(
+        db: &Database,
+        device_id: Uuid,
+    ) -> Result<Vec<serde_json::Value>> {
+        let query = r#"
+            SELECT id, device_id, user_id, user_session_id,
+                   session_identifier, started_at, last_activity,
+                   ip_address, location, risk_score, risk_factors,
+                   is_active, created_at, updated_at
+            FROM device_sessions
+            WHERE device_id = $1
+            ORDER BY last_activity DESC
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&device_id]).await?;
+
+        let mut sessions = Vec::new();
+        for row in rows {
+            sessions.push(serde_json::json!({
+                "id": row.get::<_, Uuid>("id"),
+                "device_id": row.get::<_, Uuid>("device_id"),
+                "user_id": row.get::<_, Uuid>("user_id"),
+                "user_session_id": row.get::<_, Option<Uuid>>("user_session_id"),
+                "session_identifier": row.get::<_, String>("session_identifier"),
+                "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
+                "last_activity": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity"),
+                "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
+                "location": row.get::<_, Option<serde_json::Value>>("location"),
+                "risk_score": row.get::<_, f64>("risk_score"),
+                "risk_factors": row.get::<_, Option<serde_json::Value>>("risk_factors"),
+                "is_active": row.get::<_, bool>("is_active"),
+                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+                "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+            }));
+        }
+
+        Ok(sessions)
+    }
+
     /// Update session last accessed time
     pub async fn touch_session(db: &Database, session_id: Uuid) -> Result<()> {
         let query = r#"

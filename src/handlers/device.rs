@@ -1,7 +1,7 @@
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
 use crate::services::device::{
-    DeviceRegistrationRequest, DeviceService, DeviceUpdateRequest, TrustEvaluationContext,
+    DeviceRegistrationRequest, DeviceService, TrustEvaluationContext,
 };
 use axum::{
     Router,
@@ -148,12 +148,23 @@ pub async fn get_device(
     }
 }
 
+/// Update device request
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateDeviceRequest {
+    /// Optional new name for the device
+    pub device_name: Option<String>,
+    /// Optional updated trust score (0.0 to 1.0)
+    pub trust_score: Option<f64>,
+    /// Optional trust status override
+    pub is_trusted: Option<bool>,
+}
+
 /// Update device handler
 pub async fn update_device(
     State(state): State<Arc<AppState>>,
     Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
-    Json(updates): Json<DeviceUpdateRequest>,
+    Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>> {
     let service = DeviceService::new(state.database.clone());
 
@@ -168,6 +179,13 @@ pub async fn update_device(
     } else {
         return Err(AuthencError::resource_not_found("Device not found"));
     }
+
+    let updates = crate::services::device::DeviceUpdateRequest {
+        device_name: request.device_name,
+        trust_score: request.trust_score,
+        is_trusted: request.is_trusted,
+        security_features: None,
+    };
 
     match service.update_device(id, updates).await {
         Ok(_) => Ok(Json(serde_json::json!({
@@ -198,18 +216,14 @@ pub async fn delete_device(
         return Err(AuthencError::resource_not_found("Device not found"));
     }
 
-    // Since DeviceService doesn't expose delete_device, we'll implement it directly via database operations
-    // Note: Ideally, this should be in DeviceService.
-    // For now, we'll use a direct DB operation if available, or just log/mock if the service is incomplete.
-    // Looking at the imports in DeviceService, we have `devices::update_device_details`.
-    // Let's assume we can't delete yet without modifying the service.
-    // For this optimization task, we'll mark it as "Not Implemented" properly instead of a silent success mock.
-
-    // Better: Check if we can add delete to DeviceService?
-    // Since I can't edit DeviceService easily in this diff (different file), I will return 501 Not Implemented
-    // with a clear message, rather than a fake 200 OK.
-
-    Err(AuthencError::not_implemented("Device deletion is not yet supported by the service layer"))
+    // Delete the device using the service
+    match service.delete_device(id).await {
+        Ok(_) => Ok(Json(serde_json::json!({
+            "success": true,
+            "message": "Device deleted successfully"
+        }))),
+        Err(e) => Err(e),
+    }
 }
 
 /// Evaluate device trust request

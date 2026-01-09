@@ -469,21 +469,81 @@ impl DeviceService {
     }
 
     /// Update device session activity
-    pub async fn update_session_activity(&self, _session_id: Uuid) -> Result<()> {
-        // In production, update last_activity in database
-        Ok(())
+    pub async fn update_session_activity(&self, session_id: Uuid) -> Result<()> {
+        use crate::database::operations::sessions;
+        sessions::update_device_session_activity(&self.db, session_id, None, None).await
     }
 
     /// End device session
-    pub async fn end_session(&self, _session_id: Uuid) -> Result<()> {
-        // In production, mark session as inactive
-        Ok(())
+    pub async fn end_session(&self, session_id: Uuid) -> Result<()> {
+        use crate::database::operations::sessions;
+        sessions::end_device_session(&self.db, session_id).await
     }
 
     /// Get device sessions
-    pub async fn get_device_sessions(&self, _device_id: Uuid) -> Result<Vec<DeviceSession>> {
-        // In production, retrieve from database
-        Ok(vec![])
+    pub async fn get_device_sessions(&self, device_id: Uuid) -> Result<Vec<DeviceSession>> {
+        use crate::database::operations::sessions;
+
+        let sessions_json = sessions::get_device_sessions(&self.db, device_id).await?;
+
+        let mut device_sessions = Vec::new();
+        for session in sessions_json {
+            // Map JSON to DeviceSession struct
+            if let (Some(id_str), Some(session_id)) = (
+                session["id"].as_str(),
+                session["session_identifier"].as_str(),
+            ) {
+                if let Ok(id) = Uuid::parse_str(id_str) {
+                    let user_id = session["user_id"]
+                        .as_str()
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .unwrap_or_default();
+
+                    let started_at = session["started_at"]
+                        .as_str()
+                        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(Utc::now);
+
+                    let last_activity = session["last_activity"]
+                        .as_str()
+                        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(Utc::now);
+
+                    let location = session["location"].as_object().map(|obj| {
+                        DeviceLocation {
+                            country: obj.get("country").and_then(|v| v.as_str()).map(String::from),
+                            region: obj.get("region").and_then(|v| v.as_str()).map(String::from),
+                            city: obj.get("city").and_then(|v| v.as_str()).map(String::from),
+                            latitude: obj.get("latitude").and_then(|v| v.as_f64()),
+                            longitude: obj.get("longitude").and_then(|v| v.as_f64()),
+                        }
+                    });
+
+                    device_sessions.push(DeviceSession {
+                        id,
+                        device_id,
+                        user_id,
+                        session_id: session_id.to_string(),
+                        started_at,
+                        last_activity,
+                        ip_address: session["ip_address"].as_str().unwrap_or("").to_string(),
+                        location,
+                        risk_score: session["risk_score"].as_f64().unwrap_or(0.0),
+                        is_active: session["is_active"].as_bool().unwrap_or(false),
+                    });
+                }
+            }
+        }
+
+        Ok(device_sessions)
+    }
+
+    /// Delete a device
+    pub async fn delete_device(&self, device_id: Uuid) -> Result<()> {
+        use crate::database::operations::devices;
+        devices::delete_device(&self.db, device_id).await
     }
 
     /// Add trust policy
