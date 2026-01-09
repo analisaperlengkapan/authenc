@@ -396,7 +396,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_request_logger_middleware_debug_format() {
-        let app = Router::new().route("/", get(|| async { "test" }));
+        let app: Router<()> = Router::new().route("/", get(|| async { "test" }));
         let middleware = RequestLogger.layer(app);
         let debug_str = format!("{:?}", middleware);
         assert!(debug_str.contains("RequestLoggerMiddleware"));

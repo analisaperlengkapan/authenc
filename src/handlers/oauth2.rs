@@ -545,7 +545,7 @@ pub async fn oauth2_discovery() -> Result<Json<serde_json::Value>, AuthencError>
 pub async fn oauth2_authorize(
     Query(params): Query<OAuth2AuthorizeRequest>,
     State(state): State<Arc<OAuth2AppState>>,
-    auth_user: Option<Extension<crate::middleware::auth_middleware_axum::AuthUser>>,
+    auth_user: Option<Extension<crate::middleware::auth::AuthUser>>,
 ) -> Result<Redirect, AuthencError> {
     // Validate response type
     if !["code", "id_token", "token id_token"].contains(&params.response_type.as_str()) {

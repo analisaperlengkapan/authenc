@@ -4,7 +4,7 @@
 //! with filtering and pagination support.
 
 use crate::database::operations;
-use crate::middleware::auth_middleware_axum::AuthUser;
+use crate::middleware::auth::AuthUser;
 use crate::models::audit_log::AuditLog;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;

@@ -163,7 +163,7 @@ use serde::{Deserialize, Serialize};
 use tracing::Level;
 
 use crate::error::{AuthencError, Result};
-use crate::middleware::rate_limit_axum::RateLimitConfig;
+use crate::middleware::rate_limit::RateLimitConfig;
 
 /// Cluster configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
