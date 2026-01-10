@@ -10,6 +10,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AuthencError;
+use crate::services::session_store::SessionStore;
 use crate::services::stores::user_store::{UserStore, UserStoreTrait};
 use crate::services::totp_store::TotpStore;
 
@@ -20,6 +21,8 @@ pub struct AccountCredentialsState {
     pub user_store: Arc<UserStore>,
     /// Store for TOTP (Time-based One-Time Password) data
     pub totp_store: Arc<TotpStore>,
+    /// Store for session data
+    pub session_store: Arc<SessionStore>,
 }
 
 /// Create account credentials management routes
@@ -133,6 +136,12 @@ pub async fn update_account_password(
         .user_store
         .update_password(user_id, new_password_hash)
         .await?;
+
+    // Revoke all existing sessions for security
+    if let Err(e) = state.session_store.delete_user_sessions(user_id).await {
+        tracing::error!("Failed to revoke sessions after password change: {}", e);
+        // We don't fail the request because the password *was* changed.
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }

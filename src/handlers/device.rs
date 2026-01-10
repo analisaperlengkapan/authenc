@@ -1,11 +1,11 @@
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
 use crate::services::device::{
-    DeviceRegistrationRequest, DeviceService, DeviceUpdateRequest, TrustEvaluationContext,
+    DeviceRegistrationRequest, DeviceService, TrustEvaluationContext,
 };
 use axum::{
     Router,
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     response::Json,
     routing::{delete, get, post, put},
 };
@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::app::AppState;
 
 /// Create device management routes
-pub fn create_device_routes() -> Router<Database> {
+pub fn create_device_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", post(register_device))
         .route("/", get(list_devices))
@@ -65,13 +65,14 @@ pub struct RegisterDeviceRequest {
 
 /// Register device handler
 pub async fn register_device(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(request): Json<RegisterDeviceRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(Arc::new(db));
+    let service = DeviceService::new(state.database.clone());
 
-    // In production, get user ID from authentication context
-    let user_id = Uuid::new_v4();
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     let device_request = DeviceRegistrationRequest {
         device_name: request.device_name,
@@ -102,13 +103,14 @@ pub async fn register_device(
 
 /// List devices handler
 pub async fn list_devices(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Query(_params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(Arc::new(db));
+    let service = DeviceService::new(state.database.clone());
 
-    // In production, get user ID from authentication context
-    let user_id = Uuid::new_v4();
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     match service.get_user_devices(user_id).await {
         Ok(devices) => Ok(Json(serde_json::json!({
@@ -121,28 +123,69 @@ pub async fn list_devices(
 
 /// Get device handler
 pub async fn get_device(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(Arc::new(db));
+    let service = DeviceService::new(state.database.clone());
+
+    // Check ownership before returning device details
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     match service.get_device(id).await {
-        Ok(Some(device)) => Ok(Json(serde_json::json!({
-            "success": true,
-            "device": device
-        }))),
+        Ok(Some(device)) => {
+            if device.user_id != user_id {
+                return Err(AuthencError::forbidden("Access denied to this device"));
+            }
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "device": device
+            })))
+        }
         Ok(None) => Err(AuthencError::resource_not_found("Resource not found")),
         Err(_) => Err(AuthencError::internal("Internal server error")),
     }
 }
 
+/// Update device request
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateDeviceRequest {
+    /// Optional new name for the device
+    pub device_name: Option<String>,
+    /// Optional updated trust score (0.0 to 1.0)
+    pub trust_score: Option<f64>,
+    /// Optional trust status override
+    pub is_trusted: Option<bool>,
+}
+
 /// Update device handler
 pub async fn update_device(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
-    Json(updates): Json<DeviceUpdateRequest>,
+    Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(Arc::new(db));
+    let service = DeviceService::new(state.database.clone());
+
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    // Verify ownership
+    if let Some(device) = service.get_device(id).await.map_err(|_| AuthencError::internal("Error checking device"))? {
+        if device.user_id != user_id {
+            return Err(AuthencError::forbidden("Access denied to this device"));
+        }
+    } else {
+        return Err(AuthencError::resource_not_found("Device not found"));
+    }
+
+    let updates = crate::services::device::DeviceUpdateRequest {
+        device_name: request.device_name,
+        trust_score: request.trust_score,
+        is_trusted: request.is_trusted,
+        security_features: None,
+    };
 
     match service.update_device(id, updates).await {
         Ok(_) => Ok(Json(serde_json::json!({
@@ -155,16 +198,32 @@ pub async fn update_device(
 
 /// Delete device handler
 pub async fn delete_device(
-    State(db): State<Database>,
-    Path(_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let _service = DeviceService::new(Arc::new(db));
+    let service = DeviceService::new(state.database.clone());
 
-    // In production, implement device deletion
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": "Device deleted successfully"
-    })))
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    // Verify ownership
+    if let Some(device) = service.get_device(id).await.map_err(|_| AuthencError::internal("Error checking device"))? {
+        if device.user_id != user_id {
+            return Err(AuthencError::forbidden("Access denied to this device"));
+        }
+    } else {
+        return Err(AuthencError::resource_not_found("Device not found"));
+    }
+
+    // Delete the device using the service
+    match service.delete_device(id).await {
+        Ok(_) => Ok(Json(serde_json::json!({
+            "success": true,
+            "message": "Device deleted successfully"
+        }))),
+        Err(e) => Err(e),
+    }
 }
 
 /// Evaluate device trust request
@@ -186,14 +245,23 @@ pub struct EvaluateTrustRequest {
 
 /// Evaluate device trust handler
 pub async fn evaluate_trust(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
     Json(request): Json<EvaluateTrustRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(Arc::new(db));
+    let service = DeviceService::new(state.database.clone());
+
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     let device = match service.get_device(id).await {
-        Ok(Some(device)) => device,
+        Ok(Some(device)) => {
+            if device.user_id != user_id {
+                return Err(AuthencError::forbidden("Access denied to this device"));
+            }
+            device
+        },
         Ok(None) => return Err(AuthencError::resource_not_found("Resource not found")),
         Err(_) => return Err(AuthencError::internal("Internal server error")),
     };
@@ -218,10 +286,21 @@ pub async fn evaluate_trust(
 
 /// Get device sessions handler
 pub async fn get_device_sessions(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(Arc::new(db));
+    let service = DeviceService::new(state.database.clone());
+
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    // Verify ownership
+    if let Some(device) = service.get_device(id).await.map_err(|_| AuthencError::internal("Error checking device"))? {
+        if device.user_id != user_id {
+            return Err(AuthencError::forbidden("Access denied to this device"));
+        }
+    }
 
     match service.get_device_sessions(id).await {
         Ok(sessions) => Ok(Json(serde_json::json!({
@@ -243,14 +322,22 @@ pub struct CreateSessionRequest {
 
 /// Create device session handler
 pub async fn create_session(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
     Json(request): Json<CreateSessionRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(Arc::new(db));
+    let service = DeviceService::new(state.database.clone());
 
-    // In production, get user ID from authentication context
-    let user_id = Uuid::new_v4();
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    // Verify ownership
+    if let Some(device) = service.get_device(id).await.map_err(|_| AuthencError::internal("Error checking device"))? {
+        if device.user_id != user_id {
+            return Err(AuthencError::forbidden("Access denied to this device"));
+        }
+    }
 
     match service
         .create_session(id, user_id, request.session_id, request.ip_address)
@@ -266,10 +353,10 @@ pub async fn create_session(
 
 /// Update session activity handler
 pub async fn update_session_activity(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(Arc::new(db));
+    let service = DeviceService::new(state.database.clone());
 
     match service.update_session_activity(session_id).await {
         Ok(_) => Ok(Json(serde_json::json!({
@@ -282,10 +369,10 @@ pub async fn update_session_activity(
 
 /// End session handler
 pub async fn end_session(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = DeviceService::new(Arc::new(db));
+    let service = DeviceService::new(state.database.clone());
 
     match service.end_session(session_id).await {
         Ok(_) => Ok(Json(serde_json::json!({
