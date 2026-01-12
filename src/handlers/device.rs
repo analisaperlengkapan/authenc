@@ -1,4 +1,3 @@
-use crate::database::Database;
 use crate::error::{AuthencError, Result};
 use crate::services::device::{
     DeviceRegistrationRequest, DeviceService, TrustEvaluationContext,
@@ -20,7 +19,7 @@ pub fn create_device_routes() -> Router<Arc<AppState>> {
         .route("/", post(register_device))
         .route("/", get(list_devices))
         .route("/{id}", get(get_device))
-        // .route("/{id}", put(update_device))
+        .route("/{id}", put(update_device))
         .route("/{id}", delete(delete_device))
         .route("/{id}/trust", post(evaluate_trust))
         .route("/{id}/sessions", get(get_device_sessions))
