@@ -253,6 +253,9 @@ impl DeviceService {
     ///
     /// This method updates the trust score for a device and records the history
     /// including any risk assessment factors or anomaly detection data.
+    ///
+    /// It delegates to the database operation `update_trust_score` which handles
+    /// the transactional update of the device record and insertion into the history table.
     pub async fn update_trust_score_db(
         &self,
         device_id: Uuid,
