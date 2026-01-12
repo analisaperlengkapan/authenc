@@ -165,7 +165,7 @@ impl DelegatedAdminService for DefaultDelegatedAdminService {
                 && assignment.active
                 && assignment
                     .expires_at
-                    .map_or(true, |exp| chrono::Utc::now() < exp)
+                    .is_none_or(|exp| chrono::Utc::now() < exp)
             {
                 // Check if any of the user's roles grant this permission
                 for role_id in &assignment.roles {
@@ -201,7 +201,7 @@ impl DelegatedAdminService for DefaultDelegatedAdminService {
                 && assignment.active
                 && assignment
                     .expires_at
-                    .map_or(true, |exp| chrono::Utc::now() < exp)
+                    .is_none_or(|exp| chrono::Utc::now() < exp)
             {
                 // Collect permissions from all roles
                 for role_id in &assignment.roles {

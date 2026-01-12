@@ -626,11 +626,10 @@ impl AppConfig {
                 if let Some(password) = url.password() {
                     config.database.password = password.to_string();
                 }
-                if let Some(mut segments) = url.path_segments() {
-                    if let Some(db) = segments.next() {
+                if let Some(mut segments) = url.path_segments()
+                    && let Some(db) = segments.next() {
                         config.database.database = db.trim_start_matches('/').to_string();
                     }
-                }
             }
         }
 
@@ -651,17 +650,15 @@ impl AppConfig {
         }
 
         // Observability configuration
-        if let Ok(log_level) = env::var("LOG_LEVEL") {
-            if let Ok(level) = log_level.parse::<Level>() {
+        if let Ok(log_level) = env::var("LOG_LEVEL")
+            && let Ok(level) = log_level.parse::<Level>() {
                 config.observability.log_level = level;
             }
-        }
 
-        if let Ok(active_conns) = env::var("DB_CHECK_ACTIVE_CONNECTIONS") {
-            if let Ok(conns) = active_conns.parse::<u32>() {
+        if let Ok(active_conns) = env::var("DB_CHECK_ACTIVE_CONNECTIONS")
+            && let Ok(conns) = active_conns.parse::<u32>() {
                 config.observability.db_check_active_connections = conns;
             }
-        }
 
         // Feature flags
         if let Ok(features) = env::var("ENABLED_FEATURES") {
@@ -730,7 +727,7 @@ impl AppConfig {
         }
 
         // Validate base_url
-        if let Err(_) = url::Url::parse(&self.server.base_url) {
+        if url::Url::parse(&self.server.base_url).is_err() {
             return Err(AuthencError::validation(format!(
                 "Invalid base_url: {}",
                 self.server.base_url

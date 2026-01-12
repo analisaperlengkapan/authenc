@@ -188,17 +188,13 @@ impl SamlIdentityProvider {
                 let entry = entry?;
                 let path = entry.path();
 
-                if path.is_file() {
-                    if let Some(ext) = path.extension() {
-                        if ext == "pem" || ext == "crt" {
-                            if let Ok(pem_data) = std::fs::read(&path) {
-                                if let Ok(certs) = X509::stack_from_pem(&pem_data) {
+                if path.is_file()
+                    && let Some(ext) = path.extension()
+                        && (ext == "pem" || ext == "crt")
+                            && let Ok(pem_data) = std::fs::read(&path)
+                                && let Ok(certs) = X509::stack_from_pem(&pem_data) {
                                     all_certs.extend(certs.into_iter());
                                 }
-                            }
-                        }
-                    }
-                }
             }
 
             if all_certs.is_empty() {
@@ -243,56 +239,48 @@ impl SamlIdentityProvider {
         }
 
         // Parse numeric settings
-        if let Some(val) = config.get("crl_cache_duration_secs") {
-            if let Ok(secs) = val.parse() {
+        if let Some(val) = config.get("crl_cache_duration_secs")
+            && let Ok(secs) = val.parse() {
                 security_config.crl_cache_duration_secs = secs;
             }
-        }
 
-        if let Some(val) = config.get("crl_max_size_bytes") {
-            if let Ok(bytes) = val.parse() {
+        if let Some(val) = config.get("crl_max_size_bytes")
+            && let Ok(bytes) = val.parse() {
                 security_config.crl_max_size_bytes = bytes;
             }
-        }
 
-        if let Some(val) = config.get("ocsp_cache_duration_secs") {
-            if let Ok(secs) = val.parse() {
+        if let Some(val) = config.get("ocsp_cache_duration_secs")
+            && let Ok(secs) = val.parse() {
                 security_config.ocsp_cache_duration_secs = secs;
             }
-        }
 
-        if let Some(val) = config.get("ocsp_timeout_secs") {
-            if let Ok(secs) = val.parse() {
+        if let Some(val) = config.get("ocsp_timeout_secs")
+            && let Ok(secs) = val.parse() {
                 security_config.ocsp_timeout_secs = secs;
             }
-        }
 
         // Parse XML security limits
         let mut xml_limits = XmlSecurityLimits::default();
 
-        if let Some(val) = config.get("xml_max_document_size") {
-            if let Ok(size) = val.parse() {
+        if let Some(val) = config.get("xml_max_document_size")
+            && let Ok(size) = val.parse() {
                 xml_limits.max_document_size = size;
             }
-        }
 
-        if let Some(val) = config.get("xml_max_element_depth") {
-            if let Ok(depth) = val.parse() {
+        if let Some(val) = config.get("xml_max_element_depth")
+            && let Ok(depth) = val.parse() {
                 xml_limits.max_element_depth = depth;
             }
-        }
 
-        if let Some(val) = config.get("xml_max_elements") {
-            if let Ok(elements) = val.parse() {
+        if let Some(val) = config.get("xml_max_elements")
+            && let Ok(elements) = val.parse() {
                 xml_limits.max_elements = elements;
             }
-        }
 
-        if let Some(val) = config.get("xml_max_entity_expansions") {
-            if let Ok(expansions) = val.parse() {
+        if let Some(val) = config.get("xml_max_entity_expansions")
+            && let Ok(expansions) = val.parse() {
                 xml_limits.max_entity_expansions = expansions;
             }
-        }
 
         security_config.xml_limits = xml_limits;
 
@@ -376,14 +364,13 @@ impl SamlIdentityProvider {
                         }
                         b"saml:AudienceRestriction" | b"AudienceRestriction" if in_conditions => {
                             // Read audience value
-                            if let Ok(Event::Start(e)) = reader.read_event_into(&mut buf) {
-                                if e.name().as_ref() == b"saml:Audience"
-                                    || e.name().as_ref() == b"Audience"
+                            if let Ok(Event::Start(e)) = reader.read_event_into(&mut buf)
+                                && (e.name().as_ref() == b"saml:Audience"
+                                    || e.name().as_ref() == b"Audience")
                                 {
                                     let text = reader.read_text(e.name())?;
                                     assertion.audience = Some(text.to_string());
                                 }
-                            }
                         }
                         b"saml:AttributeStatement" | b"AttributeStatement" => {
                             in_attribute_statement = true;
@@ -492,18 +479,16 @@ impl SamlIdentityProvider {
         let now = Utc::now();
 
         // Check NotBefore
-        if let Some(not_before) = assertion.not_before {
-            if now < not_before {
+        if let Some(not_before) = assertion.not_before
+            && now < not_before {
                 return Err(anyhow!("Assertion not yet valid (NotBefore)"));
             }
-        }
 
         // Check NotOnOrAfter
-        if let Some(not_on_or_after) = assertion.not_on_or_after {
-            if now >= not_on_or_after {
+        if let Some(not_on_or_after) = assertion.not_on_or_after
+            && now >= not_on_or_after {
                 return Err(anyhow!("Assertion expired (NotOnOrAfter)"));
             }
-        }
 
         // Check Audience Restriction
         if let Some(audience) = &assertion.audience {
@@ -635,8 +620,8 @@ impl IdentityProvider for SamlIdentityProvider {
             };
 
             // 1. XML Security Validation (FIRST - prevents attacks before expensive operations)
-            if let Some(validator) = &self.security_validator {
-                if let Err(e) = validator.validate_xml_security(&xml) {
+            if let Some(validator) = &self.security_validator
+                && let Err(e) = validator.validate_xml_security(&xml) {
                     tracing::warn!("XML security validation failed: {}", e);
                     return Ok(AuthResponse {
                         success: false,
@@ -652,7 +637,6 @@ impl IdentityProvider for SamlIdentityProvider {
                         error: Some(format!("XML security validation failed: {}", e)),
                     });
                 }
-            }
 
             // 2. Parse SAML response
             let assertion = match self.parse_saml_response(saml_response) {
@@ -709,8 +693,8 @@ impl IdentityProvider for SamlIdentityProvider {
             }
 
             // 5. Check for replay attack
-            if let Ok(is_replay) = self.check_replay(&assertion.id).await {
-                if is_replay {
+            if let Ok(is_replay) = self.check_replay(&assertion.id).await
+                && is_replay {
                     return Ok(AuthResponse {
                         success: false,
                         user_id: None,
@@ -725,7 +709,6 @@ impl IdentityProvider for SamlIdentityProvider {
                         error: Some("Replay attack detected: assertion already used".to_string()),
                     });
                 }
-            }
 
             // Extract user info
             let user_info = self.map_attributes_to_user_info(&assertion);

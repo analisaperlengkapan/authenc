@@ -98,8 +98,9 @@ http-body-util = "0.1.2"
 temp-env = "0.3.6"
 
 # Web Frameworks and HTTP
-axum = { version = "0.8.6", optional = true, features = ["http1", "http2", "json", "macros"] }
-axum-extra = { version = "0.10", features = ["cookie"] }
+# Upgrading to Axum 0.8
+axum = { version = "0.8.1", optional = true, features = ["http1", "http2", "json", "macros"] }
+axum-extra = { version = "0.10.0", features = ["cookie"] }
 tower = { version = "0.5.2", optional = true, features = ["util", "timeout", "load-shed", "limit"] }
 tower-http = { version = "0.6.2", optional = true, features = ["cors", "trace", "compression-br", "add-extension"] }
 hyper = { version = "1.5.1", features = ["full"] }
@@ -172,6 +173,7 @@ ldap3 = "0.12.1"
 
 # SAML XML Processing
 quick-xml = { version = "0.31", features = ["serialize"] }
+flate2 = { version = "1.0", features = ["zlib"], optional = true }
 
 # Kubernetes Operator
 kube = { version = "0.87", features = ["runtime", "derive"] }
@@ -185,7 +187,6 @@ rustls-pemfile = "2.2"
 rustls-native-certs = "0.8"
 webpki-roots = "1.0"
 ring = "0.17"
-flate2 = { version = "1.0", features = ["zlib"], optional = true }
 regex = "1.0"
 
 # OpenSSL (Only for PKCS12 and advanced X.509 operations)
@@ -212,7 +213,7 @@ metrics = { version = "0.21", optional = true }
 metrics-exporter-prometheus = { version = "0.12", default-features = false, features = ["http-listener"], optional = true }
 fluent-bundle = "0.16.0"
 unic-langid = "0.9.6"
-axum-test = "18.1"
+axum-test = "18.1" # Upgrade compatible with Axum 0.8? Checking... 18.1 might be old. Latest is 16? No, 18.1 is new.
 
 [dev-dependencies]
 tempfile = "3"

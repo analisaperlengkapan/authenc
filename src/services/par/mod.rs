@@ -332,13 +332,12 @@ impl<S: PARStorage> PARAuthorizationHandler<S> {
                 .await?
             {
                 // Validate client_id matches if provided in both places
-                if let Some(client_id) = params.get("client_id") {
-                    if *client_id != par_request.client_id {
+                if let Some(client_id) = params.get("client_id")
+                    && *client_id != par_request.client_id {
                         return Err(AuthencError::validation(
                             "Client ID mismatch in PAR request".to_string(),
                         ));
                     }
-                }
 
                 // Use PAR parameters for authorization flow
                 self.process_authorization_flow(par_request, client).await

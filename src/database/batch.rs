@@ -59,7 +59,7 @@ impl<'a> BatchOperations<'a> {
             "Batch inserted {} rows into {} in {} batch(es)",
             total_inserted,
             table,
-            (items.len() + self.batch_size - 1) / self.batch_size
+            items.len().div_ceil(self.batch_size)
         );
 
         Ok(total_inserted)
@@ -147,7 +147,7 @@ impl<'a> BatchOperations<'a> {
             "Batch updated {} rows in {} in {} batch(es)",
             total_updated,
             table,
-            (items.len() + self.batch_size - 1) / self.batch_size
+            items.len().div_ceil(self.batch_size)
         );
 
         Ok(total_updated)
@@ -250,7 +250,7 @@ impl<'a> BatchOperations<'a> {
             "Batch deleted {} rows from {} in {} batch(es)",
             total_deleted,
             table,
-            (ids.len() + self.batch_size - 1) / self.batch_size
+            ids.len().div_ceil(self.batch_size)
         );
 
         Ok(total_deleted)

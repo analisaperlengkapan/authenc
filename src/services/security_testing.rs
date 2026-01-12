@@ -53,13 +53,11 @@ pub mod security_tests {
         /// Test resistance to SQL injection attacks
         pub fn test_sql_injection_resistance() -> SecurityTestResult {
             // Test various SQL injection patterns
-            let injection_patterns = vec![
-                "' OR '1'='1",
+            let injection_patterns = ["' OR '1'='1",
                 "'; DROP TABLE users--",
                 "' UNION SELECT * FROM users--",
                 "admin'--",
-                "' OR 1=1--",
-            ];
+                "' OR 1=1--"];
 
             // All database queries use SQLx with parameterized statements
             // This was fixed in the security audit - we don't use string concatenation
@@ -133,11 +131,7 @@ pub mod security_tests {
             let _max_variance = timings
                 .iter()
                 .map(|t| {
-                    if *t > avg_time {
-                        *t - avg_time
-                    } else {
-                        avg_time - *t
-                    }
+                    (*t).abs_diff(avg_time)
                 })
                 .max()
                 .unwrap_or(Duration::from_nanos(0));
@@ -260,16 +254,14 @@ pub mod security_tests {
         /// SOC 2 Type II compliance test
         /// Test SOC 2 compliance requirements
         pub fn test_soc2_compliance() -> SecurityTestResult {
-            let checks = vec![
-                "Access controls implemented",
+            let checks = ["Access controls implemented",
                 "Audit logging enabled",
                 "Data encryption at rest",
                 "Data encryption in transit",
                 "Backup and recovery procedures",
                 "Incident response plan",
                 "Security monitoring",
-                "Change management process",
-            ];
+                "Change management process"];
 
             SecurityTestResult {
                 test_name: "SOC 2 Type II Compliance".to_string(),
@@ -310,14 +302,12 @@ pub mod security_tests {
         /// GDPR compliance test
         /// Test GDPR compliance requirements
         pub fn test_gdpr_compliance() -> SecurityTestResult {
-            let checks = vec![
-                "Right to erasure (deletion)",
+            let checks = ["Right to erasure (deletion)",
                 "Right to data portability",
                 "Consent management",
                 "Data breach notification",
                 "Privacy by design",
-                "Data minimization",
-            ];
+                "Data minimization"];
 
             SecurityTestResult {
                 test_name: "GDPR Compliance".to_string(),

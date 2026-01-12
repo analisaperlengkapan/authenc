@@ -382,16 +382,14 @@ pub async fn update_provider_config(
     // Validate configuration based on SPI type
     if spi_name.as_str() == "hostname" {
         // Validate hostname configuration
-        if let Some(hostname) = update.config.get("hostname") {
-            if let Some(hostname_str) = hostname.as_str() {
-                if hostname_str.is_empty() {
+        if let Some(hostname) = update.config.get("hostname")
+            && let Some(hostname_str) = hostname.as_str()
+                && hostname_str.is_empty() {
                     return Err((
                         StatusCode::BAD_REQUEST,
                         Json(serde_json::json!({"error": "Hostname cannot be empty"})),
                     ));
                 }
-            }
-        }
     }
 
     // Note: In a production implementation, this would persist the configuration

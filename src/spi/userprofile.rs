@@ -335,8 +335,8 @@ impl UserProfileProvider for DefaultUserProfileProvider {
                     for validation in &attr.validations {
                         match validation.validator.as_str() {
                             "length" => {
-                                if let Some(min_str) = validation.config.get("min") {
-                                    if let Ok(min) = min_str.parse::<usize>() {
+                                if let Some(min_str) = validation.config.get("min")
+                                    && let Ok(min) = min_str.parse::<usize>() {
                                         for value in values {
                                             if value.len() < min {
                                                 errors
@@ -346,9 +346,8 @@ impl UserProfileProvider for DefaultUserProfileProvider {
                                             }
                                         }
                                     }
-                                }
-                                if let Some(max_str) = validation.config.get("max") {
-                                    if let Ok(max) = max_str.parse::<usize>() {
+                                if let Some(max_str) = validation.config.get("max")
+                                    && let Ok(max) = max_str.parse::<usize>() {
                                         for value in values {
                                             if value.len() > max {
                                                 errors
@@ -358,7 +357,6 @@ impl UserProfileProvider for DefaultUserProfileProvider {
                                             }
                                         }
                                     }
-                                }
                             }
                             "email" => {
                                 for value in values {

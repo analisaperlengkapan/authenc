@@ -123,11 +123,11 @@ impl Vault for HashiCorpVault {
 
         match req.send().await {
             Ok(response) => {
-                if response.status().is_success() {
-                    if let Ok(json) = response.json::<serde_json::Value>().await {
+                if response.status().is_success()
+                    && let Ok(json) = response.json::<serde_json::Value>().await {
                         // KV v2 format: data.data contains the secret
-                        if let Some(data) = json.get("data").and_then(|d| d.get("data")) {
-                            if let Some(value) = data.get("value").and_then(|v| v.as_str()) {
+                        if let Some(data) = json.get("data").and_then(|d| d.get("data"))
+                            && let Some(value) = data.get("value").and_then(|v| v.as_str()) {
                                 let metadata = json
                                     .get("data")
                                     .and_then(|d| d.get("metadata"))
@@ -151,9 +151,7 @@ impl Vault for HashiCorpVault {
                                     expires_at: None,
                                 });
                             }
-                        }
                     }
-                }
                 None
             }
             Err(_) => None,
@@ -237,18 +235,15 @@ impl Vault for HashiCorpVault {
 
         match req.send().await {
             Ok(response) => {
-                if response.status().is_success() {
-                    if let Ok(json) = response.json::<serde_json::Value>().await {
-                        if let Some(keys) = json.get("data").and_then(|d| d.get("keys")) {
-                            if let Some(keys_array) = keys.as_array() {
+                if response.status().is_success()
+                    && let Ok(json) = response.json::<serde_json::Value>().await
+                        && let Some(keys) = json.get("data").and_then(|d| d.get("keys"))
+                            && let Some(keys_array) = keys.as_array() {
                                 return Ok(keys_array
                                     .iter()
                                     .filter_map(|k| k.as_str().map(|s| s.to_string()))
                                     .collect());
                             }
-                        }
-                    }
-                }
                 Ok(vec![])
             }
             Err(e) => Err(VaultError::Unavailable(e.to_string())),
@@ -293,9 +288,9 @@ impl Vault for HashiCorpVault {
 
         match req.send().await {
             Ok(response) => {
-                if response.status().is_success() {
-                    if let Ok(json) = response.json::<serde_json::Value>().await {
-                        if let Some(versions) = json.get("data").and_then(|d| d.get("versions")) {
+                if response.status().is_success()
+                    && let Ok(json) = response.json::<serde_json::Value>().await
+                        && let Some(versions) = json.get("data").and_then(|d| d.get("versions")) {
                             // Return version metadata (actual values require separate calls)
                             let mut result = vec![];
                             if let Some(versions_obj) = versions.as_object() {
@@ -313,8 +308,6 @@ impl Vault for HashiCorpVault {
                             }
                             return Ok(result);
                         }
-                    }
-                }
                 Ok(vec![])
             }
             Err(e) => Err(VaultError::Unavailable(e.to_string())),
@@ -396,9 +389,9 @@ impl HsmVault for HashiCorpVault {
 
         match req.send().await {
             Ok(response) => {
-                if response.status().is_success() {
-                    if let Ok(json) = response.json::<serde_json::Value>().await {
-                        if let Some(signature) = json
+                if response.status().is_success()
+                    && let Ok(json) = response.json::<serde_json::Value>().await
+                        && let Some(signature) = json
                             .get("data")
                             .and_then(|d| d.get("signature"))
                             .and_then(|s| s.as_str())
@@ -407,8 +400,6 @@ impl HsmVault for HashiCorpVault {
                                 .decode(signature)
                                 .map_err(|e| VaultError::InvalidFormat(e.to_string()));
                         }
-                    }
-                }
                 Err(VaultError::HsmError("Sign operation failed".to_string()))
             }
             Err(e) => Err(VaultError::Unavailable(e.to_string())),
@@ -429,17 +420,15 @@ impl HsmVault for HashiCorpVault {
 
         match req.send().await {
             Ok(response) => {
-                if response.status().is_success() {
-                    if let Ok(json) = response.json::<serde_json::Value>().await {
-                        if let Some(ciphertext) = json
+                if response.status().is_success()
+                    && let Ok(json) = response.json::<serde_json::Value>().await
+                        && let Some(ciphertext) = json
                             .get("data")
                             .and_then(|d| d.get("ciphertext"))
                             .and_then(|c| c.as_str())
                         {
                             return Ok(ciphertext.as_bytes().to_vec());
                         }
-                    }
-                }
                 Err(VaultError::HsmError("Encrypt operation failed".to_string()))
             }
             Err(e) => Err(VaultError::Unavailable(e.to_string())),
@@ -461,9 +450,9 @@ impl HsmVault for HashiCorpVault {
 
         match req.send().await {
             Ok(response) => {
-                if response.status().is_success() {
-                    if let Ok(json) = response.json::<serde_json::Value>().await {
-                        if let Some(plaintext) = json
+                if response.status().is_success()
+                    && let Ok(json) = response.json::<serde_json::Value>().await
+                        && let Some(plaintext) = json
                             .get("data")
                             .and_then(|d| d.get("plaintext"))
                             .and_then(|p| p.as_str())
@@ -472,8 +461,6 @@ impl HsmVault for HashiCorpVault {
                                 .decode(plaintext)
                                 .map_err(|e| VaultError::InvalidFormat(e.to_string()));
                         }
-                    }
-                }
                 Err(VaultError::HsmError("Decrypt operation failed".to_string()))
             }
             Err(e) => Err(VaultError::Unavailable(e.to_string())),
@@ -486,10 +473,10 @@ impl HsmVault for HashiCorpVault {
 
         match req.send().await {
             Ok(response) => {
-                if response.status().is_success() {
-                    if let Ok(json) = response.json::<serde_json::Value>().await {
-                        if let Some(keys) = json.get("data").and_then(|d| d.get("keys")) {
-                            if let Some(keys_array) = keys.as_array() {
+                if response.status().is_success()
+                    && let Ok(json) = response.json::<serde_json::Value>().await
+                        && let Some(keys) = json.get("data").and_then(|d| d.get("keys"))
+                            && let Some(keys_array) = keys.as_array() {
                                 return Ok(keys_array
                                     .iter()
                                     .filter_map(|k| k.as_str())
@@ -502,9 +489,6 @@ impl HsmVault for HashiCorpVault {
                                     })
                                     .collect());
                             }
-                        }
-                    }
-                }
                 Ok(vec![])
             }
             Err(e) => Err(VaultError::Unavailable(e.to_string())),

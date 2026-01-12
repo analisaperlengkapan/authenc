@@ -3,11 +3,9 @@
 
 use anyhow::{Result, anyhow};
 use openssl::x509::X509;
-use std::sync::{Arc, Mutex};
 
 use crate::crypto::xmldsig::{
-    CertificateValidationResult, CertificateValidator, CrlManager, OcspClient, OcspStatus,
-    RevocationStatus, XmlSecurityLimits, XmlSecurityValidator, XmlSignature,
+    CertificateValidationResult, CertificateValidator, XmlSecurityLimits, XmlSecurityValidator, XmlSignature,
 };
 
 /// SAML Security Configuration
@@ -142,9 +140,6 @@ impl SamlSecurityValidator {
             None
         };
 
-        #[cfg(not(any(feature = "test", feature = "dev", feature = "default")))]
-        let crl_manager = None;
-
         // Create OCSP client if enabled
         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
         let ocsp_client = if config.enable_ocsp_check {
@@ -157,13 +152,12 @@ impl SamlSecurityValidator {
             None
         };
 
-        #[cfg(not(any(feature = "test", feature = "dev", feature = "default")))]
-        let ocsp_client = None;
-
         Ok(Self {
             xml_validator,
             cert_validator,
+            #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
             crl_manager,
+            #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
             ocsp_client,
             config,
         })

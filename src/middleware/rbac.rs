@@ -254,6 +254,7 @@ mod tests {
             id: "1".to_string(),
             email: "admin@example.com".to_string(),
             roles: vec!["admin".to_string()],
+            session_id: None,
         };
 
         // Create a regular user
@@ -261,6 +262,7 @@ mod tests {
             id: "2".to_string(),
             email: "user@example.com".to_string(),
             roles: vec!["user".to_string()],
+            session_id: None,
         };
 
         // Test with admin user

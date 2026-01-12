@@ -1357,12 +1357,11 @@ impl Oid4VcService for EnhancedOid4VcManager {
         request: CredentialAuthorizationRequest,
     ) -> Result<String, String> {
         // Validate PKCE if present
-        if let Some(_code_challenge) = &request.code_challenge {
-            if request.code_challenge_method.as_deref() != Some("S256") {
+        if let Some(_code_challenge) = &request.code_challenge
+            && request.code_challenge_method.as_deref() != Some("S256") {
                 return Err("Invalid code challenge method".to_string());
             }
             // In production, store code_challenge for later verification
-        }
 
         // Generate authorization code
         let code = uuid::Uuid::new_v4().to_string();
@@ -1476,11 +1475,10 @@ impl Oid4VcService for EnhancedOid4VcManager {
         }
 
         // Check if credential is revoked
-        if let Some(status) = &credential.status {
-            if self.is_credential_revoked(&status.id).await {
+        if let Some(status) = &credential.status
+            && self.is_credential_revoked(&status.id).await {
                 return Ok(false);
             }
-        }
 
         // Verify expiration
         if let Some(exp_date) = &credential.expiration_date {

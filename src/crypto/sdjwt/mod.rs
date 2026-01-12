@@ -867,10 +867,9 @@ impl SdJwtFacade {
             }
         } else {
             // Check array claims
-            if let Some((array_name, index)) = self.parse_array_claim_name(&claim_name) {
-                if let Some(elements) = self.sd_jwt.issuer_signed.array_claims.get_mut(&array_name)
-                {
-                    if let Some(element) = elements.get_mut(index) {
+            if let Some((array_name, index)) = self.parse_array_claim_name(&claim_name)
+                && let Some(elements) = self.sd_jwt.issuer_signed.array_claims.get_mut(&array_name)
+                    && let Some(element) = elements.get_mut(index) {
                         match element {
                             SdJwtArrayElement::Undisclosed { sd_hash } => {
                                 if *sd_hash == disclosure.hash {
@@ -892,8 +891,6 @@ impl SdJwtFacade {
                             }
                         }
                     }
-                }
-            }
         }
 
         Ok(())

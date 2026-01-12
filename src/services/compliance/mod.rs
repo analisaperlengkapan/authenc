@@ -820,12 +820,10 @@ impl ComplianceCheck for HIPAAAccessControlCheck {
                     for user in users.iter().take(5) {
                         if let Ok(user_roles) =
                             crate::database::operations::roles::get_user_roles(db, &user.id).await
-                        {
-                            if !user_roles.is_empty() {
+                            && !user_roles.is_empty() {
                                 users_with_roles += 1;
                                 total_role_assignments += user_roles.len();
                             }
-                        }
                     }
 
                     if users_with_roles > 0 {
@@ -1355,14 +1353,12 @@ impl DataSubjectRightsService {
         // 5. Revoke all active sessions and tokens
         // 6. Remove from third-party systems
 
-        let erasure_actions = vec![
-            "User account marked for deletion with deleted_at timestamp",
+        let erasure_actions = ["User account marked for deletion with deleted_at timestamp",
             "Active sessions and tokens revoked",
             "Personal identifiers anonymized in audit logs (retained for legal compliance)",
             "Consent records retained with anonymized user_id for proof of consent",
             "Session data and temporary caches cleared",
-            "User profile data removed except legally required fields",
-        ];
+            "User profile data removed except legally required fields"];
 
         // Log the erasure request with comprehensive details
         self.audit_service

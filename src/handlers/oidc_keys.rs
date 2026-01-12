@@ -28,7 +28,7 @@ use once_cell::sync::Lazy;
 #[deprecated(since = "1.0.0", note = "Use Ed25519 keys instead - RSA is insecure")]
 pub static RSA_KEYPAIR: Lazy<()> = Lazy::new(|| {
     log::error!("SECURITY: Attempted to use legacy RSA keys - use Ed25519 implementation");
-    ()
+
 });
 
 /// DEPRECATED: Get public key in PEM format - DISABLED FOR SECURITY
