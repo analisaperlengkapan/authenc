@@ -173,6 +173,7 @@ impl WebAuthnService {
         realm_id: &Uuid,
         username: &str,
         response: WebauthnRegistrationResponse,
+        device_id: Option<Uuid>,
     ) -> Result<Json<serde_json::Value>> {
         // Retrieve stored challenge
         let stored_challenge = self
@@ -219,6 +220,7 @@ impl WebAuthnService {
             transports: Some(vec![]),
             aaguid: None,
             attestation_format: Some("none".to_string()),
+            device_id,
             created_at: Utc::now(),
             last_used_at: None,
             enabled: true,
@@ -458,6 +460,7 @@ impl WebAuthnService {
             transports: credential.transports.clone(),
             aaguid: credential.aaguid.clone(),
             attestation_format: credential.attestation_format.clone(),
+            device_id: credential.device_id,
             created_at: credential.created_at,
             last_used_at: credential.last_used_at,
             enabled: credential.enabled,
@@ -495,6 +498,7 @@ impl WebAuthnService {
                 transports: mc.transports,
                 aaguid: mc.aaguid,
                 attestation_format: mc.attestation_format,
+                device_id: mc.device_id,
                 created_at: mc.created_at,
                 last_used_at: mc.last_used_at,
                 enabled: mc.enabled,
@@ -531,6 +535,7 @@ impl WebAuthnService {
                 transports: mc.transports,
                 aaguid: mc.aaguid,
                 attestation_format: mc.attestation_format,
+                device_id: mc.device_id,
                 created_at: mc.created_at,
                 last_used_at: mc.last_used_at,
                 enabled: mc.enabled,
@@ -631,9 +636,8 @@ impl WebAuthnService {
             encrypted_credential.user_handle = Some(encrypted_json);
         }
 
-        // Note: Device binding is implicitly handled via aaguid and user association.
-        // Explicit device binding would require schema changes to link to the devices table.
-        // We preserve the aaguid as is.
+        // Note: Device binding is explicitly handled via device_id column if present.
+        // AAGUID is also preserved for implicit binding and attestation verification.
 
         webauthn_db::store_credential(&self.db, credential.user_id, &encrypted_credential).await?;
         Ok(())

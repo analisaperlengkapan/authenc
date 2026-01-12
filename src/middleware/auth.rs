@@ -25,6 +25,8 @@ pub struct AuthUser {
     pub email: String,
     /// List of roles assigned to the authenticated user
     pub roles: Vec<String>,
+    /// Session ID of the authenticated user
+    pub session_id: Option<String>,
 }
 
 /// State for auth middleware
@@ -89,6 +91,7 @@ fn validate_token(token: &str, _secret: &str) -> Result<AuthUser, AuthencError> 
         id: claims.sub,
         email,
         roles,
+        session_id: claims.sid,
     })
 }
 
@@ -472,6 +475,7 @@ mod tests {
             id: "user123".to_string(),
             email: "user@example.com".to_string(),
             roles: vec!["user".to_string(), "admin".to_string()],
+            session_id: Some("session123".to_string()),
         };
 
         assert_eq!(user.id, "user123");
@@ -479,6 +483,7 @@ mod tests {
         assert_eq!(user.roles.len(), 2);
         assert!(user.roles.contains(&"user".to_string()));
         assert!(user.roles.contains(&"admin".to_string()));
+        assert_eq!(user.session_id, Some("session123".to_string()));
     }
 
     #[tokio::test]

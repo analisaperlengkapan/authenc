@@ -2,7 +2,7 @@ use crate::app::AppState;
 use crate::error::{AuthencError, Result};
 use crate::services::webauthn::WebAuthnService;
 use axum::{
-    extract::{Query, State},
+    extract::{Extension, Query, State},
     response::Json,
     routing::post,
     Router,
@@ -43,6 +43,7 @@ pub async fn register_challenge(
 /// WebAuthn registration verification handler
 pub async fn register_verify(
     State(state): State<Arc<AppState>>,
+    auth_user: Option<Extension<crate::middleware::auth::AuthUser>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
     Json(response): Json<crate::models::webauthn::WebauthnRegistrationResponse>,
 ) -> Result<Json<serde_json::Value>> {
@@ -57,6 +58,25 @@ pub async fn register_verify(
     let realm_id = uuid::Uuid::parse_str(realm_id_str)
         .map_err(|_| AuthencError::validation("Invalid realm_id format"))?;
 
+    // Try to get device_id from session if authenticated
+    let mut device_id = None;
+    if let Some(Extension(user)) = auth_user {
+        if let Some(sid_str) = &user.session_id {
+            if let Ok(session_id) = uuid::Uuid::parse_str(sid_str) {
+                // Lookup session to get device_id
+                // We access the database directly here via operations
+                use crate::database::operations::sessions;
+                if let Ok(Some(session_json)) = sessions::get_user_session(&state.database, session_id).await {
+                    if let Some(did_str) = session_json.get("device_id").and_then(|v| v.as_str()) {
+                         if let Ok(did) = uuid::Uuid::parse_str(did_str) {
+                             device_id = Some(did);
+                         }
+                    }
+                }
+            }
+        }
+    }
+
     let webauthn_service = WebAuthnService::new(
         state.database.clone(),
         "localhost".to_string(),
@@ -66,7 +86,7 @@ pub async fn register_verify(
     );
 
     match webauthn_service
-        .verify_registration(&realm_id, username, response)
+        .verify_registration(&realm_id, username, response, device_id)
         .await
     {
         Ok(result) => Ok(result),

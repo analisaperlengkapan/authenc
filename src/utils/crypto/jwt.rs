@@ -33,6 +33,9 @@ pub struct Claims {
     /// User's assigned roles
     #[serde(skip_serializing_if = "Option::is_none")]
     pub roles: Option<Vec<String>>,
+    /// Session identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sid: Option<String>,
 }
 
 // SECURITY NOTE: JWT signing now uses Ed25519 keypair (see crypto/ed25519_keys.rs)
@@ -63,7 +66,7 @@ pub struct Claims {
 /// let token = generate_jwt("user123").expect("Failed to generate token");
 /// ```
 pub fn generate_jwt(user_id: &str) -> Result<String, String> {
-    generate_jwt_with_claims(user_id, None, None)
+    generate_jwt_with_claims(user_id, None, None, None)
 }
 
 /// Generate a JWT token with additional claims (email and roles)
@@ -82,6 +85,7 @@ pub fn generate_jwt_with_claims(
     user_id: &str,
     email: Option<String>,
     roles: Option<Vec<String>>,
+    sid: Option<String>,
 ) -> Result<String, String> {
     let expiration = SystemTime::now()
         .checked_add(Duration::from_secs(60 * 60))
@@ -95,6 +99,7 @@ pub fn generate_jwt_with_claims(
         exp: expiration,
         email,
         roles,
+        sid,
     };
 
     // Create JWT header
@@ -245,9 +250,10 @@ mod tests {
         let user_id = "test_user_456";
         let email = Some("user@example.com".to_string());
         let roles = Some(vec!["admin".to_string(), "user".to_string()]);
+        let sid = Some("session_123".to_string());
 
         // Generate a JWT with extended claims
-        let token = generate_jwt_with_claims(user_id, email.clone(), roles.clone())
+        let token = generate_jwt_with_claims(user_id, email.clone(), roles.clone(), sid.clone())
             .expect("Failed to generate JWT");
 
         // Verify the JWT
@@ -257,6 +263,7 @@ mod tests {
         assert_eq!(claims.sub, user_id);
         assert_eq!(claims.email, email);
         assert_eq!(claims.roles, roles);
+        assert_eq!(claims.sid, sid);
         assert!(claims.exp > 0);
     }
 }
