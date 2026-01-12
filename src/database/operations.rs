@@ -1036,22 +1036,23 @@ pub mod oauth2 {
 
     /// Store access token
     pub async fn store_access_token(db: &Database, token: &OAuth2AccessToken) -> Result<()> {
-        let token_id = Uuid::new_v4();
-        let now = Utc::now();
-
         let query = r#"
             INSERT INTO oauth2_access_tokens (
                 id, token_hash, refresh_token_hash, client_id, user_id,
-                scopes, expires_at, refresh_expires_at, revoked,
+                scopes, expires_at, refresh_expires_at, revoked, revoked_at,
                 created_at, last_used_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (id) DO UPDATE SET
+                revoked = EXCLUDED.revoked,
+                revoked_at = EXCLUDED.revoked_at,
+                last_used_at = EXCLUDED.last_used_at
         "#;
 
         db.execute(
             query,
             &[
-                &token_id,
+                &token.id,
                 &token.token_hash,
                 &token.refresh_token_hash,
                 &token.client_id,
@@ -1059,9 +1060,10 @@ pub mod oauth2 {
                 &token.scopes,
                 &token.expires_at,
                 &token.refresh_expires_at,
-                &false,
-                &now,
-                &now,
+                &token.revoked,
+                &token.revoked_at,
+                &token.created_at,
+                &token.last_used_at,
             ],
         )
         .await?;
