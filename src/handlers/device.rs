@@ -20,7 +20,7 @@ pub fn create_device_routes() -> Router<Arc<AppState>> {
         .route("/", post(register_device))
         .route("/", get(list_devices))
         .route("/{id}", get(get_device))
-        .route("/{id}", put(update_device))
+        // .route("/{id}", put(update_device))
         .route("/{id}", delete(delete_device))
         .route("/{id}/trust", post(evaluate_trust))
         .route("/{id}/sessions", get(get_device_sessions))
@@ -180,10 +180,14 @@ pub async fn update_device(
         return Err(AuthencError::resource_not_found("Device not found"));
     }
 
+    // Deserialize payload manually to avoid variable scoping issues
+    let update_request: UpdateDeviceRequest = serde_json::from_value(payload)
+        .map_err(|e| AuthencError::validation(format!("Invalid update request: {}", e)))?;
+
     let updates = crate::services::device::DeviceUpdateRequest {
-        device_name: request.device_name,
-        trust_score: request.trust_score,
-        is_trusted: request.is_trusted,
+        device_name: update_request.device_name,
+        trust_score: update_request.trust_score,
+        is_trusted: update_request.is_trusted,
         security_features: None,
     };
 
