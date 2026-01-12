@@ -533,10 +533,10 @@ pub mod devices {
             INSERT INTO devices (
                 id, user_id, device_name, device_fingerprint, trust_score,
                 os, os_version, browser, browser_version, ip_address,
-                user_agent, security_features, first_seen_at, last_seen_at,
+                user_agent, security_features, location_data, first_seen_at, last_seen_at,
                 created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             RETURNING
                 id, user_id, device_name, device_fingerprint, trust_score,
                 risk_level, os, os_version, browser, browser_version,
@@ -560,6 +560,7 @@ pub mod devices {
                     &device_info.ip_address,
                     &device_info.user_agent,
                     &device_info.security_features,
+                    &device_info.location_data,
                     &now,
                     &now,
                     &now,

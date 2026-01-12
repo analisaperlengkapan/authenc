@@ -158,6 +158,7 @@ pub struct UpdateDeviceRequest {
 }
 
 /// Update device handler
+/// Update device handler
 pub async fn update_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
