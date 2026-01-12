@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS webauthn_credentials (
     transports TEXT[], -- Array of transport types
     aaguid UUID,
     attestation_format VARCHAR(50),
+    device_id UUID REFERENCES devices(id) ON DELETE SET NULL, -- Device binding
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_used_at TIMESTAMPTZ,
     enabled BOOLEAN NOT NULL DEFAULT true,

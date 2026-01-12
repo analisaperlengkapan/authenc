@@ -751,9 +751,10 @@ pub mod webauthn {
             INSERT INTO webauthn_credentials (
                 id, user_id, credential_id, public_key, public_key_algorithm,
                 signature_counter, attestation_object, authenticator_data,
-                user_handle, credential_type, transports, created_at, last_used_at
+                user_handle, credential_type, transports, created_at, last_used_at,
+                aaguid, attestation_format, device_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         "#;
 
         db.execute(
@@ -772,6 +773,9 @@ pub mod webauthn {
                 &credential.transports,
                 &now,
                 &credential.last_used_at,
+                &credential.aaguid,
+                &credential.attestation_format,
+                &credential.device_id,
             ],
         )
         .await?;
@@ -789,7 +793,8 @@ pub mod webauthn {
                 id, user_id, credential_id, public_key, public_key_algorithm,
                 attestation_object, authenticator_data, user_handle,
                 signature_counter, credential_type, transports,
-                aaguid, attestation_format, created_at, last_used_at, enabled
+                aaguid, attestation_format, created_at, last_used_at, enabled,
+                device_id
             FROM webauthn_credentials
             WHERE credential_id = $1
         "#;
@@ -817,6 +822,7 @@ pub mod webauthn {
                 created_at: r.get(13),
                 last_used_at: r.get(14),
                 enabled: r.get(15),
+                device_id: r.get(16),
             })
         })
     }
@@ -831,7 +837,8 @@ pub mod webauthn {
                 id, user_id, credential_id, public_key, public_key_algorithm,
                 attestation_object, authenticator_data, user_handle,
                 signature_counter, credential_type, transports,
-                aaguid, attestation_format, created_at, last_used_at, enabled
+                aaguid, attestation_format, created_at, last_used_at, enabled,
+                device_id
             FROM webauthn_credentials
             WHERE user_id = $1
             ORDER BY created_at DESC
@@ -857,6 +864,7 @@ pub mod webauthn {
                 created_at: row.get(13),
                 last_used_at: row.get(14),
                 enabled: row.get(15),
+                device_id: row.get(16),
             })
             .collect();
         Ok(credentials)
@@ -9834,6 +9842,55 @@ pub mod sessions {
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
             "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
         }))
+    }
+
+    /// Get a user session by ID
+    pub async fn get_user_session(
+        db: &Database,
+        session_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        let query = r#"
+            SELECT id, user_id, realm_id, client_id, device_id,
+                   started_at, expires_at, last_accessed,
+                   idle_expires_at, refresh_count,
+                   refresh_token_expires_at, offline_token_expires_at,
+                   ip_address, user_agent, revoked, revoked_at, revoked_reason,
+                   authentication_method, protocol,
+                   created_at, updated_at
+            FROM user_sessions
+            WHERE id = $1
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&session_id]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row: &tokio_postgres::Row = &rows[0];
+        Ok(Some(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "user_id": row.get::<_, Uuid>("user_id"),
+            "realm_id": row.get::<_, Uuid>("realm_id"),
+            "client_id": row.get::<_, Option<Uuid>>("client_id"),
+            "device_id": row.get::<_, Option<Uuid>>("device_id"),
+            "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
+            "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
+            "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_accessed"),
+            "idle_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("idle_expires_at"),
+            "refresh_count": row.get::<_, i32>("refresh_count"),
+            "refresh_token_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("refresh_token_expires_at"),
+            "offline_token_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("offline_token_expires_at"),
+            "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
+            "user_agent": row.get::<_, Option<String>>("user_agent"),
+            "revoked": row.get::<_, bool>("revoked"),
+            "revoked_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("revoked_at"),
+            "revoked_reason": row.get::<_, Option<String>>("revoked_reason"),
+            "authentication_method": row.get::<_, Option<String>>("authentication_method"),
+            "protocol": row.get::<_, Option<String>>("protocol"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+        })))
     }
 
     /// Get a user session by token

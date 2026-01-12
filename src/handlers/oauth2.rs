@@ -239,6 +239,8 @@ pub struct AccessTokenClaims {
     pub roles: Option<Vec<String>>,
     /// The user's groups
     pub groups: Option<Vec<String>>,
+    /// The session identifier
+    pub sid: Option<String>,
 }
 
 /// In-memory stores (in production, use Redis or database)
@@ -774,6 +776,7 @@ async fn handle_authorization_code_grant(
         scope: Some(scopes.to_string()),
         roles: Some(vec!["user".to_string()]),
         groups: Some(vec!["users".to_string()]),
+        sid: None, // Session ID not available in this flow yet
     };
 
     let access_token = generate_access_token(&access_token_claims);
@@ -860,6 +863,7 @@ async fn handle_client_credentials_grant(
         scope: Some(scope_str.clone()),
         roles: Some(vec!["client".to_string()]),
         groups: Some(vec!["clients".to_string()]),
+        sid: None,
     };
 
     let access_token = generate_access_token(&access_token_claims);
@@ -969,6 +973,7 @@ async fn handle_password_grant(
         scope: Some(scope_str.clone()),
         roles: Some(vec!["user".to_string()]),
         groups: Some(vec!["users".to_string()]),
+        sid: None,
     };
 
     let access_token = generate_access_token(&access_token_claims);
@@ -1095,6 +1100,7 @@ async fn handle_refresh_token_grant(
         scope: Some(scope_str.clone()),
         roles: Some(vec!["user".to_string()]),
         groups: Some(vec!["users".to_string()]),
+        sid: None,
     };
 
     let access_token = generate_access_token(&access_token_claims);
@@ -1464,6 +1470,7 @@ mod tests {
             scope: None,
             roles: None,
             groups: None,
+            sid: None,
         };
 
         let token = generate_access_token(&claims);
@@ -1487,6 +1494,7 @@ mod tests {
             scope: None,
             roles: None,
             groups: None,
+            sid: None,
         };
 
         let token = generate_access_token(&claims);
@@ -1517,6 +1525,7 @@ mod tests {
             scope: None,
             roles: None,
             groups: None,
+            sid: None,
         };
 
         let expired_token = generate_access_token(&expired_claims);

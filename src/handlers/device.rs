@@ -161,8 +161,8 @@ pub struct UpdateDeviceRequest {
 /// Update device handler
 pub async fn update_device(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(update_request): Json<UpdateDeviceRequest>,
 ) -> Result<Json<serde_json::Value>> {
     let service = DeviceService::new(state.database.clone());
@@ -180,6 +180,7 @@ pub async fn update_device(
     } else {
         return Err(AuthencError::resource_not_found("Device not found"));
     }
+
 
     let updates = crate::services::device::DeviceUpdateRequest {
         device_name: update_request.device_name,
