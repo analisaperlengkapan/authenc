@@ -857,7 +857,62 @@ impl From<&DeviceInfo> for crate::models::device::DeviceInfo {
             ip_address: device.ip_address.parse().ok(),
             user_agent: Some(device.user_agent.clone()),
             security_features: serde_json::to_value(&device.security_features).ok(),
+            location_data: device
+                .location
+                .as_ref()
+                .map(|l| serde_json::to_value(l).unwrap_or(serde_json::Value::Null)),
             trust_score: Some(device.trust_score),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::device::DeviceInfo as ModelDeviceInfo;
+
+    #[test]
+    fn test_device_info_conversion_preserves_location() {
+        let device = DeviceInfo {
+            id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            device_name: "Test Device".to_string(),
+            device_type: DeviceType::Desktop,
+            os: "Linux".to_string(),
+            os_version: "1.0".to_string(),
+            browser: Some("Firefox".to_string()),
+            browser_version: Some("90.0".to_string()),
+            ip_address: "127.0.0.1".to_string(),
+            user_agent: "Mozilla/5.0".to_string(),
+            fingerprint: "fingerprint".to_string(),
+            trust_score: 0.8,
+            is_trusted: true,
+            last_seen: Utc::now(),
+            created_at: Utc::now(),
+            location: Some(DeviceLocation {
+                country: Some("US".to_string()),
+                region: Some("CA".to_string()),
+                city: Some("San Francisco".to_string()),
+                latitude: Some(37.7749),
+                longitude: Some(-122.4194),
+            }),
+            security_features: DeviceSecurityFeatures {
+                has_biometrics: false,
+                has_hardware_security: false,
+                has_screen_lock: true,
+                encryption_enabled: true,
+                remote_wipe_capable: false,
+                jailbreak_detected: false,
+            },
+        };
+
+        let model_device: ModelDeviceInfo = (&device).into();
+
+        assert!(model_device.location_data.is_some());
+        let location = model_device.location_data.unwrap();
+
+        assert_eq!(location["country"], "US");
+        assert_eq!(location["city"], "San Francisco");
+        assert_eq!(location["latitude"], 37.7749);
     }
 }

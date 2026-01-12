@@ -18,8 +18,7 @@ pub fn create_device_routes() -> Router<Arc<AppState>> {
         .route("/", post(register_device))
         .route("/", get(list_devices))
         .route("/{id}", get(get_device))
-        // TODO: Fix update_device handler signature causing compilation error
-        // .route("/{id}", put(update_device))
+        .route("/{id}", put(update_device))
         .route("/{id}", delete(delete_device))
         .route("/{id}/trust", post(evaluate_trust))
         .route("/{id}/sessions", get(get_device_sessions))
@@ -159,11 +158,12 @@ pub struct UpdateDeviceRequest {
 }
 
 /// Update device handler
+/// Update device handler
 pub async fn update_device(
     State(state): State<Arc<AppState>>,
     Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
-    Json(request): Json<UpdateDeviceRequest>,
+    Json(update_request): Json<UpdateDeviceRequest>,
 ) -> Result<Json<serde_json::Value>> {
     let service = DeviceService::new(state.database.clone());
 
@@ -180,10 +180,6 @@ pub async fn update_device(
     } else {
         return Err(AuthencError::resource_not_found("Device not found"));
     }
-
-    // Deserialize payload manually to avoid variable scoping issues
-    let update_request: UpdateDeviceRequest = serde_json::from_value(payload)
-        .map_err(|e| AuthencError::validation(format!("Invalid update request: {}", e)))?;
 
     let updates = crate::services::device::DeviceUpdateRequest {
         device_name: update_request.device_name,
