@@ -366,7 +366,7 @@ async fn get_user_sessions(
 }
 
 /// Helper function to extract cookie value from Cookie header
-fn extract_cookie_value<'a>(cookie_header: &'a str, cookie_name: &str) -> Option<String> {
+fn extract_cookie_value(cookie_header: &str, cookie_name: &str) -> Option<String> {
     for cookie in cookie_header.split(';') {
         let cookie = cookie.trim();
         if let Some(value) = cookie.strip_prefix(&format!("{}=", cookie_name)) {

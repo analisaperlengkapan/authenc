@@ -395,7 +395,7 @@ impl ZeroTrustManager {
         // Get device location if available
         if let Some(location) = &context.device_trust.device_info.location {
             // List of high-risk countries (simplified example)
-            let high_risk_countries = vec!["XX", "YY", "ZZ"]; // Placeholder country codes
+            let high_risk_countries = ["XX", "YY", "ZZ"]; // Placeholder country codes
 
             // Check if location is from high-risk country
             if high_risk_countries.contains(&location.country.as_str()) {
@@ -470,7 +470,7 @@ impl ZeroTrustManager {
         // Check for unusual login times (late night/early morning)
         use chrono::Timelike;
         let hour = Utc::now().hour();
-        if hour < 6 || hour > 22 {
+        if !(6..=22).contains(&hour) {
             risk_score += 0.2;
         }
 

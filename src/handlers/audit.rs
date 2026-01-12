@@ -112,18 +112,16 @@ fn apply_filters(mut logs: Vec<AuditLog>, query: &AuditLogQuery) -> Vec<AuditLog
     if let Some(ref status) = query.status {
         logs.retain(|l| l.status == *status);
     }
-    if let Some(ref from) = query.from {
-        if let Ok(from_dt) = DateTime::parse_from_rfc3339(from) {
+    if let Some(ref from) = query.from
+        && let Ok(from_dt) = DateTime::parse_from_rfc3339(from) {
             let from_utc = from_dt.with_timezone(&Utc);
             logs.retain(|l| l.timestamp >= from_utc);
         }
-    }
-    if let Some(ref to) = query.to {
-        if let Ok(to_dt) = DateTime::parse_from_rfc3339(to) {
+    if let Some(ref to) = query.to
+        && let Ok(to_dt) = DateTime::parse_from_rfc3339(to) {
             let to_utc = to_dt.with_timezone(&Utc);
             logs.retain(|l| l.timestamp <= to_utc);
         }
-    }
     logs
 }
 

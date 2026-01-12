@@ -727,13 +727,11 @@ async fn handle_authorization_code_grant(
     }
 
     // Validate redirect URI
-    if let Some(requested_uri) = params.redirect_uri {
-        if let Some(stored_uri) = &code_entry.redirect_uri {
-            if requested_uri != *stored_uri {
+    if let Some(requested_uri) = params.redirect_uri
+        && let Some(stored_uri) = &code_entry.redirect_uri
+            && requested_uri != *stored_uri {
                 return Err(AuthencError::validation("Redirect URI mismatch"));
             }
-        }
-    }
 
     // Validate PKCE
     if let Some(challenge) = &code_entry.code_challenge {
@@ -1343,8 +1341,8 @@ pub async fn oauth2_userinfo(
 
     if let Some(scope) = &claims.scope {
         // Fetch user details from DB using sub (user_id)
-        if let Ok(user_id) = Uuid::parse_str(&claims.sub) {
-            if let Ok(Some(user)) = state.app_state.user_store.get_user(user_id).await {
+        if let Ok(user_id) = Uuid::parse_str(&claims.sub)
+            && let Ok(Some(user)) = state.app_state.user_store.get_user(user_id).await {
                 if scope.contains("profile") {
                     userinfo["name"] = serde_json::json!(user.full_name());
                     userinfo["preferred_username"] = serde_json::json!(user.username);
@@ -1354,7 +1352,6 @@ pub async fn oauth2_userinfo(
                     userinfo["email_verified"] = serde_json::json!(user.email_verified);
                 }
             }
-        }
     }
 
     Ok(Json(userinfo))

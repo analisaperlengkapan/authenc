@@ -2,11 +2,10 @@ use axum::{
     Json, Router,
     extract::{State, Path},
     routing::{get, post, put},
-    response::IntoResponse,
     http::StatusCode,
 };
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use crate::app::AppState;
 use crate::services::fips::{
     FipsSecurityProfileProvider, FipsSecurityProvider, SecurityProfile, FipsLevel, FipsComplianceCheck

@@ -609,7 +609,7 @@ pub mod devices {
         }
 
         let mut query_builder = String::from("UPDATE devices SET updated_at = $2");
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
         params.push(Box::new(device_id));
         params.push(Box::new(now));
         let param_index = 3;
@@ -622,7 +622,7 @@ pub mod devices {
         query_builder.push_str(" WHERE id = $1");
 
         let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         db.execute(&query_builder, &params_refs)
             .await
@@ -2699,7 +2699,7 @@ pub mod users {
         for (user_id, update_data) in updates {
             let mut set_clauses = Vec::new();
             let mut param_index = 2; // Start from 2 since $1 is user_id
-            let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
+            let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
                 vec![Box::new(user_id)];
 
             // Build dynamic UPDATE query based on provided fields
@@ -2745,7 +2745,7 @@ pub mod users {
             let query = format!("UPDATE users SET {} WHERE id = $1", set_clauses.join(", "));
 
             let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-                params.iter().map(|p| p.as_ref()).collect();
+                params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
             let affected = transaction.execute(query.as_str(), &params_refs).await?;
             updated_count += affected as usize;
@@ -2900,7 +2900,7 @@ pub mod users {
     ) -> Result<(Vec<serde_json::Value>, i64)> {
         let mut where_clauses: Vec<String> = vec!["deleted_at IS NULL".to_string()];
         let mut param_index = 1;
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
 
         // Realm filter
         if let Some(rid) = realm_id {
@@ -2910,8 +2910,8 @@ pub mod users {
         }
 
         // Full-text search across username, email, first_name, last_name
-        if let Some(search_term) = search {
-            if !search_term.is_empty() {
+        if let Some(search_term) = search
+            && !search_term.is_empty() {
                 where_clauses.push(format!(
                     "(username ILIKE ${} OR email ILIKE ${} OR first_name ILIKE ${} OR last_name ILIKE ${})",
                     param_index, param_index, param_index, param_index
@@ -2920,16 +2920,14 @@ pub mod users {
                 params.push(Box::new(search_pattern));
                 param_index += 1;
             }
-        }
 
         // Email filter
-        if let Some(email_pattern) = email_filter {
-            if !email_pattern.is_empty() {
+        if let Some(email_pattern) = email_filter
+            && !email_pattern.is_empty() {
                 where_clauses.push(format!("email ILIKE ${}", param_index));
                 params.push(Box::new(format!("%{}%", email_pattern)));
                 param_index += 1;
             }
-        }
 
         // Enabled filter
         if let Some(enabled) = enabled_filter {
@@ -2972,7 +2970,7 @@ pub mod users {
         let count_query = format!("SELECT COUNT(*) FROM users WHERE {}", where_clause);
 
         let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         let count_row: tokio_postgres::Row = db.query_one(&count_query, &params_refs).await?;
         let total_count: i64 = count_row.get(0);
@@ -3005,7 +3003,7 @@ pub mod users {
         data_params.push(Box::new(offset_val));
 
         let data_params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            data_params.iter().map(|p| p.as_ref()).collect();
+            data_params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         let rows: Vec<tokio_postgres::Row> = db.query(&data_query, &data_params_refs).await?;
 
@@ -7077,8 +7075,7 @@ pub mod auth_flows {
                     &flow
                         .get("realm_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &flow.get("alias").and_then(|v| v.as_str()).unwrap_or(""),
                     &flow.get("description").and_then(|v| v.as_str()),
                     &flow
@@ -7289,14 +7286,12 @@ pub mod auth_flows {
                     &execution
                         .get("flow_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &execution.get("authenticator").and_then(|v| v.as_str()),
                     &execution
                         .get("authenticator_config")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &execution
                         .get("authenticator_flow")
                         .and_then(|v| v.as_bool())
@@ -7312,8 +7307,7 @@ pub mod auth_flows {
                     &execution
                         .get("parent_flow")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &now,
                     &now,
                 ],
@@ -7367,19 +7361,16 @@ pub mod auth_flows {
                     &session
                         .get("realm_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &session
                         .get("user_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &session.get("client_id").and_then(|v| v.as_str()),
                     &session
                         .get("flow_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &session
                         .get("auth_state")
                         .and_then(|v| v.as_str())
@@ -7585,7 +7576,7 @@ pub mod resources {
 
         let uris = request.uris.unwrap_or_default();
         let scopes = request.scopes.unwrap_or_default();
-        let attributes_json = serde_json::to_value(&request.attributes.unwrap_or_default())
+        let attributes_json = serde_json::to_value(request.attributes.unwrap_or_default())
             .map_err(|e| AuthencError::validation(format!("Invalid attributes: {}", e)))?;
 
         let query = r#"
@@ -8014,23 +8005,22 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
         param_index += 1;
     }
 
-    if let Some(event_types) = &query.event_types {
-        if let Some(event_type) = event_types.first() {
+    if let Some(event_types) = &query.event_types
+        && let Some(event_type) = event_types.first() {
             conditions.push(format!("event_type = ${}", param_index));
             params.push(Box::new(event_type.as_str()));
             param_index += 1;
         }
-    }
 
     if let Some(from_date) = &query.date_from {
         conditions.push(format!("time >= ${}", param_index));
-        params.push(Box::new(from_date.clone()));
+        params.push(Box::new(*from_date));
         param_index += 1;
     }
 
     if let Some(to_date) = &query.date_to {
         conditions.push(format!("time <= ${}", param_index));
-        params.push(Box::new(to_date.clone()));
+        params.push(Box::new(*to_date));
         param_index += 1;
     }
 
@@ -8153,13 +8143,13 @@ pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Resul
 
     if let Some(from_date) = &query.date_from {
         conditions.push(format!("time >= ${}", param_index));
-        params.push(Box::new(from_date.clone()));
+        params.push(Box::new(*from_date));
         param_index += 1;
     }
 
     if let Some(to_date) = &query.date_to {
         conditions.push(format!("time <= ${}", param_index));
-        params.push(Box::new(to_date.clone()));
+        params.push(Box::new(*to_date));
         param_index += 1;
     }
 
@@ -9532,7 +9522,7 @@ pub mod user_consents {
         let metadata = request
             .metadata
             .clone()
-            .unwrap_or_else(|| serde_json::Value::Null);
+            .unwrap_or(serde_json::Value::Null);
 
         let query = r#"
             INSERT INTO user_consents (id, user_id, client_id, scopes, granted_at, expires_at, metadata)
@@ -10559,7 +10549,7 @@ pub mod themes {
         let now = chrono::Utc::now();
         let mut set_clauses = Vec::new();
         let mut param_index = 2;
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
             vec![Box::new(theme_id)];
 
         if let Some(name) = updates.get("name").and_then(|v| v.as_str()) {
@@ -10605,7 +10595,7 @@ pub mod themes {
         );
 
         let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         db.execute(&query, &params_refs).await?;
         Ok(())

@@ -132,13 +132,12 @@ impl VaultProvider for KeyStoreVaultProvider {
             // Get subject name as text
             let subject_name = cert.subject_name();
             for entry in subject_name.entries() {
-                if let Ok(data) = entry.data().as_utf8() {
-                    if data.to_string().contains(key) {
+                if let Ok(data) = entry.data().as_utf8()
+                    && data.to_string().contains(key) {
                         // In a real implementation, you'd extract the actual secret
                         // For now, return a placeholder
                         return Ok(Some(format!("secret_for_{}", key)));
                     }
-                }
             }
         }
 
@@ -849,11 +848,10 @@ impl VaultService {
 
     /// Get secret from default provider
     pub async fn get_secret(&self, key: &str) -> Result<Option<String>> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.get_secret(key).await;
             }
-        }
         Ok(None)
     }
 
@@ -868,11 +866,10 @@ impl VaultService {
 
     /// Store secret in default provider
     pub async fn set_secret(&self, key: &str, value: &str) -> Result<()> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.set_secret(key, value).await;
             }
-        }
         Ok(())
     }
 
@@ -887,11 +884,10 @@ impl VaultService {
 
     /// Delete secret from default provider
     pub async fn delete_secret(&self, key: &str) -> Result<()> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.delete_secret(key).await;
             }
-        }
         Ok(())
     }
 
@@ -906,11 +902,10 @@ impl VaultService {
 
     /// List secrets from default provider
     pub async fn list_secrets(&self) -> Result<Vec<String>> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.list_secrets().await;
             }
-        }
         Ok(vec![])
     }
 

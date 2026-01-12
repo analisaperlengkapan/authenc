@@ -495,8 +495,8 @@ impl DeviceService {
             if let (Some(id_str), Some(session_id)) = (
                 session["id"].as_str(),
                 session["session_identifier"].as_str(),
-            ) {
-                if let Ok(id) = Uuid::parse_str(id_str) {
+            )
+                && let Ok(id) = Uuid::parse_str(id_str) {
                     let user_id = session["user_id"]
                         .as_str()
                         .and_then(|s| Uuid::parse_str(s).ok())
@@ -537,7 +537,6 @@ impl DeviceService {
                         is_active: session["is_active"].as_bool().unwrap_or(false),
                     });
                 }
-            }
         }
 
         Ok(device_sessions)
@@ -605,11 +604,10 @@ impl DeviceService {
         let mut score: f64 = 0.5; // Base score
 
         // Increase score for known browsers
-        if let Some(browser) = &device_info.browser {
-            if ["chrome", "firefox", "safari", "edge"].contains(&browser.to_lowercase().as_str()) {
+        if let Some(browser) = &device_info.browser
+            && ["chrome", "firefox", "safari", "edge"].contains(&browser.to_lowercase().as_str()) {
                 score += 0.1;
             }
-        }
 
         // Increase score for security features
         if device_info.security_features.has_biometrics {

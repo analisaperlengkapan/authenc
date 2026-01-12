@@ -314,7 +314,7 @@ pub mod jit_provisioning {
             request: &JITUserProvisioningRequest,
         ) -> Result<User> {
             use crate::database::operations::users;
-            use crate::models::user::CreateUserRequest;
+
 
             // Generate username from external data
             let username = self.generate_username(request).await?;
@@ -343,7 +343,7 @@ pub mod jit_provisioning {
 
             // Use admin service to create user, ensuring proper side effects
             let user_response = self.admin_service.create_user(create_request).await
-                .map_err(|e| crate::error::AuthencError::database(e))?;
+                .map_err(crate::error::AuthencError::database)?;
 
             // Fetch the full User model as the return type expects it
             // AdminService returns UserResponse, but we need User
@@ -377,14 +377,13 @@ pub mod jit_provisioning {
             use crate::database::operations::users;
 
             // Try external username first
-            if let Some(username) = &request.external_username {
-                if users::get_user_by_username(&self.db, &request.realm_id, username)
+            if let Some(username) = &request.external_username
+                && users::get_user_by_username(&self.db, &request.realm_id, username)
                     .await?
                     .is_none()
                 {
                     return Ok(username.clone());
                 }
-            }
 
             // Try email prefix
             if let Some(email) = &request.external_email {
