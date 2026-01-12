@@ -185,7 +185,7 @@ impl AuthenticationManager for DefaultAuthenticationManager {
         client_id: &str,
     ) -> Result<AuthenticationResult> {
         // Create authentication session
-        let session_id = self
+        let _session_id = self
             .create_authentication_session(realm_id, client_id, "browser", "browser")
             .await?;
 

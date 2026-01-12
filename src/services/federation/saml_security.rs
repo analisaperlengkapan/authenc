@@ -3,9 +3,11 @@
 
 use anyhow::{Result, anyhow};
 use openssl::x509::X509;
+use std::sync::{Arc, Mutex};
 
 use crate::crypto::xmldsig::{
     CertificateValidationResult, CertificateValidator, XmlSecurityLimits, XmlSecurityValidator, XmlSignature,
+    CrlManager, OcspClient, RevocationStatus, OcspStatus,
 };
 
 /// SAML Security Configuration

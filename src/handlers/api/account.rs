@@ -601,7 +601,7 @@ pub async fn get_linked_social_accounts(
 
 /// Unlink a social account
 pub async fn unlink_social_account(
-    State((user_store, _, _, _, audit_log_store, social_account_store)): State<(
+    State((_user_store, _, _, _, audit_log_store, social_account_store)): State<(
         Arc<UserStore>,
         Arc<SessionStore>,
         Arc<OidcClientStore>,

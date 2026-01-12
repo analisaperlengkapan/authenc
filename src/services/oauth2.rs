@@ -48,7 +48,7 @@ impl OAuth2Service {
     /// If separate table or logic is needed, implement here.
     /// Currently, `store_access_token_db` handles both access and refresh token hashes if they are in the same record.
     /// If refresh tokens are tracked independently for rotation, we can use `tokens::rotate_refresh_token` logic but that is session based.
-
+    ///
     /// Store authorization code
     pub async fn store_authorization_code(&self, code: &OAuth2AuthorizationCode) -> Result<()> {
         oauth2::store_authorization_code(&self.db, code).await

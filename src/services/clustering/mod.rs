@@ -661,7 +661,7 @@ pub trait ClusterEventListener: Send + Sync {
 }
 
 /// Session replication service for sticky sessions
-
+///
 /// Distributed cache service
 pub struct DistributedCacheService {
     /// Cluster manager instance

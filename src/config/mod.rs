@@ -720,6 +720,20 @@ impl AppConfig {
             return Err(AuthencError::validation("JWT secret cannot be empty"));
         }
 
+        if self.security.jwt_secret == "default_jwt_secret_change_in_production" {
+            // In non-test environments, this should optionally be a hard error or at least a strong warning.
+            // For "Best Practice", we enforce it unless explicitly in dev/test mode.
+            // Note: Environment variables are usually available at runtime.
+            // We use a check here.
+            if std::env::var("APP_ENV").unwrap_or_else(|_| "development".to_string()) == "production" {
+                 return Err(AuthencError::validation(
+                    "Security Risk: Default JWT secret detected in production environment. Please set JWT_SECRET environment variable.",
+                ));
+            } else {
+                 tracing::warn!("Security Warning: Using default JWT secret. This is unsafe for production.");
+            }
+        }
+
         if self.security.password_min_length < 8 {
             return Err(AuthencError::validation(
                 "Password minimum length must be at least 8 characters",

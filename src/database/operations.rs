@@ -4059,7 +4059,6 @@ pub mod realms {
     }
 
     /// Helper function to convert database row to Realm
-
     fn row_to_realm(row: tokio_postgres::Row) -> Realm {
         Realm {
             id: row.get(0),

@@ -108,8 +108,8 @@ pub fn generate_ed25519_jwt(
         // 1. Ed25519JwtHeader and Ed25519JwtClaims have simple string/number fields
         // 2. Serialization of these types cannot fail unless there's a memory issue
         // 3. If serialization fails, it indicates a critical system error
-        let header_json = serde_json::to_string(&header).unwrap();
-        let claims_json = serde_json::to_string(&claims).unwrap();
+        let header_json = serde_json::to_string(&header).expect("Failed to serialize JWT header");
+        let claims_json = serde_json::to_string(&claims).expect("Failed to serialize JWT claims");
 
         let header_b64 = Base64UrlUnpadded::encode_string(header_json.as_bytes());
         let payload_b64 = Base64UrlUnpadded::encode_string(claims_json.as_bytes());

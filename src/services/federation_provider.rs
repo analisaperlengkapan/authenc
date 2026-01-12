@@ -63,7 +63,7 @@ pub struct DummyFederationProvider;
 const FEDERATED_PASSWORD_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$upp7kNAs9Mqcq+N2/3fUlw$UBWDAYQ5u/9b2KYLcYB1DlTbiczJnJjH7Flz8edIkH0";
 
 impl FederationProvider for DummyFederationProvider {
-    fn get_user_by_username(&self, realm_id: &uuid::Uuid, username: &str) -> Option<User> {
+    fn get_user_by_username(&self, _realm_id: &uuid::Uuid, username: &str) -> Option<User> {
         if username == "federated" {
             Some(User {
                 id: uuid::Uuid::new_v4(),
