@@ -233,7 +233,15 @@ pub async fn export_audit_logs_csv(
             "attachment; filename=\"audit_logs.csv\"",
         )
         .body(wtr.into())
-        .unwrap())
+        .map_err(|e| {
+            tracing::error!("Failed to build response body: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to generate CSV download".to_string(),
+                }),
+            )
+        })?)
 }
 
 /// Create audit log routes for the application

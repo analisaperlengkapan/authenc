@@ -153,20 +153,23 @@ async fn handle_sso_callback(
         Ok(response) => {
             // Create redirect response with Set-Cookie header
             let mut headers = HeaderMap::new();
-            headers.insert(
-                "Set-Cookie",
-                response
-                    .set_cookie_header
-                    .parse()
-                    .unwrap_or_else(|_| "".parse().unwrap()),
-            );
-            headers.insert(
-                "Location",
-                response
-                    .redirect_uri
-                    .parse()
-                    .unwrap_or_else(|_| "/".parse().unwrap()),
-            );
+            if let Ok(cookie_val) = response.set_cookie_header.parse() {
+                headers.insert("Set-Cookie", cookie_val);
+            } else {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": "Invalid cookie format in response"})),
+                ));
+            }
+
+            if let Ok(loc_val) = response.redirect_uri.parse() {
+                headers.insert("Location", loc_val);
+            } else {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": "Invalid redirect URI in response"})),
+                ));
+            }
 
             Ok((StatusCode::FOUND, headers))
         }
@@ -210,18 +213,15 @@ async fn handle_sso_logout(
                             state.sso_cookie_manager.generate_delete_cookie_header();
 
                         let mut headers = HeaderMap::new();
-                        headers.insert(
-                            "Set-Cookie",
-                            delete_cookie
-                                .parse()
-                                .unwrap_or_else(|_| "".parse().unwrap()),
-                        );
-                        headers.insert(
-                            "Location",
-                            redirect_uri
-                                .parse()
-                                .unwrap_or_else(|_| "/".parse().unwrap()),
-                        );
+                        if let Ok(cookie_val) = delete_cookie.parse() {
+                            headers.insert("Set-Cookie", cookie_val);
+                        }
+
+                        if let Ok(loc_val) = redirect_uri.parse() {
+                            headers.insert("Location", loc_val);
+                        } else {
+                             headers.insert("Location", "/".parse().unwrap());
+                        }
 
                         Ok((StatusCode::FOUND, headers))
                     }
@@ -235,12 +235,9 @@ async fn handle_sso_logout(
                 // Invalid or expired session, still return success with cookie deletion
                 let delete_cookie = state.sso_cookie_manager.generate_delete_cookie_header();
                 let mut headers = HeaderMap::new();
-                headers.insert(
-                    "Set-Cookie",
-                    delete_cookie
-                        .parse()
-                        .unwrap_or_else(|_| "".parse().unwrap()),
-                );
+                if let Ok(cookie_val) = delete_cookie.parse() {
+                    headers.insert("Set-Cookie", cookie_val);
+                }
                 headers.insert("Location", "/".parse().unwrap());
 
                 Ok((StatusCode::FOUND, headers))
