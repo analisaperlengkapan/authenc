@@ -238,7 +238,14 @@ async fn handle_sso_logout(
                 if let Ok(cookie_val) = delete_cookie.parse() {
                     headers.insert("Set-Cookie", cookie_val);
                 }
-                headers.insert("Location", "/".parse().unwrap());
+                if let Ok(loc) = "/".parse() {
+                    headers.insert("Location", loc);
+                } else {
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": "Failed to generate redirect location"})),
+                    ));
+                }
 
                 Ok((StatusCode::FOUND, headers))
             }

@@ -220,6 +220,7 @@ tempfile = "3"
 tokio-test = "0.4"
 serial_test = "3.2"
 lazy_static = "1.5"
+temp-env = "0.3.6"
 # sqlx removed - using tokio-postgres + deadpool-postgres for better compile speed and flexibility
 
 # Performance optimizations

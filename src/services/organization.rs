@@ -36,7 +36,7 @@ use uuid::Uuid;
 //     pub attributes: HashMap<String, String>,
 // }
 
-/// Organization member with role
+// Organization member with role
 // Using the model OrganizationMember for now
 // #[derive(Debug, Clone, Serialize, Deserialize)]
 // pub struct OrganizationMember {

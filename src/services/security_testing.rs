@@ -53,7 +53,7 @@ pub mod security_tests {
         /// Test resistance to SQL injection attacks
         pub fn test_sql_injection_resistance() -> SecurityTestResult {
             // Test various SQL injection patterns
-            let injection_patterns = ["' OR '1'='1",
+            let _injection_patterns = ["' OR '1'='1",
                 "'; DROP TABLE users--",
                 "' UNION SELECT * FROM users--",
                 "admin'--",

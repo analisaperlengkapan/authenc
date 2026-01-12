@@ -890,7 +890,7 @@ async fn handle_password_grant(
     state: Arc<OAuth2AppState>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
-    let stores = &state.oauth2_stores;
+    let _stores = &state.oauth2_stores;
     let username = params
         .username
         .ok_or(AuthencError::validation("username required"))?;
@@ -1255,6 +1255,7 @@ pub async fn oauth2_jwks() -> Result<Json<serde_json::Value>, AuthencError> {
 }
 
 /// Verify and decode JWT token
+#[allow(dead_code)]
 fn verify_jwt(token: &str) -> Result<AccessTokenClaims, AuthencError> {
     // 1. Verify JWT structure
     let token_parts: Vec<&str> = token.split('.').collect();
