@@ -405,11 +405,12 @@ impl RoleStorageProvider for DefaultRoleStorageProvider {
     async fn search_roles(&self, query: &str, _context: &StorageQueryContext) -> Result<Vec<Role>> {
         let all_roles = self.role_store.get_all();
         if query.is_empty() {
-            Ok(all_roles)
+            Ok(all_roles.as_ref().clone())
         } else {
             Ok(all_roles
-                .into_iter()
+                .iter()
                 .filter(|role| role.name.contains(query))
+                .cloned()
                 .collect())
         }
     }

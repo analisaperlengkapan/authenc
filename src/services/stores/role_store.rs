@@ -1,10 +1,10 @@
 use crate::models::role::Role;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// In-memory store for managing roles
 pub struct RoleStore {
-    /// Thread-safe storage of roles
-    pub roles: Mutex<Vec<Role>>,
+    /// Thread-safe storage of roles, wrapped in Arc for efficient cloning
+    pub roles: Mutex<Arc<Vec<Role>>>,
 }
 
 impl Default for RoleStore {
@@ -17,17 +17,18 @@ impl RoleStore {
     /// Create new role store
     pub fn new() -> Self {
         Self {
-            roles: Mutex::new(vec![]),
+            roles: Mutex::new(Arc::new(vec![])),
         }
     }
 
     /// Add role to store
     pub fn add_role(&self, role: Role) {
-        self.roles.lock().unwrap().push(role);
+        let mut roles = self.roles.lock().unwrap();
+        Arc::make_mut(&mut roles).push(role);
     }
 
     /// Get all roles
-    pub fn get_all(&self) -> Vec<Role> {
+    pub fn get_all(&self) -> Arc<Vec<Role>> {
         self.roles.lock().unwrap().clone()
     }
 
@@ -54,7 +55,8 @@ impl RoleStore {
 
     /// Delete role by realm and name
     pub fn delete_by_name(&self, realm_id: &str, name: &str) -> bool {
-        let mut roles = self.roles.lock().unwrap();
+        let mut roles_guard = self.roles.lock().unwrap();
+        let roles = Arc::make_mut(&mut roles_guard);
         let len_before = roles.len();
         roles.retain(|r| {
             !(r.realm_id.map(|id| id.to_string()).as_ref() == Some(&realm_id.to_string())

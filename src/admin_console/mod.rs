@@ -217,7 +217,7 @@ async fn roles_page(
     let roles = state.role_store.get_all();
 
     let mut roles_html = String::new();
-    for role in roles {
+    for role in roles.iter() {
         roles_html.push_str(&format!(r#"
         <tr>
             <td>{}</td>
