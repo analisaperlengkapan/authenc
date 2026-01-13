@@ -569,25 +569,31 @@ impl WebAuthnService {
     /// Decrypt credential fields if they are encrypted
     fn decrypt_credential(&self, credential: &mut WebauthnCredential) {
         // Try to decrypt attestation_object
-        if let Some(data) = &credential.attestation_object
-            && let Ok(encrypted_data) = serde_json::from_slice::<EncryptedData>(data)
-                && let Ok(decrypted) = self.encryption.decrypt(&encrypted_data) {
+        if let Some(data) = &credential.attestation_object {
+            if let Ok(encrypted_data) = serde_json::from_slice::<EncryptedData>(data) {
+                if let Ok(decrypted) = self.encryption.decrypt(&encrypted_data) {
                     credential.attestation_object = Some(decrypted);
                 }
+            }
+        }
 
         // Try to decrypt authenticator_data
-        if let Some(data) = &credential.authenticator_data
-            && let Ok(encrypted_data) = serde_json::from_slice::<EncryptedData>(data)
-                && let Ok(decrypted) = self.encryption.decrypt(&encrypted_data) {
+        if let Some(data) = &credential.authenticator_data {
+            if let Ok(encrypted_data) = serde_json::from_slice::<EncryptedData>(data) {
+                if let Ok(decrypted) = self.encryption.decrypt(&encrypted_data) {
                     credential.authenticator_data = Some(decrypted);
                 }
+            }
+        }
 
         // Try to decrypt user_handle
-        if let Some(data) = &credential.user_handle
-            && let Ok(encrypted_data) = serde_json::from_slice::<EncryptedData>(data)
-                && let Ok(decrypted) = self.encryption.decrypt(&encrypted_data) {
+        if let Some(data) = &credential.user_handle {
+            if let Ok(encrypted_data) = serde_json::from_slice::<EncryptedData>(data) {
+                if let Ok(decrypted) = self.encryption.decrypt(&encrypted_data) {
                     credential.user_handle = Some(decrypted);
                 }
+            }
+        }
     }
 
     /// Store WebAuthn credential in database securely
