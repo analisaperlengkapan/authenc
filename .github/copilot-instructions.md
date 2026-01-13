@@ -1029,17 +1029,7 @@ impl DeviceService {
     }
 }
 
-// Priority 2: WebAuthn Credentials Database
-impl WebAuthnService {
-    pub async fn store_credential_db(&self, credential: &WebAuthnCredential) -> Result<(), AuthencError> {
-        // TODO: Implement secure credential storage
-        // - Encrypted credential data
-        // - User association
-        // - Device binding
-    }
-}
-
-// Priority 3: OAuth2 Token Storage
+// Priority 2: OAuth2 Token Storage
 impl OAuth2Service {
     pub async fn store_access_token_db(&self, token: &AccessToken) -> Result<(), AuthencError> {
         // TODO: Implement token persistence
