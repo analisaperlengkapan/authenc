@@ -435,11 +435,11 @@ impl SamlIdentityProvider {
     /// - Certificate expiration checking
     /// - Revocation checking (CRL/OCSP if enabled)
     /// - Signature cryptographic verification
-    fn validate_signature(&self, xml: &str) -> Result<bool> {
+    async fn validate_signature(&self, xml: &str) -> Result<bool> {
         // Use security validator if available (comprehensive validation)
         if let Some(validator) = &self.security_validator {
             // Comprehensive validation (XML security + cert chain + revocation + signature)
-            validator.validate_signature_comprehensive(xml)?;
+            validator.validate_signature_comprehensive(xml).await?;
             tracing::info!("SAML signature validation passed (comprehensive)");
             return Ok(true);
         }
@@ -659,7 +659,7 @@ impl IdentityProvider for SamlIdentityProvider {
             };
 
             // 3. Validate signature (comprehensive: cert chain + revocation + signature)
-            if let Err(e) = self.validate_signature(&xml) {
+            if let Err(e) = self.validate_signature(&xml).await {
                 return Ok(AuthResponse {
                     success: false,
                     user_id: None,

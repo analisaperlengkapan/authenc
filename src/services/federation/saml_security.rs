@@ -203,7 +203,7 @@ impl SamlSecurityValidator {
     /// # Returns
     /// * `Ok(())` if signature and certificate are valid
     /// * `Err` if any validation step fails
-    pub fn validate_signature_comprehensive(&self, xml: &str) -> Result<()> {
+    pub async fn validate_signature_comprehensive(&self, xml: &str) -> Result<()> {
         // Extract signature from XML
         let signature = XmlSignature::extract_from_xml(xml)
             .map_err(|e| anyhow!("Failed to extract XML signature: {}", e))?;
@@ -247,8 +247,10 @@ impl SamlSecurityValidator {
         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
         if self.config.enable_crl_check {
             if let Some(crl_manager) = &self.crl_manager {
-                let mut manager = crl_manager.lock().unwrap();
-                match manager.check_revocation(&cert) {
+                let manager = {
+                    crl_manager.lock().unwrap().clone()
+                };
+                match manager.check_revocation(&cert).await {
                     Ok(RevocationStatus::NotRevoked) => {
                         tracing::debug!("CRL check passed: certificate not revoked");
                     }
@@ -299,8 +301,10 @@ impl SamlSecurityValidator {
                 };
 
                 if let Some(issuer) = issuer {
-                    let mut client = ocsp_client.lock().unwrap();
-                    match client.check_status(&cert, &issuer) {
+                    let client = {
+                         ocsp_client.lock().unwrap().clone()
+                    };
+                    match client.check_status(&cert, &issuer).await {
                         Ok(OcspStatus::Good) => {
                             tracing::debug!("OCSP check passed: certificate is good");
                         }
