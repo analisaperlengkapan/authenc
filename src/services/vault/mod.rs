@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use uuid::Uuid;
 
 /// Vault provider trait for secret management
 #[async_trait]
@@ -43,11 +44,10 @@ impl FileVaultProvider {
 impl VaultProvider for FileVaultProvider {
     async fn get_secret(&self, key: &str) -> Result<Option<String>> {
         let file_path = Path::new(&self.base_path).join(key);
-        if tokio::fs::try_exists(&file_path).await.unwrap_or(false) {
-            let content = tokio::fs::read_to_string(file_path).await?;
-            Ok(Some(content.trim().to_string()))
-        } else {
-            Ok(None)
+        match tokio::fs::read_to_string(file_path).await {
+            Ok(content) => Ok(Some(content.trim().to_string())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -56,16 +56,21 @@ impl VaultProvider for FileVaultProvider {
         if let Some(parent) = file_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        tokio::fs::write(file_path, value).await?;
+
+        // Atomic write: write to temp file then rename to ensure data integrity
+        let tmp_file_path = file_path.with_extension(format!("tmp.{}", Uuid::new_v4()));
+        tokio::fs::write(&tmp_file_path, value).await?;
+        tokio::fs::rename(tmp_file_path, file_path).await?;
         Ok(())
     }
 
     async fn delete_secret(&self, key: &str) -> Result<()> {
         let file_path = Path::new(&self.base_path).join(key);
-        if tokio::fs::try_exists(&file_path).await.unwrap_or(false) {
-            tokio::fs::remove_file(file_path).await?;
+        match tokio::fs::remove_file(file_path).await {
+            Ok(_) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
         }
-        Ok(())
     }
 
     async fn list_secrets(&self) -> Result<Vec<String>> {
