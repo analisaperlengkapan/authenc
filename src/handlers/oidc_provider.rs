@@ -389,7 +389,7 @@ pub async fn oidc_login_post(
             return (StatusCode::INTERNAL_SERVER_ERROR, "Authentication error").into_response();
         }
     };
-    let password_ok = match verify_password(password_hash, &form.password) {
+    let password_ok = match verify_password(password_hash, &form.password).await {
         Ok(ok) => ok,
         Err(e) => {
             tracing::error!("Password verification error: {}", e);
