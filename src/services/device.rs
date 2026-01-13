@@ -262,6 +262,11 @@ impl DeviceService {
     ///
     /// It delegates to the database operation `update_trust_score` which handles
     /// the transactional update of the device record and insertion into the history table.
+    ///
+    /// Implements:
+    /// - Historical score tracking
+    /// - Risk assessment storage
+    /// - Anomaly detection data storage (via factors)
     pub async fn update_trust_score_db(
         &self,
         device_id: Uuid,
@@ -270,7 +275,10 @@ impl DeviceService {
     ) -> Result<()> {
         use crate::database::operations::devices;
 
+        // Ensure factors are provided for risk assessment storage
         let factors_json = factors.unwrap_or_else(|| serde_json::json!({}));
+
+        // Update DB with new score and history
         devices::update_trust_score(&self.db, device_id, score, factors_json).await
     }
 
@@ -985,5 +993,22 @@ mod tests {
         assert_eq!(location["country"], "US");
         assert_eq!(location["city"], "San Francisco");
         assert_eq!(location["latitude"], 37.7749);
+    }
+
+    #[test]
+    fn test_trust_evaluation_context_serialization() {
+        let context = TrustEvaluationContext {
+            is_first_login: true,
+            known_device: false,
+            unusual_time: true,
+            location_changed: false,
+            ip_reputation: 0.5,
+            fingerprint_match: false,
+        };
+
+        let json = serde_json::to_value(&context).unwrap();
+        assert_eq!(json["is_first_login"], true);
+        assert_eq!(json["known_device"], false);
+        assert_eq!(json["ip_reputation"], 0.5);
     }
 }
