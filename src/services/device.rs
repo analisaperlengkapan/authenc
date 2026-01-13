@@ -225,7 +225,13 @@ impl DeviceService {
         };
 
         // Store device in database
-        self.store_device(&device).await?;
+        let stored_device = self.store_device(&device).await?;
+
+        // Update device info with the ID and timestamps assigned by the database
+        let mut device = device;
+        device.id = stored_device.id;
+        device.created_at = stored_device.created_at;
+        device.last_seen = stored_device.last_seen_at;
 
         Ok(device)
     }
@@ -743,9 +749,11 @@ impl DeviceService {
     }
 
     /// Store device information in the database
-    async fn store_device(&self, device: &DeviceInfo) -> Result<()> {
-        self.register_device_db(device).await?;
-        Ok(())
+    async fn store_device(
+        &self,
+        device: &DeviceInfo,
+    ) -> Result<crate::models::device::Device> {
+        self.register_device_db(device).await
     }
 
     /// Store device session information in the database
@@ -860,6 +868,71 @@ impl From<&DeviceInfo> for crate::models::device::DeviceInfo {
                 .as_ref()
                 .map(|l| serde_json::to_value(l).unwrap_or(serde_json::Value::Null)),
             trust_score: Some(device.trust_score),
+        }
+    }
+}
+
+impl From<crate::models::device::Device> for DeviceInfo {
+    fn from(model_device: crate::models::device::Device) -> Self {
+        // Parse security features from JSON
+        let security_features = model_device
+            .security_features
+            .clone()
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or(DeviceSecurityFeatures {
+                has_biometrics: false,
+                has_hardware_security: false,
+                has_screen_lock: false,
+                encryption_enabled: false,
+                remote_wipe_capable: false,
+                jailbreak_detected: false,
+            });
+
+        // Detect device type based on user agent
+        let device_type = if let Some(ua) = &model_device.user_agent {
+            let ua = ua.to_lowercase();
+            if ua.contains("mobile") || ua.contains("android") || ua.contains("iphone") {
+                DeviceType::Mobile
+            } else if ua.contains("tablet") || ua.contains("ipad") {
+                DeviceType::Tablet
+            } else if ua.contains("iot") || ua.contains("raspberry") {
+                DeviceType::IoT
+            } else if ua.contains("server") || ua.contains("linux") && ua.contains("headless") {
+                DeviceType::Server
+            } else {
+                DeviceType::Desktop
+            }
+        } else {
+            DeviceType::Unknown
+        };
+
+        DeviceInfo {
+            id: model_device.id,
+            user_id: model_device.user_id,
+            device_name: model_device
+                .device_name
+                .unwrap_or_else(|| "Unknown Device".to_string()),
+            device_type,
+            os: model_device.os.unwrap_or_default(),
+            os_version: model_device.os_version.unwrap_or_default(),
+            browser: model_device.browser,
+            browser_version: model_device.browser_version,
+            ip_address: model_device
+                .ip_address
+                .map(|ip| ip.to_string())
+                .unwrap_or_else(|| "0.0.0.0".to_string()),
+            user_agent: model_device
+                .user_agent
+                .unwrap_or_default(),
+            fingerprint: model_device.device_fingerprint,
+            trust_score: model_device.trust_score,
+            is_trusted: model_device.trust_score > 0.7,
+            last_seen: model_device.last_seen_at,
+            created_at: model_device.created_at,
+            location: model_device
+                .location_data
+                .and_then(|d| serde_json::from_value(d).ok()),
+            security_features,
         }
     }
 }
