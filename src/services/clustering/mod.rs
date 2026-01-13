@@ -100,10 +100,16 @@ pub struct InMemoryClusterCommunication {
     /// Shared broadcast channel for all nodes
     broadcast_tx: broadcast::Sender<(String, Vec<u8>)>,
     /// Receiver for broadcast messages
-    broadcast_rx: RwLock<Option<broadcast::Receiver<(String, Vec<u8>)>>>,
+    broadcast_rx: RwLock<Option<BroadcastReceiver>>,
     /// Individual message channels for direct messaging
-    message_channels: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<(String, Vec<u8>)>>>>,
+    message_channels: Arc<RwLock<MessageChannelMap>>,
 }
+
+/// Type alias for broadcast receiver
+pub type BroadcastReceiver = broadcast::Receiver<(String, Vec<u8>)>;
+
+/// Type alias for message channel map
+pub type MessageChannelMap = HashMap<String, mpsc::UnboundedSender<(String, Vec<u8>)>>;
 
 impl InMemoryClusterCommunication {
     /// Create a new in-memory cluster communication instance
@@ -170,16 +176,21 @@ impl ClusterCommunication for InMemoryClusterCommunication {
     }
 }
 
+/// Type alias for incoming message queue
+pub type IncomingMessageQueue = Vec<(String, Vec<u8>)>;
+/// Type alias for incoming message receiver
+pub type IncomingMessageReceiver = mpsc::UnboundedReceiver<(String, Vec<u8>)>;
+
 /// JGroups-based cluster communication
 pub struct JGroupsClusterCommunication {
     /// Name of the JGroups channel
     _channel_name: String,
     /// Message queue for incoming messages
-    _message_queue: Arc<RwLock<Vec<(String, Vec<u8>)>>>,
+    _message_queue: Arc<RwLock<IncomingMessageQueue>>,
     /// Sender for outgoing messages
     outgoing_tx: mpsc::UnboundedSender<(Option<String>, Vec<u8>)>,
     /// Receiver for incoming messages
-    incoming_rx: Arc<RwLock<mpsc::UnboundedReceiver<(String, Vec<u8>)>>>,
+    incoming_rx: Arc<RwLock<IncomingMessageReceiver>>,
 }
 
 impl JGroupsClusterCommunication {
@@ -198,9 +209,9 @@ impl JGroupsClusterCommunication {
                 if target.is_none() {
                     // Broadcast - echo to all nodes
                     let _ = incoming_tx.send(("broadcast".to_string(), message));
-                } else {
+                } else if let Some(target_id) = target {
                     // Unicast - send to specific node
-                    let _ = incoming_tx.send((target.unwrap(), message));
+                    let _ = incoming_tx.send((target_id, message));
                 }
             }
         });

@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use authenc::middleware::rate_limit_axum::{RateLimitConfig, RateLimiterState};
+use authenc::middleware::rate_limit::{RateLimitConfig, RateLimiterState};
 
 #[tokio::test]
 async fn test_rate_limiter_state() {

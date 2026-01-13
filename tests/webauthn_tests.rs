@@ -23,6 +23,7 @@ async fn test_webauthn_registration_challenge_generation() {
     };
 
     let database = Arc::new(Database::new(&database_config).await.unwrap());
+    let realm_id = Uuid::new_v4();
 
     // Apply test schema - recreate webauthn_credentials table with correct schema
     let schema_sql = r#"
@@ -53,7 +54,7 @@ async fn test_webauthn_registration_challenge_generation() {
         .expect("Failed to apply WebAuthn schema");
 
     // Clean up any existing test user (hard delete for tests)
-    if let Ok(Some(existing_user)) = users::get_user_by_username(&database, "testuser").await {
+    if let Ok(Some(existing_user)) = users::get_user_by_username(&database, &realm_id, "testuser").await {
         users::delete_user(&database, existing_user.id)
             .await
             .unwrap();
@@ -89,17 +90,20 @@ async fn test_webauthn_registration_challenge_generation() {
         .unwrap();
 
     let webauthn_service = WebAuthnService::new(
-        database,
+        Arc::clone(&database),
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
         "test_secret".to_string(),
         None,
     );
 
+    let realm_id = Uuid::new_v4();
+
     // Test registration challenge generation
     let request = WebAuthnRegistrationRequest {
         username: "testuser".to_string(),
         display_name: "Test User".to_string(),
+        realm_id,
     };
 
     let response = webauthn_service
@@ -162,6 +166,7 @@ async fn test_webauthn_authentication_challenge_generation() {
     };
 
     let database = Arc::new(Database::new(&database_config).await.unwrap());
+    let realm_id = Uuid::new_v4();
 
     // Apply test schema - create a unique table name to avoid conflicts
     let table_name = format!("webauthn_credentials_{}", Uuid::new_v4().simple());
@@ -198,7 +203,7 @@ async fn test_webauthn_authentication_challenge_generation() {
     }
 
     // Clean up any existing test user (hard delete for tests)
-    if let Ok(Some(existing_user)) = users::get_user_by_username(&database, "testuser").await {
+    if let Ok(Some(existing_user)) = users::get_user_by_username(&database, &realm_id, "testuser").await {
         let _ = users::delete_user(&database, existing_user.id).await;
     }
 
@@ -234,7 +239,7 @@ async fn test_webauthn_authentication_challenge_generation() {
 
     // Create a test WebAuthn credential for the user
     let credential_id = Uuid::new_v4();
-    let user_result = users::get_user_by_username(&database, "testuser").await;
+    let user_result = users::get_user_by_username(&database, &realm_id, "testuser").await;
     let user_id = match user_result {
         Ok(Some(user)) => user.id,
         _ => {
@@ -284,6 +289,7 @@ async fn test_webauthn_authentication_challenge_generation() {
     // Test authentication challenge generation
     let request = WebAuthnAuthenticationRequest {
         username: "testuser".to_string(),
+        realm_id: Uuid::new_v4(),
     };
 
     let response = webauthn_service
@@ -322,17 +328,20 @@ async fn test_webauthn_credential_registration() {
 
     let database = Arc::new(Database::new(&database_config).await.unwrap());
     let webauthn_service = WebAuthnService::new(
-        database,
+        Arc::clone(&database),
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
         "test_secret".to_string(),
         None,
     );
 
+    let realm_id = Uuid::new_v4();
+
     // First, generate a registration challenge
     let challenge_request = WebAuthnRegistrationRequest {
         username: "testuser".to_string(),
         display_name: "Test User".to_string(),
+        realm_id,
     };
 
     let challenge_response = webauthn_service
@@ -356,7 +365,7 @@ async fn test_webauthn_credential_registration() {
 
     // Test credential registration (this would normally verify the credential)
     let result = webauthn_service
-        .verify_registration("testuser", credential_response)
+        .verify_registration(&realm_id, "testuser", credential_response, None)
         .await;
 
     // The result might fail due to missing challenge in DB, but we test the structure
@@ -381,16 +390,19 @@ async fn test_webauthn_credential_authentication() {
 
     let database = Arc::new(Database::new(&database_config).await.unwrap());
     let webauthn_service = WebAuthnService::new(
-        database,
+        Arc::clone(&database),
         "authenc.example.com".to_string(),
         "Authenc".to_string(),
         "test_secret".to_string(),
         None,
     );
 
+    let realm_id = Uuid::new_v4();
+
     // First, generate an authentication challenge
     let challenge_request = WebAuthnAuthenticationRequest {
         username: "testuser".to_string(),
+        realm_id,
     };
 
     let challenge_response = webauthn_service
@@ -416,7 +428,7 @@ async fn test_webauthn_credential_authentication() {
 
     // Test credential authentication (this would normally verify the assertion)
     let result = webauthn_service
-        .verify_authentication("testuser", assertion_response)
+        .verify_authentication(&realm_id, "testuser", assertion_response)
         .await;
 
     // The result might fail due to missing challenge/credential in DB, but we test the structure

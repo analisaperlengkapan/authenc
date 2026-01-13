@@ -363,7 +363,7 @@ impl VaultProvider for HashiCorpVaultProvider {
                     if let Some(keys_array) = keys.as_array() {
                         return Ok(keys_array
                             .iter()
-                            .filter_map(|k| k.as_str().map(|s| s.to_string()))
+                            .filter_map(|k| k.as_str().map(|s| s.trim_end_matches('/').to_string()))
                             .collect());
                     }
                 }
@@ -848,10 +848,11 @@ impl VaultService {
 
     /// Get secret from default provider
     pub async fn get_secret(&self, key: &str) -> Result<Option<String>> {
-        if let Some(provider_name) = &self.default_provider
-            && let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider {
+            if let Some(provider) = self.providers.get(provider_name) {
                 return provider.get_secret(key).await;
             }
+        }
         Ok(None)
     }
 
@@ -866,10 +867,11 @@ impl VaultService {
 
     /// Store secret in default provider
     pub async fn set_secret(&self, key: &str, value: &str) -> Result<()> {
-        if let Some(provider_name) = &self.default_provider
-            && let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider {
+            if let Some(provider) = self.providers.get(provider_name) {
                 return provider.set_secret(key, value).await;
             }
+        }
         Ok(())
     }
 
@@ -884,10 +886,11 @@ impl VaultService {
 
     /// Delete secret from default provider
     pub async fn delete_secret(&self, key: &str) -> Result<()> {
-        if let Some(provider_name) = &self.default_provider
-            && let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider {
+            if let Some(provider) = self.providers.get(provider_name) {
                 return provider.delete_secret(key).await;
             }
+        }
         Ok(())
     }
 
@@ -902,10 +905,11 @@ impl VaultService {
 
     /// List secrets from default provider
     pub async fn list_secrets(&self) -> Result<Vec<String>> {
-        if let Some(provider_name) = &self.default_provider
-            && let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider {
+            if let Some(provider) = self.providers.get(provider_name) {
                 return provider.list_secrets().await;
             }
+        }
         Ok(vec![])
     }
 

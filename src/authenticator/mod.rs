@@ -190,7 +190,7 @@ impl Requirement {
     }
 
     /// Parse requirement from string
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s.to_uppercase().as_str() {
             "REQUIRED" => Requirement::Required,
             "ALTERNATIVE" => Requirement::Alternative,
@@ -198,6 +198,14 @@ impl Requirement {
             "CONDITIONAL" => Requirement::Conditional,
             _ => Requirement::Required,
         }
+    }
+}
+
+impl std::str::FromStr for Requirement {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::parse(s))
     }
 }
 

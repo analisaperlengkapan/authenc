@@ -275,7 +275,6 @@ impl SamlSecurityValidator {
                 }
             }
         }
-
         // Check certificate revocation via OCSP if enabled
         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
         if self.config.enable_ocsp_check {
@@ -337,7 +336,6 @@ impl SamlSecurityValidator {
                 }
             }
         }
-
         // Verify signature with validated certificate
         let is_valid = signature
             .verify(&cert, xml)

@@ -1,4 +1,4 @@
-use authenc::middleware::auth_middleware_axum::{AuthState, AuthUserExt, auth_middleware};
+use authenc::middleware::auth::{AuthState, AuthUserExt, auth_middleware};
 use axum::{
     Router,
     body::Body,

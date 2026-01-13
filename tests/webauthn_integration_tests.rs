@@ -63,7 +63,7 @@ async fn test_webauthn_device_binding_integration() {
         browser_version: Some("1.0".to_string()),
         ip_address: Some("127.0.0.1".parse().unwrap()),
         user_agent: Some("TestAgent".to_string()),
-        security_features: None,
+        security_features: None, location_data: None,
     };
 
     let device = authenc::database::operations::devices::register_device(&database, user.id, &device_info).await.expect("Failed to register device");

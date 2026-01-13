@@ -200,10 +200,15 @@ pub async fn update_client(
 
     // For now, we'll delete and re-add since the store doesn't have an update method
     // In a real implementation, you'd want an update method
-    if let Err(_) = state.oidc_client_store.delete(&client_id).await {
+    if state.oidc_client_store.delete(&client_id).await.is_err() {
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
-    if let Err(_) = state.oidc_client_store.add(client.clone()).await {
+    if state
+        .oidc_client_store
+        .add(client.clone())
+        .await
+        .is_err()
+    {
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 

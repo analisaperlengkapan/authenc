@@ -27,6 +27,7 @@ impl<S> Layer<S> for RequestLogger {
     }
 }
 
+/// Middleware implementation for request logging
 #[derive(Clone, Debug)]
 pub struct RequestLoggerMiddleware<S> {
     inner: S,
@@ -147,6 +148,15 @@ pub struct ResponseBody<B> {
 }
 
 impl<B> ResponseBody<B> {
+    /// Creates a new `ResponseBody` wrapper.
+    ///
+    /// # Arguments
+    /// * `inner` - The original response body
+    /// * `request_id` - The unique request ID
+    /// * `method` - The HTTP method of the request
+    /// * `path` - The request path
+    /// * `start_time` - The timestamp when processing started
+    /// * `status` - The HTTP status code of the response
     pub fn new(
         inner: B,
         request_id: Uuid,
