@@ -115,10 +115,9 @@ impl KeyStoreVaultProvider {
 impl VaultProvider for KeyStoreVaultProvider {
     async fn get_secret(&self, key: &str) -> Result<Option<String>> {
         use openssl::pkcs12::Pkcs12;
-        use std::fs;
 
-        // Read PKCS12 file
-        let p12_data = fs::read(&self.keystore_path)?;
+        // Read PKCS12 file using async IO
+        let p12_data = tokio::fs::read(&self.keystore_path).await?;
         let p12 = Pkcs12::from_der(&p12_data)?;
         let parsed = p12.parse2(&self.keystore_password)?;
 
@@ -145,7 +144,6 @@ impl VaultProvider for KeyStoreVaultProvider {
 
     async fn set_secret(&self, key: &str, value: &str) -> Result<()> {
         use openssl::pkcs12::Pkcs12;
-        use std::fs;
 
         // PKCS12 is designed for certificate storage, not arbitrary key-value pairs
         // This is a placeholder implementation
@@ -158,8 +156,8 @@ impl VaultProvider for KeyStoreVaultProvider {
         );
 
         // Read existing keystore if it exists
-        if std::path::Path::new(&self.keystore_path).exists() {
-            let p12_data = fs::read(&self.keystore_path)?;
+        if tokio::fs::try_exists(&self.keystore_path).await.unwrap_or(false) {
+            let p12_data = tokio::fs::read(&self.keystore_path).await?;
             let _p12 = Pkcs12::from_der(&p12_data)?;
             // In a real implementation, you would modify the PKCS12 structure
         }
@@ -179,12 +177,11 @@ impl VaultProvider for KeyStoreVaultProvider {
 
     async fn list_secrets(&self) -> Result<Vec<String>> {
         use openssl::pkcs12::Pkcs12;
-        use std::fs;
 
         let mut secrets = Vec::new();
 
-        if std::path::Path::new(&self.keystore_path).exists() {
-            let p12_data = fs::read(&self.keystore_path)?;
+        if tokio::fs::try_exists(&self.keystore_path).await.unwrap_or(false) {
+            let p12_data = tokio::fs::read(&self.keystore_path).await?;
             let p12 = Pkcs12::from_der(&p12_data)?;
             let parsed = p12.parse2(&self.keystore_password)?;
 
