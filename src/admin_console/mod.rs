@@ -318,7 +318,7 @@ async fn realms_page(
     let realms = state.realm_store.get_all();
 
     let mut realms_html = String::new();
-    for realm in realms {
+    for realm in realms.iter() {
         realms_html.push_str(&format!(r#"
         <tr>
             <td>{}</td>
@@ -329,7 +329,7 @@ async fn realms_page(
                 <button onclick="deleteRealm('{}')" style="background: #dc3545; color: white;">Delete</button>
             </td>
         </tr>
-        "#, realm.name, realm.display_name.unwrap_or_else(|| "N/A".to_string()),
+        "#, realm.name, realm.display_name.as_deref().unwrap_or("N/A"),
            if realm.enabled { "Enabled" } else { "Disabled" },
            realm.id, realm.id));
     }

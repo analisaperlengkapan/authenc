@@ -1,10 +1,10 @@
 use crate::models::realm::Realm;
-use std::sync::Mutex;
+use std::sync::{Arc, RwLock};
 
 /// In-memory store for managing realms
 pub struct RealmStore {
     /// Thread-safe storage of realms
-    pub realms: Mutex<Vec<Realm>>,
+    pub realms: RwLock<Arc<Vec<Realm>>>,
 }
 
 impl Default for RealmStore {
@@ -17,24 +17,25 @@ impl RealmStore {
     /// Create new realm store
     pub fn new() -> Self {
         Self {
-            realms: Mutex::new(vec![]),
+            realms: RwLock::new(Arc::new(vec![])),
         }
     }
 
     /// Add realm to store
     pub fn add_realm(&self, realm: Realm) {
-        self.realms.lock().unwrap().push(realm);
+        let mut realms = self.realms.write().unwrap();
+        Arc::make_mut(&mut realms).push(realm);
     }
 
     /// Get all realms
-    pub fn get_all(&self) -> Vec<Realm> {
-        self.realms.lock().unwrap().clone()
+    pub fn get_all(&self) -> Arc<Vec<Realm>> {
+        self.realms.read().unwrap().clone()
     }
 
     /// Get realm by name
     pub fn get_by_name(&self, name: &str) -> Option<Realm> {
         self.realms
-            .lock()
+            .read()
             .unwrap()
             .iter()
             .find(|r| r.name == name)
