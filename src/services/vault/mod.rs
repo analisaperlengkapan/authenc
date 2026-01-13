@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use uuid::Uuid;
 
 /// Vault provider trait for secret management
 #[async_trait]
@@ -55,7 +56,11 @@ impl VaultProvider for FileVaultProvider {
         if let Some(parent) = file_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        tokio::fs::write(file_path, value).await?;
+
+        // Atomic write: write to temp file then rename to ensure data integrity
+        let tmp_file_path = file_path.with_extension(format!("tmp.{}", Uuid::new_v4()));
+        tokio::fs::write(&tmp_file_path, value).await?;
+        tokio::fs::rename(tmp_file_path, file_path).await?;
         Ok(())
     }
 
