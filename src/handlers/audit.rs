@@ -225,7 +225,7 @@ pub async fn export_audit_logs_csv(
         );
     }
 
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "text/csv")
         .header(
@@ -241,7 +241,7 @@ pub async fn export_audit_logs_csv(
                     error: "Failed to generate CSV download".to_string(),
                 }),
             )
-        })?)
+        })
 }
 
 /// Create audit log routes for the application

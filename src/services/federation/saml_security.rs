@@ -245,8 +245,8 @@ impl SamlSecurityValidator {
 
         // Check certificate revocation via CRL if enabled
         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-        if self.config.enable_crl_check {
-            if let Some(crl_manager) = &self.crl_manager {
+        if self.config.enable_crl_check
+            && let Some(crl_manager) = &self.crl_manager {
                 let mut manager = crl_manager.lock().unwrap();
                 match manager.check_revocation(&cert) {
                     Ok(RevocationStatus::NotRevoked) => {
@@ -274,11 +274,10 @@ impl SamlSecurityValidator {
                     }
                 }
             }
-        }
         // Check certificate revocation via OCSP if enabled
         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-        if self.config.enable_ocsp_check {
-            if let Some(ocsp_client) = &self.ocsp_client {
+        if self.config.enable_ocsp_check
+            && let Some(ocsp_client) = &self.ocsp_client {
                 // Get issuer from certificate chain if validator is available
                 let issuer = if let Some(cert_validator) = &self.cert_validator {
                     match cert_validator.get_issuer_from_chain(&cert) {
@@ -335,7 +334,6 @@ impl SamlSecurityValidator {
                     tracing::debug!("OCSP check skipped: issuer certificate not available");
                 }
             }
-        }
         // Verify signature with validated certificate
         let is_valid = signature
             .verify(&cert, xml)
