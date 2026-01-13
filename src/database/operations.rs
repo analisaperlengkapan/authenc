@@ -11038,3 +11038,15 @@ pub mod spi {
         Ok(Some((row.get(0), row.get(1))))
     }
 }
+
+/// Database operations for realms
+pub mod realms {
+    use crate::{
+        database::Database,
+        error::{AuthencError, Result},
+        models::Realm,
+    };
+
+    /// List all non-deleted realms
+    pub async fn list_realms(db: &Database) -> Result<Vec<Realm>> {
+        let query = r#

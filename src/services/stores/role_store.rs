@@ -1,5 +1,5 @@
 use crate::models::role::Role;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 /// In-memory store for managing roles
 pub struct RoleStore {
@@ -27,8 +27,8 @@ impl RoleStore {
     }
 
     /// Get all roles
-    pub fn get_all(&self) -> Vec<Role> {
-        self.roles.lock().unwrap().clone()
+    pub fn get_roles(&self) -> MutexGuard<'_, Vec<Role>> {
+        self.roles.lock().unwrap()
     }
 
     /// Get roles by realm ID

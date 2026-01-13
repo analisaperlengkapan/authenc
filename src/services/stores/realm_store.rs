@@ -1,5 +1,5 @@
 use crate::models::realm::Realm;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 /// In-memory store for managing realms
 pub struct RealmStore {
@@ -26,9 +26,9 @@ impl RealmStore {
         self.realms.lock().unwrap().push(realm);
     }
 
-    /// Get all realms
-    pub fn get_all(&self) -> Vec<Realm> {
-        self.realms.lock().unwrap().clone()
+    /// Get all realms for read-only access
+    pub fn get_realms(&self) -> MutexGuard<Vec<Realm>> {
+        self.realms.lock().unwrap()
     }
 
     /// Get realm by name
