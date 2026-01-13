@@ -2,7 +2,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 
 /// Vault provider trait for secret management
@@ -44,8 +43,8 @@ impl FileVaultProvider {
 impl VaultProvider for FileVaultProvider {
     async fn get_secret(&self, key: &str) -> Result<Option<String>> {
         let file_path = Path::new(&self.base_path).join(key);
-        if file_path.exists() {
-            let content = fs::read_to_string(file_path)?;
+        if tokio::fs::try_exists(&file_path).await.unwrap_or(false) {
+            let content = tokio::fs::read_to_string(file_path).await?;
             Ok(Some(content.trim().to_string()))
         } else {
             Ok(None)
@@ -55,24 +54,24 @@ impl VaultProvider for FileVaultProvider {
     async fn set_secret(&self, key: &str, value: &str) -> Result<()> {
         let file_path = Path::new(&self.base_path).join(key);
         if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent)?;
+            tokio::fs::create_dir_all(parent).await?;
         }
-        fs::write(file_path, value)?;
+        tokio::fs::write(file_path, value).await?;
         Ok(())
     }
 
     async fn delete_secret(&self, key: &str) -> Result<()> {
         let file_path = Path::new(&self.base_path).join(key);
-        if file_path.exists() {
-            fs::remove_file(file_path)?;
+        if tokio::fs::try_exists(&file_path).await.unwrap_or(false) {
+            tokio::fs::remove_file(file_path).await?;
         }
         Ok(())
     }
 
     async fn list_secrets(&self) -> Result<Vec<String>> {
         let mut secrets = Vec::new();
-        if let Ok(entries) = fs::read_dir(&self.base_path) {
-            for entry in entries.flatten() {
+        if let Ok(mut entries) = tokio::fs::read_dir(&self.base_path).await {
+            while let Ok(Some(entry)) = entries.next_entry().await {
                 if let Some(file_name) = entry.file_name().to_str() {
                     secrets.push(file_name.to_string());
                 }
