@@ -32,12 +32,20 @@ impl UserStoreTrait for MockUserStore {
         Ok(users.iter().find(|u| u.id == user_id).cloned())
     }
 
-    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AuthencError> {
+    async fn get_user_by_username(
+        &self,
+        _realm_id: &Uuid,
+        username: &str,
+    ) -> Result<Option<User>, AuthencError> {
         let users = self.users.lock().unwrap();
         Ok(users.iter().find(|u| u.username == username).cloned())
     }
 
-    async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, AuthencError> {
+    async fn get_user_by_email(
+        &self,
+        _realm_id: &Uuid,
+        email: &str,
+    ) -> Result<Option<User>, AuthencError> {
         let users = self.users.lock().unwrap();
         Ok(users.iter().find(|u| u.email == email).cloned())
     }

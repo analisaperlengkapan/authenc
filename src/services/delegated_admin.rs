@@ -174,7 +174,7 @@ impl DelegatedAdminService for DefaultDelegatedAdminService {
                             return Ok(true);
                         }
                         // Check composite roles recursively
-                        if self.check_composite_permissions(role, permission, &roles) {
+                        if Self::check_composite_permissions(role, permission, &roles) {
                             return Ok(true);
                         }
                     }
@@ -208,7 +208,7 @@ impl DelegatedAdminService for DefaultDelegatedAdminService {
                     if let Some(role) = roles.get(role_id) {
                         permissions.extend(role.permissions.clone());
                         // Add permissions from composite roles
-                        self.collect_composite_permissions(role, &mut permissions, &roles);
+                        Self::collect_composite_permissions(role, &mut permissions, &roles);
                     }
                 }
             }
@@ -315,7 +315,6 @@ impl DelegatedAdminService for DefaultDelegatedAdminService {
 impl DefaultDelegatedAdminService {
     /// Helper method to check composite role permissions recursively
     fn check_composite_permissions(
-        &self,
         role: &DelegatedAdminRole,
         permission: &DelegatedAdminPermission,
         all_roles: &HashMap<Uuid, DelegatedAdminRole>,
@@ -330,7 +329,7 @@ impl DefaultDelegatedAdminService {
                     return true;
                 }
                 // Recursively check composite roles
-                if self.check_composite_permissions(composite_role, permission, all_roles) {
+                if Self::check_composite_permissions(composite_role, permission, all_roles) {
                     return true;
                 }
             }
@@ -341,7 +340,6 @@ impl DefaultDelegatedAdminService {
 
     /// Helper method to collect permissions from composite roles
     fn collect_composite_permissions(
-        &self,
         role: &DelegatedAdminRole,
         permissions: &mut HashSet<DelegatedAdminPermission>,
         all_roles: &HashMap<Uuid, DelegatedAdminRole>,
@@ -354,7 +352,7 @@ impl DefaultDelegatedAdminService {
             if let Some(composite_role) = all_roles.get(composite_id) {
                 permissions.extend(composite_role.permissions.clone());
                 // Recursively collect from composite roles
-                self.collect_composite_permissions(composite_role, permissions, all_roles);
+                Self::collect_composite_permissions(composite_role, permissions, all_roles);
             }
         }
     }

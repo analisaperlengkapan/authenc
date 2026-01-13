@@ -264,12 +264,11 @@ impl VaultProvider for HashiCorpVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(data) = json.get("data").and_then(|d| d.get("data")) {
-                    if let Some(value) = data.get("value") {
-                        if let Some(v) = value.as_str() {
-                            return Ok(Some(v.to_string()));
-                        }
-                    }
+                if let Some(data) = json.get("data").and_then(|d| d.get("data"))
+                    && let Some(value) = data.get("value")
+                    && let Some(v) = value.as_str()
+                {
+                    return Ok(Some(v.to_string()));
                 }
             }
 
@@ -359,13 +358,13 @@ impl VaultProvider for HashiCorpVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(keys) = json.get("data").and_then(|d| d.get("keys")) {
-                    if let Some(keys_array) = keys.as_array() {
-                        return Ok(keys_array
-                            .iter()
-                            .filter_map(|k| k.as_str().map(|s| s.to_string()))
-                            .collect());
-                    }
+                if let Some(keys) = json.get("data").and_then(|d| d.get("keys"))
+                    && let Some(keys_array) = keys.as_array()
+                {
+                    return Ok(keys_array
+                        .iter()
+                        .filter_map(|k| k.as_str().map(|s| s.to_string()))
+                        .collect());
                 }
             }
 
@@ -437,10 +436,10 @@ impl VaultProvider for AzureKeyVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(value) = json.get("value") {
-                    if let Some(v) = value.as_str() {
-                        return Ok(Some(v.to_string()));
-                    }
+                if let Some(value) = json.get("value")
+                    && let Some(v) = value.as_str()
+                {
+                    return Ok(Some(v.to_string()));
                 }
             }
 
@@ -534,18 +533,18 @@ impl VaultProvider for AzureKeyVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(value) = json.get("value") {
-                    if let Some(secrets_array) = value.as_array() {
-                        return Ok(secrets_array
-                            .iter()
-                            .filter_map(|s| {
-                                s.get("id")
-                                    .and_then(|id| id.as_str())
-                                    .and_then(|id_str| id_str.rsplit('/').next())
-                                    .map(|name| name.to_string())
-                            })
-                            .collect());
-                    }
+                if let Some(value) = json.get("value")
+                    && let Some(secrets_array) = value.as_array()
+                {
+                    return Ok(secrets_array
+                        .iter()
+                        .filter_map(|s| {
+                            s.get("id")
+                                .and_then(|id| id.as_str())
+                                .and_then(|id_str| id_str.rsplit('/').next())
+                                .map(|name| name.to_string())
+                        })
+                        .collect());
                 }
             }
 
@@ -647,10 +646,10 @@ impl VaultProvider for AwsSecretsManagerProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(secret) = json.get("SecretString") {
-                    if let Some(s) = secret.as_str() {
-                        return Ok(Some(s.to_string()));
-                    }
+                if let Some(secret) = json.get("SecretString")
+                    && let Some(s) = secret.as_str()
+                {
+                    return Ok(Some(s.to_string()));
                 }
             }
 
@@ -770,17 +769,17 @@ impl VaultProvider for AwsSecretsManagerProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(secrets) = json.get("SecretList") {
-                    if let Some(secrets_array) = secrets.as_array() {
-                        return Ok(secrets_array
-                            .iter()
-                            .filter_map(|s| {
-                                s.get("Name")
-                                    .and_then(|n| n.as_str())
-                                    .map(|name| name.to_string())
-                            })
-                            .collect());
-                    }
+                if let Some(secrets) = json.get("SecretList")
+                    && let Some(secrets_array) = secrets.as_array()
+                {
+                    return Ok(secrets_array
+                        .iter()
+                        .filter_map(|s| {
+                            s.get("Name")
+                                .and_then(|n| n.as_str())
+                                .map(|name| name.to_string())
+                        })
+                        .collect());
                 }
             }
 

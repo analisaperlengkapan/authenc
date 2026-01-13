@@ -1492,7 +1492,7 @@ pub mod organizations {
                 id: row.get(0),
                 organization_id: row.get(1),
                 user_id: row.get(2),
-                role: OrganizationRole::from_str(&row.get::<_, String>(3))
+                role: OrganizationRole::parse(&row.get::<_, String>(3))
                     .unwrap_or(OrganizationRole::Member)
                     .as_str()
                     .to_string(),
@@ -5455,54 +5455,76 @@ pub mod events {
         Ok(rows[0].get(0))
     }
 
+    /// Parameters for querying event log
+    pub struct QueryEventLogParams {
+        /// Realm ID
+        pub realm_id: Uuid,
+        /// Event category
+        pub event_category: Option<String>,
+        /// Event type
+        pub event_type: Option<String>,
+        /// Resource type
+        pub resource_type: Option<String>,
+        /// Resource ID
+        pub resource_id: Option<String>,
+        /// User ID
+        pub user_id: Option<Uuid>,
+        /// Start date
+        pub from_date: Option<DateTime<Utc>>,
+        /// End date
+        pub to_date: Option<DateTime<Utc>>,
+        /// Filter for successful events only
+        pub success_only: Option<bool>,
+        /// Offset for pagination
+        pub offset: i64,
+        /// Limit for pagination
+        pub limit: i64,
+    }
+
     /// Query event log with filtering
     pub async fn query_event_log(
         db: &Database,
-        realm_id: Uuid,
-        event_category: Option<String>,
-        event_type: Option<String>,
-        resource_type: Option<String>,
-        user_id: Option<Uuid>,
-        from_date: Option<DateTime<Utc>>,
-        to_date: Option<DateTime<Utc>>,
-        success_only: Option<bool>,
-        offset: i64,
-        limit: i64,
+        params: QueryEventLogParams,
     ) -> Result<Vec<JsonValue>> {
         let mut where_clauses = vec![String::from("realm_id = $1")];
         let mut param_index = 2;
 
-        if event_category.is_some() {
+        if params.event_category.is_some() {
             where_clauses.push(format!("event_category = ${}", param_index));
             param_index += 1;
         }
 
-        if event_type.is_some() {
+        if params.event_type.is_some() {
             where_clauses.push(format!("event_type = ${}", param_index));
             param_index += 1;
         }
 
-        if resource_type.is_some() {
+        if params.resource_type.is_some() {
             where_clauses.push(format!("resource_type = ${}", param_index));
             param_index += 1;
         }
 
-        if user_id.is_some() {
+        if params.resource_id.is_some() {
+            where_clauses.push(format!("resource_id = ${}", param_index));
+            param_index += 1;
+        }
+
+        if params.user_id.is_some() {
             where_clauses.push(format!("user_id = ${}", param_index));
             param_index += 1;
         }
 
-        if from_date.is_some() {
+        if params.from_date.is_some() {
             where_clauses.push(format!("created_at >= ${}", param_index));
             param_index += 1;
         }
 
-        if to_date.is_some() {
+        if params.to_date.is_some() {
             where_clauses.push(format!("created_at <= ${}", param_index));
             param_index += 1;
         }
 
-        if let Some(true) = success_only {
+        if let Some(true) = params.success_only {
             where_clauses.push(String::from("success = TRUE"));
         }
 
@@ -5524,31 +5546,40 @@ pub mod events {
             param_index + 1
         );
 
-        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&realm_id];
+        let mut sql_params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
+            vec![Box::new(params.realm_id)];
 
-        if let Some(ref cat) = event_category {
-            params.push(cat);
+        if let Some(cat) = params.event_category {
+            sql_params.push(Box::new(cat));
         }
-        if let Some(ref et) = event_type {
-            params.push(et);
+        if let Some(et) = params.event_type {
+            sql_params.push(Box::new(et));
         }
-        if let Some(ref rt) = resource_type {
-            params.push(rt);
+        if let Some(rt) = params.resource_type {
+            sql_params.push(Box::new(rt));
         }
-        if let Some(ref uid) = user_id {
-            params.push(uid);
+        if let Some(rid) = params.resource_id {
+            sql_params.push(Box::new(rid));
         }
-        if let Some(ref from) = from_date {
-            params.push(from);
+        if let Some(uid) = params.user_id {
+            sql_params.push(Box::new(uid));
         }
-        if let Some(ref to) = to_date {
-            params.push(to);
+        if let Some(from) = params.from_date {
+            sql_params.push(Box::new(from));
+        }
+        if let Some(to) = params.to_date {
+            sql_params.push(Box::new(to));
         }
 
-        params.push(&limit);
-        params.push(&offset);
+        sql_params.push(Box::new(params.limit));
+        sql_params.push(Box::new(params.offset));
 
-        let rows = db.query_raw(&query, &params).await?;
+        let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = sql_params
+            .iter()
+            .map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync))
+            .collect();
+
+        let rows = db.query_raw(&query, &params_refs).await?;
 
         Ok(rows
             .into_iter()

@@ -77,6 +77,13 @@ struct FipsStatusResponse {
     current_profile: String,
 }
 
+/// Creates the router for FIPS-related endpoints.
+///
+/// This function sets up routes for managing FIPS compliance, security profiles,
+/// and status checks.
+///
+/// # Returns
+/// A `Router` configured with FIPS endpoints.
 pub fn create_fips_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/status", get(get_fips_status))

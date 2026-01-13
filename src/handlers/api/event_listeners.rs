@@ -117,20 +117,23 @@ pub async fn query_event_log(
         None
     };
 
-    let events = event_ops::query_event_log(
-        db,
+    use crate::database::operations::events::QueryEventLogParams;
+
+    let query_params = QueryEventLogParams {
         realm_id,
-        params.event_category,
-        params.event_type,
-        params.resource_type,
-        params.user_id,
+        event_category: params.event_category,
+        event_type: params.event_type,
+        resource_type: params.resource_type,
+        resource_id: None,
+        user_id: params.user_id,
         from_date,
         to_date,
-        params.success_only,
-        params.offset.unwrap_or(0),
-        params.limit.unwrap_or(100),
-    )
-    .await?;
+        success_only: params.success_only,
+        offset: params.offset.unwrap_or(0),
+        limit: params.limit.unwrap_or(100),
+    };
+
+    let events = event_ops::query_event_log(db, query_params).await?;
 
     Ok(Json(json!({
         "events": events,

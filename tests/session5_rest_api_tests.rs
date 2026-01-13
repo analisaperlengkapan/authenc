@@ -160,28 +160,40 @@ async fn test_event_log_query_with_filters() {
     }
 
     // Query events
-    let events = authenc::database::operations::events::query_event_log(
-        &db, realm_id, None, None, None, None, None, None, None, 0, 10,
-    )
-    .await
-    .expect("Failed to query events");
+    let params = authenc::database::operations::events::QueryEventLogParams {
+        realm_id,
+        event_category: None,
+        event_type: None,
+        resource_type: None,
+        resource_id: None,
+        user_id: None,
+        from_date: None,
+        to_date: None,
+        success_only: None,
+        offset: 0,
+        limit: 10,
+    };
+    let events = authenc::database::operations::events::query_event_log(&db, params)
+        .await
+        .expect("Failed to query events");
 
     assert!(events.len() >= 5);
 
     // Query with category filter
-    let filtered_events = authenc::database::operations::events::query_event_log(
-        &db,
+    let filtered_params = authenc::database::operations::events::QueryEventLogParams {
         realm_id,
-        Some("AUTH".to_string()),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        0,
-        10,
-    )
+        event_category: Some("AUTH".to_string()),
+        event_type: None,
+        resource_type: None,
+        resource_id: None,
+        user_id: None,
+        from_date: None,
+        to_date: None,
+        success_only: None,
+        offset: 0,
+        limit: 10,
+    };
+    let filtered_events = authenc::database::operations::events::query_event_log(&db, filtered_params)
     .await
     .expect("Failed to query with filter");
 

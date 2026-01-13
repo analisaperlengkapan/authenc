@@ -245,32 +245,32 @@ impl SamlSecurityValidator {
 
         // Check certificate revocation via CRL if enabled
         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-        if self.config.enable_crl_check {
-            if let Some(crl_manager) = &self.crl_manager {
-                let mut manager = crl_manager.lock().unwrap();
-                match manager.check_revocation(&cert) {
-                    Ok(RevocationStatus::NotRevoked) => {
-                        tracing::debug!("CRL check passed: certificate not revoked");
+        if self.config.enable_crl_check
+            && let Some(crl_manager) = &self.crl_manager
+        {
+            let mut manager = crl_manager.lock().unwrap();
+            match manager.check_revocation(&cert) {
+                Ok(RevocationStatus::NotRevoked) => {
+                    tracing::debug!("CRL check passed: certificate not revoked");
+                }
+                Ok(RevocationStatus::Revoked { reason, .. }) => {
+                    return Err(anyhow!(
+                        "Certificate revoked (CRL): {}",
+                        reason.unwrap_or_else(|| "No reason provided".to_string())
+                    ));
+                }
+                Ok(RevocationStatus::Unknown) => {
+                    if self.config.crl_fail_on_unavailable {
+                        return Err(anyhow!("CRL revocation status unknown (hard-fail mode)"));
+                    } else {
+                        tracing::warn!("CRL revocation status unknown (soft-fail mode)");
                     }
-                    Ok(RevocationStatus::Revoked { reason, .. }) => {
-                        return Err(anyhow!(
-                            "Certificate revoked (CRL): {}",
-                            reason.unwrap_or_else(|| "No reason provided".to_string())
-                        ));
-                    }
-                    Ok(RevocationStatus::Unknown) => {
-                        if self.config.crl_fail_on_unavailable {
-                            return Err(anyhow!("CRL revocation status unknown (hard-fail mode)"));
-                        } else {
-                            tracing::warn!("CRL revocation status unknown (soft-fail mode)");
-                        }
-                    }
-                    Err(e) => {
-                        if self.config.crl_fail_on_unavailable {
-                            return Err(anyhow!("CRL check failed (hard-fail mode): {}", e));
-                        } else {
-                            tracing::warn!("CRL check failed (soft-fail mode): {}", e);
-                        }
+                }
+                Err(e) => {
+                    if self.config.crl_fail_on_unavailable {
+                        return Err(anyhow!("CRL check failed (hard-fail mode): {}", e));
+                    } else {
+                        tracing::warn!("CRL check failed (soft-fail mode): {}", e);
                     }
                 }
             }
@@ -278,63 +278,63 @@ impl SamlSecurityValidator {
 
         // Check certificate revocation via OCSP if enabled
         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-        if self.config.enable_ocsp_check {
-            if let Some(ocsp_client) = &self.ocsp_client {
-                // Get issuer from certificate chain if validator is available
-                let issuer = if let Some(cert_validator) = &self.cert_validator {
-                    match cert_validator.get_issuer_from_chain(&cert) {
-                        Ok(Some(issuer)) => Some(issuer),
-                        Ok(None) => {
-                            tracing::warn!(
-                                "Could not determine issuer from certificate chain for OCSP check"
-                            );
-                            None
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to extract issuer for OCSP check: {}", e);
-                            None
-                        }
+        if self.config.enable_ocsp_check
+            && let Some(ocsp_client) = &self.ocsp_client
+        {
+            // Get issuer from certificate chain if validator is available
+            let issuer = if let Some(cert_validator) = &self.cert_validator {
+                match cert_validator.get_issuer_from_chain(&cert) {
+                    Ok(Some(issuer)) => Some(issuer),
+                    Ok(None) => {
+                        tracing::warn!(
+                            "Could not determine issuer from certificate chain for OCSP check"
+                        );
+                        None
                     }
-                } else {
-                    None
-                };
-
-                if let Some(issuer) = issuer {
-                    let mut client = ocsp_client.lock().unwrap();
-                    match client.check_status(&cert, &issuer) {
-                        Ok(OcspStatus::Good) => {
-                            tracing::debug!("OCSP check passed: certificate is good");
-                        }
-                        Ok(OcspStatus::Revoked {
-                            reason,
-                            revocation_time,
-                        }) => {
-                            return Err(anyhow!(
-                                "Certificate revoked (OCSP): {} (time: {:?})",
-                                reason.unwrap_or_else(|| "No reason provided".to_string()),
-                                revocation_time
-                            ));
-                        }
-                        Ok(OcspStatus::Unknown) => {
-                            if self.config.ocsp_fail_on_unavailable {
-                                return Err(anyhow!(
-                                    "OCSP revocation status unknown (hard-fail mode)"
-                                ));
-                            } else {
-                                tracing::warn!("OCSP revocation status unknown (soft-fail mode)");
-                            }
-                        }
-                        Err(e) => {
-                            if self.config.ocsp_fail_on_unavailable {
-                                return Err(anyhow!("OCSP check failed (hard-fail mode): {}", e));
-                            } else {
-                                tracing::warn!("OCSP check failed (soft-fail mode): {}", e);
-                            }
-                        }
+                    Err(e) => {
+                        tracing::warn!("Failed to extract issuer for OCSP check: {}", e);
+                        None
                     }
-                } else {
-                    tracing::debug!("OCSP check skipped: issuer certificate not available");
                 }
+            } else {
+                None
+            };
+
+            if let Some(issuer) = issuer {
+                let mut client = ocsp_client.lock().unwrap();
+                match client.check_status(&cert, &issuer) {
+                    Ok(OcspStatus::Good) => {
+                        tracing::debug!("OCSP check passed: certificate is good");
+                    }
+                    Ok(OcspStatus::Revoked {
+                        reason,
+                        revocation_time,
+                    }) => {
+                        return Err(anyhow!(
+                            "Certificate revoked (OCSP): {} (time: {:?})",
+                            reason.unwrap_or_else(|| "No reason provided".to_string()),
+                            revocation_time
+                        ));
+                    }
+                    Ok(OcspStatus::Unknown) => {
+                        if self.config.ocsp_fail_on_unavailable {
+                            return Err(anyhow!(
+                                "OCSP revocation status unknown (hard-fail mode)"
+                            ));
+                        } else {
+                            tracing::warn!("OCSP revocation status unknown (soft-fail mode)");
+                        }
+                    }
+                    Err(e) => {
+                        if self.config.ocsp_fail_on_unavailable {
+                            return Err(anyhow!("OCSP check failed (hard-fail mode): {}", e));
+                        } else {
+                            tracing::warn!("OCSP check failed (soft-fail mode): {}", e);
+                        }
+                    }
+                }
+            } else {
+                tracing::debug!("OCSP check skipped: issuer certificate not available");
             }
         }
 

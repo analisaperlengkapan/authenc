@@ -90,13 +90,21 @@ impl OrganizationRole {
     }
 
     /// Convert string to OrganizationRole
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "OWNER" => Some(OrganizationRole::Owner),
             "ADMIN" => Some(OrganizationRole::Admin),
             "MEMBER" => Some(OrganizationRole::Member),
             _ => None,
         }
+    }
+}
+
+impl std::str::FromStr for OrganizationRole {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s).ok_or(())
     }
 }
 
