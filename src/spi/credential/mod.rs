@@ -398,6 +398,7 @@ impl CredentialProvider for PasswordCredentialProvider {
         // Hash the password if provided in secret_data
         if let Some(password) = &credential.secret_data {
             let hashed_password = hash_password(password)
+                .await
                 .map_err(|e| Error::validation(format!("Failed to hash password: {}", e)))?;
             credential.secret_data = Some(hashed_password);
         } else {
@@ -482,6 +483,7 @@ impl PasswordCredentialProvider {
 
         if let Some(stored_hash) = &credential.secret_data {
             verify_password(stored_hash, password)
+                .await
                 .map_err(|e| Error::validation(format!("Password verification failed: {}", e)))
         } else {
             Ok(false)

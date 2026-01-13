@@ -445,7 +445,10 @@ pub async fn validate_client(
             // If client_secret_hash is stored as a hash, verify it
             // If it's stored plain (not recommended but possible in dev), compare directly
             // For this implementation we assume hashed
-            if verify_password(&client.client_secret_hash, secret).unwrap_or(false) {
+            if verify_password(&client.client_secret_hash, secret)
+                .await
+                .unwrap_or(false)
+            {
                 return Ok(true);
             }
 
@@ -932,7 +935,7 @@ async fn handle_password_grant(
     let mut authenticated_user = None;
     if let Some(user) = user_opt {
         if let Some(hash) = &user.password_hash {
-            if verify_password(hash, &password).unwrap_or(false) {
+            if verify_password(hash, &password).await.unwrap_or(false) {
                 authenticated_user = Some(user);
             } else {
                 tracing::warn!("Failed password verification for user: {}", username);
