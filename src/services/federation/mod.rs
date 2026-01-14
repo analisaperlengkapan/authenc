@@ -451,10 +451,9 @@ impl FederationService {
     /// Register identity provider
     pub async fn register_provider(&mut self, config: IdentityProviderConfig) -> Result<()> {
         let provider: Box<dyn IdentityProvider> = match config.provider_type {
-            IdentityProviderType::SAML => Box::new(SamlIdentityProvider::new(
-                config.clone(),
-                Arc::clone(&self.db),
-            )?),
+            IdentityProviderType::SAML => Box::new(
+                SamlIdentityProvider::new(config.clone(), Arc::clone(&self.db)).await?,
+            ),
             IdentityProviderType::OIDC => {
                 Box::new(OidcIdentityProvider::new(config.clone()).await?)
             }

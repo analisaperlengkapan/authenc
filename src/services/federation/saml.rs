@@ -84,7 +84,7 @@ pub struct SamlIdentityProvider {
 
 impl SamlIdentityProvider {
     /// Create new SAML identity provider
-    pub fn new(config: IdentityProviderConfig, db: Arc<Database>) -> Result<Self> {
+    pub async fn new(config: IdentityProviderConfig, db: Arc<Database>) -> Result<Self> {
         let entity_id = config
             .config
             .get("entity_id")
@@ -111,16 +111,21 @@ impl SamlIdentityProvider {
 
         // Load X.509 certificate if provided
         let certificate = if let Some(cert_path) = &config.truststore_path {
-            Some(Self::load_certificate(cert_path)?)
+            Some(Self::load_certificate(cert_path).await?)
         } else if let Some(cert_pem) = config.config.get("certificate") {
-            Some(X509::from_pem(cert_pem.as_bytes())?)
+            let cert_pem = cert_pem.clone();
+            let cert = tokio::task::spawn_blocking(move || {
+                X509::from_pem(cert_pem.as_bytes())
+            })
+            .await??;
+            Some(cert)
         } else {
             None
         };
 
         // Load trust store for certificate validation
         let trust_certs = if let Some(truststore_path) = &config.truststore_path {
-            Self::load_trust_store(truststore_path).ok()
+            Self::load_trust_store(truststore_path).await.ok()
         } else {
             None
         };
@@ -164,37 +169,50 @@ impl SamlIdentityProvider {
     }
 
     /// Load X.509 certificate from file
-    fn load_certificate(path: &str) -> Result<X509> {
-        let cert_pem = std::fs::read(path)?;
-        Ok(X509::from_pem(&cert_pem)?)
+    async fn load_certificate(path: &str) -> Result<X509> {
+        let cert_pem = tokio::fs::read(path).await?;
+        let cert = tokio::task::spawn_blocking(move || X509::from_pem(&cert_pem)).await??;
+        Ok(cert)
     }
 
     /// Load trust store (multiple CA certificates) from file or directory
-    fn load_trust_store(path: &str) -> Result<Vec<X509>> {
+    async fn load_trust_store(path: &str) -> Result<Vec<X509>> {
         use std::path::Path;
 
-        let path_obj = Path::new(path);
+        let path_obj = Path::new(path).to_owned();
 
         if path_obj.is_file() {
             // Single file - may contain multiple PEM certificates
-            let pem_data = std::fs::read(path)?;
-            let certs = X509::stack_from_pem(&pem_data)?;
+            let pem_data = tokio::fs::read(&path_obj).await?;
+            let certs =
+                tokio::task::spawn_blocking(move || X509::stack_from_pem(&pem_data)).await??;
             Ok(certs.into_iter().collect())
         } else if path_obj.is_dir() {
             // Directory - load all .pem and .crt files
             let mut all_certs = Vec::new();
 
-            for entry in std::fs::read_dir(path)? {
-                let entry = entry?;
+            let mut entries = tokio::fs::read_dir(&path_obj).await?;
+
+            while let Some(entry) = entries.next_entry().await? {
                 let path = entry.path();
 
-                if path.is_file()
-                    && let Some(ext) = path.extension()
-                        && (ext == "pem" || ext == "crt")
-                            && let Ok(pem_data) = std::fs::read(&path)
-                                && let Ok(certs) = X509::stack_from_pem(&pem_data) {
+                if path.is_file() {
+                    if let Some(ext) = path.extension() {
+                        if ext == "pem" || ext == "crt" {
+                            if let Ok(pem_data) = tokio::fs::read(&path).await {
+                                let certs_res =
+                                    tokio::task::spawn_blocking(move || {
+                                        X509::stack_from_pem(&pem_data)
+                                    })
+                                    .await?;
+
+                                if let Ok(certs) = certs_res {
                                     all_certs.extend(certs.into_iter());
                                 }
+                            }
+                        }
+                    }
+                }
             }
 
             if all_certs.is_empty() {
