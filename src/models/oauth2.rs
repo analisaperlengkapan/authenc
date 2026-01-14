@@ -182,6 +182,35 @@ pub struct OAuth2TokenResponse {
     pub id_token: Option<String>,
 }
 
+/// Access Token Claims for JWT
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AccessTokenClaims {
+    /// The issuer of the token
+    pub iss: String,
+    /// The subject (user) identifier
+    pub sub: String,
+    /// The audience (client) identifier
+    pub aud: String,
+    /// The client identifier
+    pub client_id: String,
+    /// The expiration time
+    pub exp: i64,
+    /// The issued at time
+    pub iat: i64,
+    /// The not before time
+    pub nbf: i64,
+    /// The JWT ID for uniqueness
+    pub jti: String,
+    /// The granted scope
+    pub scope: Option<String>,
+    /// The user's roles
+    pub roles: Option<Vec<String>>,
+    /// The user's groups
+    pub groups: Option<Vec<String>>,
+    /// The session identifier
+    pub sid: Option<String>,
+}
+
 use crate::error::Result;
 
 /// Converts a PostgreSQL database row into an OAuth2Client instance

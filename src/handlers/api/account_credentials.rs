@@ -118,6 +118,7 @@ pub async fn update_account_password(
             hash,
             &password_request.current_password,
         )
+        .await
         .unwrap_or(false),
         None => false,
     };
@@ -129,6 +130,7 @@ pub async fn update_account_password(
     // Hash the new password
     let new_password_hash =
         crate::utils::crypto::password::hash_password(&password_request.new_password)
+            .await
             .map_err(|e| AuthencError::internal(format!("Failed to hash password: {}", e)))?;
 
     // Update the password

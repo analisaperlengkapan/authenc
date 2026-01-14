@@ -1012,34 +1012,12 @@ Phase 3 UI & Integration
 
 #### Immediate Actions:
 ```rust
-// Priority 1: Device Management Database
-impl DeviceService {
-    pub async fn register_device_db(&self, device: &DeviceInfo) -> Result<Device, AuthencError> {
-        // TODO: Implement PostgreSQL device registration
-        // - Device fingerprinting storage
-        // - Trust score persistence
-        // - Session data management
-    }
+// Priority 1: Device Management Database - ✅ COMPLETED
+// Implemented in src/services/device.rs:
+// - register_device_db: Persists device with fingerprinting
+// - update_trust_score_db: Handles historical tracking and risk assessment
 
-    pub async fn update_trust_score_db(&self, device_id: Uuid, score: f64) -> Result<(), AuthencError> {
-        // TODO: Implement trust score updates
-        // - Historical score tracking
-        // - Risk assessment storage
-        // - Anomaly detection data
-    }
-}
-
-// Priority 2: WebAuthn Credentials Database
-impl WebAuthnService {
-    pub async fn store_credential_db(&self, credential: &WebAuthnCredential) -> Result<(), AuthencError> {
-        // TODO: Implement secure credential storage
-        // - Encrypted credential data
-        // - User association
-        // - Device binding
-    }
-}
-
-// Priority 3: OAuth2 Token Storage
+// Priority 2: OAuth2 Token Storage
 impl OAuth2Service {
     pub async fn store_access_token_db(&self, token: &AccessToken) -> Result<(), AuthencError> {
         // TODO: Implement token persistence
