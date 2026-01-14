@@ -32,12 +32,20 @@ impl UserStoreTrait for MockUserStore {
         Ok(users.iter().find(|u| u.id == user_id).cloned())
     }
 
-    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AuthencError> {
+    async fn get_user_by_username(
+        &self,
+        _realm_id: &Uuid,
+        username: &str,
+    ) -> Result<Option<User>, AuthencError> {
         let users = self.users.lock().unwrap();
         Ok(users.iter().find(|u| u.username == username).cloned())
     }
 
-    async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, AuthencError> {
+    async fn get_user_by_email(
+        &self,
+        _realm_id: &Uuid,
+        email: &str,
+    ) -> Result<Option<User>, AuthencError> {
         let users = self.users.lock().unwrap();
         Ok(users.iter().find(|u| u.email == email).cloned())
     }
@@ -117,6 +125,21 @@ impl UserStoreTrait for MockUserStore {
             .filter(|u| u.realm_id == Some(realm_id))
             .cloned()
             .collect())
+    }
+
+    async fn update_password(
+        &self,
+        user_id: Uuid,
+        password_hash: String,
+    ) -> Result<(), AuthencError> {
+        let mut users = self.users.lock().unwrap();
+        if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
+            user.password_hash = Some(password_hash);
+            user.password_changed_at = Some(chrono::Utc::now());
+            Ok(())
+        } else {
+            Err(AuthencError::resource_not_found("User not found"))
+        }
     }
 }
 

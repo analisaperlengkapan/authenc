@@ -300,6 +300,7 @@ pub async fn update_password(
     // Verify old password if user has a password hash
     if let Some(password_hash) = &user.password_hash {
         let is_valid = crate::utils::crypto::verify_password(password_hash, &req.old_password)
+            .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         if !is_valid {
             return Err(StatusCode::UNAUTHORIZED);
@@ -311,6 +312,7 @@ pub async fn update_password(
 
     // Hash the new password
     let new_password_hash = crate::utils::crypto::hash_password(&req.new_password)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Update password in database

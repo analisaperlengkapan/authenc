@@ -188,13 +188,12 @@ impl PasswordPolicyProvider for HashPasswordPolicyProvider {
         let lower_password = password.to_lowercase();
 
         // Check if password contains username
-        if let Some(user) = user_id {
-            if lower_password.contains(&user.to_lowercase()) {
+        if let Some(user) = user_id
+            && lower_password.contains(&user.to_lowercase()) {
                 return Err(PolicyError::simple(
                     "Password cannot contain username".to_string(),
                 ));
             }
-        }
 
         // Check for sequential characters
         let sequential_patterns = ["123", "abc", "qwe", "asd", "zxc"];

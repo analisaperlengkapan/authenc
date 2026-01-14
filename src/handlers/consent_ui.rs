@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::error::AuthencError;
-use crate::middleware::auth_middleware_axum::AuthUser;
+use crate::middleware::auth::AuthUser;
 use crate::models::events::{Event, EventType};
 use crate::services::stores::consent_store::ConsentStoreTrait;
 
@@ -59,6 +59,7 @@ pub async fn test_consent_page(
         id: "550e8400-e29b-41d4-a716-446655440001".to_string(), // Test user ID
         email: "test@example.com".to_string(),
         roles: vec!["user".to_string()],
+        session_id: None,
     };
 
     // Validate client
@@ -244,6 +245,7 @@ pub async fn test_process_consent(
         id: "550e8400-e29b-41d4-a716-446655440001".to_string(), // Test user ID
         email: "test@example.com".to_string(),
         roles: vec!["user".to_string()],
+        session_id: None,
     };
 
     // Get user ID

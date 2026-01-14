@@ -617,7 +617,7 @@ async fn test_concurrent_access_and_race_conditions() {
         .filter(|r| r.contains("already locked"))
         .count();
     assert!(success_count > 0);
-    assert!(conflict_count >= 0);
+    // conflict_count can be 0 or more, so no need to assert >= 0
 
     // Test concurrent session creation
     let state_clone = state.clone();

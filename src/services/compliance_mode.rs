@@ -8,6 +8,7 @@ use crate::AuthencError;
 use crate::models::events::{Event, EventType};
 use crate::services::compliance::{ComplianceFramework, GDPRComplianceChecks};
 use crate::services::events::EventManager;
+use crate::services::stores::ConsentStore;
 
 /// Trait for event management in compliance mode
 #[async_trait::async_trait]
@@ -37,11 +38,16 @@ pub struct ComplianceModeService {
     config: RwLock<ComplianceModeConfig>,
     /// Event manager for compliance events
     event_manager: Arc<dyn ComplianceEventManager>,
+    /// Consent store for compliance checks
+    consent_store: Option<Arc<ConsentStore>>,
 }
 
 impl ComplianceModeService {
     /// Create a new compliance mode service
-    pub fn new(event_manager: Arc<dyn ComplianceEventManager>) -> Self {
+    pub fn new(
+        event_manager: Arc<dyn ComplianceEventManager>,
+        consent_store: Option<Arc<ConsentStore>>,
+    ) -> Self {
         Self {
             config: RwLock::new(ComplianceModeConfig {
                 enabled: false,
@@ -51,6 +57,7 @@ impl ComplianceModeService {
                 audit_compliance: true,
             }),
             event_manager,
+            consent_store,
         }
     }
 
@@ -207,26 +214,23 @@ impl ComplianceModeService {
         match operation {
             "data_processing" => {
                 // Check if consent is obtained for data processing
-                if let Some(consent_obtained) = context.get("consent_obtained") {
-                    if !consent_obtained.as_bool().unwrap_or(false) {
+                if let Some(consent_obtained) = context.get("consent_obtained")
+                    && !consent_obtained.as_bool().unwrap_or(false) {
                         return Err(AuthencError::validation(
                             "GDPR violation: Data processing requires user consent",
                         ));
                     }
-                }
             }
             "data_retention" => {
                 // Check data retention limits
-                if let Some(data_age_days) = context.get("data_age_days") {
-                    if let Some(days) = data_age_days.as_u64() {
-                        if days > 2555 {
+                if let Some(data_age_days) = context.get("data_age_days")
+                    && let Some(days) = data_age_days.as_u64()
+                        && days > 2555 {
                             // 7 years in days
                             return Err(AuthencError::validation(
                                 "GDPR violation: Data retention exceeds 7-year limit",
                             ));
                         }
-                    }
-                }
             }
             _ => {}
         }
@@ -243,23 +247,21 @@ impl ComplianceModeService {
         match operation {
             "phi_access" => {
                 // Check if PHI access is authorized
-                if let Some(authorized) = context.get("authorized_access") {
-                    if !authorized.as_bool().unwrap_or(false) {
+                if let Some(authorized) = context.get("authorized_access")
+                    && !authorized.as_bool().unwrap_or(false) {
                         return Err(AuthencError::validation(
                             "HIPAA violation: Unauthorized access to protected health information",
                         ));
                     }
-                }
             }
             "phi_storage" => {
                 // Check if PHI is encrypted
-                if let Some(encrypted) = context.get("encrypted") {
-                    if !encrypted.as_bool().unwrap_or(false) {
+                if let Some(encrypted) = context.get("encrypted")
+                    && !encrypted.as_bool().unwrap_or(false) {
                         return Err(AuthencError::validation(
                             "HIPAA violation: Protected health information must be encrypted",
                         ));
                     }
-                }
             }
             _ => {}
         }
@@ -273,18 +275,14 @@ impl ComplianceModeService {
         operation: &str,
         context: &HashMap<String, serde_json::Value>,
     ) -> Result<(), AuthencError> {
-        match operation {
-            "financial_transaction" => {
-                // Check segregation of duties
-                if let Some(same_user) = context.get("same_user_initiated_and_approved") {
-                    if same_user.as_bool().unwrap_or(false) {
-                        return Err(AuthencError::validation(
-                            "SOX violation: Financial transactions require segregation of duties",
-                        ));
-                    }
+        if operation == "financial_transaction" {
+            // Check segregation of duties
+            if let Some(same_user) = context.get("same_user_initiated_and_approved")
+                && same_user.as_bool().unwrap_or(false) {
+                    return Err(AuthencError::validation(
+                        "SOX violation: Financial transactions require segregation of duties",
+                    ));
                 }
-            }
-            _ => {}
         }
 
         Ok(())
@@ -304,7 +302,7 @@ impl ComplianceModeService {
 
         // Run GDPR checks if enabled
         if config.frameworks.contains(&ComplianceFramework::GDPR) {
-            let gdpr_checks = GDPRComplianceChecks::new();
+            let _gdpr_checks = GDPRComplianceChecks::new();
             results.push(
                 GDPRComplianceChecks::data_encryption_check()
                     .execute()
@@ -316,7 +314,7 @@ impl ComplianceModeService {
                     .await?,
             );
             results.push(
-                GDPRComplianceChecks::consent_management_check(None) // TODO: Pass actual ConsentStore when available
+                GDPRComplianceChecks::consent_management_check(self.consent_store.clone())
                     .execute()
                     .await?,
             );
@@ -327,9 +325,11 @@ impl ComplianceModeService {
 }
 
 #[async_trait::async_trait]
-impl ComplianceEventManager for EventManager {
+impl ComplianceEventManager for RwLock<EventManager> {
     async fn fire_event(&self, event: Event) -> Result<(), AuthencError> {
-        self.fire_event(event)
+        self.read()
+            .await
+            .fire_event(event)
             .await
             .map_err(|e| AuthencError::internal(format!("Event firing failed: {}", e)))
     }

@@ -440,7 +440,7 @@ impl ProtocolMapper for GroupMembershipMapper {
             context
                 .groups
                 .iter()
-                .map(|g| g.split('/').last().unwrap_or(g).to_string())
+                .map(|g| g.split('/').next_back().unwrap_or(g).to_string())
                 .collect()
         };
 
@@ -513,11 +513,10 @@ impl ProtocolMapper for AudienceMapper {
         }
 
         // Include current client as audience
-        if let Some(ref client_id) = context.client_id {
-            if !audiences.contains(client_id) {
+        if let Some(ref client_id) = context.client_id
+            && !audiences.contains(client_id) {
                 audiences.push(client_id.clone());
             }
-        }
 
         if !audiences.is_empty() {
             result.insert("aud".to_string(), json!(audiences));

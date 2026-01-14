@@ -1,4 +1,4 @@
-use crate::database::Database;
+use crate::app::AppState;
 use crate::models::user::JITUserProvisioningResponse;
 use crate::services::broker::{ExternalUser, IdentityBrokerRegistry, IdentityProviderType};
 use axum::{
@@ -135,7 +135,7 @@ pub struct ProvidersListResponse {
 
 /// Create a new identity provider
 pub async fn create_provider(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Json(request): Json<CreateIdentityProviderRequest>,
 ) -> Result<Json<IdentityProviderResponse>, StatusCode> {
     let _registry = IdentityBrokerRegistry::new();
@@ -156,7 +156,7 @@ pub async fn create_provider(
 
 /// Get an identity provider by ID
 pub async fn get_provider(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Path(_provider_id): Path<Uuid>,
 ) -> Result<Json<IdentityProviderResponse>, StatusCode> {
     let _registry = IdentityBrokerRegistry::new();
@@ -167,7 +167,7 @@ pub async fn get_provider(
 
 /// Update an identity provider
 pub async fn update_provider(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Path(_provider_id): Path<Uuid>,
     Json(_request): Json<UpdateIdentityProviderRequest>,
 ) -> Result<Json<IdentityProviderResponse>, StatusCode> {
@@ -179,7 +179,7 @@ pub async fn update_provider(
 
 /// Delete an identity provider
 pub async fn delete_provider(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Path(_provider_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     let _registry = IdentityBrokerRegistry::new();
@@ -190,7 +190,7 @@ pub async fn delete_provider(
 
 /// List identity providers
 pub async fn list_providers(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Query(_query): Query<ListProvidersQuery>,
 ) -> Result<Json<ProvidersListResponse>, StatusCode> {
     let _registry = IdentityBrokerRegistry::new();
@@ -207,7 +207,7 @@ pub async fn list_providers(
 
 /// Authenticate user against external provider with JIT provisioning
 pub async fn authenticate(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Json(_request): Json<AuthenticateRequest>,
 ) -> Result<Json<AuthenticationResponse>, StatusCode> {
     let _registry = IdentityBrokerRegistry::new();
@@ -254,7 +254,7 @@ pub async fn authenticate(
 
 /// Sync external user with local user store
 pub async fn sync_user(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Json(_request): Json<SyncUserRequest>,
 ) -> Result<Json<SyncUserResponse>, StatusCode> {
     let _registry = IdentityBrokerRegistry::new();
@@ -283,7 +283,7 @@ pub async fn sync_user(
 }
 
 /// Create identity broker routes
-pub fn create_identity_broker_routes() -> Router<Arc<Database>> {
+pub fn create_identity_broker_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/providers", post(create_provider))
         .route("/providers", get(list_providers))

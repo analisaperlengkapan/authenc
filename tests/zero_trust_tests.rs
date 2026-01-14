@@ -648,6 +648,7 @@ async fn test_zero_trust_audit_logging() {
         error_message: None,
         request_id: Some("req_123".to_string()),
         correlation_id: Some("corr_456".to_string()),
+        realm_id: None,
     };
 
     // Verify audit event structure

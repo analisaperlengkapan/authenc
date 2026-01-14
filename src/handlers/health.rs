@@ -1,10 +1,18 @@
-use axum::extract::State;
+use axum::extract::{FromRef, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use chrono::Utc;
 use std::sync::Arc;
 
-use crate::database::Database;
+/// Wrapper state for database connectivity checks
+#[derive(Clone)]
+pub struct HealthState(pub Arc<crate::database::Database>);
+
+impl FromRef<Arc<crate::database::Database>> for HealthState {
+    fn from_ref(db: &Arc<crate::database::Database>) -> Self {
+        Self(db.clone())
+    }
+}
 
 /// Health check response
 #[derive(Debug, serde::Serialize)]
@@ -42,8 +50,8 @@ pub async fn health() -> impl IntoResponse {
 }
 
 /// Readiness check endpoint with database connectivity check
-pub async fn ready(State(db): State<Arc<Database>>) -> impl IntoResponse {
-    let db_status = match db.health_check().await {
+pub async fn ready(State(state): State<HealthState>) -> impl IntoResponse {
+    let db_status = match state.0.health_check().await {
         Ok(_) => "connected",
         Err(e) => {
             return (
@@ -79,7 +87,11 @@ pub async fn live() -> impl IntoResponse {
 }
 
 /// Create health routes
-pub fn create_health_routes() -> axum::Router<Arc<Database>> {
+pub fn create_health_routes<S>() -> axum::Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+    HealthState: FromRef<S>,
+{
     use axum::routing::get;
 
     axum::Router::new()
@@ -97,13 +109,18 @@ mod tests {
         http::{Request, StatusCode},
         routing::get,
     };
-    use http_body_util::BodyExt;
     use serde_json::Value;
     use tower::ServiceExt;
 
     #[tokio::test]
     async fn test_health_endpoint() {
-        let app = Router::new().route("/", get(health));
+        use crate::database::Database;
+        use http_body_util::BodyExt;
+
+        // Setup with mock DB (required by router state)
+        let db = Database::mock().await;
+        // Pass Arc<Database> directly, which implements FromRef<Arc<Database>>
+        let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
             .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
@@ -119,14 +136,66 @@ mod tests {
 
     #[tokio::test]
     async fn test_ready_endpoint() {
-        // For now, skip the database test as it requires complex setup
-        // TODO: Implement proper database testing with test containers or mocks
-        // This test would require setting up a test database or mocking the database
+        use crate::database::{Database, MockStatus};
+        use http_body_util::BodyExt;
+
+        // Test case 1: Database is healthy
+        let db = Database::mock().await.with_mock_status(MockStatus::Healthy);
+        let app = create_health_routes().with_state(Arc::new(db));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/ready")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["status"], "ready");
+        assert_eq!(body["database"], "connected");
+
+        // Test case 2: Database is unhealthy
+        // Verify that the health check correctly handles database errors
+        let db = Database::mock()
+            .await
+            .with_mock_status(MockStatus::Unhealthy(
+                "Database connection failed".to_string(),
+            ));
+        let app = create_health_routes().with_state(Arc::new(db));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/ready")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["status"], "not ready");
+        assert_eq!(body["database"], "disconnected");
+        assert_eq!(body["error"], "Database error: Database connection failed");
     }
 
     #[tokio::test]
     async fn test_live_endpoint() {
-        let app = Router::new().route("/live", get(live));
+        use crate::database::Database;
+        use http_body_util::BodyExt;
+
+        // Setup with mock DB (required by router state)
+        let db = Database::mock().await;
+        let app = create_health_routes().with_state(Arc::new(db));
 
         let response = app
             .oneshot(Request::builder().uri("/live").body(Body::empty()).unwrap())

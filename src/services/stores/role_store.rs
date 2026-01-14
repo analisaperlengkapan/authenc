@@ -1,10 +1,10 @@
 use crate::models::role::Role;
-use std::sync::Mutex;
+use std::sync::{Arc, RwLock};
 
 /// In-memory store for managing roles
 pub struct RoleStore {
     /// Thread-safe storage of roles
-    pub roles: Mutex<Vec<Role>>,
+    pub roles: RwLock<Arc<Vec<Role>>>,
 }
 
 impl Default for RoleStore {
@@ -17,24 +17,25 @@ impl RoleStore {
     /// Create new role store
     pub fn new() -> Self {
         Self {
-            roles: Mutex::new(vec![]),
+            roles: RwLock::new(Arc::new(vec![])),
         }
     }
 
     /// Add role to store
     pub fn add_role(&self, role: Role) {
-        self.roles.lock().unwrap().push(role);
+        let mut roles = self.roles.write().unwrap();
+        Arc::make_mut(&mut roles).push(role);
     }
 
     /// Get all roles
-    pub fn get_all(&self) -> Vec<Role> {
-        self.roles.lock().unwrap().clone()
+    pub fn get_all(&self) -> Arc<Vec<Role>> {
+        self.roles.read().unwrap().clone()
     }
 
     /// Get roles by realm ID
     pub fn get_by_realm(&self, realm_id: &str) -> Vec<Role> {
         self.roles
-            .lock()
+            .read()
             .unwrap()
             .iter()
             .filter(|r| r.realm_id.map(|id| id.to_string()).as_ref() == Some(&realm_id.to_string()))
@@ -45,7 +46,7 @@ impl RoleStore {
     /// Get role by name
     pub fn get_by_name(&self, name: &str) -> Option<Role> {
         self.roles
-            .lock()
+            .read()
             .unwrap()
             .iter()
             .find(|r| r.name == name)
@@ -54,12 +55,13 @@ impl RoleStore {
 
     /// Delete role by realm and name
     pub fn delete_by_name(&self, realm_id: &str, name: &str) -> bool {
-        let mut roles = self.roles.lock().unwrap();
-        let len_before = roles.len();
-        roles.retain(|r| {
+        let mut roles = self.roles.write().unwrap();
+        let vec = Arc::make_mut(&mut roles);
+        let len_before = vec.len();
+        vec.retain(|r| {
             !(r.realm_id.map(|id| id.to_string()).as_ref() == Some(&realm_id.to_string())
                 && r.name == name)
         });
-        roles.len() < len_before
+        vec.len() < len_before
     }
 }

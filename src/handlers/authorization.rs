@@ -81,7 +81,7 @@ pub struct PoliciesListResponse {
 
 /// Create a new authorization policy
 pub async fn create_policy(
-    State(_db): State<Arc<Database>>,
+    State(_db): State<Database>,
     Json(request): Json<CreatePolicyRequest>,
 ) -> Result<Json<PolicyResponse>, StatusCode> {
     // For now, return a mock response since we need to implement the actual service
@@ -111,7 +111,7 @@ pub async fn create_policy(
 
 /// Get a policy by ID
 pub async fn get_policy(
-    State(_db): State<Arc<Database>>,
+    State(_db): State<Database>,
     Path(policy_id): Path<Uuid>,
 ) -> Result<Json<PolicyResponse>, StatusCode> {
     // Mock response - in real implementation would fetch from service
@@ -120,7 +120,7 @@ pub async fn get_policy(
 
 /// Update a policy
 pub async fn update_policy(
-    State(_db): State<Arc<Database>>,
+    State(_db): State<Database>,
     Path(policy_id): Path<Uuid>,
     Json(request): Json<UpdatePolicyRequest>,
 ) -> Result<Json<PolicyResponse>, StatusCode> {
@@ -130,7 +130,7 @@ pub async fn update_policy(
 
 /// Delete a policy
 pub async fn delete_policy(
-    State(_db): State<Arc<Database>>,
+    State(_db): State<Database>,
     Path(policy_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     // Mock response - in real implementation would delete via service
@@ -139,7 +139,7 @@ pub async fn delete_policy(
 
 /// List policies with optional filtering
 pub async fn list_policies(
-    State(_db): State<Arc<Database>>,
+    State(_db): State<Database>,
     Query(query): Query<ListPoliciesQuery>,
 ) -> Result<Json<PoliciesListResponse>, StatusCode> {
     // Mock response - in real implementation would fetch from service
@@ -154,7 +154,7 @@ pub async fn list_policies(
 
 /// Check if a user has permission for a resource/action
 pub async fn check_permission(
-    State(_db): State<Arc<Database>>,
+    State(_db): State<Database>,
     Json(request): Json<CheckPermissionRequest>,
 ) -> Result<Json<PermissionResponse>, StatusCode> {
     // Create authorization context
@@ -190,7 +190,7 @@ pub async fn check_permission(
 }
 
 /// Create authorization routes
-pub fn create_authorization_routes() -> Router<Arc<Database>> {
+pub fn create_authorization_routes() -> Router<Arc<crate::app::AppState>> {
     Router::new()
         .route("/policies", post(create_policy))
         .route("/policies", get(list_policies))

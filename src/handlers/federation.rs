@@ -127,6 +127,54 @@ pub struct SocialUserInfo {
     pub avatar_url: Option<String>,
 }
 
+/// Helper function to construct the social callback URI
+fn construct_social_callback_uri(config: &crate::config::AppConfig) -> String {
+    format!(
+        "{}{}/auth/federation/social/callback",
+        config.server.base_url.trim_end_matches('/'),
+        config.server.public_prefix.trim_end_matches('/')
+    )
+}
+
+/// Helper function to convert internal User model to LdapUserInfo
+///
+/// This function extracts groups from both "groups" and "memberOf" attributes,
+/// sorting and deduplicating them.
+fn convert_to_ldap_user_info(user: crate::models::User) -> LdapUserInfo {
+    // Extract groups from user attributes
+    let mut groups = Vec::new();
+    if let Some(serde_json::Value::Object(attrs)) = &user.attributes {
+        for key in ["groups", "memberOf"] {
+            if let Some(val) = attrs.get(key) {
+                match val {
+                    serde_json::Value::Array(arr) => {
+                        groups.extend(
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(ToString::to_string)),
+                        );
+                    }
+                    serde_json::Value::String(s) => {
+                        groups.push(s.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Deduplicate groups
+        groups.sort();
+        groups.dedup();
+    }
+
+    LdapUserInfo {
+        username: user.username,
+        email: Some(user.email),
+        first_name: user.first_name,
+        last_name: user.last_name,
+        groups,
+    }
+}
+
 /// LDAP authentication handler using SPI
 pub async fn ldap_authenticate(
     State(state): State<Arc<AppState>>,
@@ -156,13 +204,7 @@ pub async fn ldap_authenticate(
     {
         Ok(Some(user_info)) => {
             // Convert SPI user info to response format
-            let user_info = LdapUserInfo {
-                username: user_info.username.clone(),
-                email: Some(user_info.email.clone()),
-                first_name: user_info.first_name.clone(),
-                last_name: user_info.last_name.clone(),
-                groups: vec![], // TODO: Extract groups from user attributes if available
-            };
+            let user_info = convert_to_ldap_user_info(user_info);
 
             Ok(Json(LdapAuthResponse {
                 success: true,
@@ -208,16 +250,8 @@ pub async fn ldap_search_users(
     let limit = request.limit.unwrap_or(50);
     match provider.search_users(&request.query, limit).await {
         Ok(users) => {
-            let users: Vec<LdapUserInfo> = users
-                .into_iter()
-                .map(|user| LdapUserInfo {
-                    username: user.username,
-                    email: Some(user.email),
-                    first_name: user.first_name,
-                    last_name: user.last_name,
-                    groups: vec![], // TODO: Extract groups from user attributes if available
-                })
-                .collect();
+            let users: Vec<LdapUserInfo> =
+                users.into_iter().map(convert_to_ldap_user_info).collect();
             let total = users.len();
 
             Ok(Json(LdapUserSearchResponse { users, total }))
@@ -288,7 +322,7 @@ pub async fn social_authenticate(
     };
 
     // Parse provider type
-    let provider_type = match request.provider.as_str() {
+    let _provider_type = match request.provider.as_str() {
         "google" => crate::spi::social::SocialProviderType::Google,
         "facebook" => crate::spi::social::SocialProviderType::Facebook,
         "twitter" => crate::spi::social::SocialProviderType::Twitter,
@@ -381,12 +415,139 @@ pub async fn social_callback(
     // For now, assume it's passed as part of the state
     let provider_name = "google"; // This should be extracted from state
 
+    // Construct redirect URI using the configured base URL
+    // The path must match the mounted route path for the social callback
+    let redirect_uri = construct_social_callback_uri(&state.config);
+
     let request = SocialAuthRequest {
         provider: provider_name.to_string(),
         code: code.clone(),
         state: state_param.clone(),
-        redirect_uri: "http://localhost:8080/auth/social/callback".to_string(), // TODO: Get from config
+        redirect_uri,
     };
 
     social_authenticate(State(state), Json(request)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::User;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    fn create_test_user(attributes: Option<serde_json::Value>) -> User {
+        let mut user = User::new(
+            "testuser".to_string(),
+            "test@example.com".to_string(),
+            None,
+            Some(Uuid::new_v4()),
+        );
+        user.attributes = attributes;
+        user
+    }
+
+    #[test]
+    fn test_extract_groups_from_groups_attribute() {
+        let attributes = json!({
+            "groups": ["group1", "group2"]
+        });
+        let user = create_test_user(Some(attributes));
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert_eq!(user_info.groups.len(), 2);
+        assert!(user_info.groups.contains(&"group1".to_string()));
+        assert!(user_info.groups.contains(&"group2".to_string()));
+    }
+
+    #[test]
+    fn test_extract_groups_from_memberof_attribute() {
+        let attributes = json!({
+            "memberOf": ["group3", "group4"]
+        });
+        let user = create_test_user(Some(attributes));
+        let user_info = convert_to_ldap_user_info(user);
+
+        // This should currently fail or return empty if not implemented
+        assert_eq!(user_info.groups.len(), 2);
+        assert!(user_info.groups.contains(&"group3".to_string()));
+        assert!(user_info.groups.contains(&"group4".to_string()));
+    }
+
+    #[test]
+    fn test_extract_groups_combined() {
+        let attributes = json!({
+            "groups": ["group1"],
+            "memberOf": ["group2"]
+        });
+        let user = create_test_user(Some(attributes));
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert_eq!(user_info.groups.len(), 2);
+        assert!(user_info.groups.contains(&"group1".to_string()));
+        assert!(user_info.groups.contains(&"group2".to_string()));
+    }
+
+    #[test]
+    fn test_extract_groups_single_string() {
+        let attributes = json!({
+            "groups": "group1",
+            "memberOf": "group2"
+        });
+        let user = create_test_user(Some(attributes));
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert_eq!(user_info.groups.len(), 2);
+        assert!(user_info.groups.contains(&"group1".to_string()));
+        assert!(user_info.groups.contains(&"group2".to_string()));
+    }
+
+    #[test]
+    fn test_extract_groups_no_attributes() {
+        let user = create_test_user(None);
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert!(user_info.groups.is_empty());
+    }
+
+    #[test]
+    fn test_extract_groups_missing_keys() {
+        let attributes = json!({
+            "someOtherKey": "someValue"
+        });
+        let user = create_test_user(Some(attributes));
+        let user_info = convert_to_ldap_user_info(user);
+
+        assert!(user_info.groups.is_empty());
+    }
+
+    #[test]
+    fn test_social_callback_redirect_uri_construction() {
+        use crate::config::AppConfig;
+
+        let mut config = AppConfig::default();
+        config.server.base_url = "https://auth.example.com".to_string();
+        config.server.public_prefix = "/api/v1".to_string();
+
+        let uri = construct_social_callback_uri(&config);
+        assert_eq!(
+            uri,
+            "https://auth.example.com/api/v1/auth/federation/social/callback"
+        );
+    }
+
+    #[test]
+    fn test_social_callback_redirect_uri_construction_trailing_slashes() {
+        use crate::config::AppConfig;
+
+        let mut config = AppConfig::default();
+        config.server.base_url = "https://auth.example.com/".to_string();
+        config.server.public_prefix = "/api/v1/".to_string();
+
+        let uri = construct_social_callback_uri(&config);
+        assert_eq!(
+            uri,
+            "https://auth.example.com/api/v1/auth/federation/social/callback"
+        );
+    }
 }

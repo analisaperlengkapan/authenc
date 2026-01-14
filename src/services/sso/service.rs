@@ -144,7 +144,7 @@ impl DefaultSsoService {
             .database
             .query_one(query, &[&uuid::Uuid::parse_str(realm_id).unwrap()])
             .await
-            .map_err(|e| AuthencError::internal(&format!("Failed to fetch realm: {}", e)))?;
+            .map_err(|e| AuthencError::internal(format!("Failed to fetch realm: {}", e)))?;
 
         Ok(realm)
     }
@@ -165,7 +165,7 @@ impl DefaultSsoService {
         };
 
         let mut url = url::Url::parse(&format!("https://auth.example.com{}", base_url))
-            .map_err(|e| AuthencError::internal(&format!("Invalid URL: {}", e)))?;
+            .map_err(|e| AuthencError::internal(format!("Invalid URL: {}", e)))?;
 
         url.query_pairs_mut()
             .append_pair("client_id", &request.client_id)
@@ -288,7 +288,7 @@ impl SsoService for DefaultSsoService {
 
     async fn refresh_session(&self, session_id: &str) -> Result<SsoSession> {
         // Get current session
-        let session = self
+        let _session = self
             .session_manager
             .get_session(session_id)
             .await?

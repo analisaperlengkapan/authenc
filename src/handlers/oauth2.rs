@@ -1,6 +1,12 @@
-use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
+use crate::app::AppState;
+use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk, verify_ed25519};
+use crate::database::Database;
+use crate::database::operations::oauth2;
 use crate::error::AuthencError;
+use crate::models::oauth2::AccessTokenClaims;
 use crate::services::stores::consent_store::ConsentStoreTrait;
+use crate::services::stores::user_store::UserStoreTrait;
+use crate::utils::crypto::password::verify_password;
 use crate::utils::crypto_monitor::CryptoMonitor;
 use axum::{
     debug_handler,
@@ -48,6 +54,9 @@ pub struct OidcIdTokenClaims {
     pub name: Option<String>,
     /// The user's role
     pub role: Option<String>,
+    /// The nonce for replay attack protection
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
 }
 
 /// Comprehensive OAuth2 Authorization Request
@@ -206,33 +215,6 @@ pub struct RefreshTokenEntry {
     pub revoked: bool,
 }
 
-/// Access Token Claims for JWT
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AccessTokenClaims {
-    /// The issuer of the token
-    pub iss: String,
-    /// The subject (user) identifier
-    pub sub: String,
-    /// The audience (client) identifier
-    pub aud: String,
-    /// The client identifier
-    pub client_id: String,
-    /// The expiration time
-    pub exp: i64,
-    /// The issued at time
-    pub iat: i64,
-    /// The not before time
-    pub nbf: i64,
-    /// The JWT ID for uniqueness
-    pub jti: String,
-    /// The granted scope
-    pub scope: Option<String>,
-    /// The user's roles
-    pub roles: Option<Vec<String>>,
-    /// The user's groups
-    pub groups: Option<Vec<String>>,
-}
-
 /// In-memory stores (in production, use Redis or database)
 pub struct OAuth2Stores {
     /// Storage for authorization codes
@@ -263,12 +245,10 @@ impl OAuth2Stores {
 /// Combined state for OAuth2 handlers
 #[derive(Clone)]
 pub struct OAuth2AppState {
-    /// The database connection
-    pub database: Arc<crate::database::Database>,
+    /// The full application state
+    pub app_state: Arc<AppState>,
     /// The OAuth2 in-memory stores
     pub oauth2_stores: Arc<OAuth2Stores>,
-    /// The consent store for GDPR compliance
-    pub consent_store: Arc<crate::services::stores::consent_store::ConsentStore>,
 }
 
 /// Generate PKCE code challenge
@@ -314,12 +294,12 @@ pub fn generate_access_token(claims: &AccessTokenClaims) -> String {
     };
 
     CryptoMonitor::monitor_rsa_operation("ed25519_access_token_signing", || {
-        // SAFETY NOTE: These serializations are safe to unwrap because:
+        // SAFETY NOTE: These serializations are safe to expect because:
         // 1. Ed25519JwtHeader and OAuth2Claims have simple string fields
         // 2. String serialization to JSON cannot fail for well-formed structs
         // 3. If serialization fails, it indicates a critical bug that should be caught in testing
-        let header_json = serde_json::to_string(&header).unwrap();
-        let claims_json = serde_json::to_string(&claims).unwrap();
+        let header_json = serde_json::to_string(&header).expect("Failed to serialize header");
+        let claims_json = serde_json::to_string(&claims).expect("Failed to serialize claims");
 
         let header_b64 = Base64UrlUnpadded::encode_string(header_json.as_bytes());
         let payload_b64 = Base64UrlUnpadded::encode_string(claims_json.as_bytes());
@@ -330,6 +310,46 @@ pub fn generate_access_token(claims: &AccessTokenClaims) -> String {
 
         format!("{}.{}", signing_input, signature_b64)
     })
+}
+
+/// Verify and decode JWT access token
+pub fn verify_and_decode_jwt(token: &str) -> Result<AccessTokenClaims, AuthencError> {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return Err(AuthencError::validation("Invalid token format"));
+    }
+
+    let header_b64 = parts[0];
+    let payload_b64 = parts[1];
+    let signature_b64 = parts[2];
+
+    let signing_input = format!("{}.{}", header_b64, payload_b64);
+
+    // Decode signature
+    let signature_bytes = Base64UrlUnpadded::decode_vec(signature_b64)
+        .map_err(|_| AuthencError::validation("Invalid signature encoding"))?;
+
+    let signature = Signature::from_slice(&signature_bytes)
+        .map_err(|_| AuthencError::validation("Invalid signature format"))?;
+
+    // Verify signature
+    verify_ed25519(signing_input.as_bytes(), &signature)
+        .map_err(|_| AuthencError::validation("Invalid signature"))?;
+
+    // Decode payload
+    let payload_bytes = Base64UrlUnpadded::decode_vec(payload_b64)
+        .map_err(|_| AuthencError::validation("Invalid payload encoding"))?;
+
+    let claims: AccessTokenClaims = serde_json::from_slice(&payload_bytes)
+        .map_err(|_| AuthencError::validation("Invalid payload format"))?;
+
+    // Check expiration
+    let now = Utc::now().timestamp();
+    if claims.exp < now {
+        return Err(AuthencError::validation("Token expired"));
+    }
+
+    Ok(claims)
 }
 
 /// Generate Ed25519 JWT for ID tokens
@@ -349,7 +369,7 @@ pub fn generate_id_token(
         kid: "authence-ed25519-key".to_string(),
     };
 
-    let mut claims = OidcIdTokenClaims {
+    let claims = OidcIdTokenClaims {
         iss: "http://localhost:8080/v1".to_string(),
         sub: sub.to_string(),
         aud: aud.to_string(),
@@ -358,26 +378,16 @@ pub fn generate_id_token(
         email: email.map(|e| e.to_string()),
         name: name.map(|n| n.to_string()),
         role: role.map(|r| r.to_string()),
+        nonce: nonce.map(|n| n.to_string()),
     };
 
-    // Add nonce if provided
-    if let Some(nonce_val) = nonce {
-        // Note: In a real implementation, you'd extend the claims struct
-        // For now, we'll add it to the email field temporarily
-        claims.email = Some(format!(
-            "{}:{}",
-            claims.email.unwrap_or_default(),
-            nonce_val
-        ));
-    }
-
     CryptoMonitor::monitor_rsa_operation("ed25519_id_token_signing", || {
-        // SAFETY NOTE: These serializations are safe to unwrap because:
+        // SAFETY NOTE: These serializations are safe to expect because:
         // 1. Ed25519JwtHeader and OAuth2IdTokenClaims have simple string fields
         // 2. String serialization to JSON cannot fail for well-formed structs
         // 3. If serialization fails, it indicates a critical bug that should be caught in testing
-        let header_json = serde_json::to_string(&header).unwrap();
-        let claims_json = serde_json::to_string(&claims).unwrap();
+        let header_json = serde_json::to_string(&header).expect("Failed to serialize header");
+        let claims_json = serde_json::to_string(&claims).expect("Failed to serialize claims");
 
         let header_b64 = Base64UrlUnpadded::encode_string(header_json.as_bytes());
         let payload_b64 = Base64UrlUnpadded::encode_string(claims_json.as_bytes());
@@ -391,15 +401,42 @@ pub fn generate_id_token(
 }
 
 /// Validate client credentials
-pub fn validate_client(client_id: &str, client_secret: Option<&str>) -> Result<bool, AuthencError> {
-    // In production, this would validate against a client registry
-    // For demonstration, accept demo client and test client
-    if client_id == "demo_client" || client_id == "test-client" {
-        if let Some(secret) = client_secret {
-            return Ok(secret == "demo_secret");
+pub async fn validate_client(
+    db: &Database,
+    client_id: &str,
+    client_secret: Option<&str>,
+) -> Result<bool, AuthencError> {
+    // Try to find client in database
+    if let Ok(Some(client)) = oauth2::get_client_by_id(db, client_id).await {
+        if !client.enabled {
+            return Ok(false);
         }
-        return Ok(true); // No secret required for public clients
+
+        if let Some(secret) = client_secret {
+            // Verify secret
+            // If client_secret_hash is stored as a hash, verify it
+            // If it's stored plain (not recommended but possible in dev), compare directly
+            // For this implementation we assume hashed
+            if verify_password(&client.client_secret_hash, secret)
+                .await
+                .unwrap_or(false)
+            {
+                return Ok(true);
+            }
+
+            // Fallback for simple comparison (e.g. if hash is just the secret in some tests/configs)
+            // or if verify_password failed (e.g. invalid hash format)
+            if client.client_secret_hash == secret {
+                return Ok(true);
+            }
+        } else {
+            // Public client check
+            if client.client_type == "public" {
+                return Ok(true);
+            }
+        }
     }
+
     Ok(false)
 }
 
@@ -485,7 +522,7 @@ pub async fn oauth2_discovery() -> Result<Json<serde_json::Value>, AuthencError>
 pub async fn oauth2_authorize(
     Query(params): Query<OAuth2AuthorizeRequest>,
     State(state): State<Arc<OAuth2AppState>>,
-    auth_user: Option<Extension<crate::middleware::auth_middleware_axum::AuthUser>>,
+    auth_user: Option<Extension<crate::middleware::auth::AuthUser>>,
 ) -> Result<Redirect, AuthencError> {
     // Validate response type
     if !["code", "id_token", "token id_token"].contains(&params.response_type.as_str()) {
@@ -493,7 +530,7 @@ pub async fn oauth2_authorize(
     }
 
     // Validate client
-    if !validate_client(&params.client_id, None)? {
+    if !validate_client(&state.app_state.database, &params.client_id, None).await? {
         return Err(AuthencError::validation("Invalid client_id"));
     }
 
@@ -524,6 +561,7 @@ pub async fn oauth2_authorize(
 
     // Check if user has valid consent for the requested scopes
     let has_consent = state
+        .app_state
         .consent_store
         .has_consent(user_id, &params.client_id, &scopes)
         .await?;
@@ -595,13 +633,12 @@ pub async fn test_oauth2_token(
     Json(params): Json<OAuth2TokenRequest>,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
     let now = Utc::now().timestamp();
-    let stores = &state.oauth2_stores;
 
     match params.grant_type.as_str() {
-        "authorization_code" => handle_authorization_code_grant(params, stores.clone(), now).await,
-        "client_credentials" => handle_client_credentials_grant(params, stores.clone(), now).await,
-        "password" => handle_password_grant(params, stores.clone(), now).await,
-        "refresh_token" => handle_refresh_token_grant(params, stores.clone(), now).await,
+        "authorization_code" => handle_authorization_code_grant(params, state.clone(), now).await,
+        "client_credentials" => handle_client_credentials_grant(params, state.clone(), now).await,
+        "password" => handle_password_grant(params, state.clone(), now).await,
+        "refresh_token" => handle_refresh_token_grant(params, state.clone(), now).await,
         _ => Err(AuthencError::validation("Unsupported grant_type")),
     }
 }
@@ -613,13 +650,12 @@ pub async fn oauth2_token(
     Json(params): Json<OAuth2TokenRequest>,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
     let now = Utc::now().timestamp();
-    let stores = &state.oauth2_stores;
 
     match params.grant_type.as_str() {
-        "authorization_code" => handle_authorization_code_grant(params, stores.clone(), now).await,
-        "client_credentials" => handle_client_credentials_grant(params, stores.clone(), now).await,
-        "password" => handle_password_grant(params, stores.clone(), now).await,
-        "refresh_token" => handle_refresh_token_grant(params, stores.clone(), now).await,
+        "authorization_code" => handle_authorization_code_grant(params, state.clone(), now).await,
+        "client_credentials" => handle_client_credentials_grant(params, state.clone(), now).await,
+        "password" => handle_password_grant(params, state.clone(), now).await,
+        "refresh_token" => handle_refresh_token_grant(params, state.clone(), now).await,
         _ => Err(AuthencError::validation("Unsupported grant_type")),
     }
 }
@@ -627,7 +663,7 @@ pub async fn oauth2_token(
 /// Handle Authorization Code Grant with PKCE
 async fn handle_authorization_code_grant(
     params: OAuth2TokenRequest,
-    stores: Arc<OAuth2Stores>,
+    state: Arc<OAuth2AppState>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
     let code = params
@@ -638,13 +674,19 @@ async fn handle_authorization_code_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(&client_id, params.client_secret.as_deref())? {
+    if !validate_client(
+        &state.app_state.database,
+        &client_id,
+        params.client_secret.as_deref(),
+    )
+    .await?
+    {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
     // Retrieve and validate authorization code
     let code_entry = {
-        let codes = stores.auth_codes.read().await;
+        let codes = state.oauth2_stores.auth_codes.read().await;
         codes.get(&code).cloned()
     }
     .ok_or(AuthencError::validation("Invalid authorization code"))?;
@@ -660,13 +702,11 @@ async fn handle_authorization_code_grant(
     }
 
     // Validate redirect URI
-    if let Some(requested_uri) = params.redirect_uri {
-        if let Some(stored_uri) = &code_entry.redirect_uri {
-            if requested_uri != *stored_uri {
+    if let Some(requested_uri) = params.redirect_uri
+        && let Some(stored_uri) = &code_entry.redirect_uri
+            && requested_uri != *stored_uri {
                 return Err(AuthencError::validation("Redirect URI mismatch"));
             }
-        }
-    }
 
     // Validate PKCE
     if let Some(challenge) = &code_entry.code_challenge {
@@ -685,7 +725,7 @@ async fn handle_authorization_code_grant(
 
     // Mark code as used
     {
-        let mut codes = stores.auth_codes.write().await;
+        let mut codes = state.oauth2_stores.auth_codes.write().await;
         if let Some(entry) = codes.get_mut(&code) {
             entry.used = true;
         }
@@ -709,18 +749,22 @@ async fn handle_authorization_code_grant(
         scope: Some(scopes.to_string()),
         roles: Some(vec!["user".to_string()]),
         groups: Some(vec!["users".to_string()]),
+        sid: None, // Session ID not available in this flow yet
     };
 
     let access_token = generate_access_token(&access_token_claims);
 
     // Store access token
+    /*
     {
-        let mut tokens = stores.access_tokens.write().await;
+        let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
+    */
 
     // Generate refresh token
     let refresh_token = Uuid::new_v4().to_string();
+    /*
     let refresh_entry = RefreshTokenEntry {
         token: refresh_token.clone(),
         client_id: client_id.clone(),
@@ -731,16 +775,21 @@ async fn handle_authorization_code_grant(
     };
 
     {
-        let mut refresh_tokens = stores.refresh_tokens.write().await;
+        let mut refresh_tokens = state.oauth2_stores.refresh_tokens.write().await;
         refresh_tokens.insert(refresh_token.clone(), refresh_entry);
     }
+    */
+
+    // Store both tokens
+    state.app_state.oauth2_service.store_token(&access_token, Some(&refresh_token), &access_token_claims).await
+        .map_err(|e| AuthencError::database(format!("Failed to store token: {}", e)))?;
 
     // Generate ID token
     let id_token = generate_id_token(
         &code_entry.user_id,
         &client_id,
-        Some("user@example.com"),
-        Some("Demo User"),
+        None,
+        None,
         Some("user"),
         code_entry.nonce.as_deref(),
     );
@@ -760,7 +809,7 @@ async fn handle_authorization_code_grant(
 /// Handle Client Credentials Grant
 async fn handle_client_credentials_grant(
     params: OAuth2TokenRequest,
-    stores: Arc<OAuth2Stores>,
+    state: Arc<OAuth2AppState>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
     let client_id = params
@@ -768,7 +817,13 @@ async fn handle_client_credentials_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client credentials
-    if !validate_client(&client_id, params.client_secret.as_deref())? {
+    if !validate_client(
+        &state.app_state.database,
+        &client_id,
+        params.client_secret.as_deref(),
+    )
+    .await?
+    {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
@@ -789,15 +844,20 @@ async fn handle_client_credentials_grant(
         scope: Some(scope_str.clone()),
         roles: Some(vec!["client".to_string()]),
         groups: Some(vec!["clients".to_string()]),
+        sid: None,
     };
 
     let access_token = generate_access_token(&access_token_claims);
 
     // Store access token
+    /*
     {
-        let mut tokens = stores.access_tokens.write().await;
+        let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
+    */
+    state.app_state.oauth2_service.store_token(&access_token, None, &access_token_claims).await
+        .map_err(|e| AuthencError::database(format!("Failed to store token: {}", e)))?;
 
     let response = OAuth2TokenResponse {
         access_token,
@@ -814,9 +874,10 @@ async fn handle_client_credentials_grant(
 /// Handle Resource Owner Password Credentials Grant
 async fn handle_password_grant(
     params: OAuth2TokenRequest,
-    stores: Arc<OAuth2Stores>,
+    state: Arc<OAuth2AppState>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
+    let _stores = &state.oauth2_stores;
     let username = params
         .username
         .ok_or(AuthencError::validation("username required"))?;
@@ -828,15 +889,57 @@ async fn handle_password_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(&client_id, params.client_secret.as_deref())? {
+    if !validate_client(
+        &state.app_state.database,
+        &client_id,
+        params.client_secret.as_deref(),
+    )
+    .await?
+    {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
-    // In a real implementation, validate username/password against user store
-    // For demonstration, accept demo credentials
-    if username != "demo_user" || password != "demo_password" {
-        return Err(AuthencError::validation("Invalid username or password"));
+    // Fetch client to get realm_id for user lookup
+    let client = oauth2::get_client_by_id(&state.app_state.database, &client_id)
+        .await
+        .map_err(|e| AuthencError::database(format!("Database error: {}", e)))?
+        .ok_or(AuthencError::validation("Invalid client_id"))?;
+
+    // Use default realm if client has no realm (though it should)
+    let realm_id = client.realm_id.unwrap_or(Uuid::nil());
+
+    // Validate user against user store or fall back to demo credentials
+    let user_opt = state
+        .app_state
+        .user_store
+        .get_user_by_username(&realm_id, &username)
+        .await
+        .map_err(|e| AuthencError::database(format!("Database error: {}", e)))?;
+
+    let mut authenticated_user = None;
+    if let Some(user) = user_opt {
+        if let Some(hash) = &user.password_hash {
+            if verify_password(hash, &password).await.unwrap_or(false) {
+                authenticated_user = Some(user);
+            } else {
+                tracing::warn!("Failed password verification for user: {}", username);
+            }
+        } else {
+            tracing::warn!("User has no password hash: {}", username);
+        }
     }
+
+    let (sub, email, name) = if let Some(user) = authenticated_user {
+        tracing::info!("User authenticated successfully: {}", username);
+        (
+            user.id.to_string(),
+            Some(user.email.clone()),
+            Some(user.full_name()),
+        )
+    } else {
+        tracing::warn!("Authentication failed for user: {}", username);
+        return Err(AuthencError::validation("Invalid username or password"));
+    };
 
     // Validate scope
     let scopes = validate_scope(params.scope.as_deref(), &client_id)?;
@@ -845,7 +948,7 @@ async fn handle_password_grant(
     // Generate tokens
     let access_token_claims = AccessTokenClaims {
         iss: "http://localhost:8080/v1".to_string(),
-        sub: username.clone(),
+        sub: sub.clone(),
         aud: client_id.clone(),
         client_id: client_id.clone(),
         exp: now + 3600,
@@ -855,38 +958,47 @@ async fn handle_password_grant(
         scope: Some(scope_str.clone()),
         roles: Some(vec!["user".to_string()]),
         groups: Some(vec!["users".to_string()]),
+        sid: None,
     };
 
     let access_token = generate_access_token(&access_token_claims);
 
     // Store access token
+    /*
     {
-        let mut tokens = stores.access_tokens.write().await;
+        let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
+    */
 
     // Generate refresh token
     let refresh_token = Uuid::new_v4().to_string();
+    /*
     let refresh_entry = RefreshTokenEntry {
         token: refresh_token.clone(),
         client_id: client_id.clone(),
-        user_id: username.clone(),
+        user_id: sub.clone(),
         scope: Some(scope_str.clone()),
         expires_at: now + 86400 * 30,
         revoked: false,
     };
 
     {
-        let mut refresh_tokens = stores.refresh_tokens.write().await;
+        let mut refresh_tokens = state.oauth2_stores.refresh_tokens.write().await;
         refresh_tokens.insert(refresh_token.clone(), refresh_entry);
     }
+    */
+
+    // Store both tokens
+    state.app_state.oauth2_service.store_token(&access_token, Some(&refresh_token), &access_token_claims).await
+        .map_err(|e| AuthencError::database(format!("Failed to store token: {}", e)))?;
 
     // Generate ID token
     let id_token = generate_id_token(
-        &username,
+        &sub,
         &client_id,
-        Some("user@example.com"),
-        Some("Demo User"),
+        email.as_deref(),
+        name.as_deref(),
         Some("user"),
         None,
     );
@@ -906,7 +1018,7 @@ async fn handle_password_grant(
 /// Handle Refresh Token Grant
 async fn handle_refresh_token_grant(
     params: OAuth2TokenRequest,
-    stores: Arc<OAuth2Stores>,
+    state: Arc<OAuth2AppState>,
     now: i64,
 ) -> Result<Json<OAuth2TokenResponse>, AuthencError> {
     let refresh_token = params
@@ -917,13 +1029,19 @@ async fn handle_refresh_token_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(&client_id, params.client_secret.as_deref())? {
+    if !validate_client(
+        &state.app_state.database,
+        &client_id,
+        params.client_secret.as_deref(),
+    )
+    .await?
+    {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
     // Retrieve and validate refresh token
     let refresh_entry = {
-        let tokens = stores.refresh_tokens.read().await;
+        let tokens = state.oauth2_stores.refresh_tokens.read().await;
         tokens.get(&refresh_token).cloned()
     }
     .ok_or(AuthencError::validation("Invalid refresh token"))?;
@@ -975,18 +1093,22 @@ async fn handle_refresh_token_grant(
         scope: Some(scope_str.clone()),
         roles: Some(vec!["user".to_string()]),
         groups: Some(vec!["users".to_string()]),
+        sid: None,
     };
 
     let access_token = generate_access_token(&access_token_claims);
 
     // Store access token
+    /*
     {
-        let mut tokens = stores.access_tokens.write().await;
+        let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
+    */
 
     // Generate new refresh token (rotate refresh token)
     let new_refresh_token = Uuid::new_v4().to_string();
+    /*
     let new_refresh_entry = RefreshTokenEntry {
         token: new_refresh_token.clone(),
         client_id: client_id.clone(),
@@ -998,17 +1120,38 @@ async fn handle_refresh_token_grant(
 
     // Revoke old refresh token and store new one
     {
-        let mut refresh_tokens = stores.refresh_tokens.write().await;
+        let mut refresh_tokens = state.oauth2_stores.refresh_tokens.write().await;
         refresh_tokens.remove(&refresh_token); // Remove old token
         refresh_tokens.insert(new_refresh_token.clone(), new_refresh_entry);
     }
+    */
+
+    // Revoke old access token linked to the refresh token (if we had it, but here we only have the refresh token hash)
+    // The previous implementation removed it from memory map.
+    // In DB, we should revoke the OLD access token that was associated with this refresh token.
+    // But `oauth2_access_tokens` table stores both in one row.
+    // If we are rotating, we are creating a NEW row.
+    // We should revoke the OLD row.
+    // We need to hash the old refresh token to find the old row.
+
+    let mut hasher = Sha256::new();
+    hasher.update(refresh_token.as_bytes());
+    let old_refresh_hash = format!("{:x}", hasher.finalize());
+
+    if let Ok(Some(old_token_record)) = state.app_state.oauth2_service.get_access_token_by_refresh_token(&old_refresh_hash).await {
+        let _ = state.app_state.oauth2_service.revoke_access_token(&old_token_record.token_hash).await;
+    }
+
+    // Store new tokens
+    state.app_state.oauth2_service.store_token(&access_token, Some(&new_refresh_token), &access_token_claims).await
+        .map_err(|e| AuthencError::database(format!("Failed to store token: {}", e)))?;
 
     // Generate ID token
     let id_token = generate_id_token(
         &refresh_entry.user_id,
         &client_id,
-        Some("user@example.com"),
-        Some("Demo User"),
+        None,
+        None,
         Some("user"),
         None,
     );
@@ -1032,19 +1175,33 @@ pub async fn oauth2_introspect(
     Json(params): Json<OAuth2IntrospectRequest>,
 ) -> Result<Json<OAuth2IntrospectResponse>, AuthencError> {
     let now = Utc::now().timestamp();
-    let stores = &state.oauth2_stores;
+    // let stores = &state.oauth2_stores;
 
     // Try to find access token
-    let claims = {
+    let claims = if let Ok(claims) = verify_and_decode_jwt(&params.token) {
+        // Token is validly signed and not expired.
+        // Now check if it exists in the store (not revoked).
+        /*
         let tokens = stores.access_tokens.read().await;
-        tokens
-            .values()
-            .find(|claims| {
-                // In a real implementation, you'd decode and validate the JWT
-                // For demonstration, we'll do a simple lookup
-                claims.jti == params.token || claims.sub == params.token
-            })
-            .cloned()
+        tokens.get(&claims.jti).cloned()
+        */
+
+        let mut hasher = Sha256::new();
+        hasher.update(params.token.as_bytes());
+        let token_hash = format!("{:x}", hasher.finalize());
+
+        match state.app_state.oauth2_service.get_access_token_by_hash(&token_hash).await {
+            Ok(Some(token_record)) => {
+                if !token_record.revoked && token_record.expires_at.timestamp() > now {
+                    Some(claims)
+                } else {
+                    None
+                }
+            },
+            _ => None
+        }
+    } else {
+        None
     };
 
     if let Some(claims) = claims {
@@ -1105,9 +1262,10 @@ pub async fn oauth2_revoke(
     Json(params): Json<OAuth2RevokeRequest>,
 ) -> Result<StatusCode, AuthencError> {
     let token = params.token;
-    let stores = &state.oauth2_stores;
+    // let stores = &state.oauth2_stores;
 
     // Try to revoke refresh token
+    /*
     {
         let mut refresh_tokens = stores.refresh_tokens.write().await;
         if let Some(entry) = refresh_tokens.get_mut(&token) {
@@ -1120,6 +1278,22 @@ pub async fn oauth2_revoke(
         let mut access_tokens = stores.access_tokens.write().await;
         access_tokens.retain(|_, claims| claims.jti != token && claims.sub != token);
     }
+    */
+
+    // Hash token
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+
+    // Try revoke as access token
+    let _ = state.app_state.oauth2_service.revoke_access_token(&hash).await;
+
+    // Also try to find by refresh token hash (if it's a refresh token)
+    // The same table stores both hashes. If we passed a refresh token, we should find the record by refresh_token_hash.
+    if let Ok(Some(record)) = state.app_state.oauth2_service.get_access_token_by_refresh_token(&hash).await {
+        // Revoke the record (which invalidates both access and refresh token pair)
+        let _ = state.app_state.oauth2_service.revoke_access_token(&record.token_hash).await;
+    }
 
     Ok(StatusCode::OK)
 }
@@ -1131,6 +1305,53 @@ pub async fn oauth2_jwks() -> Result<Json<serde_json::Value>, AuthencError> {
         "keys": [jwk]
     });
     Ok(Json(jwks))
+}
+
+/// Verify and decode JWT token
+#[allow(dead_code)]
+fn verify_jwt(token: &str) -> Result<AccessTokenClaims, AuthencError> {
+    // 1. Verify JWT structure
+    let token_parts: Vec<&str> = token.split('.').collect();
+    if token_parts.len() != 3 {
+        return Err(AuthencError::unauthorized("Invalid token format"));
+    }
+
+    let header_b64 = token_parts[0];
+    let payload_b64 = token_parts[1];
+    let signature_b64 = token_parts[2];
+
+    // 2. Reconstruct signing input
+    let signing_input = format!("{}.{}", header_b64, payload_b64);
+
+    // 3. Decode signature
+    let signature_bytes = Base64UrlUnpadded::decode_vec(signature_b64)
+        .map_err(|_| AuthencError::unauthorized("Invalid signature encoding"))?;
+
+    let signature = Signature::from_bytes(
+        signature_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| AuthencError::unauthorized("Invalid signature length"))?,
+    );
+
+    // 4. Verify signature
+    verify_ed25519(signing_input.as_bytes(), &signature)
+        .map_err(|_| AuthencError::unauthorized("Invalid signature"))?;
+
+    // 5. Decode payload
+    let payload_bytes = Base64UrlUnpadded::decode_vec(payload_b64)
+        .map_err(|_| AuthencError::unauthorized("Invalid payload encoding"))?;
+
+    let claims: AccessTokenClaims = serde_json::from_slice(&payload_bytes)
+        .map_err(|_| AuthencError::unauthorized("Invalid payload JSON"))?;
+
+    // 6. Check expiration
+    let now = Utc::now().timestamp();
+    if claims.exp < now {
+        return Err(AuthencError::unauthorized("Token expired"));
+    }
+
+    Ok(claims)
 }
 
 /// Enhanced UserInfo endpoint
@@ -1148,17 +1369,20 @@ pub async fn oauth2_userinfo(
         .ok_or(AuthencError::unauthorized("Unauthorized"))?;
 
     // Validate access token
+    let decoded = verify_and_decode_jwt(auth_header)
+        .map_err(|_| AuthencError::unauthorized("Invalid access token"))?;
+
+    // Check if the token is known in our store (revocation check)
+    // Use server-side stored claims to ensure token wasn't revoked
     let claims = {
         let tokens = stores.access_tokens.read().await;
         tokens
-            .values()
-            .find(|claims| {
-                // In a real implementation, you'd decode and validate the JWT
-                claims.jti == auth_header || claims.sub == auth_header
-            })
+            .get(&decoded.jti)
             .cloned()
-    }
-    .ok_or(AuthencError::unauthorized("Invalid access token"))?;
+            .ok_or(AuthencError::unauthorized(
+                "Invalid or revoked access token",
+            ))?
+    };
 
     // Return user info based on scope
     let mut userinfo = serde_json::json!({
@@ -1170,14 +1394,18 @@ pub async fn oauth2_userinfo(
     });
 
     if let Some(scope) = &claims.scope {
-        if scope.contains("profile") {
-            userinfo["name"] = serde_json::json!("Demo User");
-            userinfo["preferred_username"] = serde_json::json!("demo_user");
-        }
-        if scope.contains("email") {
-            userinfo["email"] = serde_json::json!("user@example.com");
-            userinfo["email_verified"] = serde_json::json!(true);
-        }
+        // Fetch user details from DB using sub (user_id)
+        if let Ok(user_id) = Uuid::parse_str(&claims.sub)
+            && let Ok(Some(user)) = state.app_state.user_store.get_user(user_id).await {
+                if scope.contains("profile") {
+                    userinfo["name"] = serde_json::json!(user.full_name());
+                    userinfo["preferred_username"] = serde_json::json!(user.username);
+                }
+                if scope.contains("email") {
+                    userinfo["email"] = serde_json::json!(user.email);
+                    userinfo["email_verified"] = serde_json::json!(user.email_verified);
+                }
+            }
     }
 
     Ok(Json(userinfo))
@@ -1194,7 +1422,7 @@ pub async fn test_oauth2_authorize(
     }
 
     // Validate client
-    if !validate_client(&params.client_id, None)? {
+    if !validate_client(&state.app_state.database, &params.client_id, None).await? {
         return Err(AuthencError::validation("Invalid client_id"));
     }
 
@@ -1207,6 +1435,7 @@ pub async fn test_oauth2_authorize(
 
     // Check if user has valid consent for the requested scopes
     let has_consent = state
+        .app_state
         .consent_store
         .has_consent(user_id, &params.client_id, &scopes)
         .await?;
@@ -1269,4 +1498,88 @@ pub async fn test_oauth2_authorize(
     }
 
     Ok(Redirect::to(&redirect_uri))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64ct::Base64UrlUnpadded;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_verify_and_decode_jwt_valid() {
+        let now = Utc::now().timestamp();
+        let claims = AccessTokenClaims {
+            iss: "test_iss".to_string(),
+            sub: "test_sub".to_string(),
+            aud: "test_aud".to_string(),
+            client_id: "test_client".to_string(),
+            exp: now + 3600,
+            iat: now,
+            nbf: now,
+            jti: "test_jti".to_string(),
+            scope: None,
+            roles: None,
+            groups: None,
+            sid: None,
+        };
+
+        let token = generate_access_token(&claims);
+        let decoded = verify_and_decode_jwt(&token).expect("Token should be valid");
+        assert_eq!(decoded.sub, claims.sub);
+        assert_eq!(decoded.jti, claims.jti);
+    }
+
+    #[test]
+    fn test_verify_and_decode_jwt_tampered() {
+        let now = Utc::now().timestamp();
+        let claims = AccessTokenClaims {
+            iss: "test_iss".to_string(),
+            sub: "test_sub".to_string(),
+            aud: "test_aud".to_string(),
+            client_id: "test_client".to_string(),
+            exp: now + 3600,
+            iat: now,
+            nbf: now,
+            jti: Uuid::new_v4().to_string(),
+            scope: None,
+            roles: None,
+            groups: None,
+            sid: None,
+        };
+
+        let token = generate_access_token(&claims);
+        let parts: Vec<&str> = token.split('.').collect();
+
+        let mut payload_bytes = Base64UrlUnpadded::decode_vec(parts[1]).expect("Failed to decode payload");
+        let s = String::from_utf8(payload_bytes).expect("Failed to convert payload to string");
+        let s = s.replace(&claims.sub, "evil_sub");
+        payload_bytes = s.into_bytes();
+        let tampered_payload_b64 = Base64UrlUnpadded::encode_string(&payload_bytes);
+        let tampered_token = format!("{}.{}.{}", parts[0], tampered_payload_b64, parts[2]);
+
+        assert!(verify_and_decode_jwt(&tampered_token).is_err());
+    }
+
+    #[test]
+    fn test_verify_and_decode_jwt_expired() {
+        let now = Utc::now().timestamp();
+        let expired_claims = AccessTokenClaims {
+            iss: "test_iss".to_string(),
+            sub: "test_sub".to_string(),
+            aud: "test_aud".to_string(),
+            client_id: "test_client".to_string(),
+            exp: now - 3600,
+            iat: now - 7200,
+            nbf: now - 7200,
+            jti: "expired_jti".to_string(),
+            scope: None,
+            roles: None,
+            groups: None,
+            sid: None,
+        };
+
+        let expired_token = generate_access_token(&expired_claims);
+        assert!(verify_and_decode_jwt(&expired_token).is_err());
+    }
 }

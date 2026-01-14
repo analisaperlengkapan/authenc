@@ -1,3 +1,4 @@
+use crate::app::AppState;
 use crate::database::Database;
 use crate::error::AuthencError;
 use crate::models::user::{JITUserProvisioningRequest, JITUserProvisioningResponse};
@@ -79,7 +80,7 @@ impl AdminService for MockAdminService {
         request: crate::services::admin::CreateUserRequest,
     ) -> std::result::Result<crate::services::admin::UserResponse, String> {
         // Use the database operations to create user
-        use crate::database::operations::users;
+        use crate::database::operations::{groups, roles, users};
         use crate::models::user::CreateUserRequest as DbCreateUserRequest;
 
         let db_request = DbCreateUserRequest {
@@ -95,22 +96,78 @@ impl AdminService for MockAdminService {
         };
 
         match users::create_user(&self.db, &db_request).await {
-            Ok(user) => Ok(crate::services::admin::UserResponse {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                email_verified: user.email_verified,
-                first_name: user.first_name,
-                last_name: user.last_name,
-                enabled: user.enabled,
-                realm_id: user.realm_id.unwrap_or_default(),
-                roles: vec![],  // TODO: Get roles from database
-                groups: vec![], // TODO: Get groups from database
-                created_at: user.created_at,
-                last_login: user.last_login_at,
-                login_attempts: user.failed_login_attempts as u32,
-                locked_until: user.account_locked_until,
-            }),
+            Ok(user) => {
+                // Assign roles if provided
+                if !request.roles.is_empty() {
+                    let all_roles = roles::list_roles_by_realm(&self.db, &request.realm_id)
+                        .await
+                        .map_err(|e| format!("Failed to fetch realm roles: {}", e))?;
+
+                    for role_name in &request.roles {
+                        if let Some(role) = all_roles.iter().find(|r| r.name == *role_name) {
+                            roles::assign_role_to_user(&self.db, &user.id, &role.id)
+                                .await
+                                .map_err(|e| {
+                                    format!("Failed to assign role {}: {}", role_name, e)
+                                })?;
+                        }
+                    }
+                }
+
+                // Assign groups if provided
+                if !request.groups.is_empty() {
+                    let all_groups =
+                        groups::get_groups_by_realm(&self.db, request.realm_id, None, None)
+                            .await
+                            .map_err(|e| format!("Failed to fetch realm groups: {}", e))?;
+
+                    for group_name in &request.groups {
+                        if let Some(group) = all_groups.iter().find(|g| g.name == *group_name) {
+                            groups::add_user_to_group(&self.db, user.id, group.id, None, None)
+                                .await
+                                .map_err(|e| {
+                                    format!("Failed to add user to group {}: {}", group_name, e)
+                                })?;
+                        }
+                    }
+                }
+
+                // Fetch roles and groups concurrently for the response
+                let (roles_result, groups_result) = tokio::join!(
+                    roles::get_user_roles(&self.db, &user.id),
+                    groups::get_user_groups(&self.db, user.id)
+                );
+
+                let roles = roles_result
+                    .map_err(|e| format!("Failed to get user roles: {}", e))?
+                    .into_iter()
+                    .map(|r| r.name)
+                    .collect();
+
+                let groups = groups_result
+                    .map_err(|e| format!("Failed to get user groups: {}", e))?
+                    .into_iter()
+                    .map(|g| g.name)
+                    .collect();
+
+                Ok(crate::services::admin::UserResponse {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    email_verified: user.email_verified,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
+                    enabled: user.enabled,
+                    realm_id: user.realm_id.unwrap_or_default(),
+                    organization_id: user.organization_id,
+                    roles,
+                    groups,
+                    created_at: user.created_at,
+                    last_login: user.last_login_at,
+                    login_attempts: user.failed_login_attempts as u32,
+                    locked_until: user.account_locked_until,
+                })
+            }
             Err(e) => Err(format!("Failed to create user: {}", e)),
         }
     }
@@ -164,6 +221,8 @@ impl AdminService for MockAdminService {
     async fn get_policies(
         &self,
         _realm_id: &Uuid,
+        _page: u32,
+        _limit: u32,
     ) -> std::result::Result<Vec<crate::services::admin::PolicyResponse>, String> {
         Err("Not implemented".to_string())
     }
@@ -228,13 +287,13 @@ impl AdminService for MockAdminService {
 
 /// Handle federated authentication with JIT provisioning
 pub async fn federated_auth(
-    State(db): State<Arc<Database>>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<FederatedAuthRequest>,
 ) -> std::result::Result<Json<FederatedAuthResponse>, AuthencError> {
     // Create JIT provisioning service
-    let admin_service = Arc::new(MockAdminService::new(db.clone()));
+    let admin_service = Arc::new(MockAdminService::new(state.database.clone()));
     let jit_service = Arc::new(DefaultJITProvisioningService::new(
-        db.clone(),
+        state.database.clone(),
         admin_service,
     ));
 
@@ -271,6 +330,6 @@ pub async fn federated_auth(
 }
 
 /// Create federated authentication routes
-pub fn create_federated_auth_routes() -> Router<Arc<Database>> {
+pub fn create_federated_auth_routes() -> Router<Arc<AppState>> {
     Router::new().route("/federated-auth", post(federated_auth))
 }

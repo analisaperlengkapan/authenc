@@ -26,6 +26,12 @@ pub struct HardwareSecurityManager {
     tpm_context: Option<Context>,
 }
 
+impl Default for HardwareSecurityManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HardwareSecurityManager {
     /// Create a new hardware security manager
     pub fn new() -> Self {
@@ -350,10 +356,10 @@ impl ForeverUnknownSecretsService {
             total_rotations += secret.version.saturating_sub(1); // Subtract 1 for initial version
 
             if let Ok(age) = SystemTime::now().duration_since(secret.created_at) {
-                if oldest_secret.map_or(true, |oldest| age > oldest) {
+                if oldest_secret.is_none_or(|oldest| age > oldest) {
                     oldest_secret = Some(age);
                 }
-                if newest_secret.map_or(true, |newest| age < newest) {
+                if newest_secret.is_none_or(|newest| age < newest) {
                     newest_secret = Some(age);
                 }
             }
@@ -433,8 +439,8 @@ impl ForeverUnknownSecretsService {
         let mut counter = 0u32;
         while result.len() < output_length {
             let mut hasher = Sha256::new();
-            hasher.update(&hash);
-            hasher.update(&counter.to_be_bytes());
+            hasher.update(hash);
+            hasher.update(counter.to_be_bytes());
             let chunk = hasher.finalize();
             let remaining = output_length - result.len();
             let take = std::cmp::min(remaining, chunk.len());

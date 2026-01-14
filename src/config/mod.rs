@@ -163,7 +163,7 @@ use serde::{Deserialize, Serialize};
 use tracing::Level;
 
 use crate::error::{AuthencError, Result};
-use crate::middleware::rate_limit_axum::RateLimitConfig;
+use crate::middleware::rate_limit::RateLimitConfig;
 
 /// Cluster configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -325,6 +325,10 @@ pub struct ServerConfig {
     /// List of allowed CORS origins
     #[serde(default = "default_cors_origins")]
     pub cors_allowed_origins: Vec<String>,
+
+    /// Base URL for the application (e.g. http://localhost:3000)
+    #[serde(default = "default_base_url")]
+    pub base_url: String,
 }
 
 fn default_host() -> String {
@@ -333,6 +337,10 @@ fn default_host() -> String {
 
 fn default_port() -> u16 {
     3000
+}
+
+fn default_base_url() -> String {
+    "http://localhost:3000".to_string()
 }
 
 fn default_keep_alive() -> u64 {
@@ -420,6 +428,9 @@ pub struct BasicSecurityConfig {
     /// Secret key for JWT signing and validation
     pub jwt_secret: String,
 
+    /// Encryption key for WebAuthn credentials (optional, defaults to derived from jwt_secret)
+    pub webauthn_encryption_key: Option<String>,
+
     /// JWT token expiration time in seconds
     #[serde(default = "default_jwt_expiry")]
     pub jwt_expiry: u64,
@@ -457,6 +468,7 @@ impl Default for BasicSecurityConfig {
     fn default() -> Self {
         Self {
             jwt_secret: "default_jwt_secret_change_in_production".to_string(),
+            webauthn_encryption_key: None,
             jwt_expiry: default_jwt_expiry(),
             password_min_length: default_password_min_length(),
             rate_limit_requests: default_rate_limit_requests(),
@@ -498,6 +510,10 @@ pub struct ObservabilityConfig {
     /// Port for metrics server
     #[serde(default = "default_metrics_port")]
     pub metrics_port: u16,
+
+    /// Simulated active connections for health check
+    #[serde(default = "default_db_check_active_connections")]
+    pub db_check_active_connections: u32,
 }
 
 /// Feature flags and settings
@@ -576,6 +592,10 @@ impl AppConfig {
             );
         }
 
+        if let Ok(base_url) = env::var("BASE_URL") {
+            config.server.base_url = base_url;
+        }
+
         // TLS configuration
         if let Ok(tls_enabled) = env::var("TLS_ENABLED") {
             config.server.tls_enabled = tls_enabled.parse().unwrap_or(false);
@@ -606,17 +626,20 @@ impl AppConfig {
                 if let Some(password) = url.password() {
                     config.database.password = password.to_string();
                 }
-                if let Some(mut segments) = url.path_segments() {
-                    if let Some(db) = segments.next() {
+                if let Some(mut segments) = url.path_segments()
+                    && let Some(db) = segments.next() {
                         config.database.database = db.trim_start_matches('/').to_string();
                     }
-                }
             }
         }
 
         // Security configuration
         if let Ok(secret) = env::var("JWT_SECRET") {
             config.security.jwt_secret = secret;
+        }
+
+        if let Ok(key) = env::var("WEBAUTHN_ENCRYPTION_KEY") {
+            config.security.webauthn_encryption_key = Some(key);
         }
 
         if let Ok(allow_origins) = env::var("CORS_ALLOWED_ORIGINS") {
@@ -627,11 +650,15 @@ impl AppConfig {
         }
 
         // Observability configuration
-        if let Ok(log_level) = env::var("LOG_LEVEL") {
-            if let Ok(level) = log_level.parse::<Level>() {
+        if let Ok(log_level) = env::var("LOG_LEVEL")
+            && let Ok(level) = log_level.parse::<Level>() {
                 config.observability.log_level = level;
             }
-        }
+
+        if let Ok(active_conns) = env::var("DB_CHECK_ACTIVE_CONNECTIONS")
+            && let Ok(conns) = active_conns.parse::<u32>() {
+                config.observability.db_check_active_connections = conns;
+            }
 
         // Feature flags
         if let Ok(features) = env::var("ENABLED_FEATURES") {
@@ -693,10 +720,32 @@ impl AppConfig {
             return Err(AuthencError::validation("JWT secret cannot be empty"));
         }
 
+        if self.security.jwt_secret == "default_jwt_secret_change_in_production" {
+            // In non-test environments, this should optionally be a hard error or at least a strong warning.
+            // For "Best Practice", we enforce it unless explicitly in dev/test mode.
+            // Note: Environment variables are usually available at runtime.
+            // We use a check here.
+            if std::env::var("APP_ENV").unwrap_or_else(|_| "development".to_string()) == "production" {
+                 return Err(AuthencError::validation(
+                    "Security Risk: Default JWT secret detected in production environment. Please set JWT_SECRET environment variable.",
+                ));
+            } else {
+                 tracing::warn!("Security Warning: Using default JWT secret. This is unsafe for production.");
+            }
+        }
+
         if self.security.password_min_length < 8 {
             return Err(AuthencError::validation(
                 "Password minimum length must be at least 8 characters",
             ));
+        }
+
+        // Validate base_url
+        if url::Url::parse(&self.server.base_url).is_err() {
+            return Err(AuthencError::validation(format!(
+                "Invalid base_url: {}",
+                self.server.base_url
+            )));
         }
 
         Ok(())
@@ -755,6 +804,7 @@ impl Default for AppConfig {
                 tls_cert_path: None,
                 tls_key_path: None,
                 cors_allowed_origins: default_cors_origins(),
+                base_url: default_base_url(),
             },
             database: DatabaseConfig {
                 host: "localhost".to_string(),
@@ -770,6 +820,7 @@ impl Default for AppConfig {
             security: BasicSecurityConfig {
                 jwt_secret: env::var("JWT_SECRET")
                     .unwrap_or_else(|_| "default_jwt_secret_change_in_production".to_string()),
+                webauthn_encryption_key: None,
                 jwt_expiry: default_jwt_expiry(),
                 password_min_length: default_password_min_length(),
                 rate_limit_requests: default_rate_limit_requests(),
@@ -787,6 +838,7 @@ impl Default for AppConfig {
                 structured_logging: true,
                 log_file: None,
                 metrics_port: default_metrics_port(),
+                db_check_active_connections: default_db_check_active_connections(),
             },
             features: FeatureConfig {
                 enable_registration: true,
@@ -832,6 +884,10 @@ fn default_metrics_endpoint() -> String {
 }
 fn default_metrics_port() -> u16 {
     9090
+}
+
+fn default_db_check_active_connections() -> u32 {
+    5
 }
 
 fn default_jwt_expiry() -> u64 {
@@ -882,12 +938,14 @@ mod tests {
                 ("HOST", Some("127.0.0.1")),
                 ("PORT", Some("4000")),
                 ("JWT_SECRET", Some("test_secret")),
+                ("BASE_URL", Some("https://auth.example.com")),
             ],
             || {
                 let config = AppConfig::from_env().unwrap();
                 assert_eq!(config.server.host, "127.0.0.1");
                 assert_eq!(config.server.port, 4000);
                 assert_eq!(config.security.jwt_secret, "test_secret");
+                assert_eq!(config.server.base_url, "https://auth.example.com");
             },
         );
     }

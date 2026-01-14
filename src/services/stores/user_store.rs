@@ -32,10 +32,18 @@ pub trait UserStoreTrait: Send + Sync {
     async fn get_user(&self, user_id: Uuid) -> Result<Option<User>, AuthencError>;
 
     /// Get user by username
-    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AuthencError>;
+    async fn get_user_by_username(
+        &self,
+        realm_id: &Uuid,
+        username: &str,
+    ) -> Result<Option<User>, AuthencError>;
 
     /// Get user by email
-    async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, AuthencError>;
+    async fn get_user_by_email(
+        &self,
+        realm_id: &Uuid,
+        email: &str,
+    ) -> Result<Option<User>, AuthencError>;
 
     /// Create a new user
     async fn add_user(&self, request: CreateUserRequest) -> Result<User, AuthencError>;
@@ -57,8 +65,11 @@ pub trait UserStoreTrait: Send + Sync {
     async fn get_users_by_realm(&self, realm_id: Uuid) -> Result<Vec<User>, AuthencError>;
 
     /// Update user password
-    async fn update_password(&self, user_id: Uuid, password_hash: String)
-        -> Result<(), AuthencError>;
+    async fn update_password(
+        &self,
+        user_id: Uuid,
+        password_hash: String,
+    ) -> Result<(), AuthencError>;
 }
 
 /// Implementation of UserStoreTrait for UserStore
@@ -68,12 +79,20 @@ impl UserStoreTrait for UserStore {
         operations::users::get_user_by_id(&self.database, user_id).await
     }
 
-    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AuthencError> {
-        operations::users::get_user_by_username(&self.database, username).await
+    async fn get_user_by_username(
+        &self,
+        realm_id: &Uuid,
+        username: &str,
+    ) -> Result<Option<User>, AuthencError> {
+        operations::users::get_user_by_username(&self.database, realm_id, username).await
     }
 
-    async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, AuthencError> {
-        operations::users::get_user_by_email(&self.database, email).await
+    async fn get_user_by_email(
+        &self,
+        realm_id: &Uuid,
+        email: &str,
+    ) -> Result<Option<User>, AuthencError> {
+        operations::users::get_user_by_email(&self.database, realm_id, email).await
     }
 
     async fn add_user(&self, request: CreateUserRequest) -> Result<User, AuthencError> {

@@ -77,8 +77,8 @@ pub fn create_user_permission_routes() -> Router<Arc<AppState>> {
 /// Response: `["read:users", "write:profile", "admin:realm"]`
 pub async fn get_user_permissions(
     State(state): State<Arc<AppState>>,
-    Path((realm, user_id)): Path<(String, String)>,
-    auth: AuthBearer,
+    Path((_realm, user_id)): Path<(String, String)>,
+    _auth: AuthBearer,
 ) -> Result<Json<Vec<String>>, StatusCode> {
     // Parse user ID
     let target_user_id = Uuid::parse_str(&user_id).map_err(|_| StatusCode::BAD_REQUEST)?;

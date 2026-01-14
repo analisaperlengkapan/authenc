@@ -93,15 +93,12 @@ impl Vault for KmsVault {
             self.provider
         );
         Err(VaultError::NotImplemented(
-            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead.".to_string()
+            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead."
+                .to_string(),
         ))
     }
 
-    async fn delete_secret(
-        &self,
-        key: &str,
-        realm: Option<&str>,
-    ) -> Result<(), VaultError> {
+    async fn delete_secret(&self, key: &str, realm: Option<&str>) -> Result<(), VaultError> {
         tracing::warn!(
             "KmsVault.delete_secret called but not implemented. key={}, realm={:?}, provider={}",
             key,
@@ -109,7 +106,8 @@ impl Vault for KmsVault {
             self.provider
         );
         Err(VaultError::NotImplemented(
-            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead.".to_string()
+            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead."
+                .to_string(),
         ))
     }
 
@@ -120,7 +118,8 @@ impl Vault for KmsVault {
             self.provider
         );
         Err(VaultError::NotImplemented(
-            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead.".to_string()
+            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead."
+                .to_string(),
         ))
     }
 
@@ -137,7 +136,8 @@ impl Vault for KmsVault {
             self.provider
         );
         Err(VaultError::NotImplemented(
-            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead.".to_string()
+            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead."
+                .to_string(),
         ))
     }
 
@@ -153,7 +153,8 @@ impl Vault for KmsVault {
             self.provider
         );
         Err(VaultError::NotImplemented(
-            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead.".to_string()
+            "KMS vault is not yet implemented. Use environment vault or HashiCorp Vault instead."
+                .to_string(),
         ))
     }
 

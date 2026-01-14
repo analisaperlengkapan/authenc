@@ -36,7 +36,7 @@ use uuid::Uuid;
 //     pub attributes: HashMap<String, String>,
 // }
 
-/// Organization member with role
+// Organization member with role
 // Using the model OrganizationMember for now
 // #[derive(Debug, Clone, Serialize, Deserialize)]
 // pub struct OrganizationMember {
@@ -77,7 +77,7 @@ impl OrganizationRole {
     }
 
     /// Parse a string into an OrganizationRole
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "OWNER" => Some(OrganizationRole::Owner),
             "ADMIN" => Some(OrganizationRole::Admin),
@@ -85,6 +85,14 @@ impl OrganizationRole {
             "GUEST" => Some(OrganizationRole::Guest),
             _ => None,
         }
+    }
+}
+
+impl std::str::FromStr for OrganizationRole {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Self::parse(s).ok_or(())
     }
 }
 
@@ -530,7 +538,7 @@ impl OrganizationService {
             id: inv.id,
             organization_id: inv.organization_id,
             email: inv.email,
-            role: OrganizationRole::from_str(&inv.role).unwrap_or(OrganizationRole::Member),
+            role: OrganizationRole::parse(&inv.role).unwrap_or(OrganizationRole::Member),
             invited_by: inv.invited_by,
             invited_at: inv.created_at,
             expires_at: inv.expires_at,

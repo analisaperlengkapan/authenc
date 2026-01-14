@@ -31,6 +31,8 @@ pub struct OidcClient {
     pub redirect_uris: Vec<String>,
     /// Human-readable display name for the client application
     pub name: String,
+    /// Realm identifier the client belongs to
+    pub realm_id: uuid::Uuid,
     /// Flag indicating whether the client is enabled for authentication
     pub enabled: bool,
     /// Timestamp when the client was created

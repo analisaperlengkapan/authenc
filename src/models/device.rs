@@ -24,6 +24,12 @@ pub struct DeviceInfo {
     pub ip_address: Option<IpAddr>,
     /// User agent string from the browser
     pub user_agent: Option<String>,
+    /// Security features available on the device
+    pub security_features: Option<serde_json::Value>,
+    /// Location data associated with the device as JSON
+    pub location_data: Option<serde_json::Value>,
+    /// Initial trust score for the device
+    pub trust_score: Option<f64>,
 }
 
 /// Device model
@@ -55,6 +61,8 @@ pub struct Device {
     pub user_agent: Option<String>,
     /// Location data associated with the device as JSON
     pub location_data: Option<serde_json::Value>,
+    /// Security features available on the device as JSON
+    pub security_features: Option<serde_json::Value>,
     /// Timestamp when the device was last seen
     pub last_seen_at: DateTime<Utc>,
     /// Timestamp when the device was first seen
@@ -82,7 +90,8 @@ impl TryFrom<tokio_postgres::Row> for Device {
             browser_version: row.try_get("browser_version")?,
             ip_address: row.try_get("ip_address")?,
             user_agent: row.try_get("user_agent")?,
-            location_data: None, // Not selected in query to avoid JSONB deserialization issues
+            location_data: row.try_get("location_data").ok().flatten(),
+            security_features: row.try_get("security_features").ok(),
             last_seen_at: row.try_get("last_seen_at")?,
             first_seen_at: row.try_get("first_seen_at")?,
             created_at: row.try_get("created_at")?,

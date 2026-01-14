@@ -74,6 +74,20 @@ pub struct AppState {
     pub cluster_manager: Option<Arc<crate::services::clustering::ClusterManager>>,
     /// Observability service for monitoring and metrics
     pub observability_service: Arc<crate::services::observability::ObservabilityService>,
+    /// Compliance mode service
+    pub compliance_mode_service: Arc<crate::services::compliance_mode::ComplianceModeService>,
+    /// OAuth2 service for token persistence
+    pub oauth2_service: Arc<crate::services::oauth2::OAuth2Service>,
+    /// FIPS security provider
+    pub fips_provider: Arc<crate::services::fips::AdvancedFipsSecurityProvider>,
+}
+
+// Support extraction of database for health checks
+#[cfg(feature = "axum")]
+impl axum::extract::FromRef<Arc<AppState>> for crate::handlers::health::HealthState {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        crate::handlers::health::HealthState(state.database.clone())
+    }
 }
 
 impl AppState {
@@ -246,8 +260,8 @@ impl AppState {
             }
 
             // Register Kafka event listener if configured
-            if let Some(kafka_config) = &config.kafka {
-                if kafka_config.enabled
+            if let Some(kafka_config) = &config.kafka
+                && kafka_config.enabled
                     && !kafka_config.user_events_topic.is_empty()
                     && !kafka_config.admin_events_topic.is_empty()
                 {
@@ -272,7 +286,6 @@ impl AppState {
                         }
                     }
                 }
-            }
         }
 
         // Initialize event retention service
@@ -423,7 +436,12 @@ impl AppState {
 
         // Register default health checks
         observability_service.register_health_check(Box::new(
-            crate::services::observability::DatabaseHealthCheck::new(10, 5), // TODO: Get from config
+            crate::services::observability::DatabaseHealthCheck::new(
+                // Configured from database.max_connections
+                config.database.max_connections,
+                // Configured from observability.db_check_active_connections
+                config.observability.db_check_active_connections,
+            ),
         ));
 
         // Register default metrics collectors
@@ -432,6 +450,22 @@ impl AppState {
         ));
 
         let observability_service = Arc::new(observability_service);
+
+        // Initialize compliance mode service
+        let compliance_mode_service = Arc::new(
+            crate::services::compliance_mode::ComplianceModeService::new(
+                event_manager.clone(),
+                Some(consent_store.clone()),
+            ),
+        );
+
+        // Initialize OAuth2 service
+        let oauth2_service = Arc::new(crate::services::oauth2::OAuth2Service::new(
+            database.clone(),
+        ));
+
+        // Initialize FIPS provider
+        let fips_provider = Arc::new(crate::services::fips::AdvancedFipsSecurityProvider::new());
 
         Ok(Self {
             config,
@@ -465,6 +499,9 @@ impl AppState {
             spi_manager,
             cluster_manager,
             observability_service,
+            compliance_mode_service,
+            oauth2_service,
+            fips_provider,
         })
     }
 
@@ -665,5 +702,12 @@ mod tests {
         let config = AppConfig::default();
         let builder = ApplicationBuilder::new(config);
         assert!(builder.config.server.port > 0);
+    }
+}
+
+use axum::extract::FromRef;
+impl FromRef<Arc<AppState>> for crate::database::Database {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        (*state.database).clone()
     }
 }

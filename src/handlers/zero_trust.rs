@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::database::Database;
+use crate::app::AppState;
 use crate::error::AuthencError;
 use crate::services::anomaly_detector::AnomalyDetectorTrait;
 use crate::services::zero_trust::{
@@ -106,7 +106,7 @@ pub struct GetRiskAnalyticsQuery {
 
 /// Assess risk for a user action
 pub async fn assess_risk(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Json(request): Json<AssessRiskRequest>,
 ) -> Result<Json<RiskAssessmentResponse>, StatusCode> {
     // Create device trust info
@@ -181,7 +181,7 @@ pub async fn assess_risk(
 
 /// Update adaptive controls for a user
 pub async fn update_adaptive_controls(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Json(request): Json<UpdateAdaptiveControlsRequest>,
 ) -> Result<Json<AdaptiveControlsResponse>, StatusCode> {
     // Mock response - in real implementation would update via service
@@ -196,7 +196,7 @@ pub async fn update_adaptive_controls(
 
 /// Verify session security
 pub async fn verify_session(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Json(_request): Json<VerifySessionRequest>,
 ) -> Result<Json<SessionVerificationResponse>, StatusCode> {
     // Mock response - in real implementation would verify via service
@@ -218,7 +218,7 @@ pub async fn verify_session(
 
 /// Get risk analytics
 pub async fn get_risk_analytics(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Mock response - in real implementation would fetch from service
@@ -233,7 +233,7 @@ pub async fn get_risk_analytics(
 
 /// Get security dashboard data
 pub async fn get_security_dashboard(
-    State(_db): State<Arc<Database>>,
+    State(_state): State<Arc<AppState>>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Mock response - in real implementation would fetch from service
@@ -248,7 +248,7 @@ pub async fn get_security_dashboard(
 }
 
 /// Create zero trust routes
-pub fn create_zero_trust_routes() -> Router<Arc<Database>> {
+pub fn create_zero_trust_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/risk/assess", post(assess_risk))
         .route("/adaptive-controls", put(update_adaptive_controls))

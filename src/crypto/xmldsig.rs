@@ -16,6 +16,7 @@ use quick_xml::events::Event;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
+use x509_parser::prelude::*;
 
 /// Supported canonicalization methods
 #[derive(Debug, Clone, PartialEq)]
@@ -224,7 +225,7 @@ impl XmlSignature {
                             if let Some(attr) = e.attributes().find(|a| {
                                 a.as_ref()
                                     .map(|attr| {
-                                        String::from_utf8_lossy(&attr.key.as_ref()) == "Algorithm"
+                                        String::from_utf8_lossy(attr.key.as_ref()) == "Algorithm"
                                     })
                                     .unwrap_or(false)
                             }) {
@@ -237,7 +238,7 @@ impl XmlSignature {
                             if let Some(attr) = e.attributes().find(|a| {
                                 a.as_ref()
                                     .map(|attr| {
-                                        String::from_utf8_lossy(&attr.key.as_ref()) == "Algorithm"
+                                        String::from_utf8_lossy(attr.key.as_ref()) == "Algorithm"
                                     })
                                     .unwrap_or(false)
                             }) {
@@ -258,7 +259,7 @@ impl XmlSignature {
                             if let Some(attr) = e.attributes().find(|a| {
                                 a.as_ref()
                                     .map(|attr| {
-                                        String::from_utf8_lossy(&attr.key.as_ref()) == "URI"
+                                        String::from_utf8_lossy(attr.key.as_ref()) == "URI"
                                     })
                                     .unwrap_or(false)
                             }) {
@@ -272,7 +273,7 @@ impl XmlSignature {
                             if let Some(attr) = e.attributes().find(|a| {
                                 a.as_ref()
                                     .map(|attr| {
-                                        String::from_utf8_lossy(&attr.key.as_ref()) == "Algorithm"
+                                        String::from_utf8_lossy(attr.key.as_ref()) == "Algorithm"
                                     })
                                     .unwrap_or(false)
                             }) {
@@ -502,10 +503,8 @@ fn extract_element_by_uri(document: &str, uri: &str) -> Result<String> {
         return Ok(document.to_string());
     }
 
-    if uri.starts_with('#') {
+    if let Some(id) = uri.strip_prefix('#') {
         // Fragment identifier - extract element with ID
-        let id = &uri[1..];
-
         // Try different ID attributes
         let id_patterns = [
             format!(" ID=\"{}\"", id),
@@ -638,6 +637,260 @@ mod tests {
         assert!(!result.contains("Signature"));
         assert!(result.contains("<before/>"));
         assert!(result.contains("<after/>"));
+    }
+}
+
+#[cfg(test)]
+mod issuer_tests {
+    use super::*;
+    use openssl::asn1::Asn1Time;
+    use openssl::bn::BigNum;
+    use openssl::rsa::Rsa;
+    use openssl::x509::X509NameBuilder;
+    use openssl::x509::extension::{
+        AuthorityKeyIdentifier, BasicConstraints, KeyUsage, SubjectKeyIdentifier,
+    };
+
+    fn create_ca_cert() -> Result<(X509, PKey<openssl::pkey::Private>)> {
+        let rsa = Rsa::generate(2048)?;
+        let pkey = PKey::from_rsa(rsa)?;
+
+        let mut name_builder = X509NameBuilder::new()?;
+        name_builder.append_entry_by_text("CN", "Test CA")?;
+        let name = name_builder.build();
+
+        let mut builder = X509::builder()?;
+        builder.set_version(2)?;
+        builder.set_subject_name(&name)?;
+        builder.set_issuer_name(&name)?;
+        builder.set_pubkey(&pkey)?;
+
+        // Set serial number
+        let serial = BigNum::from_u32(1)?;
+        let serial_asn1 = serial.to_asn1_integer()?;
+        builder.set_serial_number(&serial_asn1)?;
+
+        let not_before = Asn1Time::days_from_now(0)?;
+        let not_after = Asn1Time::days_from_now(365)?;
+        builder.set_not_before(&not_before)?;
+        builder.set_not_after(&not_after)?;
+
+        builder.append_extension(BasicConstraints::new().critical().ca().build()?)?;
+        builder.append_extension(
+            KeyUsage::new()
+                .critical()
+                .key_cert_sign()
+                .crl_sign()
+                .build()?,
+        )?;
+        builder.append_extension(
+            SubjectKeyIdentifier::new().build(&builder.x509v3_context(None, None))?,
+        )?;
+
+        builder.sign(&pkey, MessageDigest::sha256())?;
+        let cert = builder.build();
+
+        Ok((cert, pkey))
+    }
+
+    fn create_leaf_cert(
+        ca_cert: &X509,
+        ca_key: &PKey<openssl::pkey::Private>,
+    ) -> Result<(X509, PKey<openssl::pkey::Private>)> {
+        let rsa = Rsa::generate(2048)?;
+        let pkey = PKey::from_rsa(rsa)?;
+
+        let mut name_builder = X509NameBuilder::new()?;
+        name_builder.append_entry_by_text("CN", "Test Leaf")?;
+        let name = name_builder.build();
+
+        let mut builder = X509::builder()?;
+        builder.set_version(2)?;
+        builder.set_subject_name(&name)?;
+        builder.set_issuer_name(ca_cert.subject_name())?;
+        builder.set_pubkey(&pkey)?;
+
+        // Set serial number
+        let serial = BigNum::from_u32(2)?;
+        let serial_asn1 = serial.to_asn1_integer()?;
+        builder.set_serial_number(&serial_asn1)?;
+
+        let not_before = Asn1Time::days_from_now(0)?;
+        let not_after = Asn1Time::days_from_now(365)?;
+        builder.set_not_before(&not_before)?;
+        builder.set_not_after(&not_after)?;
+
+        builder.append_extension(BasicConstraints::new().critical().build()?)?;
+        builder.append_extension(
+            KeyUsage::new()
+                .critical()
+                .digital_signature()
+                .key_encipherment()
+                .build()?,
+        )?;
+
+        // Authority Key Identifier
+        builder.append_extension(
+            AuthorityKeyIdentifier::new()
+                .keyid(false)
+                .issuer(false)
+                .build(&builder.x509v3_context(Some(ca_cert), None))?,
+        )?;
+
+        builder.sign(ca_key, MessageDigest::sha256())?;
+        let cert = builder.build();
+
+        Ok((cert, pkey))
+    }
+
+    #[test]
+    fn test_get_issuer_from_chain() -> Result<()> {
+        // 1. Create CA and Leaf certs
+        let (ca_cert, ca_key) = create_ca_cert()?;
+        let (leaf_cert, _leaf_key) = create_leaf_cert(&ca_cert, &ca_key)?;
+
+        // 2. Setup CertificateValidator with CA in trust store
+        let mut store_builder = X509StoreBuilder::new()?;
+        store_builder.add_cert(ca_cert.clone())?;
+        let store = store_builder.build();
+        let validator = CertificateValidator::new(store);
+
+        // 3. Call get_issuer_from_chain with leaf cert
+        let issuer_option = validator.get_issuer_from_chain(&leaf_cert)?;
+
+        // 4. Verify we got the issuer
+        assert!(issuer_option.is_some());
+        let issuer = issuer_option.unwrap();
+
+        // Verify it is indeed the CA cert
+        assert_eq!(
+            issuer.serial_number().to_bn()?,
+            ca_cert.serial_number().to_bn()?
+        );
+        assert_eq!(
+            issuer.subject_name().to_der()?,
+            ca_cert.subject_name().to_der()?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_issuer_self_signed() -> Result<()> {
+        // 1. Create self-signed CA cert
+        let (ca_cert, _ca_key) = create_ca_cert()?;
+
+        // 2. Setup CertificateValidator with CA in trust store
+        let mut store_builder = X509StoreBuilder::new()?;
+        store_builder.add_cert(ca_cert.clone())?;
+        let store = store_builder.build();
+        let validator = CertificateValidator::new(store);
+
+        // 3. Call get_issuer_from_chain with CA cert (it is self-signed)
+        let issuer_option = validator.get_issuer_from_chain(&ca_cert)?;
+
+        // 4. Verify we got the issuer (itself)
+        assert!(issuer_option.is_some());
+        let issuer = issuer_option.unwrap();
+
+        assert_eq!(
+            issuer.serial_number().to_bn()?,
+            ca_cert.serial_number().to_bn()?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_issuer_not_found() -> Result<()> {
+        // 1. Create CA and Leaf certs
+        let (ca_cert, ca_key) = create_ca_cert()?;
+        let (leaf_cert, _leaf_key) = create_leaf_cert(&ca_cert, &ca_key)?;
+
+        // 2. Setup CertificateValidator with EMPTY trust store
+        let store_builder = X509StoreBuilder::new()?;
+        let store = store_builder.build();
+        let validator = CertificateValidator::new(store);
+
+        // 3. Call get_issuer_from_chain with leaf cert
+        // Validation should fail, so it should return None or error?
+        // The implementation returns Ok(None) if verification fails.
+        let issuer_option = validator.get_issuer_from_chain(&leaf_cert)?;
+
+        // 4. Verify we got None
+        assert!(issuer_option.is_none());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_check_key_usage() -> Result<()> {
+        let (ca_cert, ca_key) = create_ca_cert()?;
+
+        // 1. Create cert WITH digitalSignature
+        let (ds_cert, _) = create_leaf_cert(&ca_cert, &ca_key)?; // create_leaf_cert has digitalSignature
+
+        // 2. Create cert WITHOUT digitalSignature (e.g. only keyEncipherment)
+        let rsa = Rsa::generate(2048)?;
+        let pkey = PKey::from_rsa(rsa)?;
+        let mut name_builder = X509NameBuilder::new()?;
+        name_builder.append_entry_by_text("CN", "No DS")?;
+        let name = name_builder.build();
+
+        let mut builder = X509::builder()?;
+        builder.set_version(2)?;
+        builder.set_subject_name(&name)?;
+        builder.set_issuer_name(ca_cert.subject_name())?;
+        builder.set_pubkey(&pkey)?;
+        let serial_3 = BigNum::from_u32(3)?.to_asn1_integer()?;
+        builder.set_serial_number(&serial_3)?;
+        let not_before = Asn1Time::days_from_now(0)?;
+        builder.set_not_before(&not_before)?;
+        let not_after = Asn1Time::days_from_now(365)?;
+        builder.set_not_after(&not_after)?;
+
+        builder.append_extension(
+            KeyUsage::new()
+                .critical()
+                .key_encipherment() // Only KeyEncipherment, no DigitalSignature
+                .build()?,
+        )?;
+        builder.sign(&ca_key, MessageDigest::sha256())?;
+        let no_ds_cert = builder.build();
+
+        // 3. Create cert WITHOUT KeyUsage extension
+        let mut builder = X509::builder()?;
+        builder.set_version(2)?;
+        builder.set_subject_name(&name)?;
+        builder.set_issuer_name(ca_cert.subject_name())?;
+        builder.set_pubkey(&pkey)?;
+        let serial_4 = BigNum::from_u32(4)?.to_asn1_integer()?;
+        builder.set_serial_number(&serial_4)?;
+        let not_before = Asn1Time::days_from_now(0)?;
+        builder.set_not_before(&not_before)?;
+        let not_after = Asn1Time::days_from_now(365)?;
+        builder.set_not_after(&not_after)?;
+        builder.sign(&ca_key, MessageDigest::sha256())?;
+        let no_ext_cert = builder.build();
+
+        // 4. Test
+        let store_builder = X509StoreBuilder::new()?;
+        let validator = CertificateValidator::new(store_builder.build());
+
+        assert!(
+            validator.check_key_usage(&ds_cert)?,
+            "Cert with digitalSignature should pass"
+        );
+        assert!(
+            !validator.check_key_usage(&no_ds_cert)?,
+            "Cert without digitalSignature should fail"
+        );
+        assert!(
+            validator.check_key_usage(&no_ext_cert)?,
+            "Cert without KeyUsage extension should pass"
+        );
+
+        Ok(())
     }
 }
 
@@ -800,35 +1053,96 @@ impl CertificateValidator {
         // Check NotBefore
         let not_before = cert.not_before();
         let not_before_str = not_before.to_string();
-        if let Ok(not_before_time) = parse_asn1_time(&not_before_str) {
-            if now < not_before_time {
+        if let Ok(not_before_time) = parse_asn1_time(&not_before_str)
+            && now < not_before_time {
                 return Err(anyhow!(
                     "Certificate not yet valid (NotBefore: {})",
                     not_before_str
                 ));
             }
-        }
 
         // Check NotAfter
         let not_after = cert.not_after();
         let not_after_str = not_after.to_string();
-        if let Ok(not_after_time) = parse_asn1_time(&not_after_str) {
-            if now >= not_after_time {
+        if let Ok(not_after_time) = parse_asn1_time(&not_after_str)
+            && now >= not_after_time {
                 return Err(anyhow!("Certificate expired (NotAfter: {})", not_after_str));
             }
-        }
 
         Ok(())
     }
 
     /// Check if certificate has digital signature key usage
-    pub fn check_key_usage(&self, _cert: &X509) -> Result<bool> {
-        // Try to get key usage extension
-        // This is a simplified check - production would parse the extension properly
+    pub fn check_key_usage(&self, cert: &X509) -> Result<bool> {
+        // Use x509-parser to parse the certificate DER and check extensions
+        // This avoids issues with OpenSSL crate missing extension accessors
 
-        // For now, return true (assume valid)
-        // TODO: Implement proper key usage extension parsing
+        let der = cert
+            .to_der()
+            .map_err(|e| anyhow!("Failed to serialize certificate to DER: {}", e))?;
+
+        let (_, x509_cert) = x509_parser::parse_x509_certificate(&der)
+            .map_err(|e| anyhow!("Failed to parse X.509 certificate: {}", e))?;
+
+        // Find KeyUsage extension (OID 2.5.29.15)
+        // x509-parser defines OIDs. keyUsage is "2.5.29.15"
+        // Use OID constant comparison for standard compliance and optimization
+
+        for ext in x509_cert.extensions() {
+            if ext.oid == x509_parser::oid_registry::OID_X509_EXT_KEY_USAGE {
+                match ext.parsed_extension() {
+                    x509_parser::extensions::ParsedExtension::KeyUsage(usage) => {
+                        // usage is KeyUsage struct
+                        return Ok(usage.digital_signature());
+                    }
+                    _ => {
+                        // Failed to parse key usage or different type
+                        return Err(anyhow!("Failed to parse KeyUsage extension"));
+                    }
+                }
+            }
+        }
+
+        // If no key usage extension is present, assume valid
         Ok(true)
+    }
+
+    /// Get the issuer certificate from the trust store by building the chain
+    pub fn get_issuer_from_chain(&self, cert: &X509) -> Result<Option<X509>> {
+        use openssl::stack::Stack;
+
+        let mut context = X509StoreContext::new()?;
+        let chain = Stack::new()?; // Empty chain - only validate end certificate
+
+        // We use the trust store to find the issuer
+        let issuer = context
+            .init(&self.trust_store, cert, &chain, |ctx| {
+                // verify_cert builds the chain
+                match ctx.verify_cert() {
+                    Ok(true) => {
+                        // Success, extract issuer
+                        if let Some(chain) = ctx.chain() {
+                            if chain.len() >= 2 {
+                                // The issuer is the second element in the chain (index 1)
+                                // index 0 is the subject certificate
+                                return Ok(Some(chain[1].to_owned()));
+                            } else if chain.len() == 1 {
+                                // Self-signed certificate (issuer is subject)
+                                return Ok(Some(chain[0].to_owned()));
+                            }
+                        }
+                        Ok(None)
+                    }
+                    Ok(false) => {
+                        // Verification failed
+                        Ok(None)
+                    }
+                    Err(e) => Err(e),
+                }
+            })
+            .map_err(|e| anyhow!("Failed to get issuer from chain: {}", e))?;
+
+        Ok(issuer)
     }
 
     /// Disable expiration checking (for testing)
@@ -843,10 +1157,10 @@ impl CertificateValidator {
 
     /// Validate certificate with optional revocation checking
     /// Validate certificate with revocation checking using CRL
-    pub fn validate_with_revocation(
+    pub async fn validate_with_revocation(
         &self,
         cert: &X509,
-        crl_manager: Option<&mut CrlManager>,
+        crl_manager: Option<&CrlManager>,
     ) -> Result<CertificateValidationResult> {
         // First do standard validation (chain + expiration)
         let validation_result = self.validate_certificate(cert)?;
@@ -858,7 +1172,7 @@ impl CertificateValidator {
 
         // Check revocation if CRL manager provided
         if let Some(crl_mgr) = crl_manager {
-            match crl_mgr.check_revocation(cert) {
+            match crl_mgr.check_revocation(cert).await {
                 Ok(RevocationStatus::NotRevoked) => {
                     tracing::debug!("Certificate not revoked");
                 }
@@ -996,11 +1310,10 @@ impl XmlSecurityValidator {
         }
 
         // Check for external entities (XXE attack)
-        if self.limits.disable_external_entities {
-            if xml.contains("<!ENTITY") && (xml.contains("SYSTEM") || xml.contains("PUBLIC")) {
+        if self.limits.disable_external_entities
+            && xml.contains("<!ENTITY") && (xml.contains("SYSTEM") || xml.contains("PUBLIC")) {
                 return Err(anyhow!("External entities not allowed (XXE prevention)"));
             }
-        }
 
         // Parse and validate structure
         let mut reader = Reader::from_str(xml);
@@ -1079,13 +1392,11 @@ impl XmlSecurityValidator {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
                     // Check for ID attribute
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_lowercase();
-                            if key == "id" || key.ends_with(":id") {
-                                let id_value = String::from_utf8_lossy(&attr.value).to_string();
-                                *id_counts.entry(id_value.clone()).or_insert(0) += 1;
-                            }
+                    for attr in e.attributes().flatten() {
+                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_lowercase();
+                        if key == "id" || key.ends_with(":id") {
+                            let id_value = String::from_utf8_lossy(&attr.value).to_string();
+                            *id_counts.entry(id_value.clone()).or_insert(0) += 1;
                         }
                     }
                 }
@@ -1114,8 +1425,8 @@ impl XmlSecurityValidator {
         // Validate each reference in the signature
         for reference in &signature.signed_info.references {
             let uri = &reference.uri;
-            if uri.starts_with('#') {
-                let id = &uri[1..]; // Remove '#' prefix
+            if let Some(id) = uri.strip_prefix('#') {
+                // Remove '#' prefix
 
                 // Check that the referenced ID exists
                 if !id_map.contains_key(id) {
@@ -1195,13 +1506,14 @@ pub enum RevocationStatus {
 }
 
 /// CRL Manager for downloading, parsing, and caching Certificate Revocation Lists
+#[derive(Clone)]
 pub struct CrlManager {
     /// Cache of downloaded CRL bytes: URL -> (raw_bytes, expiration_time)
     cache: Arc<Mutex<HashMap<String, (Vec<u8>, SystemTime)>>>,
     /// How long to cache CRLs (default: 1 hour)
     cache_duration: Duration,
     /// HTTP client for downloading CRLs
-    http_client: reqwest::blocking::Client,
+    http_client: reqwest::Client,
     /// Maximum CRL size to download (default: 10MB)
     max_crl_size: usize,
 }
@@ -1214,7 +1526,7 @@ impl CrlManager {
 
     /// Create a new CRL Manager with custom configuration
     pub fn with_config(cache_duration: Duration, max_crl_size: usize) -> Result<Self> {
-        let http_client = reqwest::blocking::Client::builder()
+        let http_client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .build()
             .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
@@ -1228,7 +1540,7 @@ impl CrlManager {
     }
 
     /// Check if a certificate has been revoked
-    pub fn check_revocation(&mut self, cert: &X509) -> Result<RevocationStatus> {
+    pub async fn check_revocation(&self, cert: &X509) -> Result<RevocationStatus> {
         // Extract CRL distribution points from certificate
         let crl_urls = self.extract_crl_distribution_points(cert)?;
 
@@ -1239,7 +1551,7 @@ impl CrlManager {
 
         // Try each CRL distribution point
         for url in &crl_urls {
-            match self.check_revocation_with_crl(cert, url) {
+            match self.check_revocation_with_crl(cert, url).await {
                 Ok(status) => return Ok(status),
                 Err(e) => {
                     tracing::warn!("Failed to check revocation with CRL {}: {}", url, e);
@@ -1253,20 +1565,20 @@ impl CrlManager {
     }
 
     /// Check revocation status using a specific CRL URL
-    fn check_revocation_with_crl(
-        &mut self,
+    async fn check_revocation_with_crl(
+        &self,
         cert: &X509,
         crl_url: &str,
     ) -> Result<RevocationStatus> {
         // Get CRL (from cache or download)
-        let crl = self.get_crl(crl_url)?;
+        let crl = self.get_crl(crl_url).await?;
 
         // Check if certificate is in the CRL
         self.check_certificate_in_crl(cert, &crl)
     }
 
     /// Get a CRL (from cache or download)
-    fn get_crl(&mut self, url: &str) -> Result<X509Crl> {
+    async fn get_crl(&self, url: &str) -> Result<X509Crl> {
         // Check cache first
         let crl_bytes = {
             let cache = self.cache.lock().unwrap();
@@ -1288,7 +1600,7 @@ impl CrlManager {
 
         // Download CRL data
         tracing::info!("Downloading CRL from {}", url);
-        let crl_bytes = self.download_crl(url)?;
+        let crl_bytes = self.download_crl(url).await?;
 
         // Cache the raw bytes
         let expiration = SystemTime::now() + self.cache_duration;
@@ -1302,11 +1614,12 @@ impl CrlManager {
     }
 
     /// Download CRL data from a URL
-    fn download_crl(&self, url: &str) -> Result<Vec<u8>> {
+    async fn download_crl(&self, url: &str) -> Result<Vec<u8>> {
         let response = self
             .http_client
             .get(url)
             .send()
+            .await
             .map_err(|e| anyhow!("Failed to download CRL: {}", e))?;
 
         if !response.status().is_success() {
@@ -1314,18 +1627,18 @@ impl CrlManager {
         }
 
         // Check content length
-        if let Some(content_length) = response.content_length() {
-            if content_length > self.max_crl_size as u64 {
+        if let Some(content_length) = response.content_length()
+            && content_length > self.max_crl_size as u64 {
                 return Err(anyhow!(
                     "CRL too large: {} bytes (max: {} bytes)",
                     content_length,
                     self.max_crl_size
                 ));
             }
-        }
 
         let crl_data = response
             .bytes()
+            .await
             .map_err(|e| anyhow!("Failed to read CRL data: {}", e))?
             .to_vec();
 
@@ -1433,15 +1746,49 @@ impl CrlManager {
     }
 
     /// Extract CRL distribution point URLs from a certificate
-    pub fn extract_crl_distribution_points(&self, _cert: &X509) -> Result<Vec<String>> {
-        // OpenSSL Rust bindings don't provide direct access to CRL distribution points
-        // This would require parsing the cRLDistributionPoints extension (OID 2.5.29.31)
-        // manually using ASN.1 parsing
+    pub fn extract_crl_distribution_points(&self, cert: &X509) -> Result<Vec<String>> {
+        // Parse certificate using x509-parser to access extensions
+        let cert_der = cert
+            .to_der()
+            .map_err(|e| anyhow!("Failed to encode certificate to DER: {}", e))?;
 
-        // TODO: Implement proper CRL distribution point extraction
-        // For now, return empty list and allow caller to provide CRL URL manually
+        let (_, parsed_cert) = X509Certificate::from_der(&cert_der)
+            .map_err(|e| anyhow!("Failed to parse certificate DER: {}", e))?;
 
-        let urls = Vec::new();
+        let mut urls = Vec::new();
+
+        for ext in parsed_cert.extensions() {
+            if let ParsedExtension::CRLDistributionPoints(cdp) = ext.parsed_extension() {
+                for point in &cdp.points {
+                    if let Some(name) = &point.distribution_point {
+                        match name {
+                            x509_parser::extensions::DistributionPointName::FullName(names) => {
+                                for gen_name in names {
+                                    if let x509_parser::extensions::GeneralName::URI(uri) = gen_name
+                                    {
+                                        let uri_str = uri.to_string();
+                                        if !urls.contains(&uri_str) {
+                                            urls.push(uri_str);
+                                        }
+                                    }
+                                }
+                            }
+                            x509_parser::extensions::DistributionPointName::NameRelativeToCRLIssuer(_) => {
+                                // Relative names not supported for now as they require LDAP/Dir context
+                                tracing::debug!("Ignoring NameRelativeToCRLIssuer in CRL DP");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if urls.is_empty() {
+            tracing::debug!("No CRL distribution points found in certificate extensions");
+        } else {
+            tracing::debug!("Found {} CRL distribution points", urls.len());
+        }
+
         Ok(urls)
     }
 
@@ -1520,10 +1867,11 @@ pub enum OcspStatus {
 }
 
 /// OCSP Client for real-time certificate revocation checking
+#[derive(Clone)]
 pub struct OcspClient {
     /// HTTP client for OCSP requests
     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-    http_client: reqwest::blocking::Client,
+    http_client: reqwest::Client,
 
     /// Cache of OCSP responses (cert_id -> (response, expiration))
     response_cache: Arc<Mutex<HashMap<String, (Vec<u8>, SystemTime)>>>,
@@ -1545,7 +1893,7 @@ impl OcspClient {
     /// - HTTP timeout: 10 seconds
     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
     pub fn new() -> Result<Self> {
-        let http_client = reqwest::blocking::ClientBuilder::new()
+        let http_client = reqwest::ClientBuilder::new()
             .timeout(Duration::from_secs(10))
             .build()
             .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
@@ -1561,7 +1909,7 @@ impl OcspClient {
     /// Create an OCSP client with custom configuration
     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
     pub fn with_config(cache_duration: Duration, timeout: Duration) -> Result<Self> {
-        let http_client = reqwest::blocking::ClientBuilder::new()
+        let http_client = reqwest::ClientBuilder::new()
             .timeout(timeout)
             .build()
             .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
@@ -1583,7 +1931,7 @@ impl OcspClient {
     /// 4. Parse and verify OCSP response
     /// 5. Return certificate status
     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-    pub fn check_status(&mut self, cert: &X509, issuer: &X509) -> Result<OcspStatus> {
+    pub async fn check_status(&self, cert: &X509, issuer: &X509) -> Result<OcspStatus> {
         // Extract OCSP responder URL from certificate
         let ocsp_url = self.extract_ocsp_url(cert)?;
 
@@ -1597,7 +1945,7 @@ impl OcspClient {
         let request_der = self.build_ocsp_request(cert, issuer)?;
 
         // Send OCSP request
-        let response_der = self.send_ocsp_request(&ocsp_url, &request_der)?;
+        let response_der = self.send_ocsp_request(&ocsp_url, &request_der).await?;
 
         // Cache the response
         self.cache_response(&cache_key, response_der.clone());
@@ -1610,12 +1958,18 @@ impl OcspClient {
     ///
     /// Note: This is a placeholder implementation. Full implementation requires
     /// parsing the AuthorityInfoAccess extension (OID 1.3.6.1.5.5.7.1.1)
-    pub fn extract_ocsp_url(&self, _cert: &X509) -> Result<String> {
-        // TODO: Implement proper AIA extension parsing
-        // For now, return error requiring manual URL configuration
-        Err(anyhow!(
-            "OCSP URL extraction not yet implemented. Please configure OCSP responder URL manually."
-        ))
+    pub fn extract_ocsp_url(&self, cert: &X509) -> Result<String> {
+        let responders = cert
+            .ocsp_responders()
+            .map_err(|e| anyhow!("Failed to extract OCSP responders: {}", e))?;
+
+        if responders.is_empty() {
+            return Err(anyhow!("No OCSP responder URL found in AIA extension"));
+        }
+
+        // Return the first responder URL
+        // openssl::string::OpensslString implements Deref to &str
+        Ok(responders[0].to_string())
     }
 
     /// Build an OCSP request for a certificate
@@ -1643,13 +1997,14 @@ impl OcspClient {
 
     /// Send OCSP request via HTTP POST
     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-    fn send_ocsp_request(&self, url: &str, request_der: &[u8]) -> Result<Vec<u8>> {
+    async fn send_ocsp_request(&self, url: &str, request_der: &[u8]) -> Result<Vec<u8>> {
         let response = self
             .http_client
             .post(url)
             .header("Content-Type", "application/ocsp-request")
             .body(request_der.to_vec())
             .send()
+            .await
             .map_err(|e| anyhow!("OCSP request failed: {}", e))?;
 
         if !response.status().is_success() {
@@ -1661,6 +2016,7 @@ impl OcspClient {
 
         let response_der = response
             .bytes()
+            .await
             .map_err(|e| anyhow!("Failed to read OCSP response: {}", e))?
             .to_vec();
 
@@ -1756,17 +2112,16 @@ impl OcspClient {
     fn get_cached_response(&self, cache_key: &str) -> Option<Vec<u8>> {
         let cache = self.response_cache.lock().unwrap();
 
-        if let Some((response, expiration)) = cache.get(cache_key) {
-            if SystemTime::now() < *expiration {
+        if let Some((response, expiration)) = cache.get(cache_key)
+            && SystemTime::now() < *expiration {
                 return Some(response.clone());
             }
-        }
 
         None
     }
 
     /// Cache OCSP response
-    fn cache_response(&mut self, cache_key: &str, response_der: Vec<u8>) {
+    fn cache_response(&self, cache_key: &str, response_der: Vec<u8>) {
         let mut cache = self.response_cache.lock().unwrap();
         let expiration = SystemTime::now() + self.cache_duration;
         cache.insert(cache_key.to_string(), (response_der, expiration));
@@ -1777,8 +2132,8 @@ impl OcspClient {
     /// Use this when the certificate doesn't have an AIA extension
     /// or you want to override the default responder
     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-    pub fn check_status_with_url(
-        &mut self,
+    pub async fn check_status_with_url(
+        &self,
         cert: &X509,
         issuer: &X509,
         ocsp_url: &str,
@@ -1793,7 +2148,7 @@ impl OcspClient {
         let request_der = self.build_ocsp_request(cert, issuer)?;
 
         // Send OCSP request
-        let response_der = self.send_ocsp_request(ocsp_url, &request_der)?;
+        let response_der = self.send_ocsp_request(ocsp_url, &request_der).await?;
 
         // Cache the response
         self.cache_response(&cache_key, response_der.clone());

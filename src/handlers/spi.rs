@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Create SPI management routes
-pub fn create_spi_management_routes() -> Router<Arc<AppState>> {
+pub fn create_spi_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/spis", get(list_spis))
         .route("/spis/{spi_name}", get(get_spi_info))
@@ -250,58 +250,56 @@ pub async fn list_spi_providers(
     State(state): State<Arc<AppState>>,
     Path(spi_name): Path<String>,
 ) -> std::result::Result<Json<Vec<SpiProviderInfo>>, (StatusCode, Json<serde_json::Value>)> {
+    let overrides = crate::database::operations::spi::get_all_provider_configs(
+        &state.database,
+        &spi_name,
+    )
+    .await
+    .unwrap_or_default();
+
+    let map_provider = |provider: &crate::config::SpiProviderConfig, name_prefix: &str| {
+        let (config, enabled) = if let Some((c, e)) = overrides.get(&provider.id) {
+            (c.clone(), *e)
+        } else {
+            (provider.config.clone(), provider.enabled)
+        };
+        SpiProviderInfo {
+            id: provider.id.clone(),
+            name: format!("{} {}", name_prefix, provider.id),
+            enabled,
+            priority: provider.priority,
+            config,
+        }
+    };
+
     let providers = match spi_name.as_str() {
         "organization" => state
             .config
             .spi
             .organization
             .iter()
-            .map(|provider| SpiProviderInfo {
-                id: provider.id.clone(),
-                name: format!("Organization Provider {}", provider.id),
-                enabled: provider.enabled,
-                priority: provider.priority,
-                config: provider.config.clone(),
-            })
+            .map(|p| map_provider(p, "Organization Provider"))
             .collect(),
         "rich-authorization" => state
             .config
             .spi
             .rich_authorization
             .iter()
-            .map(|provider| SpiProviderInfo {
-                id: provider.id.clone(),
-                name: format!("Rich Authorization Provider {}", provider.id),
-                enabled: provider.enabled,
-                priority: provider.priority,
-                config: provider.config.clone(),
-            })
+            .map(|p| map_provider(p, "Rich Authorization Provider"))
             .collect(),
         "migration" => state
             .config
             .spi
             .migration
             .iter()
-            .map(|provider| SpiProviderInfo {
-                id: provider.id.clone(),
-                name: format!("Migration Provider {}", provider.id),
-                enabled: provider.enabled,
-                priority: provider.priority,
-                config: provider.config.clone(),
-            })
+            .map(|p| map_provider(p, "Migration Provider"))
             .collect(),
         "hostname" => state
             .config
             .spi
             .hostname
             .iter()
-            .map(|provider| SpiProviderInfo {
-                id: provider.id.clone(),
-                name: format!("Hostname Provider {}", provider.id),
-                enabled: provider.enabled,
-                priority: provider.priority,
-                config: provider.config.clone(),
-            })
+            .map(|p| map_provider(p, "Hostname Provider"))
             .collect(),
         _ => {
             return Err((
@@ -319,70 +317,18 @@ pub async fn get_provider_config(
     State(state): State<Arc<AppState>>,
     Path((spi_name, provider_id)): Path<(String, String)>,
 ) -> std::result::Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let config = match spi_name.as_str() {
-        "hostname" => {
-            // Get hostname configuration from app config
-            if let Some(hostname_providers) = state
-                .config
-                .spi
-                .hostname
-                .iter()
-                .find(|p| p.id == provider_id)
-            {
-                hostname_providers.config.clone()
-            } else {
-                serde_json::json!({
-                    "hostname": "localhost",
-                    "frontend_url": "http://localhost:8080",
-                    "admin_url": "http://localhost:8080/admin"
-                })
-            }
-        }
-        "organization" => {
-            if let Some(org_providers) = state
-                .config
-                .spi
-                .organization
-                .iter()
-                .find(|p| p.id == provider_id)
-            {
-                org_providers.config.clone()
-            } else {
-                serde_json::json!({})
-            }
-        }
-        "rich-authorization" => {
-            if let Some(authz_providers) = state
-                .config
-                .spi
-                .rich_authorization
-                .iter()
-                .find(|p| p.id == provider_id)
-            {
-                authz_providers.config.clone()
-            } else {
-                serde_json::json!({})
-            }
-        }
-        "migration" => {
-            if let Some(migration_providers) = state
-                .config
-                .spi
-                .migration
-                .iter()
-                .find(|p| p.id == provider_id)
-            {
-                migration_providers.config.clone()
-            } else {
-                serde_json::json!({})
-            }
-        }
-        _ => {
-            // Other SPIs don't have configurable providers yet
-            serde_json::json!({})
-        }
-    };
+    // Try to get from DB first
+    if let Ok(Some((config, _))) = crate::database::operations::spi::get_provider_config(
+        &state.database,
+        &spi_name,
+        &provider_id,
+    )
+    .await
+    {
+        return Ok(Json(config));
+    }
 
+    let (config, _) = get_static_provider_details(&state.config, &spi_name, &provider_id);
     Ok(Json(config))
 }
 
@@ -436,21 +382,57 @@ pub async fn update_provider_config(
     // Validate configuration based on SPI type
     if spi_name.as_str() == "hostname" {
         // Validate hostname configuration
-        if let Some(hostname) = update.config.get("hostname") {
-            if let Some(hostname_str) = hostname.as_str() {
-                if hostname_str.is_empty() {
+        if let Some(hostname) = update.config.get("hostname")
+            && let Some(hostname_str) = hostname.as_str()
+                && hostname_str.is_empty() {
                     return Err((
                         StatusCode::BAD_REQUEST,
                         Json(serde_json::json!({"error": "Hostname cannot be empty"})),
                     ));
                 }
-            }
-        }
     }
 
     // Note: In a production implementation, this would persist the configuration
     // to a database or configuration file. For now, we acknowledge the update.
     // The configuration would need to be reloaded or the SPI provider reinstantiated.
+
+    // Check if record exists in DB to determine enabled status
+    let db_config = crate::database::operations::spi::get_provider_config(
+        &state.database,
+        &spi_name,
+        &provider_id,
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Database error: {}", e)})),
+        )
+    })?;
+
+    let enabled = if let Some((_, e)) = db_config {
+        e
+    } else {
+        // Resolve static default
+        let (_, enabled) = get_static_provider_details(&state.config, &spi_name, &provider_id);
+        enabled
+    };
+
+    // Persist configuration to database
+    if let Err(e) = crate::database::operations::spi::upsert_provider_config(
+        &state.database,
+        &spi_name,
+        &provider_id,
+        update.config.clone(),
+        enabled,
+    )
+    .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Failed to persist configuration: {}", e)})),
+        ));
+    }
 
     Ok(Json(serde_json::json!({
         "success": true,
@@ -461,14 +443,52 @@ pub async fn update_provider_config(
 
 /// Update provider status (enable/disable)
 pub async fn update_provider_status(
-    State(_state): State<Arc<AppState>>,
-    Path((_spi_name, _provider_id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    Path((spi_name, provider_id)): Path<(String, String)>,
     Json(update): Json<ProviderStatusUpdate>,
 ) -> std::result::Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     // Note: In a production implementation, this would persist the status change
     // to a database or configuration file and potentially enable/disable the provider
     // at runtime. For now, we acknowledge the update.
     // The status change would need to be applied to the SPI registry.
+
+    // Check if record exists in DB to determine config
+    let db_config = crate::database::operations::spi::get_provider_config(
+        &state.database,
+        &spi_name,
+        &provider_id,
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Database error: {}", e)})),
+        )
+    })?;
+
+    let config = if let Some((c, _)) = db_config {
+        c
+    } else {
+        // Resolve static default
+        let (config, _) = get_static_provider_details(&state.config, &spi_name, &provider_id);
+        config
+    };
+
+    // Persist status to database
+    if let Err(e) = crate::database::operations::spi::upsert_provider_config(
+        &state.database,
+        &spi_name,
+        &provider_id,
+        config,
+        update.enabled,
+    )
+    .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Failed to persist status: {}", e)})),
+        ));
+    }
 
     Ok(Json(serde_json::json!({
         "success": true,
@@ -570,4 +590,55 @@ pub async fn test_provider(
     };
 
     Ok(Json(test_result))
+}
+
+/// Helper function to get static provider details from configuration
+fn get_static_provider_details(
+    config: &crate::config::AppConfig,
+    spi_name: &str,
+    provider_id: &str,
+) -> (serde_json::Value, bool) {
+    match spi_name {
+        "hostname" => {
+            if let Some(p) = config.spi.hostname.iter().find(|p| p.id == provider_id) {
+                (p.config.clone(), p.enabled)
+            } else {
+                (
+                    serde_json::json!({
+                        "hostname": "localhost",
+                        "frontend_url": "http://localhost:8080",
+                        "admin_url": "http://localhost:8080/admin"
+                    }),
+                    true,
+                )
+            }
+        }
+        "organization" => {
+            if let Some(p) = config.spi.organization.iter().find(|p| p.id == provider_id) {
+                (p.config.clone(), p.enabled)
+            } else {
+                (serde_json::json!({}), true)
+            }
+        }
+        "rich-authorization" => {
+            if let Some(p) = config
+                .spi
+                .rich_authorization
+                .iter()
+                .find(|p| p.id == provider_id)
+            {
+                (p.config.clone(), p.enabled)
+            } else {
+                (serde_json::json!({}), true)
+            }
+        }
+        "migration" => {
+            if let Some(p) = config.spi.migration.iter().find(|p| p.id == provider_id) {
+                (p.config.clone(), p.enabled)
+            } else {
+                (serde_json::json!({}), true)
+            }
+        }
+        _ => (serde_json::json!({}), true),
+    }
 }

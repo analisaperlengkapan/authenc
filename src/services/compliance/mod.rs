@@ -435,10 +435,12 @@ impl ComplianceCheck for GDPRDataRetentionCheck {
 
             // Test 1: Check audit logs are being cleaned up (40 points)
             // Verify old audit logs (> 90 days) have been removed
-            match crate::database::operations::audit::get_audit_log_count(db, None, None).await {
+            match crate::database::operations::audit::get_audit_log_count(db, None, None, None)
+                .await
+            {
                 Ok(total_count) => {
                     // Check for very old logs (> 90 days ago)
-                    let ninety_days_ago = (Utc::now() - Duration::days(90))
+                    let _ninety_days_ago = (Utc::now() - Duration::days(90))
                         .format("%Y-%m-%d %H:%M:%S%.3f")
                         .to_string();
 
@@ -563,7 +565,7 @@ impl ComplianceCheck for GDPRConsentManagementCheck {
         let mut status = ComplianceStatus::NonCompliant;
 
         // Check if ConsentStore is integrated
-        if let Some(consent_store) = &self.consent_store {
+        if let Some(_consent_store) = &self.consent_store {
             evidence.push("Consent management system integrated".to_string());
             score += 40.0;
 
@@ -818,12 +820,10 @@ impl ComplianceCheck for HIPAAAccessControlCheck {
                     for user in users.iter().take(5) {
                         if let Ok(user_roles) =
                             crate::database::operations::roles::get_user_roles(db, &user.id).await
-                        {
-                            if !user_roles.is_empty() {
+                            && !user_roles.is_empty() {
                                 users_with_roles += 1;
                                 total_role_assignments += user_roles.len();
                             }
-                        }
                     }
 
                     if users_with_roles > 0 {
@@ -910,7 +910,9 @@ impl ComplianceCheck for HIPAAAuditControlsCheck {
         // Check if audit logging system is operational
         if let Some(db) = &self.database {
             // Test 1: Check if audit_logs table has recent entries (last 24 hours)
-            match crate::database::operations::audit::get_audit_log_count(db, None, None).await {
+            match crate::database::operations::audit::get_audit_log_count(db, None, None, None)
+                .await
+            {
                 Ok(count) if count > 0 => {
                     score += 40.0;
                     evidence.push(format!(
@@ -936,7 +938,9 @@ impl ComplianceCheck for HIPAAAuditControlsCheck {
             }
 
             // Test 2: Query recent audit logs to verify capture of different event types
-            match crate::database::operations::audit::get_audit_logs(db, None, None, 100, 0).await {
+            match crate::database::operations::audit::get_audit_logs(db, None, None, None, 100, 0)
+                .await
+            {
                 Ok(logs) if !logs.is_empty() => {
                     score += 30.0;
                     let unique_event_types: std::collections::HashSet<_> =
@@ -1349,14 +1353,12 @@ impl DataSubjectRightsService {
         // 5. Revoke all active sessions and tokens
         // 6. Remove from third-party systems
 
-        let erasure_actions = vec![
-            "User account marked for deletion with deleted_at timestamp",
+        let erasure_actions = ["User account marked for deletion with deleted_at timestamp",
             "Active sessions and tokens revoked",
             "Personal identifiers anonymized in audit logs (retained for legal compliance)",
             "Consent records retained with anonymized user_id for proof of consent",
             "Session data and temporary caches cleared",
-            "User profile data removed except legally required fields",
-        ];
+            "User profile data removed except legally required fields"];
 
         // Log the erasure request with comprehensive details
         self.audit_service

@@ -78,6 +78,7 @@ impl OidcClientStore {
                     client_secret: oauth_client.client_secret_hash.clone(), // In production, this should be the actual secret
                     redirect_uris: oauth_client.redirect_uris.clone(),
                     name: oauth_client.client_name.clone(),
+                    realm_id: oauth_client.realm_id.unwrap_or(Uuid::nil()), // Map Option<Uuid> to Uuid
                     enabled: oauth_client.enabled,
                     created_at: oauth_client.created_at,
                     updated_at: oauth_client.updated_at,
@@ -102,6 +103,7 @@ impl OidcClientStore {
                 client_secret: oauth_client.client_secret_hash.clone(), // In production, this should be the actual secret
                 redirect_uris: oauth_client.redirect_uris.clone(),
                 name: oauth_client.client_name.clone(),
+                realm_id: oauth_client.realm_id.unwrap_or(Uuid::nil()), // Map Option<Uuid> to Uuid
                 enabled: oauth_client.enabled,
                 created_at: oauth_client.created_at,
                 updated_at: oauth_client.updated_at,

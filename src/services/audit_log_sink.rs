@@ -1,3 +1,7 @@
+use std::path::PathBuf;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::mpsc;
+
 use crate::models::audit_log::AuditLog;
 
 /// Trait for audit log sinks that can receive and process audit logs
@@ -103,7 +107,101 @@ impl AuditLogSink for PgAuditLogSink {
     }
 }
 
-// TODO: Future implementations could include:
-// - FileAuditLogSink for local file storage
-// - SyslogAuditLogSink for system logging integration
-// - SplunkAuditLogSink for Splunk SIEM integration
+/// File audit log sink for local file storage
+pub struct FileAuditLogSink {
+    sender: mpsc::UnboundedSender<AuditLog>,
+}
+
+impl FileAuditLogSink {
+    /// Create new file audit log sink
+    ///
+    /// # Arguments
+    /// * `path` - Path to the log file
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        let path = path.into();
+        let (sender, mut receiver) = mpsc::unbounded_channel::<AuditLog>();
+
+        tokio::spawn(async move {
+            let mut file = match tokio::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .await
+            {
+                Ok(f) => f,
+                Err(e) => {
+                    tracing::error!("Failed to open audit log file {:?}: {}", path, e);
+                    return;
+                }
+            };
+
+            while let Some(log) = receiver.recv().await {
+                let json = serde_json::to_string(&log).unwrap_or_default();
+                let entry = format!("{}\n", json);
+                if let Err(e) = file.write_all(entry.as_bytes()).await {
+                    tracing::error!("Failed to write audit log to file: {}", e);
+                    // Try to reopen file on error? For simplicity, we log and continue,
+                    // but in production we might want to attempt reconnection or rotation.
+                }
+            }
+        });
+
+        Self { sender }
+    }
+}
+
+impl AuditLogSink for FileAuditLogSink {
+    fn send(&self, log: &AuditLog) {
+        if let Err(e) = self.sender.send(log.clone()) {
+            tracing::error!("Failed to queue audit log for file writing: {}", e);
+        }
+    }
+}
+
+/// Splunk audit log sink for Splunk SIEM integration
+#[cfg(feature = "reqwest")]
+pub struct SplunkAuditLogSink {
+    sender: mpsc::UnboundedSender<AuditLog>,
+}
+
+#[cfg(feature = "reqwest")]
+impl SplunkAuditLogSink {
+    /// Create new Splunk audit log sink
+    ///
+    /// # Arguments
+    /// * `url` - Splunk HEC URL
+    /// * `token` - Splunk HEC token
+    pub fn new(url: String, token: String) -> Self {
+        let (sender, mut receiver) = mpsc::unbounded_channel::<AuditLog>();
+        let client = reqwest::Client::new();
+
+        tokio::spawn(async move {
+            while let Some(log) = receiver.recv().await {
+                let payload = serde_json::json!({
+                    "time": log.timestamp.timestamp(),
+                    "event": log,
+                    "sourcetype": "_json"
+                });
+
+                let _ = client
+                    .post(&url)
+                    .header("Authorization", format!("Splunk {}", token))
+                    .json(&payload)
+                    .send()
+                    .await
+                    .map_err(|e| tracing::error!("Failed to send audit log to Splunk: {}", e));
+            }
+        });
+
+        Self { sender }
+    }
+}
+
+#[cfg(feature = "reqwest")]
+impl AuditLogSink for SplunkAuditLogSink {
+    fn send(&self, log: &AuditLog) {
+        if let Err(e) = self.sender.send(log.clone()) {
+            tracing::error!("Failed to queue audit log for Splunk: {}", e);
+        }
+    }
+}

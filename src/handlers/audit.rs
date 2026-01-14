@@ -3,20 +3,23 @@
 //! This module provides endpoints for querying and exporting audit logs
 //! with filtering and pagination support.
 
+use crate::database::operations;
+use crate::middleware::auth::AuthUser;
 use crate::models::audit_log::AuditLog;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;
 use axum::{
     extract::{Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{Json, Response},
     routing::get,
-    Router,
+    Extension, Router,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Query parameters for audit log filtering
 #[derive(Debug, Deserialize)]
@@ -73,24 +76,26 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
-/// Extract Bearer token from Authorization header
-fn extract_token(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get("Authorization")
-        .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
-        .map(|s| s.to_string())
-}
+/// Check if user is admin using AuthUser from middleware and DB verification
+async fn is_admin(user: &AuthUser, user_store: &UserStore) -> bool {
+    // 1. Extract user ID
+    let user_id = match Uuid::parse_str(&user.id) {
+        Ok(uid) => uid,
+        Err(e) => {
+            tracing::warn!("Invalid user ID in auth user: {}", e);
+            return false;
+        }
+    };
 
-/// Check if user is admin (simplified - in production use proper JWT validation)
-/// Note: This is a synchronous placeholder. In production, use async JWT validation.
-fn is_admin(headers: &HeaderMap, _user_store: &UserStore) -> bool {
-    // In production, this should:
-    // 1. Decode the JWT token from headers
-    // 2. Validate the token signature
-    // 3. Check user roles/permissions
-    // For now, just check if a token is present (placeholder)
-    extract_token(headers).is_some()
+    // 2. Check user roles from database to ensure up-to-date permissions
+    // Note: We check DB instead of trusting the token roles immediately for higher security on admin actions
+    match operations::roles::get_user_roles(user_store.database(), &user_id).await {
+        Ok(roles) => roles.iter().any(|r| r.name == "admin"),
+        Err(e) => {
+            tracing::error!("Failed to fetch roles for user {}: {}", user_id, e);
+            false
+        }
+    }
 }
 
 /// Apply filters to audit logs
@@ -107,18 +112,16 @@ fn apply_filters(mut logs: Vec<AuditLog>, query: &AuditLogQuery) -> Vec<AuditLog
     if let Some(ref status) = query.status {
         logs.retain(|l| l.status == *status);
     }
-    if let Some(ref from) = query.from {
-        if let Ok(from_dt) = DateTime::parse_from_rfc3339(from) {
+    if let Some(ref from) = query.from
+        && let Ok(from_dt) = DateTime::parse_from_rfc3339(from) {
             let from_utc = from_dt.with_timezone(&Utc);
             logs.retain(|l| l.timestamp >= from_utc);
         }
-    }
-    if let Some(ref to) = query.to {
-        if let Ok(to_dt) = DateTime::parse_from_rfc3339(to) {
+    if let Some(ref to) = query.to
+        && let Ok(to_dt) = DateTime::parse_from_rfc3339(to) {
             let to_utc = to_dt.with_timezone(&Utc);
             logs.retain(|l| l.timestamp <= to_utc);
         }
-    }
     logs
 }
 
@@ -127,21 +130,11 @@ fn apply_filters(mut logs: Vec<AuditLog>, query: &AuditLogQuery) -> Vec<AuditLog
 /// GET /logs
 pub async fn get_audit_logs(
     State(state): State<Arc<AuditHandlerState>>,
+    Extension(user): Extension<AuthUser>,
     Query(query): Query<AuditLogQuery>,
-    headers: HeaderMap,
 ) -> Result<Json<AuditLogResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Check authentication
-    if extract_token(&headers).is_none() {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Invalid or missing token".to_string(),
-            }),
-        ));
-    }
-
     // Check admin authorization
-    if !is_admin(&headers, &state.user_store) {
+    if !is_admin(&user, &state.user_store).await {
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
@@ -181,21 +174,11 @@ pub async fn get_audit_logs(
 /// GET /logs/export
 pub async fn export_audit_logs_csv(
     State(state): State<Arc<AuditHandlerState>>,
+    Extension(user): Extension<AuthUser>,
     Query(query): Query<AuditLogQuery>,
-    headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
-    // Check authentication
-    if extract_token(&headers).is_none() {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Invalid or missing token".to_string(),
-            }),
-        ));
-    }
-
     // Check admin authorization
-    if !is_admin(&headers, &state.user_store) {
+    if !is_admin(&user, &state.user_store).await {
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
@@ -250,7 +233,15 @@ pub async fn export_audit_logs_csv(
             "attachment; filename=\"audit_logs.csv\"",
         )
         .body(wtr.into())
-        .unwrap())
+        .map_err(|e| {
+            tracing::error!("Failed to build response body: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to generate CSV download".to_string(),
+                }),
+            )
+        })?)
 }
 
 /// Create audit log routes for the application

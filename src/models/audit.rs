@@ -198,6 +198,8 @@ pub struct AuditEvent {
     pub request_id: Option<String>,
     /// Correlation ID for tracing related events
     pub correlation_id: Option<String>,
+    /// Realm ID where the event occurred
+    pub realm_id: Option<Uuid>,
 }
 
 /// Audit log filter for queries
@@ -440,6 +442,7 @@ impl TryFrom<tokio_postgres::Row> for AuditEvent {
             error_message: row.try_get("error_message")?,
             request_id: row.try_get("request_id")?,
             correlation_id: row.try_get("correlation_id")?,
+            realm_id: row.try_get("realm_id")?,
         })
     }
 }
