@@ -408,7 +408,7 @@ pub async fn saml_acs(
     {
         Ok(user_info) => {
             // Create JIT provisioning service
-            let admin_service = Arc::new(MockAdminService::new(Arc::new(db.clone())));
+            let admin_service = Arc::new(SamlAdminService::new(Arc::new(db.clone())));
             let jit_service = Arc::new(DefaultJITProvisioningService::new(
                 Arc::new(db.clone()),
                 admin_service,

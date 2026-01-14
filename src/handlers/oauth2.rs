@@ -215,6 +215,7 @@ pub struct RefreshTokenEntry {
     pub revoked: bool,
 }
 
+
 /// In-memory stores (in production, use Redis or database)
 pub struct OAuth2Stores {
     /// Storage for authorization codes

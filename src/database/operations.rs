@@ -732,175 +732,6 @@ pub mod devices {
     }
 }
 
-/// Database operations for WebAuthn credentials
-pub mod webauthn {
-    use crate::{database::Database, error::Result, models::WebauthnCredential};
-    use chrono::Utc;
-    use uuid::Uuid;
-
-    /// Store WebAuthn credential
-    pub async fn store_credential(
-        db: &Database,
-        user_id: Uuid,
-        credential: &WebauthnCredential,
-    ) -> Result<()> {
-        let credential_id = Uuid::new_v4();
-        let now = Utc::now();
-
-        let query = r#"
-            INSERT INTO webauthn_credentials (
-                id, user_id, credential_id, public_key, public_key_algorithm,
-                signature_counter, attestation_object, authenticator_data,
-                user_handle, credential_type, transports, created_at, last_used_at,
-                aaguid, attestation_format, device_id
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-        "#;
-
-        db.execute(
-            query,
-            &[
-                &credential_id,
-                &user_id,
-                &credential.credential_id,
-                &credential.public_key,
-                &credential.public_key_algorithm,
-                &credential.signature_counter,
-                &credential.attestation_object,
-                &credential.authenticator_data,
-                &credential.user_handle,
-                &credential.credential_type,
-                &credential.transports,
-                &now,
-                &credential.last_used_at,
-                &credential.aaguid,
-                &credential.attestation_format,
-                &credential.device_id,
-            ],
-        )
-        .await?;
-
-        Ok(())
-    }
-
-    /// Get WebAuthn credential by credential ID
-    pub async fn get_credential_by_id(
-        db: &Database,
-        credential_id: &str,
-    ) -> Result<Option<WebauthnCredential>> {
-        let query = r#"
-            SELECT
-                id, user_id, credential_id, public_key, public_key_algorithm,
-                attestation_object, authenticator_data, user_handle,
-                signature_counter, credential_type, transports,
-                aaguid, attestation_format, created_at, last_used_at, enabled,
-                device_id
-            FROM webauthn_credentials
-            WHERE credential_id = $1
-        "#;
-
-        let row = db.query(query, &[&credential_id]).await?;
-        let rows = row;
-        Ok(if rows.is_empty() {
-            None
-        } else {
-            let r: &tokio_postgres::Row = &rows[0];
-            Some(WebauthnCredential {
-                id: r.get(0),
-                user_id: r.get(1),
-                credential_id: r.get(2),
-                public_key: r.get(3),
-                public_key_algorithm: r.get(4),
-                signature_counter: r.get(5),
-                attestation_object: r.get(6),
-                authenticator_data: r.get(7),
-                user_handle: r.get(8),
-                credential_type: r.get(9),
-                transports: r.get(10),
-                aaguid: r.get(11),
-                attestation_format: r.get(12),
-                created_at: r.get(13),
-                last_used_at: r.get(14),
-                enabled: r.get(15),
-                device_id: r.get(16),
-            })
-        })
-    }
-
-    /// Get all WebAuthn credentials for a user
-    pub async fn get_user_credentials(
-        db: &Database,
-        user_id: Uuid,
-    ) -> Result<Vec<WebauthnCredential>> {
-        let query = r#"
-            SELECT
-                id, user_id, credential_id, public_key, public_key_algorithm,
-                attestation_object, authenticator_data, user_handle,
-                signature_counter, credential_type, transports,
-                aaguid, attestation_format, created_at, last_used_at, enabled,
-                device_id
-            FROM webauthn_credentials
-            WHERE user_id = $1
-            ORDER BY created_at DESC
-        "#;
-
-        let rows = db.query(query, &[&user_id]).await?;
-        let credentials: Vec<WebauthnCredential> = rows
-            .into_iter()
-            .map(|row: tokio_postgres::Row| WebauthnCredential {
-                id: row.get(0),
-                user_id: row.get(1),
-                credential_id: row.get(2),
-                public_key: row.get(3),
-                public_key_algorithm: row.get(4),
-                signature_counter: row.get(5),
-                attestation_object: row.get(6),
-                authenticator_data: row.get(7),
-                user_handle: row.get(8),
-                credential_type: row.get(9),
-                transports: row.get(10),
-                aaguid: row.get(11),
-                attestation_format: row.get(12),
-                created_at: row.get(13),
-                last_used_at: row.get(14),
-                enabled: row.get(15),
-                device_id: row.get(16),
-            })
-            .collect();
-        Ok(credentials)
-    }
-
-    /// Update signature count after authentication
-    pub async fn update_signature_count(
-        db: &Database,
-        credential_id: &str,
-        new_count: i64,
-    ) -> Result<()> {
-        let now = Utc::now();
-        let query = r#"
-            UPDATE webauthn_credentials
-            SET signature_counter = $2, last_used_at = $3
-            WHERE credential_id = $1
-        "#;
-        db.execute(query, &[&credential_id, &new_count, &now])
-            .await?;
-        Ok(())
-    }
-
-    /// Delete WebAuthn credential
-    pub async fn delete_credential(db: &Database, credential_id: &str) -> Result<()> {
-        let query = "DELETE FROM webauthn_credentials WHERE credential_id = $1";
-        db.execute(query, &[&credential_id]).await?;
-        Ok(())
-    }
-
-    /// Delete all WebAuthn credentials for a user
-    pub async fn delete_user_credentials(db: &Database, user_id: Uuid) -> Result<()> {
-        let query = "DELETE FROM webauthn_credentials WHERE user_id = $1";
-        db.execute(query, &[&user_id]).await?;
-        Ok(())
-    }
-}
 
 /// Database operations for OAuth2
 pub mod oauth2 {
@@ -6504,6 +6335,154 @@ pub mod roles {
         client.execute(query, &[&user_id, &role_id]).await?;
         Ok(())
     }
+}
+
+pub mod webauthn {
+    use crate::{database::Database, error::Result, models::WebauthnCredential};
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    /// Store WebAuthn credential
+    pub async fn store_credential(
+        db: &Database,
+        user_id: Uuid,
+        credential: &WebauthnCredential,
+    ) -> Result<()> {
+        let credential_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO webauthn_credentials (
+                id, user_id, credential_id, public_key, public_key_algorithm,
+                signature_counter, attestation_object, authenticator_data,
+                user_handle, credential_type, transports, created_at, last_used_at,
+                aaguid, attestation_format, device_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        "#;
+
+        db.execute(
+            query,
+            &[
+                &credential_id,
+                &user_id,
+                &credential.credential_id,
+                &credential.public_key,
+                &credential.public_key_algorithm,
+                &(credential.signature_counter as i64),
+                &credential.attestation_object,
+                &credential.authenticator_data,
+                &credential.user_handle,
+                &credential.credential_type,
+                &credential.transports,
+                &now,
+                &credential.last_used_at,
+                &credential.aaguid.map(|u| u.as_bytes().to_vec()),
+                &credential.attestation_format,
+                &credential.device_id,
+            ],
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get WebAuthn credential by credential ID
+    pub async fn get_credential_by_id(
+        db: &Database,
+        credential_id: &[u8],
+    ) -> Result<Option<WebauthnCredential>> {
+        let query = r#"
+            SELECT
+                id, user_id, credential_id, public_key, public_key_algorithm,
+                signature_counter, attestation_object, authenticator_data, user_handle,
+                credential_type, transports, aaguid, attestation_format,
+                device_id, created_at, last_used_at, enabled
+            FROM webauthn_credentials
+            WHERE credential_id = $1
+        "#;
+
+        let row = db.query_opt(query, &[&credential_id]).await?;
+
+        Ok(row.map(|r| WebauthnCredential {
+            id: r.get("id"),
+            user_id: r.get("user_id"),
+            credential_id: r.get("credential_id"),
+            public_key: r.get("public_key"),
+            public_key_algorithm: r.get("public_key_algorithm"),
+            signature_counter: r.get::<_, i64>("signature_counter") as u32,
+            attestation_object: r.get("attestation_object"),
+            authenticator_data: r.get("authenticator_data"),
+            user_handle: r.get("user_handle"),
+            credential_type: r.get("credential_type"),
+            transports: r.get("transports"),
+            aaguid: r.get::<_, Option<Vec<u8>>>("aaguid").map(|v| Uuid::from_slice(&v).unwrap_or_default()),
+            attestation_format: r.get("attestation_format"),
+            device_id: r.get("device_id"),
+            created_at: r.get("created_at"),
+            last_used_at: r.get("last_used_at"),
+            enabled: r.get("enabled"),
+        }))
+    }
+
+    /// Get all WebAuthn credentials for a user
+    pub async fn get_user_credentials(
+        db: &Database,
+        user_id: Uuid,
+    ) -> Result<Vec<WebauthnCredential>> {
+        let query = r#"
+            SELECT
+                id, user_id, credential_id, public_key, public_key_algorithm,
+                signature_counter, attestation_object, authenticator_data, user_handle,
+                credential_type, transports, aaguid, attestation_format,
+                device_id, created_at, last_used_at, enabled
+            FROM webauthn_credentials
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+        "#;
+
+        let rows = db.query(query, &[&user_id]).await?;
+        let credentials = rows
+            .into_iter()
+            .map(|row| WebauthnCredential {
+                id: row.get("id"),
+                user_id: row.get("user_id"),
+                credential_id: row.get("credential_id"),
+                public_key: row.get("public_key"),
+                public_key_algorithm: row.get("public_key_algorithm"),
+                signature_counter: row.get::<_, i64>("signature_counter") as u32,
+                attestation_object: row.get("attestation_object"),
+                authenticator_data: row.get("authenticator_data"),
+                user_handle: row.get("user_handle"),
+                credential_type: row.get("credential_type"),
+                transports: row.get("transports"),
+                aaguid: row.get::<_, Option<Vec<u8>>>("aaguid").map(|v| Uuid::from_slice(&v).unwrap_or_default()),
+                attestation_format: row.get("attestation_format"),
+                device_id: row.get("device_id"),
+                created_at: row.get("created_at"),
+                last_used_at: row.get("last_used_at"),
+                enabled: row.get("enabled"),
+            })
+            .collect();
+        Ok(credentials)
+    }
+
+    /// Update signature count after authentication
+    pub async fn update_signature_count(
+        db: &Database,
+        credential_id: &str,
+        new_count: i64,
+    ) -> Result<()> {
+        let now = Utc::now();
+        let query = r#"
+            UPDATE webauthn_credentials
+            SET signature_counter = $2, last_used_at = $3
+            WHERE credential_id = $1
+        "#;
+        db.execute(query, &[&credential_id, &new_count, &now])
+            .await?;
+        Ok(())
+    }
 
     /// Get user roles
     pub async fn get_user_roles(db: &Database, user_id: &Uuid) -> Result<Vec<Role>> {
@@ -7929,6 +7908,40 @@ use log::error;
 use serde_json;
 use std::collections::HashMap;
 use uuid::Uuid;
+use tokio_postgres::types::{FromSql, Type};
+use serde::Deserialize;
+
+/// Wrapper for direct JSON deserialization from database
+struct Json<T>(pub T);
+
+impl<'a, T> FromSql<'a> for Json<T>
+where
+    T: Deserialize<'a>,
+{
+    fn from_sql(ty: &Type, raw: &'a [u8]) -> std::result::Result<Self, Box<dyn std::error::Error + Sync + Send>> {
+        if *ty == Type::JSONB {
+             // Postgres JSONB version 1
+             if raw.is_empty() {
+                 return Err("empty JSONB value".into());
+             }
+             let version = raw[0];
+             if version != 1 {
+                 return Err("unsupported JSONB version".into());
+             }
+             let val = serde_json::from_slice(&raw[1..])?;
+             Ok(Json(val))
+        } else if *ty == Type::JSON {
+             let val = serde_json::from_slice(raw)?;
+             Ok(Json(val))
+        } else {
+             Err("invalid type".into())
+        }
+    }
+
+    fn accepts(ty: &Type) -> bool {
+        *ty == Type::JSONB || *ty == Type::JSON
+    }
+}
 
 /// Store a user event in the database
 pub async fn store_event(db: &Database, event: &Event) -> Result<()> {
@@ -8113,9 +8126,12 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
 
     let mut events = Vec::new();
     for row in rows {
-        let details_json: String = row.get(10);
-        let details: HashMap<String, String> =
-            serde_json::from_str(&details_json).unwrap_or_default();
+        // OPTIMIZATION: Parse directly from JSONB binary to HashMap using custom wrapper
+        // This avoids intermediate String allocation AND intermediate Value structure
+        let details: HashMap<String, String> = row
+            .try_get::<_, Json<HashMap<String, String>>>(10)
+            .map(|json| json.0)
+            .unwrap_or_default();
 
         events.push(Event {
             id: row.get::<_, Uuid>(0).to_string(),

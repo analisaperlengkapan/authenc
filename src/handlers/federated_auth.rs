@@ -53,6 +53,7 @@ pub struct MockAdminService {
 }
 
 impl MockAdminService {
+    /// Creates a new MockAdminService
     pub fn new(db: Arc<Database>) -> Self {
         Self { db }
     }

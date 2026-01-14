@@ -2,6 +2,54 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
+use webauthn_rs::prelude as webauthn_rs_prelude;
+
+impl From<WebauthnRegistrationResponse> for webauthn_rs_prelude::RegisterPublicKeyCredential {
+    fn from(value: WebauthnRegistrationResponse) -> Self {
+        Self {
+            id: value.id,
+            raw_id: value.raw_id.into(),
+            response: value.response.into(),
+            ty: value.ty,
+        }
+    }
+}
+
+impl From<WebauthnAuthenticatorAttestationResponse>
+    for webauthn_rs_prelude::AuthenticatorAttestationResponse
+{
+    fn from(value: WebauthnAuthenticatorAttestationResponse) -> Self {
+        Self {
+            client_data_json: value.client_data_json.into(),
+            attestation_object: value.attestation_object.into(),
+        }
+    }
+}
+
+impl From<WebauthnAuthenticationResponse> for webauthn_rs_prelude::PublicKeyCredential {
+    fn from(value: WebauthnAuthenticationResponse) -> Self {
+        Self {
+            id: value.id,
+            raw_id: value.raw_id.into(),
+            response: value.response.into(),
+            ty: value.ty,
+        }
+    }
+}
+
+impl From<WebauthnAuthenticatorAssertionResponse>
+    for webauthn_rs_prelude::AuthenticatorAssertionResponse
+{
+    fn from(value: WebauthnAuthenticatorAssertionResponse) -> Self {
+        Self {
+            client_data_json: value.client_data_json.into(),
+            authenticator_data: value.authenticator_data.into(),
+            signature: value.signature.into(),
+            user_handle: value.user_handle.map(|uh| uh.into()),
+        }
+    }
+}
+
 
 /// WebAuthn credential model for database storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
