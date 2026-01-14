@@ -93,6 +93,7 @@ impl TokenManager {
                 .collect(),
             expires_at,
             refresh_expires_at,
+            None, // session_id
         )
         .await?;
 
@@ -248,6 +249,7 @@ impl TokenManager {
                     exp: Some(token_data.expires_at.timestamp()),
                     iat: Some(token_data.created_at.timestamp()),
                     sub: token_data.user_id.map(|id| id.to_string()),
+                    sid: token_data.session_id,
                 })
             }
             None => Ok(TokenIntrospectionResponse {
@@ -259,6 +261,7 @@ impl TokenManager {
                 exp: None,
                 iat: None,
                 sub: None,
+                sid: None,
             }),
         }
     }
@@ -324,4 +327,6 @@ pub struct TokenIntrospectionResponse {
     pub iat: Option<i64>,
     /// Subject identifier (user ID)
     pub sub: Option<String>,
+    /// Session identifier
+    pub sid: Option<String>,
 }

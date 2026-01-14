@@ -1,5 +1,4 @@
 use crate::app::AppState;
-use crate::database::operations;
 use crate::handlers::api::auth_bearer::AuthBearer;
 use crate::models::user::{self, User};
 use crate::services::stores::user_store::UserStoreTrait;

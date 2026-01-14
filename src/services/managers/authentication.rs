@@ -201,7 +201,7 @@ impl AuthenticationManager for DefaultAuthenticationManager {
         let (success, error_message) = if let Some(ref u) = user_opt {
             if !u.enabled {
                 (false, Some("User is disabled".to_string()))
-            } else if let Some(ref hash) = u.password_hash {
+            } else if let Some(hash) = &u.password_hash {
                 // Validate password hash against stored hash
                 match crate::utils::crypto::password::verify_password(hash, password).await {
                     Ok(true) => (true, None),

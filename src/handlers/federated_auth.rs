@@ -48,12 +48,12 @@ pub struct FederatedAuthResponse {
 }
 
 /// Mock Admin Service for federated authentication
-struct MockAdminService {
+pub struct MockAdminService {
     db: Arc<Database>,
 }
 
 impl MockAdminService {
-    fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<Database>) -> Self {
         Self { db }
     }
 }
@@ -133,10 +133,9 @@ impl AdminService for MockAdminService {
                 }
 
                 // Fetch roles and groups concurrently for the response
-                let (roles_result, groups_result) = tokio::join!(
-                    roles::get_user_roles(&self.db, &user.id),
-                    groups::get_user_groups(&self.db, user.id)
-                );
+                let roles_future = roles::get_user_roles(&self.db, &user.id);
+                let groups_future = groups::get_user_groups(&self.db, user.id);
+                let (roles_result, groups_result) = tokio::join!(roles_future, groups_future);
 
                 let roles = roles_result
                     .map_err(|e| format!("Failed to get user roles: {}", e))?

@@ -1049,13 +1049,14 @@ pub mod oauth2 {
             INSERT INTO oauth2_access_tokens (
                 id, token_hash, refresh_token_hash, client_id, user_id,
                 scopes, expires_at, refresh_expires_at, revoked, revoked_at,
-                created_at, last_used_at
+                created_at, last_used_at, session_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             ON CONFLICT (id) DO UPDATE SET
                 revoked = EXCLUDED.revoked,
                 revoked_at = EXCLUDED.revoked_at,
-                last_used_at = EXCLUDED.last_used_at
+                last_used_at = EXCLUDED.last_used_at,
+                session_id = EXCLUDED.session_id
         "#;
 
         db.execute(
@@ -1073,6 +1074,7 @@ pub mod oauth2 {
                 &token.revoked_at,
                 &token.created_at,
                 &token.last_used_at,
+                &token.session_id,
             ],
         )
         .await?;
@@ -1089,7 +1091,7 @@ pub mod oauth2 {
             SELECT
                 id, token_hash, refresh_token_hash, client_id, user_id,
                 scopes, expires_at, refresh_expires_at, revoked,
-                revoked_at, created_at, last_used_at
+                revoked_at, created_at, last_used_at, session_id
             FROM oauth2_access_tokens
             WHERE token_hash = $1 AND revoked = false AND expires_at > NOW()
         "#;
@@ -1111,7 +1113,7 @@ pub mod oauth2 {
             SELECT
                 id, token_hash, refresh_token_hash, client_id, user_id,
                 scopes, expires_at, refresh_expires_at, revoked,
-                revoked_at, created_at, last_used_at
+                revoked_at, created_at, last_used_at, session_id
             FROM oauth2_access_tokens
             WHERE refresh_token_hash = $1 AND revoked = false
         "#;
@@ -8330,6 +8332,8 @@ pub mod tokens {
         pub created_at: DateTime<Utc>,
         /// Timestamp when the token was last used
         pub last_used_at: Option<DateTime<Utc>>,
+        /// Session identifier (if bound to a session)
+        pub session_id: Option<String>,
     }
 
     /// Create new access token in database
@@ -8343,14 +8347,15 @@ pub mod tokens {
         scopes: Vec<String>,
         expires_at: DateTime<Utc>,
         refresh_expires_at: Option<DateTime<Utc>>,
+        session_id: Option<String>,
     ) -> Result<Uuid> {
         let id = Uuid::new_v4();
 
         let query = "
             INSERT INTO oauth2_access_tokens (
                 id, token_hash, refresh_token_hash, client_id, user_id, scopes,
-                expires_at, refresh_expires_at, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                expires_at, refresh_expires_at, created_at, session_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)
         ";
 
         db.execute(
@@ -8364,6 +8369,7 @@ pub mod tokens {
                 &scopes,
                 &expires_at,
                 &refresh_expires_at,
+                &session_id,
             ],
         )
         .await?;
@@ -8378,7 +8384,7 @@ pub mod tokens {
     ) -> Result<Option<AccessTokenData>> {
         let query = "
             SELECT id, token_hash, refresh_token_hash, client_id, user_id, scopes,
-                   expires_at, refresh_expires_at, revoked, revoked_at, created_at, last_used_at
+                   expires_at, refresh_expires_at, revoked, revoked_at, created_at, last_used_at, session_id
             FROM oauth2_access_tokens
             WHERE token_hash = $1
         ";
@@ -8403,6 +8409,7 @@ pub mod tokens {
             revoked_at: row.get(9),
             created_at: row.get(10),
             last_used_at: row.get(11),
+            session_id: row.get(12),
         }))
     }
 
@@ -8413,7 +8420,7 @@ pub mod tokens {
     ) -> Result<Option<AccessTokenData>> {
         let query = "
             SELECT id, token_hash, refresh_token_hash, client_id, user_id, scopes,
-                   expires_at, refresh_expires_at, revoked, revoked_at, created_at, last_used_at
+                   expires_at, refresh_expires_at, revoked, revoked_at, created_at, last_used_at, session_id
             FROM oauth2_access_tokens
             WHERE refresh_token_hash = $1
         ";
@@ -8438,6 +8445,7 @@ pub mod tokens {
             revoked_at: row.get(9),
             created_at: row.get(10),
             last_used_at: row.get(11),
+            session_id: row.get(12),
         }))
     }
 
@@ -8496,7 +8504,7 @@ pub mod tokens {
     ) -> Result<Vec<AccessTokenData>> {
         let query = "
             SELECT id, token_hash, refresh_token_hash, client_id, user_id, scopes,
-                   expires_at, refresh_expires_at, revoked, revoked_at, created_at, last_used_at
+                   expires_at, refresh_expires_at, revoked, revoked_at, created_at, last_used_at, session_id
             FROM oauth2_access_tokens
             WHERE user_id = $1
               AND revoked = false
@@ -8521,6 +8529,7 @@ pub mod tokens {
                 revoked_at: row.get(9),
                 created_at: row.get(10),
                 last_used_at: row.get(11),
+                session_id: row.get(12),
             });
         }
 
@@ -11040,14 +11049,3 @@ pub mod spi {
     }
 }
 
-/// Database operations for realms
-pub mod realms {
-    use crate::{
-        database::Database,
-        error::{AuthencError, Result},
-        models::Realm,
-    };
-
-    /// List all non-deleted realms
-    pub async fn list_realms(db: &Database) -> Result<Vec<Realm>> {
-        let query = r#
