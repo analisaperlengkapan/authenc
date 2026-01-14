@@ -280,13 +280,11 @@ impl VaultProvider for HashiCorpVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(data) = json.get("data").and_then(|d| d.get("data")) {
-                    if let Some(value) = data.get("value") {
-                        if let Some(v) = value.as_str() {
+                if let Some(data) = json.get("data").and_then(|d| d.get("data"))
+                    && let Some(value) = data.get("value")
+                        && let Some(v) = value.as_str() {
                             return Ok(Some(v.to_string()));
                         }
-                    }
-                }
             }
 
             Ok(None)
@@ -375,14 +373,13 @@ impl VaultProvider for HashiCorpVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(keys) = json.get("data").and_then(|d| d.get("keys")) {
-                    if let Some(keys_array) = keys.as_array() {
+                if let Some(keys) = json.get("data").and_then(|d| d.get("keys"))
+                    && let Some(keys_array) = keys.as_array() {
                         return Ok(keys_array
                             .iter()
                             .filter_map(|k| k.as_str().map(|s| s.trim_end_matches('/').to_string()))
                             .collect());
                     }
-                }
             }
 
             Ok(vec![])
@@ -453,11 +450,10 @@ impl VaultProvider for AzureKeyVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(value) = json.get("value") {
-                    if let Some(v) = value.as_str() {
+                if let Some(value) = json.get("value")
+                    && let Some(v) = value.as_str() {
                         return Ok(Some(v.to_string()));
                     }
-                }
             }
 
             Ok(None)
@@ -550,8 +546,8 @@ impl VaultProvider for AzureKeyVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(value) = json.get("value") {
-                    if let Some(secrets_array) = value.as_array() {
+                if let Some(value) = json.get("value")
+                    && let Some(secrets_array) = value.as_array() {
                         return Ok(secrets_array
                             .iter()
                             .filter_map(|s| {
@@ -562,7 +558,6 @@ impl VaultProvider for AzureKeyVaultProvider {
                             })
                             .collect());
                     }
-                }
             }
 
             Ok(vec![])
@@ -663,11 +658,10 @@ impl VaultProvider for AwsSecretsManagerProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(secret) = json.get("SecretString") {
-                    if let Some(s) = secret.as_str() {
+                if let Some(secret) = json.get("SecretString")
+                    && let Some(s) = secret.as_str() {
                         return Ok(Some(s.to_string()));
                     }
-                }
             }
 
             Ok(None)
@@ -786,8 +780,8 @@ impl VaultProvider for AwsSecretsManagerProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(secrets) = json.get("SecretList") {
-                    if let Some(secrets_array) = secrets.as_array() {
+                if let Some(secrets) = json.get("SecretList")
+                    && let Some(secrets_array) = secrets.as_array() {
                         return Ok(secrets_array
                             .iter()
                             .filter_map(|s| {
@@ -797,7 +791,6 @@ impl VaultProvider for AwsSecretsManagerProvider {
                             })
                             .collect());
                     }
-                }
             }
 
             Ok(vec![])
@@ -864,11 +857,10 @@ impl VaultService {
 
     /// Get secret from default provider
     pub async fn get_secret(&self, key: &str) -> Result<Option<String>> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.get_secret(key).await;
             }
-        }
         Ok(None)
     }
 
@@ -883,11 +875,10 @@ impl VaultService {
 
     /// Store secret in default provider
     pub async fn set_secret(&self, key: &str, value: &str) -> Result<()> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.set_secret(key, value).await;
             }
-        }
         Ok(())
     }
 
@@ -902,11 +893,10 @@ impl VaultService {
 
     /// Delete secret from default provider
     pub async fn delete_secret(&self, key: &str) -> Result<()> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.delete_secret(key).await;
             }
-        }
         Ok(())
     }
 
@@ -921,11 +911,10 @@ impl VaultService {
 
     /// List secrets from default provider
     pub async fn list_secrets(&self) -> Result<Vec<String>> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.list_secrets().await;
             }
-        }
         Ok(vec![])
     }
 

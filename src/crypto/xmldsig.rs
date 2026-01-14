@@ -228,11 +228,10 @@ impl XmlSignature {
                                         String::from_utf8_lossy(attr.key.as_ref()) == "Algorithm"
                                     })
                                     .unwrap_or(false)
-                            }) {
-                                if let Ok(attr) = attr {
+                            })
+                                && let Ok(attr) = attr {
                                     c14n_method = String::from_utf8_lossy(&attr.value).to_string();
                                 }
-                            }
                         }
                         "SignatureMethod" | "ds:SignatureMethod" if in_signed_info => {
                             if let Some(attr) = e.attributes().find(|a| {
@@ -241,11 +240,10 @@ impl XmlSignature {
                                         String::from_utf8_lossy(attr.key.as_ref()) == "Algorithm"
                                     })
                                     .unwrap_or(false)
-                            }) {
-                                if let Ok(attr) = attr {
+                            })
+                                && let Ok(attr) = attr {
                                     sig_method = String::from_utf8_lossy(&attr.value).to_string();
                                 }
-                            }
                         }
                         "Reference" | "ds:Reference" if in_signed_info => {
                             in_reference = true;
@@ -262,12 +260,11 @@ impl XmlSignature {
                                         String::from_utf8_lossy(attr.key.as_ref()) == "URI"
                                     })
                                     .unwrap_or(false)
-                            }) {
-                                if let Ok(attr) = attr {
+                            })
+                                && let Ok(attr) = attr {
                                     current_ref.uri =
                                         String::from_utf8_lossy(&attr.value).to_string();
                                 }
-                            }
                         }
                         "DigestMethod" | "ds:DigestMethod" if in_reference => {
                             if let Some(attr) = e.attributes().find(|a| {
@@ -276,12 +273,11 @@ impl XmlSignature {
                                         String::from_utf8_lossy(attr.key.as_ref()) == "Algorithm"
                                     })
                                     .unwrap_or(false)
-                            }) {
-                                if let Ok(attr) = attr {
+                            })
+                                && let Ok(attr) = attr {
                                     digest_method_uri =
                                         String::from_utf8_lossy(&attr.value).to_string();
                                 }
-                            }
                         }
                         "DigestValue" | "ds:DigestValue" if in_reference => {
                             // Start capturing digest value text
@@ -484,12 +480,11 @@ fn extract_signed_info_xml(xml: &str) -> Result<String> {
     let end_tags = ["</SignedInfo>", "</ds:SignedInfo>"];
 
     for (start_tag, end_tag) in start_tags.iter().zip(end_tags.iter()) {
-        if let Some(start_pos) = xml.find(start_tag) {
-            if let Some(end_pos) = xml.find(end_tag) {
+        if let Some(start_pos) = xml.find(start_tag)
+            && let Some(end_pos) = xml.find(end_tag) {
                 let end_with_tag = end_pos + end_tag.len();
                 return Ok(xml[start_pos..end_with_tag].to_string());
             }
-        }
     }
 
     Err(anyhow!("SignedInfo element not found in XML"))
@@ -571,14 +566,13 @@ fn remove_signature_element(xml: &str) -> Result<String> {
     let end_tags = ["</Signature>", "</ds:Signature>"];
 
     for (start_tag, end_tag) in start_tags.iter().zip(end_tags.iter()) {
-        if let Some(start_pos) = xml.find(start_tag) {
-            if let Some(end_pos) = xml[start_pos..].find(end_tag) {
+        if let Some(start_pos) = xml.find(start_tag)
+            && let Some(end_pos) = xml[start_pos..].find(end_tag) {
                 let full_end = start_pos + end_pos + end_tag.len();
                 let mut result = xml[..start_pos].to_string();
                 result.push_str(&xml[full_end..]);
                 return Ok(result);
             }
-        }
     }
 
     // No signature found - return original
@@ -959,11 +953,10 @@ impl CertificateValidator {
 
             for path in &cert_paths {
                 if std::path::Path::new(path).exists() {
-                    if let Ok(certs) = std::fs::read(path) {
-                        if let Ok(cert) = X509::from_pem(&certs) {
+                    if let Ok(certs) = std::fs::read(path)
+                        && let Ok(cert) = X509::from_pem(&certs) {
                             let _ = builder.add_cert(cert);
                         }
-                    }
                     break;
                 }
             }
@@ -1002,8 +995,8 @@ impl CertificateValidator {
     /// Validate a certificate
     pub fn validate_certificate(&self, cert: &X509) -> Result<CertificateValidationResult> {
         // Check expiration
-        if self.enable_expiration_check {
-            if let Err(e) = self.check_expiration(cert) {
+        if self.enable_expiration_check
+            && let Err(e) = self.check_expiration(cert) {
                 let msg = e.to_string();
                 if msg.contains("not yet valid") {
                     return Ok(CertificateValidationResult::NotYetValid);
@@ -1011,7 +1004,6 @@ impl CertificateValidator {
                     return Ok(CertificateValidationResult::Expired);
                 }
             }
-        }
 
         // Validate certificate chain
         match self.validate_certificate_chain(cert) {
@@ -1231,8 +1223,8 @@ fn parse_asn1_time(time_str: &str) -> Result<DateTime<Utc>> {
 impl XmlSignature {
     /// Get the X.509 certificate from KeyInfo (if present)
     pub fn get_certificate(&self) -> Option<X509> {
-        if let Some(ref key_info) = self.key_info {
-            if let Some(ref cert_pem) = key_info.x509_certificate {
+        if let Some(ref key_info) = self.key_info
+            && let Some(ref cert_pem) = key_info.x509_certificate {
                 // Certificate is base64-encoded in XML, need to decode and parse
                 let cert_data = format!(
                     "-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----",
@@ -1243,7 +1235,6 @@ impl XmlSignature {
                     return Some(cert);
                 }
             }
-        }
         None
     }
 }
