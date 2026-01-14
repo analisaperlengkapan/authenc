@@ -2,7 +2,6 @@ use crate::app::AppState;
 use crate::database::Database;
 use crate::database::operations::identity_providers::get_identity_provider_by_entity_id;
 use crate::error::AuthencError;
-use crate::handlers::federated_auth::MockAdminService;
 use crate::models::user::JITUserProvisioningRequest;
 use crate::services::admin::AdminService;
 use crate::services::federation::jit_provisioning::{
@@ -408,7 +407,7 @@ pub async fn saml_acs(
     {
         Ok(user_info) => {
             // Create JIT provisioning service
-            let admin_service = Arc::new(MockAdminService::new(Arc::new(db.clone())));
+            let admin_service = Arc::new(SamlAdminService::new(Arc::new(db.clone())));
             let jit_service = Arc::new(DefaultJITProvisioningService::new(
                 Arc::new(db.clone()),
                 admin_service,
