@@ -316,7 +316,9 @@ pub async fn update_password(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Update password in database
-    operations::users::update_password(&state.database, user_id, &new_password_hash)
+    state
+        .user_store
+        .update_password(user_id, new_password_hash)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

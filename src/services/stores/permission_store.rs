@@ -25,7 +25,7 @@ impl PermissionStore {
     /// Add permission to store
     pub fn add_permission(&self, permission: Permission) {
         let mut permissions = self.permissions.write().unwrap();
-        Arc::make_mut(&mut *permissions).push(permission);
+        Arc::make_mut(&mut permissions).push(permission);
     }
 
     /// Get all permissions
@@ -61,15 +61,10 @@ impl PermissionStore {
 
     /// Delete permission by realm and name
     pub fn delete_by_name(&self, realm_id: &str, name: &str) -> bool {
-        let realm_uuid = match Uuid::parse_str(realm_id) {
-            Ok(uuid) => uuid,
-            Err(_) => return false,
-        };
-
         let mut permissions = self.permissions.write().unwrap();
-        let vec_permissions = Arc::make_mut(&mut *permissions);
-        let len_before = vec_permissions.len();
-        vec_permissions.retain(|p| !(p.realm_id == realm_uuid && p.name == name));
-        vec_permissions.len() < len_before
+        let vec = Arc::make_mut(&mut permissions);
+        let len_before = vec.len();
+        vec.retain(|p| !(p.realm_id.to_string() == realm_id && p.name == name));
+        vec.len() < len_before
     }
 }
