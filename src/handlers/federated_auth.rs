@@ -48,12 +48,12 @@ pub struct FederatedAuthResponse {
 }
 
 /// Mock Admin Service for federated authentication
-pub struct MockAdminService {
+struct MockAdminService {
     db: Arc<Database>,
 }
 
 impl MockAdminService {
-    pub fn new(db: Arc<Database>) -> Self {
+    fn new(db: Arc<Database>) -> Self {
         Self { db }
     }
 }
