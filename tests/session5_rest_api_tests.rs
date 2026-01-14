@@ -624,35 +624,3 @@ async fn test_execution_statistics() {
     println!("✅ Authenticator: Execution Statistics - PASSED");
 }
 
-// ============================================================================
-// COMPREHENSIVE TEST RUNNER
-// ============================================================================
-
-#[tokio::test]
-async fn test_session5_all_api_endpoints() {
-    println!("\n🚀 Session 5: REST API Integration Tests");
-    println!("==========================================\n");
-
-    // Event Listener API (6 endpoints)
-    test_event_listener_register_and_list();
-    test_event_webhook_registration();
-    test_event_log_query_with_filters();
-    test_event_statistics_with_date_range();
-
-    // Protocol Mapper API (8 endpoints)
-    test_protocol_mapper_client_crud();
-    test_protocol_mapper_realm_level();
-    test_protocol_mapper_protocol_filtering();
-    test_protocol_mapper_statistics();
-
-    // Authenticator API (8 endpoints)
-    test_authenticator_registration_and_listing();
-    test_authenticator_update_and_delete();
-    test_authentication_flow_execution_crud();
-    test_execution_statistics();
-
-    println!("\n==========================================");
-    println!("✅ All 12 Session 5 API tests PASSED!");
-    println!("📊 Coverage: 22 REST endpoints tested");
-    println!("==========================================\n");
-}

@@ -371,7 +371,7 @@ async fn test_saml_basic_authentication_success() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     // Create valid SAML assertion
     let now = chrono::Utc::now();
@@ -453,7 +453,7 @@ async fn test_saml_authentication_without_security() {
 
     // Should create provider without security validator
     // Test basic functionality
-    assert!(provider.is_ok());
+    assert!(provider.await.is_ok());
 }
 
 // ============================================================================
@@ -500,7 +500,7 @@ async fn test_saml_expired_certificate_rejection() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     let now = chrono::Utc::now();
     let not_before = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -587,7 +587,7 @@ async fn test_saml_untrusted_certificate_rejection() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     let now = chrono::Utc::now();
     let not_before = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -662,7 +662,7 @@ async fn test_saml_xml_bomb_rejection() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     let bomb = create_xml_bomb();
 
@@ -720,7 +720,7 @@ async fn test_saml_deep_nesting_rejection() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     let deep_xml = create_deep_nested_xml();
 
@@ -787,7 +787,7 @@ async fn test_saml_expired_assertion_rejection() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     // Create assertion that expired 1 hour ago
     let now = chrono::Utc::now();
@@ -869,7 +869,7 @@ async fn test_saml_not_yet_valid_assertion_rejection() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     // Create assertion valid only in future (1 hour from now)
     let now = chrono::Utc::now();
@@ -958,7 +958,7 @@ async fn test_saml_replay_attack_prevention() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     let now = chrono::Utc::now();
     let not_before = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -1048,7 +1048,7 @@ async fn test_saml_crl_soft_fail_mode() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     let now = chrono::Utc::now();
     let not_before = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -1158,7 +1158,7 @@ async fn bench_saml_authentication_throughput() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     let now = chrono::Utc::now();
     let not_before = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();

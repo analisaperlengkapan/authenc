@@ -51,6 +51,12 @@ impl UserStoreTrait for MockUserStore {
     }
 
     async fn add_user(&self, request: CreateUserRequest) -> Result<User, AuthencError> {
+        let password_hash = if let Some(p) = request.password {
+            Some(authenc::utils::crypto::password::hash_password(&p).await.unwrap())
+        } else {
+            None
+        };
+
         let mut users = self.users.lock().unwrap();
         let user = User {
             id: Uuid::new_v4(),
@@ -61,9 +67,7 @@ impl UserStoreTrait for MockUserStore {
             last_name: request.last_name,
             phone_number: request.phone_number,
             phone_verified: false,
-            password_hash: request
-                .password
-                .map(|p| authenc::utils::crypto::password::hash_password(&p).unwrap()),
+            password_hash,
             totp_secret: None,
             totp_backup_codes: None,
             webauthn_enabled: false,

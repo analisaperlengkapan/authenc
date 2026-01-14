@@ -6335,156 +6335,6 @@ pub mod roles {
         client.execute(query, &[&user_id, &role_id]).await?;
         Ok(())
     }
-}
-
-pub mod webauthn {
-    use crate::{database::Database, error::Result, models::WebauthnCredential};
-    use chrono::Utc;
-    use uuid::Uuid;
-
-    /// Store WebAuthn credential
-    pub async fn store_credential(
-        db: &Database,
-        user_id: Uuid,
-        credential: &WebauthnCredential,
-    ) -> Result<()> {
-        let credential_id = Uuid::new_v4();
-        let now = Utc::now();
-
-        let query = r#"
-            INSERT INTO webauthn_credentials (
-                id, user_id, credential_id, public_key, public_key_algorithm,
-                signature_counter, attestation_object, authenticator_data,
-                user_handle, credential_type, transports, created_at, last_used_at,
-                aaguid, attestation_format, device_id
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-        "#;
-
-        db.execute(
-            query,
-            &[
-                &credential_id,
-                &user_id,
-                &credential.credential_id,
-                &credential.public_key,
-                &credential.public_key_algorithm,
-                &(credential.signature_counter as i64),
-                &credential.attestation_object,
-                &credential.authenticator_data,
-                &credential.user_handle,
-                &credential.credential_type,
-                &credential.transports,
-                &now,
-                &credential.last_used_at,
-                &credential.aaguid.map(|u| u.as_bytes().to_vec()),
-                &credential.attestation_format,
-                &credential.device_id,
-            ],
-        )
-        .await?;
-
-        Ok(())
-    }
-
-    /// Get WebAuthn credential by credential ID
-    pub async fn get_credential_by_id(
-        db: &Database,
-        credential_id: &[u8],
-    ) -> Result<Option<WebauthnCredential>> {
-        let query = r#"
-            SELECT
-                id, user_id, credential_id, public_key, public_key_algorithm,
-                signature_counter, attestation_object, authenticator_data, user_handle,
-                credential_type, transports, aaguid, attestation_format,
-                device_id, created_at, last_used_at, enabled
-            FROM webauthn_credentials
-            WHERE credential_id = $1
-        "#;
-
-        let row = db.query_opt(query, &[&credential_id]).await?;
-
-        Ok(row.map(|r| WebauthnCredential {
-            id: r.get("id"),
-            user_id: r.get("user_id"),
-            credential_id: r.get("credential_id"),
-            public_key: r.get("public_key"),
-            public_key_algorithm: r.get("public_key_algorithm"),
-            signature_counter: r.get::<_, i64>("signature_counter") as u32,
-            attestation_object: r.get("attestation_object"),
-            authenticator_data: r.get("authenticator_data"),
-            user_handle: r.get("user_handle"),
-            credential_type: r.get("credential_type"),
-            transports: r.get("transports"),
-            aaguid: r.get::<_, Option<Vec<u8>>>("aaguid").map(|v| Uuid::from_slice(&v).unwrap_or_default()),
-            attestation_format: r.get("attestation_format"),
-            device_id: r.get("device_id"),
-            created_at: r.get("created_at"),
-            last_used_at: r.get("last_used_at"),
-            enabled: r.get("enabled"),
-        }))
-    }
-
-    /// Get all WebAuthn credentials for a user
-    pub async fn get_user_credentials(
-        db: &Database,
-        user_id: Uuid,
-    ) -> Result<Vec<WebauthnCredential>> {
-        let query = r#"
-            SELECT
-                id, user_id, credential_id, public_key, public_key_algorithm,
-                signature_counter, attestation_object, authenticator_data, user_handle,
-                credential_type, transports, aaguid, attestation_format,
-                device_id, created_at, last_used_at, enabled
-            FROM webauthn_credentials
-            WHERE user_id = $1
-            ORDER BY created_at DESC
-        "#;
-
-        let rows = db.query(query, &[&user_id]).await?;
-        let credentials = rows
-            .into_iter()
-            .map(|row| WebauthnCredential {
-                id: row.get("id"),
-                user_id: row.get("user_id"),
-                credential_id: row.get("credential_id"),
-                public_key: row.get("public_key"),
-                public_key_algorithm: row.get("public_key_algorithm"),
-                signature_counter: row.get::<_, i64>("signature_counter") as u32,
-                attestation_object: row.get("attestation_object"),
-                authenticator_data: row.get("authenticator_data"),
-                user_handle: row.get("user_handle"),
-                credential_type: row.get("credential_type"),
-                transports: row.get("transports"),
-                aaguid: row.get::<_, Option<Vec<u8>>>("aaguid").map(|v| Uuid::from_slice(&v).unwrap_or_default()),
-                attestation_format: row.get("attestation_format"),
-                device_id: row.get("device_id"),
-                created_at: row.get("created_at"),
-                last_used_at: row.get("last_used_at"),
-                enabled: row.get("enabled"),
-            })
-            .collect();
-        Ok(credentials)
-    }
-
-    /// Update signature count after authentication
-    pub async fn update_signature_count(
-        db: &Database,
-        credential_id: &str,
-        new_count: i64,
-    ) -> Result<()> {
-        let now = Utc::now();
-        let query = r#"
-            UPDATE webauthn_credentials
-            SET signature_counter = $2, last_used_at = $3
-            WHERE credential_id = $1
-        "#;
-        db.execute(query, &[&credential_id, &new_count, &now])
-            .await?;
-        Ok(())
-    }
-
-    /// Get user roles
     pub async fn get_user_roles(db: &Database, user_id: &Uuid) -> Result<Vec<Role>> {
         let client = db.get_connection().await?;
         let query = r#"
@@ -6600,6 +6450,162 @@ pub mod webauthn {
 
         Ok(())
     }
+}
+
+pub mod webauthn {
+    use crate::{database::Database, error::Result, models::WebauthnCredential};
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    /// Store WebAuthn credential
+    pub async fn store_credential(
+        db: &Database,
+        user_id: Uuid,
+        credential: &WebauthnCredential,
+    ) -> Result<()> {
+        let credential_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO webauthn_credentials (
+                id, user_id, credential_id, public_key, public_key_algorithm,
+                signature_counter, attestation_object, authenticator_data,
+                user_handle, credential_type, transports, created_at, last_used_at,
+                aaguid, attestation_format, device_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        "#;
+
+        db.execute(
+            query,
+            &[
+                &credential_id,
+                &user_id,
+                &credential.credential_id,
+                &credential.public_key,
+                &credential.public_key_algorithm,
+                &(credential.signature_counter as i64),
+                &credential.attestation_object,
+                &credential.authenticator_data,
+                &credential.user_handle,
+                &credential.credential_type,
+                &credential.transports,
+                &now,
+                &credential.last_used_at,
+                &credential.aaguid,
+                &credential.attestation_format,
+                &credential.device_id,
+            ],
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get WebAuthn credential by credential ID
+    pub async fn get_credential_by_id(
+        db: &Database,
+        credential_id: &[u8],
+    ) -> Result<Option<WebauthnCredential>> {
+        let query = r#"
+            SELECT
+                id, user_id, credential_id, public_key, public_key_algorithm,
+                signature_counter, attestation_object, authenticator_data, user_handle,
+                credential_type, transports, aaguid, attestation_format,
+                device_id, created_at, last_used_at, enabled
+            FROM webauthn_credentials
+            WHERE credential_id = $1
+        "#;
+
+        let row = db.query_opt(query, &[&credential_id]).await?;
+
+        Ok(row.map(|r| WebauthnCredential {
+            id: r.get("id"),
+            user_id: r.get("user_id"),
+            credential_id: r.get("credential_id"),
+            public_key: r.get("public_key"),
+            public_key_algorithm: r.get("public_key_algorithm"),
+            signature_counter: r.get::<_, i64>("signature_counter") as u32,
+            attestation_object: r.get("attestation_object"),
+            authenticator_data: r.get("authenticator_data"),
+            user_handle: r.get("user_handle"),
+            credential_type: r.get("credential_type"),
+            transports: r.get("transports"),
+            aaguid: r.get("aaguid"),
+            attestation_format: r.get("attestation_format"),
+            device_id: r.get("device_id"),
+            created_at: r.get("created_at"),
+            last_used_at: r.get("last_used_at"),
+            enabled: r.get("enabled"),
+        }))
+    }
+
+    /// Get all WebAuthn credentials for a user
+    pub async fn get_user_credentials(
+        db: &Database,
+        user_id: Uuid,
+    ) -> Result<Vec<WebauthnCredential>> {
+        let query = r#"
+            SELECT
+                id, user_id, credential_id, public_key, public_key_algorithm,
+                signature_counter, attestation_object, authenticator_data, user_handle,
+                credential_type, transports, aaguid, attestation_format,
+                device_id, created_at, last_used_at, enabled
+            FROM webauthn_credentials
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+        "#;
+
+        let rows = db.query(query, &[&user_id]).await?;
+        let credentials = rows
+            .into_iter()
+            .map(|row: tokio_postgres::Row| WebauthnCredential {
+                id: row.get("id"),
+                user_id: row.get("user_id"),
+                credential_id: row.get("credential_id"),
+                public_key: row.get("public_key"),
+                public_key_algorithm: row.get("public_key_algorithm"),
+                signature_counter: row.get::<_, i64>("signature_counter") as u32,
+                attestation_object: row.get("attestation_object"),
+                authenticator_data: row.get("authenticator_data"),
+                user_handle: row.get("user_handle"),
+                credential_type: row.get("credential_type"),
+                transports: row.get("transports"),
+                aaguid: row.get("aaguid"),
+                attestation_format: row.get("attestation_format"),
+                device_id: row.get("device_id"),
+                created_at: row.get("created_at"),
+                last_used_at: row.get("last_used_at"),
+                enabled: row.get("enabled"),
+            })
+            .collect();
+        Ok(credentials)
+    }
+
+    /// Delete all WebAuthn credentials for a user
+    pub async fn delete_user_credentials(db: &Database, user_id: Uuid) -> Result<()> {
+        let query = "DELETE FROM webauthn_credentials WHERE user_id = $1";
+        db.execute(query, &[&user_id]).await?;
+        Ok(())
+    }
+
+    /// Update signature count after authentication
+    pub async fn update_signature_count(
+        db: &Database,
+        credential_id: &str,
+        new_count: i64,
+    ) -> Result<()> {
+        let now = Utc::now();
+        let query = r#"
+            UPDATE webauthn_credentials
+            SET signature_counter = $2, last_used_at = $3
+            WHERE credential_id = $1
+        "#;
+        db.execute(query, &[&credential_id, &new_count, &now])
+            .await?;
+        Ok(())
+    }
+
 }
 
 /// Database operations for identity provider management
