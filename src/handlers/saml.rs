@@ -2,6 +2,7 @@ use crate::app::AppState;
 use crate::database::Database;
 use crate::database::operations::identity_providers::get_identity_provider_by_entity_id;
 use crate::error::AuthencError;
+use crate::handlers::federated_auth::MockAdminService;
 use crate::models::user::JITUserProvisioningRequest;
 use crate::services::admin::AdminService;
 use crate::services::federation::jit_provisioning::{

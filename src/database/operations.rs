@@ -7927,6 +7927,40 @@ use log::error;
 use serde_json;
 use std::collections::HashMap;
 use uuid::Uuid;
+use tokio_postgres::types::{FromSql, Type};
+use serde::Deserialize;
+
+/// Wrapper for direct JSON deserialization from database
+struct Json<T>(pub T);
+
+impl<'a, T> FromSql<'a> for Json<T>
+where
+    T: Deserialize<'a>,
+{
+    fn from_sql(ty: &Type, raw: &'a [u8]) -> std::result::Result<Self, Box<dyn std::error::Error + Sync + Send>> {
+        if *ty == Type::JSONB {
+             // Postgres JSONB version 1
+             if raw.is_empty() {
+                 return Err("empty JSONB value".into());
+             }
+             let version = raw[0];
+             if version != 1 {
+                 return Err("unsupported JSONB version".into());
+             }
+             let val = serde_json::from_slice(&raw[1..])?;
+             Ok(Json(val))
+        } else if *ty == Type::JSON {
+             let val = serde_json::from_slice(raw)?;
+             Ok(Json(val))
+        } else {
+             Err("invalid type".into())
+        }
+    }
+
+    fn accepts(ty: &Type) -> bool {
+        *ty == Type::JSONB || *ty == Type::JSON
+    }
+}
 
 /// Store a user event in the database
 pub async fn store_event(db: &Database, event: &Event) -> Result<()> {
@@ -8111,9 +8145,12 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
 
     let mut events = Vec::new();
     for row in rows {
-        let details_json: String = row.get(10);
-        let details: HashMap<String, String> =
-            serde_json::from_str(&details_json).unwrap_or_default();
+        // OPTIMIZATION: Parse directly from JSONB binary to HashMap using custom wrapper
+        // This avoids intermediate String allocation AND intermediate Value structure
+        let details: HashMap<String, String> = row
+            .try_get::<_, Json<HashMap<String, String>>>(10)
+            .map(|json| json.0)
+            .unwrap_or_default();
 
         events.push(Event {
             id: row.get::<_, Uuid>(0).to_string(),
@@ -11040,14 +11077,3 @@ pub mod spi {
     }
 }
 
-/// Database operations for realms
-pub mod realms {
-    use crate::{
-        database::Database,
-        error::{AuthencError, Result},
-        models::Realm,
-    };
-
-    /// List all non-deleted realms
-    pub async fn list_realms(db: &Database) -> Result<Vec<Realm>> {
-        let query = r#
