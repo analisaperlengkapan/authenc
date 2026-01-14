@@ -100,6 +100,7 @@ impl OAuth2Service {
             revoked_at: None,
             created_at,
             last_used_at: None,
+            session_id: claims.sid.clone(),
         };
 
         self.store_access_token_db(&model).await

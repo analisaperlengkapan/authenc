@@ -94,6 +94,8 @@ pub struct OAuth2AccessToken {
     pub created_at: DateTime<Utc>,
     /// Timestamp when the token was last used
     pub last_used_at: Option<DateTime<Utc>>,
+    /// Session identifier (if bound to a session)
+    pub session_id: Option<String>,
 }
 
 /// OAuth2 client creation request
@@ -287,6 +289,7 @@ impl TryFrom<tokio_postgres::Row> for OAuth2AccessToken {
             revoked_at: row.try_get("revoked_at")?,
             created_at: row.try_get("created_at")?,
             last_used_at: row.try_get("last_used_at")?,
+            session_id: row.try_get("session_id")?,
         })
     }
 }
