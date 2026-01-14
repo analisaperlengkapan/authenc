@@ -214,7 +214,7 @@ async fn roles_page(
     _auth: AuthBearer,
 ) -> Result<Html<String>, StatusCode> {
     // Fetch roles from role store
-    let roles = state.role_store.get_all();
+    let roles = state.role_store.get_roles();
 
     let mut roles_html = String::new();
     for role in roles.iter() {
@@ -315,7 +315,7 @@ async fn realms_page(
     _auth: AuthBearer,
 ) -> Result<Html<String>, StatusCode> {
     // Fetch realms from realm store
-    let realms = state.realm_store.get_all();
+    let realms = state.realm_store.get_realms();
 
     let mut realms_html = String::new();
     for realm in realms.iter() {

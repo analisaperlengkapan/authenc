@@ -35,7 +35,7 @@ impl RealmStore {
         Arc::make_mut(&mut realms).push(realm);
     }
 
-    /// Get all realms
+/// Get all realms
     ///
     /// Returns an `Arc<Vec<Realm>>` which is an O(1) operation.
     /// Callers can hold this Arc as long as needed without blocking other operations.
