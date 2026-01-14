@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde_json::Value;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -11,6 +11,7 @@ use crate::models::client_registration::{
 };
 use crate::models::oidc_client::OidcClient;
 use crate::services::oidc_client_store::OidcClientStore;
+use jsonwebtoken::{DecodingKey, Validation, decode};
 
 /// Service for handling OAuth 2.0 Dynamic Client Registration (RFC 7591/7592)
 #[async_trait]
@@ -19,7 +20,7 @@ pub trait ClientRegistrationService: Send + Sync {
     async fn register_client(
         &self,
         request: ClientRegistrationRequest,
-        software_statement: Option<SoftwareStatement>,
+        software_statement: Option<String>,
     ) -> Result<ClientRegistrationResponse>;
 
     /// Get client configuration
@@ -45,10 +46,7 @@ pub trait ClientRegistrationService: Send + Sync {
     ) -> Result<()>;
 
     /// Validate software statement
-    async fn validate_software_statement(
-        &self,
-        software_statement: &SoftwareStatement,
-    ) -> Result<bool>;
+    async fn validate_software_statement(&self, token: &str) -> Result<SoftwareStatement>;
 }
 
 /// Default implementation of Client Registration Service
@@ -57,6 +55,7 @@ pub struct DefaultClientRegistrationService {
     registration_tokens: Arc<RwLock<HashMap<String, String>>>, // client_id -> registration_access_token
     enable_dynamic_registration: bool,
     require_software_statement: bool,
+    validation_secret: Option<Vec<u8>>,
 }
 
 impl DefaultClientRegistrationService {
@@ -65,12 +64,14 @@ impl DefaultClientRegistrationService {
         client_store: Arc<OidcClientStore>,
         enable_dynamic_registration: bool,
         require_software_statement: bool,
+        validation_secret: Option<Vec<u8>>,
     ) -> Self {
         Self {
             client_store,
             registration_tokens: Arc::new(RwLock::new(HashMap::new())),
             enable_dynamic_registration,
             require_software_statement,
+            validation_secret,
         }
     }
 
@@ -154,13 +155,12 @@ impl DefaultClientRegistrationService {
         }
 
         // Validate application type
-        if let Some(app_type) = &request.application_type {
-            if app_type != "web" && app_type != "native" {
+        if let Some(app_type) = &request.application_type
+            && app_type != "web" && app_type != "native" {
                 return Err(AuthencError::ValidationError {
                     message: "Application type must be 'web' or 'native'".to_string(),
                 });
             }
-        }
 
         Ok(())
     }
@@ -179,6 +179,7 @@ impl DefaultClientRegistrationService {
                 .client_name
                 .clone()
                 .unwrap_or_else(|| "Dynamic Client".to_string()),
+            realm_id: Uuid::nil(), // Default to global/nil realm for dynamic registration unless context provided
             enabled: true,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -191,7 +192,9 @@ impl DefaultClientRegistrationService {
         client: &OidcClient,
         registration_access_token: &str,
     ) -> ClientRegistrationResponse {
-        let response = ClientRegistrationResponse {
+
+
+        ClientRegistrationResponse {
             client_id: client.client_id.clone(),
             client_id_issued_at: Some(chrono::Utc::now().timestamp()),
             client_secret: Some(client.client_secret.clone()),
@@ -229,9 +232,7 @@ impl DefaultClientRegistrationService {
             registration_access_token: Some(registration_access_token.to_string()),
             registration_client_uri: Some(format!("/register/{}", client.client_id)),
             additional_metadata: HashMap::new(),
-        };
-
-        response
+        }
     }
 }
 
@@ -240,7 +241,7 @@ impl ClientRegistrationService for DefaultClientRegistrationService {
     async fn register_client(
         &self,
         request: ClientRegistrationRequest,
-        software_statement: Option<SoftwareStatement>,
+        software_statement: Option<String>,
     ) -> Result<ClientRegistrationResponse> {
         // Check if dynamic registration is enabled
         if !self.enable_dynamic_registration {
@@ -250,24 +251,23 @@ impl ClientRegistrationService for DefaultClientRegistrationService {
         }
 
         // Validate software statement if provided or required
-        if let Some(stmt) = &software_statement {
-            if !self.validate_software_statement(stmt).await? {
-                return Err(AuthencError::ValidationError {
-                    message: "Invalid software statement".to_string(),
-                });
-            }
+        let parsed_stmt = if let Some(token) = &software_statement {
+            Some(self.validate_software_statement(token).await?)
         } else if self.require_software_statement {
             return Err(AuthencError::ValidationError {
                 message: "Software statement is required".to_string(),
             });
-        }
+        } else {
+            None
+        };
 
         // Merge software statement metadata if present (RFC 7591)
-        let request = if let Some(stmt) = &software_statement {
+        let request = if let Some(stmt) = &parsed_stmt {
             // Serialize request to Value to allow merging
-            let mut request_value = serde_json::to_value(&request).map_err(|e| AuthencError::SerializationError {
-                message: format!("Failed to serialize request: {}", e),
-            })?;
+            let mut request_value =
+                serde_json::to_value(&request).map_err(|e| AuthencError::SerializationError {
+                    message: format!("Failed to serialize request: {}", e),
+                })?;
 
             // Merge metadata from software statement
             if let Some(obj) = request_value.as_object_mut() {
@@ -425,12 +425,101 @@ impl ClientRegistrationService for DefaultClientRegistrationService {
         Ok(())
     }
 
-    async fn validate_software_statement(
-        &self,
-        _software_statement: &SoftwareStatement,
-    ) -> Result<bool> {
-        // TODO: Implement JWT validation for software statement
-        // For now, accept all software statements
-        Ok(true)
+    async fn validate_software_statement(&self, token: &str) -> Result<SoftwareStatement> {
+        validate_software_statement_token(token, self.validation_secret.as_deref())
+    }
+}
+
+/// Helper function to validate software statement token
+/// Separated for easier testing without instantiating the service
+fn validate_software_statement_token(
+    token: &str,
+    validation_secret: Option<&[u8]>,
+) -> Result<SoftwareStatement> {
+    // If we have a validation secret, use it. Otherwise fail if validation is required.
+    let key = if let Some(secret) = validation_secret {
+        DecodingKey::from_secret(secret)
+    } else {
+        // If validation is strictly required but no key is configured, this is an error
+        return Err(AuthencError::ConfigurationError {
+            message: "Software statement validation is required but no key is configured"
+                .to_string(),
+        });
+    };
+
+    // Configure validation
+    // Software statements might not have expiration, so we don't require it by default
+    let mut validation = Validation::default();
+    validation.required_spec_claims.remove("exp");
+
+    let token_data = decode::<SoftwareStatement>(token, &key, &validation).map_err(|e| {
+        AuthencError::ValidationError {
+            message: format!("Invalid software statement: {}", e),
+        }
+    })?;
+
+    Ok(token_data.claims)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jsonwebtoken::{EncodingKey, Header, encode};
+    use serde_json::json;
+
+    #[test]
+    fn test_validate_software_statement_token() {
+        let secret = b"test_secret";
+
+        // Create a valid payload
+        let payload = SoftwareStatement {
+            software_id: Some("test_software".to_string()),
+            software_version: Some("1.0".to_string()),
+            client_metadata: [("client_name".to_string(), json!("Test Client"))]
+                .into_iter()
+                .collect(),
+        };
+
+        // Create a valid token
+        let token = encode(
+            &Header::default(),
+            &payload,
+            &EncodingKey::from_secret(secret),
+        )
+        .unwrap();
+
+        // Test valid token
+        let result = validate_software_statement_token(&token, Some(secret));
+        assert!(result.is_ok());
+        let claims = result.unwrap();
+        assert_eq!(claims.software_id, Some("test_software".to_string()));
+
+        // Test invalid signature
+        let result = validate_software_statement_token(&token, Some(b"wrong_secret"));
+        assert!(
+            result.is_err(),
+            "Expected error for invalid signature, got {:?}",
+            result
+        );
+        match result {
+            Err(AuthencError::ValidationError { message }) => {
+                // The error message from jsonwebtoken depends on the error type.
+                // It typically contains "InvalidSignature" or similar.
+                // We just verify it failed validation.
+                println!("Validation error message: {}", message);
+                assert!(!message.is_empty());
+            }
+            _ => panic!("Expected ValidationError, got {:?}", result),
+        }
+
+        // Test missing secret configuration
+        let result = validate_software_statement_token(&token, None);
+        assert!(result.is_err());
+        match result {
+            Err(AuthencError::ConfigurationError { message }) => {
+                assert!(message.contains("no key is configured"));
+            }
+            _ => panic!("Expected ConfigurationError"),
+        }
     }
 }

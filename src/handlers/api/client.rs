@@ -104,6 +104,7 @@ pub async fn create_client(
         client_secret: req.client_secret.clone(),
         redirect_uris: req.redirect_uris.clone(),
         name: req.name.clone(),
+        realm_id: realm_obj.id,
         enabled: req.enabled.unwrap_or(true),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -181,7 +182,7 @@ pub async fn update_client(
     };
 
     // Store the old representation for the event
-    let old_representation = serde_json::to_string(&client).unwrap_or_default();
+    let _old_representation = serde_json::to_string(&client).unwrap_or_default();
 
     // Update the client fields
     if let Some(client_secret) = req.client_secret {
@@ -199,10 +200,15 @@ pub async fn update_client(
 
     // For now, we'll delete and re-add since the store doesn't have an update method
     // In a real implementation, you'd want an update method
-    if let Err(_) = state.oidc_client_store.delete(&client_id).await {
+    if state.oidc_client_store.delete(&client_id).await.is_err() {
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
-    if let Err(_) = state.oidc_client_store.add(client.clone()).await {
+    if state
+        .oidc_client_store
+        .add(client.clone())
+        .await
+        .is_err()
+    {
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 

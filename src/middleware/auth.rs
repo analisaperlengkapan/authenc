@@ -25,6 +25,8 @@ pub struct AuthUser {
     pub email: String,
     /// List of roles assigned to the authenticated user
     pub roles: Vec<String>,
+    /// Session ID of the authenticated user
+    pub session_id: Option<String>,
 }
 
 /// State for auth middleware
@@ -79,7 +81,7 @@ fn validate_token(token: &str, _secret: &str) -> Result<AuthUser, AuthencError> 
         // This can happen for tokens generated before the enhancement
         format!("{}@unknown.local", claims.sub)
     });
-    
+
     let roles = claims.roles.unwrap_or_else(|| {
         // Default role if not specified in token
         vec!["user".to_string()]
@@ -89,6 +91,7 @@ fn validate_token(token: &str, _secret: &str) -> Result<AuthUser, AuthencError> 
         id: claims.sub,
         email,
         roles,
+        session_id: claims.sid,
     })
 }
 
@@ -149,8 +152,24 @@ mod tests {
 
     use super::*;
 
+    // Helper function to create tokens with custom claims for testing
+    // This allows creating expired tokens or tokens with specific claims that generate_jwt doesn't support directly
+    fn create_test_token(claims: &crate::utils::crypto::jwt::Claims) -> String {
+        use crate::crypto::ed25519_keys::sign_ed25519;
+        use base64ct::{Base64UrlUnpadded, Encoding};
+
+        let header = r#"{"alg":"EdDSA","typ":"JWT"}"#;
+        let header_b64 = Base64UrlUnpadded::encode_string(header.as_bytes());
+        let payload_json = serde_json::to_string(claims).expect("Failed to serialize claims");
+        let payload_b64 = Base64UrlUnpadded::encode_string(payload_json.as_bytes());
+        let message = format!("{}.{}", header_b64, payload_b64);
+        let signature = sign_ed25519(message.as_bytes());
+        let signature_b64 = Base64UrlUnpadded::encode_string(&signature.to_bytes());
+        format!("{}.{}.{}", header_b64, payload_b64, signature_b64)
+    }
+
     #[tokio::test]
-    async fn test_auth_middleware() {
+    async fn test_auth_middleware_comprehensive() {
         // Comprehensive test for the middleware
         let state = Arc::new(AuthState {
             jwt_secret: "unused-secret".to_string(), // Secret is unused by Ed25519 verification
@@ -158,7 +177,10 @@ mod tests {
 
         let app = Router::new()
             .route("/protected", get(|| async { "Protected content" }))
-            .layer(axum::middleware::from_fn_with_state(state.clone(), auth_middleware));
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                auth_middleware,
+            ));
 
         // 1. Test missing token
         let response = app
@@ -453,6 +475,7 @@ mod tests {
             id: "user123".to_string(),
             email: "user@example.com".to_string(),
             roles: vec!["user".to_string(), "admin".to_string()],
+            session_id: Some("session123".to_string()),
         };
 
         assert_eq!(user.id, "user123");
@@ -460,6 +483,7 @@ mod tests {
         assert_eq!(user.roles.len(), 2);
         assert!(user.roles.contains(&"user".to_string()));
         assert!(user.roles.contains(&"admin".to_string()));
+        assert_eq!(user.session_id, Some("session123".to_string()));
     }
 
     #[tokio::test]
@@ -473,5 +497,79 @@ mod tests {
         assert!(!is_public_endpoint("/auth/login"));
         assert!(!is_public_endpoint("/protected"));
         assert!(!is_public_endpoint("/"));
+    }
+
+    #[tokio::test]
+    async fn test_expired_token() {
+        use crate::utils::crypto::jwt::Claims;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let state = Arc::new(AuthState {
+            jwt_secret: "unused-secret".to_string(),
+        });
+
+        let app = Router::new()
+            .route("/protected", get(|| async { "Protected" }))
+            .layer(axum::middleware::from_fn_with_state(state, auth_middleware));
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+
+        // 1. Verify that a valid token manually constructed works (sanity check for test harness)
+        let valid_claims = Claims {
+            sub: "test-user".to_string(),
+            sid: None,
+            exp: now + 3600, // Expires in 1 hour
+            email: None,
+            roles: None,
+        };
+        let valid_token = create_test_token(&valid_claims);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .header("authorization", format!("Bearer {}", valid_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Manually constructed valid token should pass"
+        );
+
+        // 2. Test expired token
+        let expired_claims = Claims {
+            sub: "test-user".to_string(),
+            sid: None,
+            exp: now - 3600, // Expired 1 hour ago
+            email: None,
+            roles: None,
+        };
+        let expired_token = create_test_token(&expired_claims);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .header("authorization", format!("Bearer {}", expired_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "Expired token should be rejected"
+        );
     }
 }

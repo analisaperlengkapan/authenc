@@ -10,6 +10,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AuthencError;
+use crate::services::session_store::SessionStore;
 use crate::services::stores::user_store::{UserStore, UserStoreTrait};
 use crate::services::totp_store::TotpStore;
 
@@ -20,6 +21,8 @@ pub struct AccountCredentialsState {
     pub user_store: Arc<UserStore>,
     /// Store for TOTP (Time-based One-Time Password) data
     pub totp_store: Arc<TotpStore>,
+    /// Store for session data
+    pub session_store: Arc<SessionStore>,
 }
 
 /// Create account credentials management routes
@@ -42,7 +45,7 @@ pub fn create_account_credentials_routes() -> Router<AccountCredentialsState> {
 /// Get current user's credentials
 pub async fn get_account_credentials(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<Json<Vec<CredentialResponse>>, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
@@ -64,22 +67,20 @@ pub async fn get_account_credentials(
         last_used_at: user.last_login_at,
     });
 
-    // Check if TOTP is configured
+    // Check if TOTP is configured using atomic retrieval
     let user_id_str = user_id.to_string();
-    if let Ok(Some(_)) = state.totp_store.get_secret(&user_id_str) {
-        let created_at = state
+    if let Ok(Some((_, created_at))) = state.totp_store.get_totp_info(&user_id_str) {
+        let totp_last_used_at = state
             .totp_store
-            .get_configured_at(&user_id_str)
-            .ok()
-            .flatten()
-            .unwrap_or(user.created_at);
+            .get_last_used_at(&user_id_str)
+            .unwrap_or(None);
 
         credentials.push(CredentialResponse {
             id: "totp".to_string(),
             credential_type: CredentialType::Totp,
             user_label: Some("Authenticator App".to_string()),
             created_at,
-            last_used_at: None, // TODO: Track TOTP usage
+            last_used_at: totp_last_used_at,
         });
     }
 
@@ -98,7 +99,7 @@ pub struct UpdatePasswordRequest {
 /// Update the authenticated user's account password
 pub async fn update_account_password(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(password_request): Json<UpdatePasswordRequest>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -117,6 +118,7 @@ pub async fn update_account_password(
             hash,
             &password_request.current_password,
         )
+        .await
         .unwrap_or(false),
         None => false,
     };
@@ -126,8 +128,10 @@ pub async fn update_account_password(
     }
 
     // Hash the new password
-    let new_password_hash = crate::utils::crypto::password::hash_password(&password_request.new_password)
-        .map_err(|e| AuthencError::internal(format!("Failed to hash password: {}", e)))?;
+    let new_password_hash =
+        crate::utils::crypto::password::hash_password(&password_request.new_password)
+            .await
+            .map_err(|e| AuthencError::internal(format!("Failed to hash password: {}", e)))?;
 
     // Update the password
     state
@@ -135,12 +139,18 @@ pub async fn update_account_password(
         .update_password(user_id, new_password_hash)
         .await?;
 
+    // Revoke all existing sessions for security
+    if let Err(e) = state.session_store.delete_user_sessions(user_id).await {
+        tracing::error!("Failed to revoke sessions after password change: {}", e);
+        // We don't fail the request because the password *was* changed.
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 /// Remove a credential from current user's account
 pub async fn remove_account_credential(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(credential_id): Path<String>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -164,7 +174,9 @@ pub async fn remove_account_credential(
             }
         }
         "password" => {
-            return Err(AuthencError::validation("Cannot delete password credential"));
+            return Err(AuthencError::validation(
+                "Cannot delete password credential",
+            ));
         }
         _ => {
             return Err(AuthencError::resource_not_found("Credential not found"));
@@ -196,14 +208,15 @@ pub struct SetupTotpResponse {
 #[axum::debug_handler]
 pub async fn setup_totp(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(setup_request): Json<SetupTotpRequest>,
 ) -> Result<Json<SetupTotpResponse>, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     // Check if TOTP is already configured
-    if let Ok(Some(_)) = state.totp_store.get_secret(&user_id.to_string()) {
+    let user_id_str = user_id.to_string();
+    if let Ok(Some(_)) = state.totp_store.get_secret(&user_id_str) {
         return Err(AuthencError::validation("TOTP already configured"));
     }
 
@@ -213,10 +226,9 @@ pub async fn setup_totp(
     let secret = base32::encode(base32::Alphabet::RFC4648 { padding: false }, &secret_bytes);
 
     // Store the secret temporarily (will be confirmed in verify_totp_setup)
-    // For now, we'll store it directly - in production, use a temporary store
     state
         .totp_store
-        .set_secret(&user_id.to_string(), &secret)
+        .set_temporary_secret(&user_id_str, &secret)
         .map_err(|e| AuthencError::internal(format!("Failed to store TOTP secret: {}", e)))?;
 
     // Get user for account name
@@ -252,22 +264,53 @@ pub struct VerifyTotpSetupRequest {
 /// Verify TOTP setup by validating a provided code against the stored secret
 pub async fn verify_totp_setup(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(verify_request): Json<VerifyTotpSetupRequest>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    // Get the stored secret
-    let secret = state
-        .totp_store
-        .get_secret(&user_id.to_string())
-        .map_err(|e| AuthencError::internal(format!("Failed to get TOTP secret: {}", e)))?
-        .ok_or_else(|| AuthencError::validation("TOTP not configured"))?;
+    let user_id_str = user_id.to_string();
 
-    // Verify the code
-    if !verify_totp_code(&secret, &verify_request.code) {
-        return Err(AuthencError::validation("Invalid TOTP code"));
+    // Check for temporary secret first
+    if let Ok(Some(secret)) = state.totp_store.get_temporary_secret(&user_id_str) {
+        // Verify the code
+        if !verify_totp_code(&secret, &verify_request.code) {
+            return Err(AuthencError::validation("Invalid TOTP code"));
+        }
+
+        // Promote to permanent storage
+        state
+            .totp_store
+            .set_secret(&user_id_str, &secret)
+            .map_err(|e| AuthencError::internal(format!("Failed to store TOTP secret: {}", e)))?;
+
+        // Remove temporary secret
+        if let Err(e) = state.totp_store.remove_temporary_secret(&user_id_str) {
+            tracing::error!("Failed to remove temporary TOTP secret: {}", e);
+        }
+
+        // Record usage
+        if let Err(e) = state.totp_store.record_usage(&user_id_str) {
+            tracing::error!("Failed to record TOTP usage: {}", e);
+        }
+    } else {
+        // Fallback to permanent storage (idempotency check)
+        let secret = state
+            .totp_store
+            .get_secret(&user_id_str)
+            .map_err(|e| AuthencError::internal(format!("Failed to get TOTP secret: {}", e)))?
+            .ok_or_else(|| AuthencError::validation("TOTP not configured"))?;
+
+        // Verify the code
+        if !verify_totp_code(&secret, &verify_request.code) {
+            return Err(AuthencError::validation("Invalid TOTP code"));
+        }
+
+        // Record usage
+        if let Err(e) = state.totp_store.record_usage(&user_id_str) {
+            tracing::error!("Failed to record TOTP usage: {}", e);
+        }
     }
 
     // TOTP is now verified and active
@@ -277,7 +320,7 @@ pub async fn verify_totp_setup(
 /// Disable TOTP for current user
 pub async fn disable_totp(
     State(state): State<AccountCredentialsState>,
-    Extension(auth_user): Extension<crate::middleware::auth_middleware_axum::AuthUser>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;

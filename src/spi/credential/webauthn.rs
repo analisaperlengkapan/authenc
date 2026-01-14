@@ -88,6 +88,25 @@ pub struct WebAuthnAllowedCredential {
     pub transports: Vec<String>,
 }
 
+/// Input data for WebAuthn authentication verification
+#[derive(Debug)]
+pub struct WebAuthnVerificationInput<'a> {
+    /// Challenge (base64url encoded random bytes)
+    pub challenge: &'a str,
+    /// Credential ID (base64url encoded)
+    pub credential_id: &'a str,
+    /// Public key in COSE format (base64url encoded)
+    pub public_key: &'a str,
+    /// Signature counter (for replay detection)
+    pub counter: u32,
+    /// Client data JSON (base64url encoded)
+    pub client_data_json: &'a str,
+    /// Authenticator data (base64url encoded)
+    pub authenticator_data: &'a str,
+    /// Signature (base64url encoded)
+    pub signature: &'a str,
+}
+
 /// WebAuthn credential provider
 pub struct WebAuthnCredentialProvider {
     /// Relying party ID (domain)
@@ -187,13 +206,7 @@ impl WebAuthnCredentialProvider {
     /// Verify WebAuthn authentication response
     pub async fn verify_authentication(
         &self,
-        _challenge: &str,
-        _credential_id: &str,
-        _public_key: &str,
-        _counter: u32,
-        _client_data_json: &str,
-        _authenticator_data: &str,
-        _signature: &str,
+        _input: WebAuthnVerificationInput<'_>,
     ) -> Result<bool> {
         // In a full implementation, this would:
         // 1. Verify the challenge matches

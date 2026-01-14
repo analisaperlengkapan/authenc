@@ -238,11 +238,10 @@ impl DefaultLdapFederationProvider {
         // Add custom attributes
         if let Some(custom_attrs) = &self.config.custom_user_attributes {
             for (key, ldap_attr) in custom_attrs {
-                if let Some(values) = attrs.get(ldap_attr) {
-                    if let Some(value) = values.first() {
+                if let Some(values) = attrs.get(ldap_attr)
+                    && let Some(value) = values.first() {
                         attributes.insert(key.clone(), serde_json::Value::String(value.clone()));
                     }
-                }
             }
         }
 

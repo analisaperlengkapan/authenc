@@ -209,7 +209,7 @@ impl crate::spi::ProviderFactory<dyn AdminConsoleProvider> for DefaultAdminConso
     fn create(&self, config: &ProviderConfig) -> Result<Box<dyn AdminConsoleProvider>, SpiError> {
         let console_config = if let Some(global_config) = &config.global_config {
             // Try to extract admin console config from global config
-            if let Some(app_config) = global_config.downcast_ref::<crate::config::AppConfig>() {
+            if let Some(_app_config) = global_config.downcast_ref::<crate::config::AppConfig>() {
                 AdminConsoleConfig {
                     enabled: true,
                     base_url: "/admin".to_string(),

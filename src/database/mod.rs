@@ -31,11 +31,10 @@ pub struct Database {
 impl std::fmt::Debug for Database {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut d = f.debug_struct("Database");
-        d.field("pool", &"Pool")
-            .field(
-                "prepared_cache",
-                &format!("{} cached statements", self.prepared_cache.len()),
-            );
+        d.field("pool", &"Pool").field(
+            "prepared_cache",
+            &format!("{} cached statements", self.prepared_cache.len()),
+        );
 
         #[cfg(test)]
         d.field("mock_status", &self.mock_status);

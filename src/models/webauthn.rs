@@ -32,6 +32,8 @@ pub struct WebauthnCredential {
     pub aaguid: Option<Vec<u8>>,
     /// Attestation format used
     pub attestation_format: Option<String>,
+    /// ID of the device this credential is bound to
+    pub device_id: Option<Uuid>,
     /// Timestamp when the credential was created
     pub created_at: DateTime<Utc>,
     /// Timestamp when the credential was last used

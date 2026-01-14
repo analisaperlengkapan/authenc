@@ -545,7 +545,7 @@ impl AuthenticationManager {
     async fn get_next_execution(
         &self,
         flow: &AuthenticationFlowModel,
-        session: &AuthenticationSessionModel,
+        _session: &AuthenticationSessionModel,
         db: Option<&Arc<Database>>,
     ) -> Result<AuthenticationExecutionModel, AuthencError> {
         // Try to get executions from database if available

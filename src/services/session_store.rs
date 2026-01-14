@@ -7,6 +7,48 @@ use crate::database::operations as db_ops;
 use crate::error::AuthencError;
 use crate::models::session::Session;
 
+/// Parameters for creating a session
+pub struct CreateSessionParams<'a> {
+    /// User ID
+    pub user_id: Uuid,
+    /// Realm ID
+    pub realm_id: Uuid,
+    /// Client ID
+    pub client_id: Option<Uuid>,
+    /// Access token
+    pub token: &'a str,
+    /// Refresh token
+    pub refresh_token: Option<&'a str>,
+    /// Expiration time in seconds
+    pub expires_in: i64,
+    /// Client IP address
+    pub ip_address: Option<&'a str>,
+    /// User agent string
+    pub user_agent: Option<&'a str>,
+    /// Authentication method
+    pub auth_method: Option<&'a str>,
+    /// Protocol used (e.g., openid-connect)
+    pub protocol: Option<&'a str>,
+}
+
+/// Parameters for creating an offline token
+pub struct CreateOfflineTokenParams<'a> {
+    /// User ID
+    pub user_id: Uuid,
+    /// Realm ID
+    pub realm_id: Uuid,
+    /// Client ID
+    pub client_id: Uuid,
+    /// Offline token string
+    pub token: &'a str,
+    /// Scopes granted
+    pub scope: Option<&'a str>,
+    /// Expiration time
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Additional metadata
+    pub data: Option<serde_json::Value>,
+}
+
 /// Session store for managing user authentication sessions
 pub struct SessionStore {
     /// Database connection
@@ -195,18 +237,17 @@ impl SessionStore {
     /// * `Result<(), AuthencError>` indicating success or failure
     pub async fn store_session(&self, session: Session) -> Result<(), AuthencError> {
         // Store in memory for fast access
-        let mut full_sessions = self
-            .full_sessions
-            .write()
-            .map_err(|_| AuthencError::internal("Lock poisoned"))?;
+        {
+            let mut full_sessions = self
+                .full_sessions
+                .write()
+                .map_err(|_| AuthencError::internal("Lock poisoned"))?;
 
-        full_sessions.insert(session.id, session.clone());
+            full_sessions.insert(session.id, session.clone());
+        } // Drop lock explicitly before async operation
 
         // Also persist to database for durability
-        // Note: This assumes the session has a realm_id field that needs to be added to the Session model
-        // For now, we'll use a default realm_id or make it optional
-        // This is a placeholder - actual implementation needs to handle realm_id properly
-        drop(full_sessions); // Release lock before async operation
+        db_ops::sessions::store_session(&self.db, &session).await?;
 
         Ok(())
     }
@@ -214,44 +255,26 @@ impl SessionStore {
     /// Create a new user session with persistence
     ///
     /// # Arguments
-    /// * `user_id` - The user ID for the session
-    /// * `realm_id` - The realm ID for the session
-    /// * `client_id` - Optional client ID
-    /// * `token` - The access token
-    /// * `refresh_token` - Optional refresh token
-    /// * `expires_in` - Session expiration in seconds
-    /// * `ip_address` - Optional client IP address
-    /// * `user_agent` - Optional user agent string
-    /// * `auth_method` - Optional authentication method
-    /// * `protocol` - Optional protocol (openid-connect, saml, etc.)
+    /// * `params` - Session creation parameters
     ///
     /// # Returns
     /// * `Result<Uuid, AuthencError>` with the session ID
     pub async fn create_session(
         &self,
-        user_id: Uuid,
-        realm_id: Uuid,
-        client_id: Option<Uuid>,
-        token: &str,
-        refresh_token: Option<&str>,
-        expires_in: i64,
-        ip_address: Option<&str>,
-        user_agent: Option<&str>,
-        auth_method: Option<&str>,
-        protocol: Option<&str>,
+        params: CreateSessionParams<'_>,
     ) -> Result<Uuid, AuthencError> {
         let result = db_ops::sessions::create_user_session(
             &self.db,
-            user_id,
-            realm_id,
-            client_id,
-            token,
-            refresh_token,
-            expires_in,
-            ip_address,
-            user_agent,
-            auth_method,
-            protocol,
+            params.user_id,
+            params.realm_id,
+            params.client_id,
+            params.token,
+            params.refresh_token,
+            params.expires_in,
+            params.ip_address,
+            params.user_agent,
+            params.auth_method,
+            params.protocol,
         )
         .await?;
 
@@ -337,28 +360,23 @@ impl SessionStore {
     /// Create offline token
     ///
     /// # Arguments
-    /// * `user_id` - The user ID
-    /// * `realm_id` - The realm ID
-    /// * `client_id` - The client ID
-    /// * `token` - The offline token
-    /// * `scope` - Optional scope
-    /// * `expires_at` - Optional expiration (None = never expires)
-    /// * `data` - Optional metadata
+    /// * `params` - Offline token creation parameters
     ///
     /// # Returns
     /// * `Result<Uuid, AuthencError>` with the offline token ID
     pub async fn create_offline_token(
         &self,
-        user_id: Uuid,
-        realm_id: Uuid,
-        client_id: Uuid,
-        token: &str,
-        scope: Option<&str>,
-        expires_at: Option<chrono::DateTime<chrono::Utc>>,
-        data: Option<serde_json::Value>,
+        params: CreateOfflineTokenParams<'_>,
     ) -> Result<Uuid, AuthencError> {
         let result = db_ops::sessions::create_offline_token(
-            &self.db, user_id, realm_id, client_id, token, scope, expires_at, data,
+            &self.db,
+            params.user_id,
+            params.realm_id,
+            params.client_id,
+            params.token,
+            params.scope,
+            params.expires_at,
+            params.data,
         )
         .await?;
 

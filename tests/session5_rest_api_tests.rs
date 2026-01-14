@@ -160,28 +160,40 @@ async fn test_event_log_query_with_filters() {
     }
 
     // Query events
-    let events = authenc::database::operations::events::query_event_log(
-        &db, realm_id, None, None, None, None, None, None, None, 0, 10,
-    )
-    .await
-    .expect("Failed to query events");
+    let params = authenc::database::operations::events::QueryEventLogParams {
+        realm_id,
+        event_category: None,
+        event_type: None,
+        resource_type: None,
+        resource_id: None,
+        user_id: None,
+        from_date: None,
+        to_date: None,
+        success_only: None,
+        offset: 0,
+        limit: 10,
+    };
+    let events = authenc::database::operations::events::query_event_log(&db, params)
+        .await
+        .expect("Failed to query events");
 
     assert!(events.len() >= 5);
 
     // Query with category filter
-    let filtered_events = authenc::database::operations::events::query_event_log(
-        &db,
+    let filtered_params = authenc::database::operations::events::QueryEventLogParams {
         realm_id,
-        Some("AUTH".to_string()),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        0,
-        10,
-    )
+        event_category: Some("AUTH".to_string()),
+        event_type: None,
+        resource_type: None,
+        resource_id: None,
+        user_id: None,
+        from_date: None,
+        to_date: None,
+        success_only: None,
+        offset: 0,
+        limit: 10,
+    };
+    let filtered_events = authenc::database::operations::events::query_event_log(&db, filtered_params)
     .await
     .expect("Failed to query with filter");
 
@@ -252,7 +264,7 @@ async fn test_protocol_mapper_client_crud() {
     // Create mapper
     let mapper_config = json!({"claim_name": "email", "json_type": "String"});
 
-    let mapper_id = authenc::database::operations::protocol_mappers::create_protocol_mapper(
+    let _mapper_id = authenc::database::operations::protocol_mappers::create_protocol_mapper(
         &db,
         Some(client_id),
         realm_id,
@@ -313,7 +325,7 @@ async fn test_protocol_mapper_realm_level() {
     // Create realm-level mapper (client_id = NULL)
     let mapper_config = json!({"role_prefix": "realm_"});
 
-    let mapper_id = authenc::database::operations::protocol_mappers::create_protocol_mapper(
+    let _mapper_id = authenc::database::operations::protocol_mappers::create_protocol_mapper(
         &db,
         None, // client_id
         realm_id,
@@ -450,7 +462,7 @@ async fn test_authenticator_registration_and_listing() {
         "min_length": 8
     });
 
-    let auth_id = authenc::database::operations::authenticators::register_authenticator(
+    let _auth_id = authenc::database::operations::authenticators::register_authenticator(
         &db,
         realm_id,
         "Password Authenticator".to_string(),
@@ -560,7 +572,7 @@ async fn test_authentication_flow_execution_crud() {
     .expect("Failed to create authenticator");
 
     // Create execution
-    let exec_id = authenc::database::operations::authenticators::create_execution(
+    let _exec_id = authenc::database::operations::authenticators::create_execution(
         &db,
         realm_id,
         flow_id,

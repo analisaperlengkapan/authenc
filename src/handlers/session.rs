@@ -12,7 +12,7 @@ use axum::{
     response::{IntoResponse, Json},
     routing::{get, post},
 };
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use jsonwebtoken::{DecodingKey, Validation, decode};
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -71,7 +71,7 @@ pub async fn list_sessions(
                 Json(ErrorResponse {
                     error: "Missing token".to_string(),
                 }),
-            ))
+            ));
         }
     };
 
@@ -89,7 +89,7 @@ pub async fn list_sessions(
                 Json(ErrorResponse {
                     error: "Invalid token".to_string(),
                 }),
-            ))
+            ));
         }
     };
 
@@ -120,7 +120,7 @@ pub async fn logout(
                     success: false,
                     message: "Missing token".to_string(),
                 }),
-            )
+            );
         }
     };
 

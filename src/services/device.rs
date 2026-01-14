@@ -225,7 +225,13 @@ impl DeviceService {
         };
 
         // Store device in database
-        self.store_device(&device).await?;
+        let stored_device = self.store_device(&device).await?;
+
+        // Update device info with the ID and timestamps assigned by the database
+        let mut device = device;
+        device.id = stored_device.id;
+        device.created_at = stored_device.created_at;
+        device.last_seen = stored_device.last_seen_at;
 
         Ok(device)
     }
@@ -242,9 +248,38 @@ impl DeviceService {
             devices::update_trust_score(&self.db, device_id, trust_score, factors).await?;
         }
 
-        // TODO: Implement other update fields (device_name, etc.)
-        // Currently only trust score updates are supported
+        if updates.device_name.is_some() {
+            devices::update_device_details(&self.db, device_id, updates.device_name).await?;
+        }
+
         Ok(())
+    }
+
+    /// Update device trust score in the database
+    ///
+    /// This method updates the trust score for a device and records the history
+    /// including any risk assessment factors or anomaly detection data.
+    ///
+    /// It delegates to the database operation `update_trust_score` which handles
+    /// the transactional update of the device record and insertion into the history table.
+    ///
+    /// Implements:
+    /// - Historical score tracking
+    /// - Risk assessment storage
+    /// - Anomaly detection data storage (via factors)
+    pub async fn update_trust_score_db(
+        &self,
+        device_id: Uuid,
+        score: f64,
+        factors: Option<serde_json::Value>,
+    ) -> Result<()> {
+        use crate::database::operations::devices;
+
+        // Ensure factors are provided for risk assessment storage
+        let factors_json = factors.unwrap_or_else(|| serde_json::json!({}));
+
+        // Update DB with new score and history
+        devices::update_trust_score(&self.db, device_id, score, factors_json).await
     }
 
     /// Get device by ID
@@ -253,6 +288,20 @@ impl DeviceService {
 
         match devices::get_device_by_id(&self.db, device_id).await? {
             Some(model_device) => {
+                // Parse security features from JSON
+                let security_features = model_device
+                    .security_features
+                    .clone()
+                    .and_then(|v| serde_json::from_value(v).ok())
+                    .unwrap_or(DeviceSecurityFeatures {
+                        has_biometrics: false,
+                        has_hardware_security: false,
+                        has_screen_lock: false,
+                        encryption_enabled: false,
+                        remote_wipe_capable: false,
+                        jailbreak_detected: false,
+                    });
+
                 // Convert model Device to service DeviceInfo
                 let device_info = DeviceInfo {
                     id: model_device.id,
@@ -281,15 +330,10 @@ impl DeviceService {
                     is_trusted: model_device.trust_score > 0.7,
                     last_seen: model_device.last_seen_at,
                     created_at: model_device.created_at,
-                    location: None, // TODO: Parse from location_data JSON - requires location tracking implementation
-                    security_features: DeviceSecurityFeatures {
-                        has_biometrics: false, // TODO: Store in database - requires biometrics detection implementation
-                        has_hardware_security: false,
-                        has_screen_lock: false,
-                        encryption_enabled: false,
-                        remote_wipe_capable: false,
-                        jailbreak_detected: false,
-                    },
+                    location: model_device
+                        .location_data
+                        .and_then(|d| serde_json::from_value(d).ok()),
+                    security_features,
                 };
                 Ok(Some(device_info))
             }
@@ -305,6 +349,20 @@ impl DeviceService {
 
         let mut service_devices = Vec::new();
         for model_device in model_devices {
+            // Parse security features from JSON
+            let security_features = model_device
+                .security_features
+                .clone()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or(DeviceSecurityFeatures {
+                    has_biometrics: false,
+                    has_hardware_security: false,
+                    has_screen_lock: false,
+                    encryption_enabled: false,
+                    remote_wipe_capable: false,
+                    jailbreak_detected: false,
+                });
+
             let device_info = DeviceInfo {
                 id: model_device.id,
                 user_id: model_device.user_id,
@@ -332,15 +390,10 @@ impl DeviceService {
                 is_trusted: model_device.trust_score > 0.7,
                 last_seen: model_device.last_seen_at,
                 created_at: model_device.created_at,
-                location: None, // TODO: Parse from location_data JSON - requires location tracking implementation
-                security_features: DeviceSecurityFeatures {
-                    has_biometrics: false, // TODO: Store in database - requires biometrics detection implementation
-                    has_hardware_security: false,
-                    has_screen_lock: false,
-                    encryption_enabled: false,
-                    remote_wipe_capable: false,
-                    jailbreak_detected: false,
-                },
+                location: model_device
+                    .location_data
+                    .and_then(|d| serde_json::from_value(d).ok()),
+                security_features,
             };
             service_devices.push(device_info);
         }
@@ -433,21 +486,80 @@ impl DeviceService {
     }
 
     /// Update device session activity
-    pub async fn update_session_activity(&self, _session_id: Uuid) -> Result<()> {
-        // In production, update last_activity in database
-        Ok(())
+    pub async fn update_session_activity(&self, session_id: Uuid) -> Result<()> {
+        use crate::database::operations::sessions;
+        sessions::update_device_session_activity(&self.db, session_id, None, None).await
     }
 
     /// End device session
-    pub async fn end_session(&self, _session_id: Uuid) -> Result<()> {
-        // In production, mark session as inactive
-        Ok(())
+    pub async fn end_session(&self, session_id: Uuid) -> Result<()> {
+        use crate::database::operations::sessions;
+        sessions::end_device_session(&self.db, session_id).await
     }
 
     /// Get device sessions
-    pub async fn get_device_sessions(&self, _device_id: Uuid) -> Result<Vec<DeviceSession>> {
-        // In production, retrieve from database
-        Ok(vec![])
+    pub async fn get_device_sessions(&self, device_id: Uuid) -> Result<Vec<DeviceSession>> {
+        use crate::database::operations::sessions;
+
+        let sessions_json = sessions::get_device_sessions(&self.db, device_id).await?;
+
+        let mut device_sessions = Vec::new();
+        for session in sessions_json {
+            // Map JSON to DeviceSession struct
+            if let (Some(id_str), Some(session_id)) = (
+                session["id"].as_str(),
+                session["session_identifier"].as_str(),
+            )
+                && let Ok(id) = Uuid::parse_str(id_str) {
+                    let user_id = session["user_id"]
+                        .as_str()
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .unwrap_or_default();
+
+                    let started_at = session["started_at"]
+                        .as_str()
+                        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(Utc::now);
+
+                    let last_activity = session["last_activity"]
+                        .as_str()
+                        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(Utc::now);
+
+                    let location = session["location"].as_object().map(|obj| {
+                        DeviceLocation {
+                            country: obj.get("country").and_then(|v| v.as_str()).map(String::from),
+                            region: obj.get("region").and_then(|v| v.as_str()).map(String::from),
+                            city: obj.get("city").and_then(|v| v.as_str()).map(String::from),
+                            latitude: obj.get("latitude").and_then(|v| v.as_f64()),
+                            longitude: obj.get("longitude").and_then(|v| v.as_f64()),
+                        }
+                    });
+
+                    device_sessions.push(DeviceSession {
+                        id,
+                        device_id,
+                        user_id,
+                        session_id: session_id.to_string(),
+                        started_at,
+                        last_activity,
+                        ip_address: session["ip_address"].as_str().unwrap_or("").to_string(),
+                        location,
+                        risk_score: session["risk_score"].as_f64().unwrap_or(0.0),
+                        is_active: session["is_active"].as_bool().unwrap_or(false),
+                    });
+                }
+        }
+
+        Ok(device_sessions)
+    }
+
+    /// Delete a device
+    pub async fn delete_device(&self, device_id: Uuid) -> Result<()> {
+        use crate::database::operations::devices;
+        devices::delete_device(&self.db, device_id).await
     }
 
     /// Add trust policy
@@ -506,11 +618,10 @@ impl DeviceService {
         let mut score: f64 = 0.5; // Base score
 
         // Increase score for known browsers
-        if let Some(browser) = &device_info.browser {
-            if ["chrome", "firefox", "safari", "edge"].contains(&browser.to_lowercase().as_str()) {
+        if let Some(browser) = &device_info.browser
+            && ["chrome", "firefox", "safari", "edge"].contains(&browser.to_lowercase().as_str()) {
                 score += 0.1;
             }
-        }
 
         // Increase score for security features
         if device_info.security_features.has_biometrics {
@@ -631,25 +742,26 @@ impl DeviceService {
     }
 
     // Database operations
-    /// Store device information in the database
-    async fn store_device(&self, device: &DeviceInfo) -> Result<()> {
+    /// Register a device in the PostgreSQL database including fingerprinting and trust scores
+    pub async fn register_device_db(
+        &self,
+        device: &DeviceInfo,
+    ) -> Result<crate::models::device::Device> {
         use crate::database::operations::devices;
         use crate::models::device::DeviceInfo as ModelDeviceInfo;
 
-        // Convert service DeviceInfo to model DeviceInfo
-        let model_device_info = ModelDeviceInfo {
-            device_name: Some(device.device_name.clone()),
-            fingerprint: device.fingerprint.clone(),
-            os: Some(device.os.clone()),
-            os_version: Some(device.os_version.clone()),
-            browser: device.browser.clone(),
-            browser_version: device.browser_version.clone(),
-            ip_address: device.ip_address.parse().ok(),
-            user_agent: Some(device.user_agent.clone()),
-        };
+        // Convert service DeviceInfo to model DeviceInfo using From implementation
+        let model_device_info: ModelDeviceInfo = device.into();
 
-        devices::register_device(&self.db, device.user_id, &model_device_info).await?;
-        Ok(())
+        devices::register_device(&self.db, device.user_id, &model_device_info).await
+    }
+
+    /// Store device information in the database
+    async fn store_device(
+        &self,
+        device: &DeviceInfo,
+    ) -> Result<crate::models::device::Device> {
+        self.register_device_db(device).await
     }
 
     /// Store device session information in the database
@@ -660,6 +772,7 @@ impl DeviceService {
         let location_json = session.location.as_ref().map(|loc| {
             serde_json::json!({
                 "country": loc.country,
+                "region": loc.region,
                 "city": loc.city,
                 "latitude": loc.latitude,
                 "longitude": loc.longitude
@@ -744,4 +857,158 @@ pub enum TrustResult {
     ChallengeRequired(Vec<String>),
     /// Login is denied for this device
     Denied,
+}
+
+impl From<&DeviceInfo> for crate::models::device::DeviceInfo {
+    fn from(device: &DeviceInfo) -> Self {
+        crate::models::device::DeviceInfo {
+            device_name: Some(device.device_name.clone()),
+            fingerprint: device.fingerprint.clone(),
+            os: Some(device.os.clone()),
+            os_version: Some(device.os_version.clone()),
+            browser: device.browser.clone(),
+            browser_version: device.browser_version.clone(),
+            ip_address: device.ip_address.parse().ok(),
+            user_agent: Some(device.user_agent.clone()),
+            security_features: serde_json::to_value(&device.security_features).ok(),
+            location_data: device
+                .location
+                .as_ref()
+                .map(|l| serde_json::to_value(l).unwrap_or(serde_json::Value::Null)),
+            trust_score: Some(device.trust_score),
+        }
+    }
+}
+
+impl From<crate::models::device::Device> for DeviceInfo {
+    fn from(model_device: crate::models::device::Device) -> Self {
+        // Parse security features from JSON
+        let security_features = model_device
+            .security_features
+            .clone()
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or(DeviceSecurityFeatures {
+                has_biometrics: false,
+                has_hardware_security: false,
+                has_screen_lock: false,
+                encryption_enabled: false,
+                remote_wipe_capable: false,
+                jailbreak_detected: false,
+            });
+
+        // Detect device type based on user agent
+        let device_type = if let Some(ua) = &model_device.user_agent {
+            let ua = ua.to_lowercase();
+            if ua.contains("mobile") || ua.contains("android") || ua.contains("iphone") {
+                DeviceType::Mobile
+            } else if ua.contains("tablet") || ua.contains("ipad") {
+                DeviceType::Tablet
+            } else if ua.contains("iot") || ua.contains("raspberry") {
+                DeviceType::IoT
+            } else if ua.contains("server") || ua.contains("linux") && ua.contains("headless") {
+                DeviceType::Server
+            } else {
+                DeviceType::Desktop
+            }
+        } else {
+            DeviceType::Unknown
+        };
+
+        DeviceInfo {
+            id: model_device.id,
+            user_id: model_device.user_id,
+            device_name: model_device
+                .device_name
+                .unwrap_or_else(|| "Unknown Device".to_string()),
+            device_type,
+            os: model_device.os.unwrap_or_default(),
+            os_version: model_device.os_version.unwrap_or_default(),
+            browser: model_device.browser,
+            browser_version: model_device.browser_version,
+            ip_address: model_device
+                .ip_address
+                .map(|ip| ip.to_string())
+                .unwrap_or_else(|| "0.0.0.0".to_string()),
+            user_agent: model_device
+                .user_agent
+                .unwrap_or_default(),
+            fingerprint: model_device.device_fingerprint,
+            trust_score: model_device.trust_score,
+            is_trusted: model_device.trust_score > 0.7,
+            last_seen: model_device.last_seen_at,
+            created_at: model_device.created_at,
+            location: model_device
+                .location_data
+                .and_then(|d| serde_json::from_value(d).ok()),
+            security_features,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::device::DeviceInfo as ModelDeviceInfo;
+
+    #[test]
+    fn test_device_info_conversion_preserves_location() {
+        let device = DeviceInfo {
+            id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            device_name: "Test Device".to_string(),
+            device_type: DeviceType::Desktop,
+            os: "Linux".to_string(),
+            os_version: "1.0".to_string(),
+            browser: Some("Firefox".to_string()),
+            browser_version: Some("90.0".to_string()),
+            ip_address: "127.0.0.1".to_string(),
+            user_agent: "Mozilla/5.0".to_string(),
+            fingerprint: "fingerprint".to_string(),
+            trust_score: 0.8,
+            is_trusted: true,
+            last_seen: Utc::now(),
+            created_at: Utc::now(),
+            location: Some(DeviceLocation {
+                country: Some("US".to_string()),
+                region: Some("CA".to_string()),
+                city: Some("San Francisco".to_string()),
+                latitude: Some(37.7749),
+                longitude: Some(-122.4194),
+            }),
+            security_features: DeviceSecurityFeatures {
+                has_biometrics: false,
+                has_hardware_security: false,
+                has_screen_lock: true,
+                encryption_enabled: true,
+                remote_wipe_capable: false,
+                jailbreak_detected: false,
+            },
+        };
+
+        let model_device: ModelDeviceInfo = (&device).into();
+
+        assert!(model_device.location_data.is_some());
+        let location = model_device.location_data.unwrap();
+
+        assert_eq!(location["country"], "US");
+        assert_eq!(location["city"], "San Francisco");
+        assert_eq!(location["latitude"], 37.7749);
+    }
+
+    #[test]
+    fn test_trust_evaluation_context_serialization() {
+        let context = TrustEvaluationContext {
+            is_first_login: true,
+            known_device: false,
+            unusual_time: true,
+            location_changed: false,
+            ip_reputation: 0.5,
+            fingerprint_match: false,
+        };
+
+        let json = serde_json::to_value(&context).unwrap();
+        assert_eq!(json["is_first_login"], true);
+        assert_eq!(json["known_device"], false);
+        assert_eq!(json["ip_reputation"], 0.5);
+    }
 }

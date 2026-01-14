@@ -13,12 +13,12 @@ use crate::{
     app::AppState,
     error::Result,
     handlers::create_router,
-    middleware::rate_limit_axum::{RateLimitConfig, RateLimitLayer, RateLimiterState},
+    middleware::rate_limit::{RateLimitConfig, RateLimitLayer, RateLimiterState},
     middleware::{
-        csrf_protection_axum::{CsrfConfig, CsrfState, csrf_protection_middleware},
-        input_validation_axum::{InputValidationConfig, input_validation_middleware},
-        security_headers_axum::security_headers_middleware,
-        timeout_axum::timeout_middleware,
+        csrf::{CsrfConfig, CsrfState, csrf_protection_middleware},
+        validation::{InputValidationConfig, input_validation_middleware},
+        security_headers::security_headers_middleware,
+        timeout::timeout_middleware,
     },
 };
 

@@ -1,5 +1,5 @@
-use crate::database::operations::groups;
 use crate::database::Database;
+use crate::database::operations::groups;
 use crate::models::group::{CreateGroupRequest, GroupResponse, UpdateGroupRequest};
 use axum::{
     extract::{Path, Query, State},
@@ -7,7 +7,7 @@ use axum::{
     response::{IntoResponse, Json},
 };
 use serde::Deserialize;
-use std::sync::Arc;
+
 use tracing::error;
 use uuid::Uuid;
 
@@ -24,7 +24,7 @@ pub struct GroupListQuery {
 
 /// Create a new group
 pub async fn create_group(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Json(req): Json<CreateGroupRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let group = groups::create_group(
@@ -42,7 +42,9 @@ pub async fn create_group(
     })?;
 
     // Get member and subgroup counts
-    let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+    let member_count = groups::count_group_members(&db, group.id)
+        .await
+        .unwrap_or(0);
     let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
 
     let mut response = GroupResponse::from(group);
@@ -54,7 +56,7 @@ pub async fn create_group(
 
 /// Get all groups in a realm
 pub async fn get_groups(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(realm_id): Path<Uuid>,
     Query(query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -67,9 +69,11 @@ pub async fn get_groups(
 
     let mut responses = Vec::new();
     for group in groups {
-        let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+        let member_count = groups::count_group_members(&db, group.id)
+            .await
+            .unwrap_or(0);
         let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
-        
+
         let mut response = GroupResponse::from(group);
         response.member_count = member_count;
         response.subgroup_count = subgroup_count;
@@ -81,7 +85,7 @@ pub async fn get_groups(
 
 /// Get a specific group by ID
 pub async fn get_group_by_id(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(group_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let group = groups::get_group_by_id(&db, group_id)
@@ -92,7 +96,9 @@ pub async fn get_group_by_id(
         })?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Group not found".to_string()))?;
 
-    let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+    let member_count = groups::count_group_members(&db, group.id)
+        .await
+        .unwrap_or(0);
     let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
 
     let mut response = GroupResponse::from(group);
@@ -104,7 +110,7 @@ pub async fn get_group_by_id(
 
 /// Update a group
 pub async fn update_group(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(group_id): Path<Uuid>,
     Json(req): Json<UpdateGroupRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -122,7 +128,9 @@ pub async fn update_group(
         (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
 
-    let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+    let member_count = groups::count_group_members(&db, group.id)
+        .await
+        .unwrap_or(0);
     let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
 
     let mut response = GroupResponse::from(group);
@@ -134,7 +142,7 @@ pub async fn update_group(
 
 /// Delete a group
 pub async fn delete_group(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(group_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::delete_group(&db, group_id).await.map_err(|e| {
@@ -147,9 +155,9 @@ pub async fn delete_group(
 
 /// Get subgroups of a group
 pub async fn get_subgroups(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(group_id): Path<Uuid>,
-    Query(query): Query<GroupListQuery>,
+    Query(_query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let subgroups = groups::get_subgroups(&db, group_id, true)
         .await
@@ -160,9 +168,11 @@ pub async fn get_subgroups(
 
     let mut responses = Vec::new();
     for group in subgroups {
-        let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+        let member_count = groups::count_group_members(&db, group.id)
+            .await
+            .unwrap_or(0);
         let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
-        
+
         let mut response = GroupResponse::from(group);
         response.member_count = member_count;
         response.subgroup_count = subgroup_count;
@@ -174,7 +184,7 @@ pub async fn get_subgroups(
 
 /// Add user to group
 pub async fn add_group_member(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path((group_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::add_user_to_group(&db, user_id, group_id, None, None)
@@ -189,7 +199,7 @@ pub async fn add_group_member(
 
 /// Remove user from group
 pub async fn remove_group_member(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path((group_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::remove_user_from_group(&db, user_id, group_id)
@@ -204,7 +214,7 @@ pub async fn remove_group_member(
 
 /// Get members of a group
 pub async fn get_group_members(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(group_id): Path<Uuid>,
     Query(query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -220,21 +230,21 @@ pub async fn get_group_members(
 
 /// Get user's groups
 pub async fn get_user_groups(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let user_groups = groups::get_user_groups(&db, user_id)
-        .await
-        .map_err(|e| {
-            error!("Failed to get user groups: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        })?;
+    let user_groups = groups::get_user_groups(&db, user_id).await.map_err(|e| {
+        error!("Failed to get user groups: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
 
     let mut responses = Vec::new();
     for group in user_groups {
-        let member_count = groups::count_group_members(&db, group.id).await.unwrap_or(0);
+        let member_count = groups::count_group_members(&db, group.id)
+            .await
+            .unwrap_or(0);
         let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
-        
+
         let mut response = GroupResponse::from(group);
         response.member_count = member_count;
         response.subgroup_count = subgroup_count;

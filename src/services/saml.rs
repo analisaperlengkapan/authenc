@@ -16,6 +16,8 @@ use x509_parser::pem::parse_x509_pem;
 pub struct SamlServiceProvider {
     /// Entity ID of the service provider
     pub entity_id: String,
+    /// Realm ID this SP belongs to
+    pub realm_id: Uuid,
     /// URL for assertion consumer service
     pub assertion_consumer_service_url: String,
     /// URL for single logout service
@@ -31,6 +33,8 @@ pub struct SamlServiceProvider {
 /// SAML 2.0 Identity Provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamlIdentityProvider {
+    /// Internal ID of the identity provider
+    pub id: Uuid,
     /// Entity ID of the identity provider
     pub entity_id: String,
     /// Single sign-on URL
@@ -334,7 +338,10 @@ impl SamlService {
 
     /// Get Issuer and raw XML from SAML Response without full validation
     /// This is useful for identifying the IdP to load its configuration
-    pub fn get_issuer_and_xml_from_response(&self, saml_response: &str) -> Result<(String, String)> {
+    pub fn get_issuer_and_xml_from_response(
+        &self,
+        saml_response: &str,
+    ) -> Result<(String, String)> {
         let xml = self.decode_saml_response(saml_response)?;
 
         // Parse XML to SamlResponse
@@ -358,11 +365,10 @@ impl SamlService {
         expected_idp_entity_id: &str,
     ) -> Result<SamlUserInfo> {
         // Verify signature if IdP is configured
-        if let Some(idp) = self.identity_providers.get(expected_idp_entity_id) {
-            if !idp.certificate.is_empty() {
+        if let Some(idp) = self.identity_providers.get(expected_idp_entity_id)
+            && !idp.certificate.is_empty() {
                 self.verify_saml_signature(xml, &idp.certificate)?;
             }
-        }
 
         // Parse XML to SamlResponse
         let response: SamlResponse = self.parse_saml_xml(xml)?;
@@ -429,7 +435,8 @@ impl SamlService {
         expected_idp_entity_id: &str,
     ) -> Result<SamlUserInfo> {
         let xml = self.decode_saml_response(saml_response)?;
-        self.process_xml_response(&xml, relay_state, expected_idp_entity_id).await
+        self.process_xml_response(&xml, relay_state, expected_idp_entity_id)
+            .await
     }
 
     /// Generate SAML metadata for Service Provider

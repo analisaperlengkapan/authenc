@@ -10,6 +10,7 @@ use uuid::Uuid;
 /// # Fields
 /// * `id` - Unique session identifier (UUID)
 /// * `user_id` - ID of the authenticated user
+/// * `realm_id` - ID of the realm the session belongs to
 /// * `token` - JWT access token for API authentication
 /// * `refresh_token` - Optional refresh token for token renewal
 /// * `expires_at` - Session expiration timestamp
@@ -31,6 +32,8 @@ pub struct Session {
     pub id: Uuid,
     /// ID of the authenticated user
     pub user_id: Uuid,
+    /// ID of the realm the session belongs to
+    pub realm_id: Uuid,
     /// JWT access token for API authentication
     pub token: String,
     /// Optional refresh token for token renewal
@@ -56,6 +59,7 @@ pub struct Session {
 ///
 /// # Fields
 /// * `user_id` - ID of the user for whom to create the session
+/// * `realm_id` - ID of the realm where the session is created
 /// * `expires_in` - Session lifetime in seconds from creation
 /// * `ip_address` - Client IP address for security tracking
 /// * `user_agent` - Client user agent for device identification
@@ -69,6 +73,8 @@ pub struct Session {
 pub struct CreateSessionRequest {
     /// ID of the user for whom to create the session
     pub user_id: Uuid,
+    /// ID of the realm where the session is created
+    pub realm_id: Uuid,
     /// Session lifetime in seconds from creation
     pub expires_in: i64, // seconds
     /// Client IP address for security tracking
@@ -85,6 +91,7 @@ pub struct CreateSessionRequest {
 /// # Fields
 /// * `id` - Unique session identifier
 /// * `user_id` - ID of the authenticated user
+/// * `realm_id` - ID of the realm the session belongs to
 /// * `expires_at` - Session expiration timestamp
 /// * `created_at` - Session creation timestamp
 /// * `last_accessed` - Last activity timestamp
@@ -102,6 +109,8 @@ pub struct SessionResponse {
     pub id: Uuid,
     /// ID of the authenticated user
     pub user_id: Uuid,
+    /// ID of the realm the session belongs to
+    pub realm_id: Uuid,
     /// Session expiration timestamp
     pub expires_at: DateTime<Utc>,
     /// Session creation timestamp
@@ -119,6 +128,7 @@ impl From<Session> for SessionResponse {
         Self {
             id: session.id,
             user_id: session.user_id,
+            realm_id: session.realm_id,
             expires_at: session.expires_at,
             created_at: session.created_at,
             last_accessed: session.last_accessed,
@@ -137,6 +147,7 @@ impl Session {
     /// # Arguments
     /// * `request` - Session creation parameters
     /// * `token` - Generated JWT access token
+    /// * `realm_id` - ID of the realm the session belongs to
     ///
     /// # Returns
     /// A new Session instance ready for use
@@ -145,11 +156,12 @@ impl Session {
     /// - Generates cryptographically secure UUID for session ID
     /// - Sets appropriate expiration based on request
     /// - Records creation and access timestamps
-    pub fn new(request: CreateSessionRequest, token: String) -> Self {
+    pub fn new(request: CreateSessionRequest, token: String, realm_id: Uuid) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
             user_id: request.user_id,
+            realm_id,
             token,
             refresh_token: None,
             expires_at: now + chrono::Duration::seconds(request.expires_in),

@@ -1156,14 +1156,40 @@ impl EnhancedOid4VcManager {
         Ok("simulated_cose_proof".to_string())
     }
 
-    /// Create selective disclosure JWT (simplified)
+    /// Create selective disclosure JWT using robust implementation
     fn create_selective_disclosure_jwt(
         &self,
-        _subject: &CredentialSubject,
+        subject: &CredentialSubject,
         _issuance_date: &str,
     ) -> Result<String, String> {
-        // In a real implementation, this would create SD-JWT
-        Ok("simulated_sd_jwt".to_string())
+        use crate::crypto::sdjwt::SdJwtUtils;
+
+        let issuer = &self.issuer_url;
+        let sub = subject.id.as_deref().unwrap_or("unknown");
+        let aud = "verifier"; // Default audience, should be configurable in production
+
+        // Create privacy-preserving SD-JWT with decoy claims
+        let mut sd_jwt = SdJwtUtils::create_privacy_preserving_jwt(
+            issuer,
+            sub,
+            aud,
+            subject.claims.clone(),
+            0, // No decoy claims for standard issuance, can be configured
+        )
+        .map_err(|e| format!("Failed to create SD-JWT: {}", e))?;
+
+        // Sign the SD-JWT
+        let private_key = self
+            .private_keys
+            .get("Ed25519")
+            .ok_or("Ed25519 private key not found")?;
+
+        sd_jwt
+            .issuer_signed
+            .sign(private_key)
+            .map_err(|e| format!("Failed to sign SD-JWT: {}", e))?;
+
+        Ok(sd_jwt.to_string())
     }
 
     /// Create verifiable presentation
@@ -1331,12 +1357,11 @@ impl Oid4VcService for EnhancedOid4VcManager {
         request: CredentialAuthorizationRequest,
     ) -> Result<String, String> {
         // Validate PKCE if present
-        if let Some(_code_challenge) = &request.code_challenge {
-            if request.code_challenge_method.as_deref() != Some("S256") {
+        if let Some(_code_challenge) = &request.code_challenge
+            && request.code_challenge_method.as_deref() != Some("S256") {
                 return Err("Invalid code challenge method".to_string());
             }
             // In production, store code_challenge for later verification
-        }
 
         // Generate authorization code
         let code = uuid::Uuid::new_v4().to_string();
@@ -1450,11 +1475,10 @@ impl Oid4VcService for EnhancedOid4VcManager {
         }
 
         // Check if credential is revoked
-        if let Some(status) = &credential.status {
-            if self.is_credential_revoked(&status.id).await {
+        if let Some(status) = &credential.status
+            && self.is_credential_revoked(&status.id).await {
                 return Ok(false);
             }
-        }
 
         // Verify expiration
         if let Some(exp_date) = &credential.expiration_date {

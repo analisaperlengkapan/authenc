@@ -58,10 +58,18 @@ pub trait UserStorageProvider: StorageProvider {
     async fn get_user(&self, user_id: Uuid) -> Result<Option<User>>;
 
     /// Get user by username
-    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>>;
+    async fn get_user_by_username(
+        &self,
+        realm_id: &Uuid,
+        username: &str,
+    ) -> Result<Option<User>>;
 
     /// Get user by email
-    async fn get_user_by_email(&self, email: &str) -> Result<Option<User>>;
+    async fn get_user_by_email(
+        &self,
+        realm_id: &Uuid,
+        email: &str,
+    ) -> Result<Option<User>>;
 
     /// Search users
     async fn search_users(&self, query: &str, context: &StorageQueryContext) -> Result<Vec<User>>;
@@ -188,12 +196,20 @@ impl UserStorageProvider for DefaultUserStorageProvider {
         self.user_store.get_user(user_id).await
     }
 
-    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
-        self.user_store.get_user_by_username(username).await
+    async fn get_user_by_username(
+        &self,
+        realm_id: &Uuid,
+        username: &str,
+    ) -> Result<Option<User>> {
+        self.user_store.get_user_by_username(realm_id, username).await
     }
 
-    async fn get_user_by_email(&self, email: &str) -> Result<Option<User>> {
-        self.user_store.get_user_by_email(email).await
+    async fn get_user_by_email(
+        &self,
+        realm_id: &Uuid,
+        email: &str,
+    ) -> Result<Option<User>> {
+        self.user_store.get_user_by_email(realm_id, email).await
     }
 
     async fn search_users(&self, query: &str, _context: &StorageQueryContext) -> Result<Vec<User>> {
@@ -389,11 +405,12 @@ impl RoleStorageProvider for DefaultRoleStorageProvider {
     async fn search_roles(&self, query: &str, _context: &StorageQueryContext) -> Result<Vec<Role>> {
         let all_roles = self.role_store.get_all();
         if query.is_empty() {
-            Ok(all_roles)
+            Ok(all_roles.as_ref().clone())
         } else {
             Ok(all_roles
-                .into_iter()
+                .iter()
                 .filter(|role| role.name.contains(query))
+                .cloned()
                 .collect())
         }
     }

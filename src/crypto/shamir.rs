@@ -481,7 +481,7 @@ pub struct ShamirConfig {
 impl ShamirConfig {
     /// Create new configuration dengan validasi
     pub fn new(threshold: usize, num_shares: usize) -> Result<Self> {
-        if threshold < 2 || threshold > MAX_THRESHOLD {
+        if !(2..=MAX_THRESHOLD).contains(&threshold) {
             return Err(ShamirError::InvalidThreshold);
         }
         if num_shares <= threshold || num_shares > MAX_SHARES {
@@ -706,7 +706,7 @@ fn lagrange_interpolate(points: &[(Scalar, Scalar)]) -> Result<Scalar> {
 /// Returns error if insufficient shares provided or validation fails
 pub fn reconstruct_secret(shares: &[Share], threshold: usize) -> Result<Vec<u8>> {
     // Validate inputs
-    if threshold < 2 || threshold > MAX_THRESHOLD {
+    if !(2..=MAX_THRESHOLD).contains(&threshold) {
         return Err(ShamirError::InvalidThreshold);
     }
     if shares.len() < threshold {
@@ -880,7 +880,7 @@ mod tests {
 
         // Serialize and deserialize share
         let share_bytes = shares[0].to_bytes().unwrap();
-        let mut reconstructed_share = Share::from_bytes(&share_bytes).unwrap();
+        let reconstructed_share = Share::from_bytes(&share_bytes).unwrap();
         assert_eq!(reconstructed_share.x(), shares[0].x());
 
         // Serialize and deserialize commitment

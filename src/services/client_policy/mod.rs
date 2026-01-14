@@ -350,13 +350,12 @@ impl ClientPolicyExecutor for PkceEnforcerExecutor {
             }
 
             // Validate code challenge method
-            if let Some(method) = context.parameters.get("code_challenge_method") {
-                if method != "S256" {
+            if let Some(method) = context.parameters.get("code_challenge_method")
+                && method != "S256" {
                     return Err(AuthencError::validation(
                         "Only S256 code challenge method is allowed".to_string(),
                     ));
                 }
-            }
         }
         Ok(())
     }
@@ -403,15 +402,13 @@ pub struct SecureRedirectUrisEnforcerExecutor {
 #[async_trait]
 impl ClientPolicyExecutor for SecureRedirectUrisEnforcerExecutor {
     async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
-        if self.enforce_https {
-            if let Some(redirect_uri) = &context.redirect_uri {
-                if !redirect_uri.starts_with("https://") {
+        if self.enforce_https
+            && let Some(redirect_uri) = &context.redirect_uri
+                && !redirect_uri.starts_with("https://") {
                     return Err(AuthencError::validation(
                         "Only HTTPS redirect URIs are allowed".to_string(),
                     ));
                 }
-            }
-        }
         Ok(())
     }
 
@@ -427,22 +424,20 @@ pub struct RejectImplicitGrantExecutor;
 impl ClientPolicyExecutor for RejectImplicitGrantExecutor {
     async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
         // Check response type for implicit flow
-        if let Some(response_type) = &context.response_type {
-            if response_type == "token" {
+        if let Some(response_type) = &context.response_type
+            && response_type == "token" {
                 return Err(AuthencError::validation(
                     "Implicit grant is not allowed for this client".to_string(),
                 ));
             }
-        }
 
         // Check grant type for implicit flow
-        if let Some(grant_type) = &context.grant_type {
-            if grant_type == "implicit" {
+        if let Some(grant_type) = &context.grant_type
+            && grant_type == "implicit" {
                 return Err(AuthencError::validation(
                     "Implicit grant is not allowed for this client".to_string(),
                 ));
             }
-        }
 
         Ok(())
     }
@@ -681,13 +676,12 @@ impl ClientPolicyExecutor for SamlSecureClientUrisExecutor {
     async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
         if self.enforce_secure_uris {
             // For OAuth2/OIDC clients, validate redirect URIs use HTTPS
-            if let Some(redirect_uri) = &context.redirect_uri {
-                if !redirect_uri.starts_with("https://") {
+            if let Some(redirect_uri) = &context.redirect_uri
+                && !redirect_uri.starts_with("https://") {
                     return Err(AuthencError::validation(
                         "Client redirect URIs must use HTTPS".to_string(),
                     ));
                 }
-            }
         }
         Ok(())
     }
@@ -729,14 +723,13 @@ pub struct SecureSigningAlgorithmForSignedJwtExecutor {
 impl ClientPolicyExecutor for SecureSigningAlgorithmForSignedJwtExecutor {
     async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
         // Validate signing algorithm for signed JWTs
-        if let Some(alg) = context.parameters.get("alg") {
-            if !self.allowed_algorithms.contains(alg) {
+        if let Some(alg) = context.parameters.get("alg")
+            && !self.allowed_algorithms.contains(alg) {
                 return Err(AuthencError::validation(format!(
                     "Signing algorithm '{}' is not allowed",
                     alg
                 )));
             }
-        }
         Ok(())
     }
 
@@ -754,15 +747,13 @@ pub struct RejectResourceOwnerPasswordCredentialsGrantExecutor {
 #[async_trait]
 impl ClientPolicyExecutor for RejectResourceOwnerPasswordCredentialsGrantExecutor {
     async fn execute(&self, context: &mut ClientPolicyContext) -> Result<(), AuthencError> {
-        if self.reject_ropc {
-            if let Some(grant_type) = &context.grant_type {
-                if grant_type == "password" {
+        if self.reject_ropc
+            && let Some(grant_type) = &context.grant_type
+                && grant_type == "password" {
                     return Err(AuthencError::validation(
                         "Resource Owner Password Credentials grant is not allowed".to_string(),
                     ));
                 }
-            }
-        }
         Ok(())
     }
 
@@ -818,13 +809,12 @@ impl ClientPolicyExecutor for SecureClientAuthenticationAssertionExecutor {
             }
 
             // Validate the assertion
-            if let Some(assertion_type) = context.parameters.get("client_assertion_type") {
-                if assertion_type != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
+            if let Some(assertion_type) = context.parameters.get("client_assertion_type")
+                && assertion_type != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
                     return Err(AuthencError::validation(
                         "Unsupported client assertion type".to_string(),
                     ));
                 }
-            }
 
             // Validate JWT assertion signature and claims
             self.validate_jwt_assertion(context).await?;
@@ -1060,14 +1050,13 @@ impl ClientPolicyExecutor for SecureSigningAlgorithmExecutor {
         if self.enforce_secure_algorithm {
             // Enforce secure signing algorithms
             // Check JWT header, ID token, access token algorithms
-            if let Some(alg) = context.parameters.get("alg") {
-                if !self.allowed_algorithms.contains(alg) {
+            if let Some(alg) = context.parameters.get("alg")
+                && !self.allowed_algorithms.contains(alg) {
                     return Err(AuthencError::validation(format!(
                         "Insecure signing algorithm not allowed: {}",
                         alg
                     )));
                 }
-            }
         }
         Ok(())
     }
@@ -1252,12 +1241,11 @@ impl ClientPolicyManager {
                 // Evaluate conditions
                 let mut conditions_met = true;
                 for condition_name in &policy.conditions {
-                    if let Some(condition) = self.conditions.get(condition_name) {
-                        if !condition.evaluate(&context).await? {
+                    if let Some(condition) = self.conditions.get(condition_name)
+                        && !condition.evaluate(&context).await? {
                             conditions_met = false;
                             break;
                         }
-                    }
                 }
 
                 // Execute executors if conditions are met

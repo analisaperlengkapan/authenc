@@ -104,7 +104,7 @@ impl SsoCookieManager {
 
         // Serialize to JSON
         let json_data = serde_json::to_string(&cookie_data)
-            .map_err(|e| AuthencError::internal(&format!("Failed to serialize cookie: {}", e)))?;
+            .map_err(|e| AuthencError::internal(format!("Failed to serialize cookie: {}", e)))?;
 
         // Base64 encode the JSON data
         let encoded_data = Base64::encode_string(json_data.as_bytes());
@@ -206,7 +206,7 @@ impl SsoCookieManager {
     /// Sign data using HMAC-SHA256
     fn sign_data(&self, data: &str) -> Result<Vec<u8>> {
         let mut mac = HmacSha256::new_from_slice(&self.secret_key)
-            .map_err(|e| AuthencError::internal(&format!("Failed to create HMAC: {}", e)))?;
+            .map_err(|e| AuthencError::internal(format!("Failed to create HMAC: {}", e)))?;
 
         mac.update(data.as_bytes());
         Ok(mac.finalize().into_bytes().to_vec())

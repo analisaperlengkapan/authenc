@@ -6,7 +6,7 @@
 //! NOTE: RSA support has been removed due to security vulnerabilities
 //! (RUSTSEC-2023-0071). All JWT signing uses Ed25519 (EdDSA).
 
-use crate::crypto::ed25519_keys::{get_ed25519_jwk, ED25519_KEYPAIR};
+use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
 use crate::handlers::oidc_ed25519::OidcIdTokenClaims;
 use crate::models::audit_log::AuditLog;
 use crate::services::oidc_client_store::OidcClientStore;
@@ -14,11 +14,11 @@ use crate::services::oidc_code_store::OidcCodeStore;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;
 use axum::{
+    Form, Router,
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json, Redirect, Response},
     routing::{get, post},
-    Form, Router,
 };
 use axum_extra::extract::CookieJar;
 use base64ct::{Base64UrlUnpadded, Encoding};
@@ -99,15 +99,15 @@ fn verify_ed25519_jwt(token: &str) -> Result<OidcIdTokenClaims, &'static str> {
 
     // Verify signature
     let signing_input = format!("{}.{}", header_b64, payload_b64);
-    let signature_bytes = Base64UrlUnpadded::decode_vec(signature_b64)
-        .map_err(|_| "Invalid signature encoding")?;
-    
+    let signature_bytes =
+        Base64UrlUnpadded::decode_vec(signature_b64).map_err(|_| "Invalid signature encoding")?;
+
     if signature_bytes.len() != 64 {
         return Err("Invalid signature length");
     }
 
-    let signature = Signature::from_slice(&signature_bytes)
-        .map_err(|_| "Invalid signature format")?;
+    let signature =
+        Signature::from_slice(&signature_bytes).map_err(|_| "Invalid signature format")?;
 
     // Get public key from keypair
     let public_key = ED25519_KEYPAIR.verifying_key();
@@ -116,10 +116,10 @@ fn verify_ed25519_jwt(token: &str) -> Result<OidcIdTokenClaims, &'static str> {
         .map_err(|_| "Signature verification failed")?;
 
     // Decode and parse claims
-    let claims_bytes = Base64UrlUnpadded::decode_vec(payload_b64)
-        .map_err(|_| "Invalid payload encoding")?;
-    let claims: OidcIdTokenClaims = serde_json::from_slice(&claims_bytes)
-        .map_err(|_| "Invalid claims format")?;
+    let claims_bytes =
+        Base64UrlUnpadded::decode_vec(payload_b64).map_err(|_| "Invalid payload encoding")?;
+    let claims: OidcIdTokenClaims =
+        serde_json::from_slice(&claims_bytes).map_err(|_| "Invalid claims format")?;
 
     // Verify expiration
     let now = Utc::now().timestamp();
@@ -346,7 +346,20 @@ pub async fn oidc_login_post(
     use crate::utils::crypto::password::verify_password;
 
     // Verify user credentials
-    let user = match state.user_store.get_user_by_username(&form.username).await {
+    // Note: OIDC provider in this implementation seems to lack realm context in the form.
+    // Assuming default realm or handling lookup differently.
+    // For now, we will fetch the client first to get the realm_id if possible,
+    // but the login form typically comes after authorization request where client_id is known.
+    // In this form post, client_id is present.
+
+    // Lookup client to get realm_id
+    let client = match state.client_store.get(&form.client_id).await {
+        Ok(Some(c)) => c,
+        _ => return (StatusCode::BAD_REQUEST, "Invalid client_id").into_response(),
+    };
+
+    // Use client's realm_id for user lookup
+    let user = match state.user_store.get_user_by_username(&client.realm_id, &form.username).await {
         Ok(Some(u)) => u,
         Ok(None) => {
             let _ = state
@@ -376,7 +389,7 @@ pub async fn oidc_login_post(
             return (StatusCode::INTERNAL_SERVER_ERROR, "Authentication error").into_response();
         }
     };
-    let password_ok = match verify_password(password_hash, &form.password) {
+    let password_ok = match verify_password(password_hash, &form.password).await {
         Ok(ok) => ok,
         Err(e) => {
             tracing::error!("Password verification error: {}", e);
@@ -545,7 +558,7 @@ pub async fn oidc_authorize(
         .clone()
         .map(|s| s.split_whitespace().map(String::from).collect())
         .unwrap_or_else(|| vec!["openid".to_string()]);
-    
+
     if let Err(e) = state
         .code_store
         .insert(
@@ -666,26 +679,32 @@ pub async fn oidc_token(
     };
 
     // Get user info
-    let user = match state.user_store.get_user_by_username(&user_id).await {
-        Ok(Some(u)) => u,
-        Ok(None) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "invalid_grant".to_string(),
-                    error_description: Some("User not found".to_string()),
-                }),
-            ));
-        }
-        Err(e) => {
-            tracing::error!("User store error: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "server_error".to_string(),
-                    error_description: Some("Internal server error".to_string()),
-                }),
-            ));
+    // For user_id lookup (which is actually a username in the code store logic?),
+    // wait, get_user_by_username takes a username string.
+    // The variable name is `user_id` but let's check what `code_store.take` returns.
+    // In oidc_authorize: `state.code_store.insert(..., user_id.clone(), ...)` where user_id comes from "auth_user_id" cookie.
+    // The "auth_user_id" cookie in `oidc_login_post` is set to `user.id.to_string()`, which is a UUID string.
+    // So `user_id` here is a UUID string.
+    // But `get_user_by_username` expects a username.
+    // We should probably use `get_user` (by ID) instead if `user_id` is a UUID.
+    // However, looking at `oidc_authorize`, `user_id` is passed to `insert`.
+    // Let's assume `user_id` is the user ID (UUID).
+
+    // We need the realm_id. The client belongs to a realm.
+    let realm_id = client.realm_id;
+
+    // Try to parse as UUID first to use get_user
+    let user = match uuid::Uuid::parse_str(&user_id) {
+        Ok(uid) => match state.user_store.get_user(uid).await {
+             Ok(Some(u)) => u,
+             _ => return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse { error: "invalid_grant".to_string(), error_description: Some("User not found".to_string()) }))),
+        },
+        Err(_) => {
+             // Fallback to username lookup if it's not a UUID (legacy/testing?)
+             match state.user_store.get_user_by_username(&realm_id, &user_id).await {
+                Ok(Some(u)) => u,
+                _ => return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse { error: "invalid_grant".to_string(), error_description: Some("User not found".to_string()) }))),
+             }
         }
     };
 
@@ -764,23 +783,35 @@ pub async fn oidc_userinfo(
     use crate::services::stores::user_store::UserStoreTrait;
 
     // Get user info
-    let user = state.user_store.get_user_by_username(&claims.sub).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "server_error".to_string(),
-                error_description: Some("Database error".to_string()),
-            }),
-        )
-    })?.ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "invalid_token".to_string(),
-                error_description: Some("User not found".to_string()),
-            }),
-        )
+    // claims.sub should be user ID (UUID)
+    // We don't have client_id in the token claims explicitly to fetch realm easily here unless we look up user by ID directly (which doesn't require realm_id in UserStoreTrait::get_user).
+
+    let user_id = uuid::Uuid::parse_str(&claims.sub).map_err(|_| {
+         (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: "invalid_token".to_string(), error_description: Some("Invalid subject claim".to_string()) }))
     })?;
+
+    let user = state
+        .user_store
+        .get_user(user_id)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "server_error".to_string(),
+                    error_description: Some("Database error".to_string()),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "invalid_token".to_string(),
+                    error_description: Some("User not found".to_string()),
+                }),
+            )
+        })?;
 
     // Log successful userinfo request
     let _ = state
@@ -816,10 +847,7 @@ pub async fn oidc_jwks() -> Json<serde_json::Value> {
 /// Create OIDC provider routes for the application (Ed25519-based)
 pub fn create_oidc_provider_routes() -> Router<Arc<OidcProviderState>> {
     Router::new()
-        .route(
-            "/.well-known/openid-configuration",
-            get(oidc_discovery),
-        )
+        .route("/.well-known/openid-configuration", get(oidc_discovery))
         .route("/oidc/login", get(oidc_login))
         .route("/oidc/login", post(oidc_login_post))
         .route("/oidc/authorize", get(oidc_authorize))

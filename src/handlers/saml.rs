@@ -1,4 +1,6 @@
+use crate::app::AppState;
 use crate::database::Database;
+use crate::database::operations::identity_providers::get_identity_provider_by_entity_id;
 use crate::error::AuthencError;
 use crate::models::user::JITUserProvisioningRequest;
 use crate::services::admin::AdminService;
@@ -6,7 +8,6 @@ use crate::services::federation::jit_provisioning::{
     DefaultJITProvisioningService, JITProvisioningService,
 };
 use crate::services::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
-use crate::database::operations::identity_providers::get_identity_provider_by_entity_id;
 use async_trait::async_trait;
 use axum::{
     Router,
@@ -79,22 +80,27 @@ impl AdminService for SamlAdminService {
                         if let Some(role) = all_roles.iter().find(|r| r.name == *role_name) {
                             roles::assign_role_to_user(&self.db, &user.id, &role.id)
                                 .await
-                                .map_err(|e| format!("Failed to assign role {}: {}", role_name, e))?;
+                                .map_err(|e| {
+                                    format!("Failed to assign role {}: {}", role_name, e)
+                                })?;
                         }
                     }
                 }
 
                 // Assign groups if provided
                 if !request.groups.is_empty() {
-                    let all_groups = groups::get_groups_by_realm(&self.db, request.realm_id, None, None)
-                        .await
-                        .map_err(|e| format!("Failed to fetch realm groups: {}", e))?;
+                    let all_groups =
+                        groups::get_groups_by_realm(&self.db, request.realm_id, None, None)
+                            .await
+                            .map_err(|e| format!("Failed to fetch realm groups: {}", e))?;
 
                     for group_name in &request.groups {
                         if let Some(group) = all_groups.iter().find(|g| g.name == *group_name) {
                             groups::add_user_to_group(&self.db, user.id, group.id, None, None)
                                 .await
-                                .map_err(|e| format!("Failed to add user to group {}: {}", group_name, e))?;
+                                .map_err(|e| {
+                                    format!("Failed to add user to group {}: {}", group_name, e)
+                                })?;
                         }
                     }
                 }
@@ -116,6 +122,7 @@ impl AdminService for SamlAdminService {
                     last_name: user.last_name,
                     enabled: user.enabled,
                     realm_id: user.realm_id.unwrap_or_default(),
+                    organization_id: user.organization_id,
                     roles: user_roles.into_iter().map(|r| r.name).collect(),
                     groups: user_groups.into_iter().map(|g| g.name).collect(),
                     created_at: user.created_at,
@@ -177,6 +184,8 @@ impl AdminService for SamlAdminService {
     async fn get_policies(
         &self,
         _realm_id: &uuid::Uuid,
+        _page: u32,
+        _limit: u32,
     ) -> Result<Vec<crate::services::admin::PolicyResponse>, String> {
         Err("Not implemented".to_string())
     }
@@ -237,7 +246,7 @@ impl AdminService for SamlAdminService {
 }
 
 /// Create SAML routes
-pub fn create_saml_routes() -> Router<Arc<Database>> {
+pub fn create_saml_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/sp/metadata", get(sp_metadata))
         .route("/idp/metadata", get(idp_metadata))
@@ -246,25 +255,42 @@ pub fn create_saml_routes() -> Router<Arc<Database>> {
         .route("/slo", get(saml_slo))
 }
 
-/// SAML service provider metadata endpoint
-pub async fn sp_metadata(
-    State(db): State<Arc<Database>>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> std::result::Result<Html<String>, AuthencError> {
-    let mut service = SamlService::new(db);
-
-    // In production, load from configuration
-    let sp = SamlServiceProvider {
+fn get_default_sp_config() -> SamlServiceProvider {
+    SamlServiceProvider {
         entity_id: "https://authenc.example.com/saml/sp".to_string(),
+        realm_id: uuid::Uuid::nil(), // Placeholder Realm ID
         assertion_consumer_service_url: "https://authenc.example.com/saml/acs".to_string(),
         single_logout_service_url: Some("https://authenc.example.com/saml/slo".to_string()),
         name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
         want_assertions_signed: true,
         want_response_signed: true,
-    };
-    service.register_service_provider(sp);
+    }
+}
 
-    let default_entity_id = "https://authenc.example.com/saml/sp".to_string();
+fn get_default_idp_config() -> SamlIdentityProvider {
+    SamlIdentityProvider {
+        id: uuid::Uuid::nil(), // Placeholder ID
+        entity_id: "https://idp.example.com/saml/idp".to_string(),
+        sso_url: "https://idp.example.com/saml/auth".to_string(),
+        slo_url: Some("https://idp.example.com/saml/slo".to_string()),
+        certificate: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...".to_string(),
+        name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
+        want_authn_requests_signed: true,
+    }
+}
+
+/// SAML service provider metadata endpoint
+pub async fn sp_metadata(
+    State(db): State<Database>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> std::result::Result<Html<String>, AuthencError> {
+    let mut service = SamlService::new(Arc::new(db));
+
+    // In production, load from configuration
+    let sp = get_default_sp_config();
+    service.register_service_provider(sp.clone());
+
+    let default_entity_id = sp.entity_id.clone();
     let entity_id = params.get("entity_id").unwrap_or(&default_entity_id);
 
     match service.generate_sp_metadata(entity_id) {
@@ -275,23 +301,23 @@ pub async fn sp_metadata(
 
 /// SAML identity provider metadata endpoint
 pub async fn idp_metadata(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> std::result::Result<Html<String>, AuthencError> {
-    let mut service = SamlService::new(db);
+    let mut service = SamlService::new(Arc::new(db));
 
     // In production, load from configuration
-    let idp = SamlIdentityProvider {
-        entity_id: "https://authenc.example.com/saml/idp".to_string(),
-        sso_url: "https://authenc.example.com/saml/auth".to_string(),
-        slo_url: Some("https://authenc.example.com/saml/slo".to_string()),
-        certificate: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...".to_string(), // Placeholder
-        name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
-        want_authn_requests_signed: true,
-    };
-    service.register_identity_provider(idp);
 
-    let default_entity_id = "https://authenc.example.com/saml/idp".to_string();
+    let mut idp = get_default_idp_config();
+    // Override default IDP config (which points to external IDP) with "authenc" details
+    // to represent the local Identity Provider configuration.
+    idp.entity_id = "https://authenc.example.com/saml/idp".to_string();
+    idp.sso_url = "https://authenc.example.com/saml/auth".to_string();
+    idp.slo_url = Some("https://authenc.example.com/saml/slo".to_string());
+
+    service.register_identity_provider(idp.clone());
+
+    let default_entity_id = idp.entity_id.clone();
     let entity_id = params.get("entity_id").unwrap_or(&default_entity_id);
 
     match service.generate_idp_metadata(entity_id) {
@@ -302,37 +328,23 @@ pub async fn idp_metadata(
 
 /// SAML authentication initiation
 pub async fn saml_auth(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> std::result::Result<Redirect, AuthencError> {
-    let mut service = SamlService::new(db);
+    let mut service = SamlService::new(Arc::new(db));
 
     // Register service provider
-    let sp = SamlServiceProvider {
-        entity_id: "https://authenc.example.com/saml/sp".to_string(),
-        assertion_consumer_service_url: "https://authenc.example.com/saml/acs".to_string(),
-        single_logout_service_url: Some("https://authenc.example.com/saml/slo".to_string()),
-        name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
-        want_assertions_signed: true,
-        want_response_signed: true,
-    };
-    service.register_service_provider(sp);
+    let sp = get_default_sp_config();
+    service.register_service_provider(sp.clone());
 
     // Register identity provider
-    let idp = SamlIdentityProvider {
-        entity_id: "https://idp.example.com/saml/idp".to_string(),
-        sso_url: "https://idp.example.com/saml/auth".to_string(),
-        slo_url: Some("https://idp.example.com/saml/slo".to_string()),
-        certificate: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...".to_string(),
-        name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
-        want_authn_requests_signed: true,
-    };
-    service.register_identity_provider(idp);
+    let idp = get_default_idp_config();
+    service.register_identity_provider(idp.clone());
 
-    let default_sp_entity_id = "https://authenc.example.com/saml/sp".to_string();
+    let default_sp_entity_id = sp.entity_id.clone();
     let sp_entity_id = params.get("sp").unwrap_or(&default_sp_entity_id);
 
-    let default_idp_entity_id = "https://idp.example.com/saml/idp".to_string();
+    let default_idp_entity_id = idp.entity_id.clone();
     let idp_entity_id = params.get("idp").unwrap_or(&default_idp_entity_id);
 
     let relay_state = params.get("RelayState").map(|s| s.as_str());
@@ -348,11 +360,11 @@ pub async fn saml_auth(
 
 /// SAML assertion consumer service (ACS) endpoint
 pub async fn saml_acs(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Query(params): Query<std::collections::HashMap<String, String>>,
     _body: String,
 ) -> std::result::Result<Html<String>, AuthencError> {
-    let mut service = SamlService::new(db.clone());
+    let mut service = SamlService::new(Arc::new(db.clone()));
 
     // Extract SAMLResponse from form data or query parameters
     let saml_response = if let Some(response) = params.get("SAMLResponse") {
@@ -369,7 +381,7 @@ pub async fn saml_acs(
         .get_issuer_and_xml_from_response(saml_response)
         .map_err(|e| AuthencError::validation(format!("Failed to parse SAML response: {}", e)))?;
 
-    // Look up Identity Provider
+    // Look up Identity Provider from database to get realm_id
     let idp_data = get_identity_provider_by_entity_id(&db, &issuer)
         .await
         .map_err(|e| AuthencError::internal(format!("Database error: {}", e)))?
@@ -381,9 +393,10 @@ pub async fn saml_acs(
         })?;
 
     // Register IDP configuration with service
-    let idp_config: SamlIdentityProvider = serde_json::from_value(idp_data.config.clone()).map_err(|e| {
-        AuthencError::internal(format!("Invalid Identity Provider configuration: {}", e))
-    })?;
+    let idp_config: SamlIdentityProvider = serde_json::from_value(idp_data.config.clone())
+        .map_err(|e| {
+            AuthencError::internal(format!("Invalid Identity Provider configuration: {}", e))
+        })?;
 
     service.register_identity_provider(idp_config);
 
@@ -394,13 +407,13 @@ pub async fn saml_acs(
     {
         Ok(user_info) => {
             // Create JIT provisioning service
-            let admin_service = Arc::new(SamlAdminService::new(db.clone()));
+            let admin_service = Arc::new(MockAdminService::new(Arc::new(db.clone())));
             let jit_service = Arc::new(DefaultJITProvisioningService::new(
-                db.clone(),
+                Arc::new(db.clone()),
                 admin_service,
             ));
 
-            // Helper to extract first value from attributes
+// Helper to extract first value from attributes
             let get_attribute_value = |key: &str| -> Option<String> {
                 user_info
                     .attributes
@@ -409,8 +422,11 @@ pub async fn saml_acs(
                     .cloned()
             };
 
-            // Prepare JIT provisioning request
-            log::info!("Preparing JIT provisioning request for IDP: {}", idp_data.id);
+            // Prepare JIT provisioning request using realm_id from IDP config
+            log::info!(
+                "Preparing JIT provisioning request for IDP: {}",
+                idp_data.id
+            );
             let jit_request = JITUserProvisioningRequest {
                 identity_provider_id: idp_data.id,
                 external_id: user_info.name_id.clone(),
@@ -484,7 +500,7 @@ pub async fn saml_acs(
 
 /// SAML single logout endpoint
 pub async fn saml_slo(
-    State(_db): State<Arc<Database>>,
+    State(_db): State<Database>,
     Query(_params): Query<std::collections::HashMap<String, String>>,
 ) -> std::result::Result<Redirect, AuthencError> {
     // In production, implement SAML logout

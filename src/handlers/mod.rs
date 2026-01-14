@@ -16,7 +16,7 @@ pub mod health;
 /// JWT token handling with Ed25519 signatures for enhanced security
 pub mod jwt_ed25519;
 /// Comprehensive OAuth2 implementation with PKCE and security features
-pub mod oauth2_comprehensive;
+pub mod oauth2;
 /// OIDC identity provider with Ed25519 JWT signing (secure replacement for RSA)
 pub mod oidc_ed25519;
 pub use health::create_health_routes;
@@ -58,10 +58,10 @@ pub mod device;
 /// Federated authentication handlers with JIT provisioning
 pub mod federated_auth;
 /// SPI-based federation handlers for LDAP and social providers
-pub mod spi_federation;
+pub mod federation;
 /// SPI management handlers for enterprise features
-pub mod spi_management;
-// pub mod oauth2_comprehensive; // Commented out - already declared above
+pub mod spi;
+// pub mod oauth2; // Commented out - already declared above
 // pub mod organization;
 /// SAML authentication handlers
 pub mod saml;
@@ -74,32 +74,29 @@ pub mod oid4vc;
 pub mod sso;
 /// Zero Trust security model handlers and endpoints
 pub mod zero_trust;
+/// FIPS management handlers
+pub mod fips;
 
 /// Create the main application router with all routes
 pub fn create_router(state: Arc<AppState>) -> Router {
-    // For backward compatibility, extract database from state
-    // TODO: Gradually migrate handlers to use AppState directly
-    let db_state = state.database.clone();
-
     // Create OAuth2 stores
-    let oauth2_stores = Arc::new(oauth2_comprehensive::OAuth2Stores::new());
+    let oauth2_stores = Arc::new(oauth2::OAuth2Stores::new());
 
     // Create combined OAuth2 state
-    let oauth2_state = Arc::new(oauth2_comprehensive::OAuth2AppState {
-        database: db_state.clone(),
+    let oauth2_state = Arc::new(oauth2::OAuth2AppState {
+        app_state: state.clone(),
         oauth2_stores,
-        consent_store: state.consent_store.clone(),
     });
 
     // Create OAuth2 test router without authentication
     let oauth2_test_router = Router::new()
         .route(
             "/oauth2/authorize/test",
-            get(oauth2_comprehensive::test_oauth2_authorize),
+            get(oauth2::test_oauth2_authorize),
         )
         .route(
             "/oauth2/token/test",
-            post(oauth2_comprehensive::test_oauth2_token),
+            post(oauth2::test_oauth2_token),
         )
         .with_state(oauth2_state.clone());
 
@@ -107,36 +104,34 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     let oauth2_router = Router::new()
         .route(
             "/.well-known/oauth-authorization-server",
-            get(oauth2_comprehensive::oauth2_discovery),
+            get(oauth2::oauth2_discovery),
         )
-        .route("/oauth2/token", post(oauth2_comprehensive::oauth2_token))
+        .route("/oauth2/token", post(oauth2::oauth2_token))
         .route(
             "/oauth2/introspect",
-            post(oauth2_comprehensive::oauth2_introspect),
+            post(oauth2::oauth2_introspect),
         )
-        .route("/oauth2/revoke", post(oauth2_comprehensive::oauth2_revoke))
-        .route("/oauth2/jwks", get(oauth2_comprehensive::oauth2_jwks))
+        .route("/oauth2/revoke", post(oauth2::oauth2_revoke))
+        .route("/oauth2/jwks", get(oauth2::oauth2_jwks))
         .route(
             "/oauth2/userinfo",
-            get(oauth2_comprehensive::oauth2_userinfo),
+            get(oauth2::oauth2_userinfo),
         )
         .layer(axum::middleware::from_fn_with_state(
-            Arc::new(crate::middleware::auth_middleware_axum::AuthState {
+            Arc::new(crate::middleware::auth::AuthState {
                 jwt_secret: state.config.security.jwt_secret.clone(),
             }),
-            crate::middleware::auth_middleware_axum::auth_middleware,
+            crate::middleware::auth::auth_middleware,
         ))
         .with_state(oauth2_state.clone());
 
-    let mut router = Router::new()
-        .route("/health", get(health::health))
-        .route("/ready", get(health::ready))
-        .route("/live", get(health::live))
+    let router = Router::new()
+        .merge(health::create_health_routes().with_state(state.database.clone()))
         // OAuth2 authorization endpoint (accessible without auth)
         .nest(
             "/oauth2",
             Router::new()
-                .route("/authorize", get(oauth2_comprehensive::oauth2_authorize))
+                .route("/authorize", get(oauth2::oauth2_authorize))
                 .with_state(oauth2_state.clone()),
         )
         // Legacy OIDC Endpoints with Ed25519 security
@@ -158,10 +153,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .merge(
             consent_ui::create_consent_routes()
                 .layer(axum::middleware::from_fn_with_state(
-                    Arc::new(crate::middleware::auth_middleware_axum::AuthState {
+                    Arc::new(crate::middleware::auth::AuthState {
                         jwt_secret: state.config.security.jwt_secret.clone(),
                     }),
-                    crate::middleware::auth_middleware_axum::auth_middleware,
+                    crate::middleware::auth::auth_middleware,
                 ))
                 .with_state(state.clone()),
         )
@@ -185,6 +180,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/auth/zero-trust",
             zero_trust::create_zero_trust_routes(),
         )
+        // FIPS management routes
+        .nest(
+            "/api/v1/admin/fips",
+            fips::create_fips_routes().with_state(state.clone()),
+        )
         // Temporarily disabled broker routes due to Axum migration
         .nest(
             "/api/v1/auth/broker",
@@ -200,12 +200,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // SPI-based federation routes for enterprise providers
         .nest(
             "/api/v1/auth/federation",
-            spi_federation::create_federation_routes().with_state(state.clone()),
+            federation::create_federation_routes().with_state(state.clone()),
         )
         // SPI management routes for enterprise features
         .nest(
             "/api/v1/admin/spi",
-            spi_management::create_spi_management_routes().with_state(state.clone()),
+            spi::create_spi_routes().with_state(state.clone()),
         )
         .nest("/api/v1/admin", admin::create_admin_routes())
         // API routes for realms, users, roles, permissions
@@ -313,6 +313,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 api::account_credentials::AccountCredentialsState {
                     user_store: state.user_store.clone(),
                     totp_store: state.totp_store.clone(),
+                    session_store: state.session_store.clone(),
                 },
             ),
         )
@@ -321,8 +322,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         //     "/api/v1/organizations",
         //     organization::create_organization_routes(),
         // )
-        // Temporarily disabled device routes due to Axum migration
-        // .nest("/api/v1/devices", device::create_device_routes())
+        // Device management routes
+        .nest("/api/v1/devices", device::create_device_routes().with_state(state.clone()))
         // Temporarily disabled SAML routes due to Axum migration
         // .nest("/saml", saml::create_saml_routes())
         .nest(
@@ -336,11 +337,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     {
         router = router.nest(
             "/admin/console",
-            crate::admin_console::create_admin_console_routes(state.clone(), db_state.clone()),
+            crate::admin_console::create_admin_console_routes(state.clone()),
         );
     }
 
-    router.with_state(db_state)
+    router.with_state(state)
 }
 
 #[cfg(test)]
@@ -349,13 +350,8 @@ mod tests {
     use crate::app::AppState;
     use crate::config::AppConfig;
     use axum::response::IntoResponse;
-    use axum::{
-        body::Body,
-        http::{Request, StatusCode},
-    };
     use http_body_util::BodyExt;
     use serde_json::Value;
-    use tower::ServiceExt;
 
     #[tokio::test]
     async fn test_health_endpoint() {

@@ -185,13 +185,16 @@ impl AuthenticationManager for DefaultAuthenticationManager {
         client_id: &str,
     ) -> Result<AuthenticationResult> {
         // Create authentication session
-        let session_id = self
+        let _session_id = self
             .create_authentication_session(realm_id, client_id, "browser", "browser")
             .await?;
 
         // Load user from database
+        // Need to parse realm_id
+        let realm_uuid = uuid::Uuid::parse_str(realm_id).map_err(|e| Error::validation(format!("Invalid realm ID: {}", e)))?;
+
         let user_opt =
-            crate::database::operations::users::get_user_by_username(&self.database, username)
+            crate::database::operations::users::get_user_by_username(&self.database, &realm_uuid, username)
                 .await?;
 
         // Check if user exists and password is valid
@@ -200,7 +203,7 @@ impl AuthenticationManager for DefaultAuthenticationManager {
                 (false, Some("User is disabled".to_string()))
             } else if let Some(ref hash) = u.password_hash {
                 // Validate password hash against stored hash
-                match crate::utils::crypto::password::verify_password(hash, password) {
+                match crate::utils::crypto::password::verify_password(hash, password).await {
                     Ok(true) => (true, None),
                     Ok(false) => (false, Some("Invalid username or password".to_string())),
                     Err(_) => (false, Some("Password verification failed".to_string())),

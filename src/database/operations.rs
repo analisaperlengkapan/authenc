@@ -129,6 +129,44 @@ pub mod groups {
         }
     }
 
+    /// Get group by name in a realm
+    pub async fn get_group_by_name(
+        db: &Database,
+        realm_id: Uuid,
+        name: &str,
+    ) -> Result<Option<Group>> {
+        let query = r#"
+            SELECT
+                id, realm_id, parent_id, name, path,
+                description, attributes, created_at, updated_at
+            FROM groups
+            WHERE realm_id = $1 AND name = $2
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> =
+            db.query(query, &[&realm_id, &name]).await.map_err(|e| {
+                error!("Failed to get group by name: {}", e);
+                AuthencError::database(format!("Failed to get group by name: {}", e))
+            })?;
+
+        if rows.is_empty() {
+            Ok(None)
+        } else {
+            let row = &rows[0];
+            Ok(Some(Group {
+                id: row.get(0),
+                realm_id: row.get(1),
+                parent_id: row.get(2),
+                name: row.get(3),
+                path: row.get(4),
+                description: row.get(5),
+                attributes: row.get(6),
+                created_at: row.get(7),
+                updated_at: row.get(8),
+            }))
+        }
+    }
+
     /// Get all groups in a realm
     pub async fn get_groups_by_realm(
         db: &Database,
@@ -495,13 +533,14 @@ pub mod devices {
             INSERT INTO devices (
                 id, user_id, device_name, device_fingerprint, trust_score,
                 os, os_version, browser, browser_version, ip_address,
-                user_agent, first_seen_at, last_seen_at, created_at, updated_at
+                user_agent, security_features, location_data, first_seen_at, last_seen_at,
+                created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             RETURNING
                 id, user_id, device_name, device_fingerprint, trust_score,
                 risk_level, os, os_version, browser, browser_version,
-                ip_address, user_agent, last_seen_at,
+                ip_address, user_agent, location_data, security_features, last_seen_at,
                 first_seen_at, created_at, updated_at
         "#;
 
@@ -513,13 +552,15 @@ pub mod devices {
                     &user_id,
                     &device_info.device_name,
                     &device_info.fingerprint,
-                    &0.5f64, // Initial trust score
+                    &device_info.trust_score.unwrap_or(0.5f64),
                     &device_info.os,
                     &device_info.os_version,
                     &device_info.browser,
                     &device_info.browser_version,
                     &device_info.ip_address,
                     &device_info.user_agent,
+                    &device_info.security_features,
+                    &device_info.location_data,
                     &now,
                     &now,
                     &now,
@@ -542,7 +583,7 @@ pub mod devices {
             SELECT
                 id, user_id, device_name, device_fingerprint, trust_score,
                 risk_level, os, os_version, browser, browser_version,
-                ip_address, user_agent, last_seen_at,
+                ip_address, user_agent, location_data, security_features, last_seen_at,
                 first_seen_at, created_at, updated_at
             FROM devices
             WHERE id = $1
@@ -554,6 +595,45 @@ pub mod devices {
     }
 
     /// Update device trust score
+    /// Update device details
+    pub async fn update_device_details(
+        db: &Database,
+        device_id: Uuid,
+        device_name: Option<String>,
+    ) -> Result<()> {
+        let now = Utc::now();
+
+        // Check if there are updates
+        if device_name.is_none() {
+            return Ok(());
+        }
+
+        let mut query_builder = String::from("UPDATE devices SET updated_at = $2");
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
+        params.push(Box::new(device_id));
+        params.push(Box::new(now));
+        let param_index = 3;
+
+        if let Some(name) = device_name {
+            query_builder.push_str(&format!(", device_name = ${}", param_index));
+            params.push(Box::new(name));
+        }
+
+        query_builder.push_str(" WHERE id = $1");
+
+        let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+
+        db.execute(&query_builder, &params_refs)
+            .await
+            .map_err(|e| {
+                error!("Failed to update device details: {}", e);
+                AuthencError::database(format!("Failed to update device details: {}", e))
+            })?;
+
+        Ok(())
+    }
+
     /// Update device trust score with evaluation factors
     pub async fn update_trust_score(
         db: &Database,
@@ -563,19 +643,31 @@ pub mod devices {
     ) -> Result<()> {
         let now = Utc::now();
 
+        // Calculate risk level based on score
+        let risk_level = if new_score >= 0.7 {
+            "low"
+        } else if new_score < 0.4 {
+            "high"
+        } else {
+            "medium"
+        };
+
         // First, get the current score for history
         let current_query = "SELECT trust_score FROM devices WHERE id = $1";
         let current_row: tokio_postgres::Row = db.query_one(current_query, &[&device_id]).await?;
         let current_score: f64 = current_row.get(0);
 
-        // Update the device trust score
+        // Update the device trust score and risk level
         let update_query = r#"
             UPDATE devices
-            SET trust_score = $2, updated_at = $3
+            SET trust_score = $2, risk_level = $4, updated_at = $3
             WHERE id = $1
         "#;
-        db.execute(update_query, &[&device_id, &new_score, &now])
-            .await?;
+        db.execute(
+            update_query,
+            &[&device_id, &new_score, &now, &risk_level],
+        )
+        .await?;
 
         // Insert trust score history
         let history_query = r#"
@@ -618,7 +710,7 @@ pub mod devices {
             SELECT
                 id, user_id, device_name, device_fingerprint, trust_score,
                 risk_level, os, os_version, browser, browser_version,
-                ip_address, user_agent, location_data, last_seen_at,
+                ip_address, user_agent, location_data, security_features, last_seen_at,
                 first_seen_at, created_at, updated_at
             FROM devices
             WHERE user_id = $1
@@ -659,9 +751,10 @@ pub mod webauthn {
             INSERT INTO webauthn_credentials (
                 id, user_id, credential_id, public_key, public_key_algorithm,
                 signature_counter, attestation_object, authenticator_data,
-                user_handle, credential_type, transports, created_at, last_used_at
+                user_handle, credential_type, transports, created_at, last_used_at,
+                aaguid, attestation_format, device_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         "#;
 
         db.execute(
@@ -680,6 +773,9 @@ pub mod webauthn {
                 &credential.transports,
                 &now,
                 &credential.last_used_at,
+                &credential.aaguid,
+                &credential.attestation_format,
+                &credential.device_id,
             ],
         )
         .await?;
@@ -697,7 +793,8 @@ pub mod webauthn {
                 id, user_id, credential_id, public_key, public_key_algorithm,
                 attestation_object, authenticator_data, user_handle,
                 signature_counter, credential_type, transports,
-                aaguid, attestation_format, created_at, last_used_at, enabled
+                aaguid, attestation_format, created_at, last_used_at, enabled,
+                device_id
             FROM webauthn_credentials
             WHERE credential_id = $1
         "#;
@@ -725,6 +822,7 @@ pub mod webauthn {
                 created_at: r.get(13),
                 last_used_at: r.get(14),
                 enabled: r.get(15),
+                device_id: r.get(16),
             })
         })
     }
@@ -739,7 +837,8 @@ pub mod webauthn {
                 id, user_id, credential_id, public_key, public_key_algorithm,
                 attestation_object, authenticator_data, user_handle,
                 signature_counter, credential_type, transports,
-                aaguid, attestation_format, created_at, last_used_at, enabled
+                aaguid, attestation_format, created_at, last_used_at, enabled,
+                device_id
             FROM webauthn_credentials
             WHERE user_id = $1
             ORDER BY created_at DESC
@@ -765,6 +864,7 @@ pub mod webauthn {
                 created_at: row.get(13),
                 last_used_at: row.get(14),
                 enabled: row.get(15),
+                device_id: row.get(16),
             })
             .collect();
         Ok(credentials)
@@ -871,9 +971,12 @@ pub mod oauth2 {
             WHERE client_id = $1 AND deleted_at IS NULL
         "#;
 
-        let row: tokio_postgres::Row = db.query_one(query, &[&client_id]).await?;
-        // Convert row to OAuth2Client
-        Ok(Some(row.try_into()?))
+        let row_opt = db.query_opt(query, &[&client_id]).await?;
+
+        match row_opt {
+            Some(row) => Ok(Some(row.try_into()?)),
+            None => Ok(None),
+        }
     }
 
     /// Store authorization code
@@ -942,22 +1045,23 @@ pub mod oauth2 {
 
     /// Store access token
     pub async fn store_access_token(db: &Database, token: &OAuth2AccessToken) -> Result<()> {
-        let token_id = Uuid::new_v4();
-        let now = Utc::now();
-
         let query = r#"
             INSERT INTO oauth2_access_tokens (
                 id, token_hash, refresh_token_hash, client_id, user_id,
-                scopes, expires_at, refresh_expires_at, revoked,
+                scopes, expires_at, refresh_expires_at, revoked, revoked_at,
                 created_at, last_used_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (id) DO UPDATE SET
+                revoked = EXCLUDED.revoked,
+                revoked_at = EXCLUDED.revoked_at,
+                last_used_at = EXCLUDED.last_used_at
         "#;
 
         db.execute(
             query,
             &[
-                &token_id,
+                &token.id,
                 &token.token_hash,
                 &token.refresh_token_hash,
                 &token.client_id,
@@ -965,9 +1069,10 @@ pub mod oauth2 {
                 &token.scopes,
                 &token.expires_at,
                 &token.refresh_expires_at,
-                &false,
-                &now,
-                &now,
+                &token.revoked,
+                &token.revoked_at,
+                &token.created_at,
+                &token.last_used_at,
             ],
         )
         .await?;
@@ -989,9 +1094,34 @@ pub mod oauth2 {
             WHERE token_hash = $1 AND revoked = false AND expires_at > NOW()
         "#;
 
-        let row: tokio_postgres::Row = db.query_one(query, &[&token_hash]).await?;
-        // Convert row to OAuth2AccessToken
-        Ok(Some(row.try_into()?))
+        let row_opt = db.query_opt(query, &[&token_hash]).await?;
+
+        match row_opt {
+            Some(row) => Ok(Some(row.try_into()?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Get access token by refresh token hash
+    pub async fn get_access_token_by_refresh_token(
+        db: &Database,
+        refresh_token_hash: &str,
+    ) -> Result<Option<OAuth2AccessToken>> {
+        let query = r#"
+            SELECT
+                id, token_hash, refresh_token_hash, client_id, user_id,
+                scopes, expires_at, refresh_expires_at, revoked,
+                revoked_at, created_at, last_used_at
+            FROM oauth2_access_tokens
+            WHERE refresh_token_hash = $1 AND revoked = false
+        "#;
+
+        let row_opt = db.query_opt(query, &[&refresh_token_hash]).await?;
+
+        match row_opt {
+            Some(row) => Ok(Some(row.try_into()?)),
+            None => Ok(None),
+        }
     }
 
     /// Revoke access token
@@ -1271,7 +1401,7 @@ pub mod organizations {
         if let Some(row) = row {
             // Convert row to Organization
             let attributes_json: serde_json::Value = row.get(10);
-            let attributes: HashMap<String, String> =
+            let _attributes: HashMap<String, String> =
                 serde_json::from_value(attributes_json).unwrap_or_default();
 
             Ok(Some(Organization {
@@ -1362,7 +1492,7 @@ pub mod organizations {
                 id: row.get(0),
                 organization_id: row.get(1),
                 user_id: row.get(2),
-                role: OrganizationRole::from_str(&row.get::<_, String>(3))
+                role: OrganizationRole::parse(&row.get::<_, String>(3))
                     .unwrap_or(OrganizationRole::Member)
                     .as_str()
                     .to_string(),
@@ -1806,9 +1936,10 @@ pub mod audit {
                 id, timestamp, event_type, user_id, session_id,
                 client_id, resource_type, resource_id, action,
                 status, details, ip_address, user_agent,
-                location_data, error_message, request_id, correlation_id
+                location_data, error_message, request_id, correlation_id,
+                realm_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
         "#;
 
         db.execute(
@@ -1834,6 +1965,7 @@ pub mod audit {
                 &event.error_message,
                 &event.request_id,
                 &event.correlation_id,
+                &event.realm_id,
             ],
         )
         .await?;
@@ -1846,6 +1978,7 @@ pub mod audit {
         db: &Database,
         user_id: Option<Uuid>,
         event_type: Option<&str>,
+        realm_id: Option<Uuid>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<AuditEvent>> {
@@ -1854,16 +1987,18 @@ pub mod audit {
                 id, timestamp, event_type, user_id, session_id,
                 client_id, resource_type, resource_id, action,
                 status, details, ip_address, user_agent,
-                location_data, error_message, request_id, correlation_id
+                location_data, error_message, request_id, correlation_id,
+                realm_id
             FROM audit_logs
             WHERE ($1::uuid IS NULL OR user_id = $1)
             AND ($2::text IS NULL OR event_type = $2)
+            AND ($3::uuid IS NULL OR realm_id = $3)
             ORDER BY timestamp DESC
-            LIMIT $3 OFFSET $4
+            LIMIT $4 OFFSET $5
         "#;
 
         let rows = db
-            .query(query, &[&user_id, &event_type, &limit, &offset])
+            .query(query, &[&user_id, &event_type, &realm_id, &limit, &offset])
             .await?;
         // Convert rows to Vec<AuditEvent>
         rows.into_iter()
@@ -1876,16 +2011,18 @@ pub mod audit {
         db: &Database,
         user_id: Option<Uuid>,
         event_type: Option<&str>,
+        realm_id: Option<Uuid>,
     ) -> Result<i64> {
         let query = r#"
             SELECT COUNT(*) FROM audit_logs
             WHERE ($1::uuid IS NULL OR user_id = $1)
             AND ($2::text IS NULL OR event_type = $2)
+            AND ($3::uuid IS NULL OR realm_id = $3)
         "#;
 
         let client = db.get_connection().await?;
         let count: i64 = client
-            .query_one(query, &[&user_id, &event_type])
+            .query_one(query, &[&user_id, &event_type, &realm_id])
             .await?
             .try_get(0)?;
         Ok(count)
@@ -1916,13 +2053,11 @@ pub mod users {
         let first_name = request.first_name.clone();
         let last_name = request.last_name.clone();
         let phone_number = request.phone_number.clone();
-        let password_hash = request
-            .password
-            .as_ref()
-            .map(|p| {
-                crate::utils::crypto::password::hash_password(p)
-                    .unwrap_or_default()
-            });
+        let password_hash = if let Some(p) = &request.password {
+            Some(crate::utils::crypto::password::hash_password(p).await.unwrap_or_default())
+        } else {
+            None
+        };
         let realm_id = request.realm_id;
         let organization_id = request.organization_id;
         let _attributes_json = request
@@ -2085,7 +2220,11 @@ pub mod users {
     }
 
     /// Get user by username
-    pub async fn get_user_by_username(db: &Database, username: &str) -> Result<Option<User>> {
+    pub async fn get_user_by_username(
+        db: &Database,
+        realm_id: &Uuid,
+        username: &str,
+    ) -> Result<Option<User>> {
         let client = db.get_connection().await?;
         let query = r#"
             SELECT
@@ -2097,10 +2236,10 @@ pub mod users {
                 require_password_change, realm_id, organization_id, attributes,
                 enabled, federated, created_at, updated_at, deleted_at, login_count
             FROM users
-            WHERE username = $1 AND deleted_at IS NULL
+            WHERE username = $2 AND realm_id = $1 AND deleted_at IS NULL
         "#;
 
-        let row = client.query_opt(query, &[&username]).await?;
+        let row = client.query_opt(query, &[realm_id, &username]).await?;
         Ok(row.map(|r| User {
             id: r.get("id"),
             username: r.get("username"),
@@ -2135,7 +2274,11 @@ pub mod users {
     }
 
     /// Get user by email
-    pub async fn get_user_by_email(db: &Database, email: &str) -> Result<Option<User>> {
+    pub async fn get_user_by_email(
+        db: &Database,
+        realm_id: &Uuid,
+        email: &str,
+    ) -> Result<Option<User>> {
         let query = r#"
             SELECT
                 id, username, email, email_verified, first_name, last_name,
@@ -2146,11 +2289,11 @@ pub mod users {
                 require_password_change, realm_id, organization_id, attributes,
                 enabled, federated, created_at, updated_at, deleted_at, last_login_at, login_count
             FROM users
-            WHERE email = $1 AND deleted_at IS NULL
+            WHERE email = $2 AND realm_id = $1 AND deleted_at IS NULL
         "#;
 
-        let row = db.query_one(query, &[&email]).await?;
-        Ok(Some(row_to_user(&row)))
+        let row = db.query_opt(query, &[realm_id, &email]).await?;
+        Ok(row.map(|r| row_to_user(&r)))
     }
 
     /// Update user
@@ -2500,7 +2643,7 @@ pub mod users {
 
             // Hash password if provided
             let password_hash = if let Some(password) = &user_req.password {
-                crate::utils::crypto::password::hash_password(password).map_err(|e| {
+                crate::utils::crypto::password::hash_password(password).await.map_err(|e| {
                     crate::error::AuthencError::database(format!("Password hashing failed: {}", e))
                 })?
             } else {
@@ -2557,7 +2700,7 @@ pub mod users {
         for (user_id, update_data) in updates {
             let mut set_clauses = Vec::new();
             let mut param_index = 2; // Start from 2 since $1 is user_id
-            let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
+            let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
                 vec![Box::new(user_id)];
 
             // Build dynamic UPDATE query based on provided fields
@@ -2603,7 +2746,7 @@ pub mod users {
             let query = format!("UPDATE users SET {} WHERE id = $1", set_clauses.join(", "));
 
             let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-                params.iter().map(|p| p.as_ref()).collect();
+                params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
             let affected = transaction.execute(query.as_str(), &params_refs).await?;
             updated_count += affected as usize;
@@ -2758,7 +2901,7 @@ pub mod users {
     ) -> Result<(Vec<serde_json::Value>, i64)> {
         let mut where_clauses: Vec<String> = vec!["deleted_at IS NULL".to_string()];
         let mut param_index = 1;
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
 
         // Realm filter
         if let Some(rid) = realm_id {
@@ -2768,8 +2911,8 @@ pub mod users {
         }
 
         // Full-text search across username, email, first_name, last_name
-        if let Some(search_term) = search {
-            if !search_term.is_empty() {
+        if let Some(search_term) = search
+            && !search_term.is_empty() {
                 where_clauses.push(format!(
                     "(username ILIKE ${} OR email ILIKE ${} OR first_name ILIKE ${} OR last_name ILIKE ${})",
                     param_index, param_index, param_index, param_index
@@ -2778,16 +2921,14 @@ pub mod users {
                 params.push(Box::new(search_pattern));
                 param_index += 1;
             }
-        }
 
         // Email filter
-        if let Some(email_pattern) = email_filter {
-            if !email_pattern.is_empty() {
+        if let Some(email_pattern) = email_filter
+            && !email_pattern.is_empty() {
                 where_clauses.push(format!("email ILIKE ${}", param_index));
                 params.push(Box::new(format!("%{}%", email_pattern)));
                 param_index += 1;
             }
-        }
 
         // Enabled filter
         if let Some(enabled) = enabled_filter {
@@ -2830,7 +2971,7 @@ pub mod users {
         let count_query = format!("SELECT COUNT(*) FROM users WHERE {}", where_clause);
 
         let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         let count_row: tokio_postgres::Row = db.query_one(&count_query, &params_refs).await?;
         let total_count: i64 = count_row.get(0);
@@ -2863,7 +3004,7 @@ pub mod users {
         data_params.push(Box::new(offset_val));
 
         let data_params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            data_params.iter().map(|p| p.as_ref()).collect();
+            data_params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         let rows: Vec<tokio_postgres::Row> = db.query(&data_query, &data_params_refs).await?;
 
@@ -3919,7 +4060,6 @@ pub mod realms {
     }
 
     /// Helper function to convert database row to Realm
-
     fn row_to_realm(row: tokio_postgres::Row) -> Realm {
         Realm {
             id: row.get(0),
@@ -5316,54 +5456,76 @@ pub mod events {
         Ok(rows[0].get(0))
     }
 
+    /// Parameters for querying event log
+    pub struct QueryEventLogParams {
+        /// Realm ID
+        pub realm_id: Uuid,
+        /// Event category
+        pub event_category: Option<String>,
+        /// Event type
+        pub event_type: Option<String>,
+        /// Resource type
+        pub resource_type: Option<String>,
+        /// Resource ID
+        pub resource_id: Option<String>,
+        /// User ID
+        pub user_id: Option<Uuid>,
+        /// Start date
+        pub from_date: Option<DateTime<Utc>>,
+        /// End date
+        pub to_date: Option<DateTime<Utc>>,
+        /// Filter for successful events only
+        pub success_only: Option<bool>,
+        /// Offset for pagination
+        pub offset: i64,
+        /// Limit for pagination
+        pub limit: i64,
+    }
+
     /// Query event log with filtering
     pub async fn query_event_log(
         db: &Database,
-        realm_id: Uuid,
-        event_category: Option<String>,
-        event_type: Option<String>,
-        resource_type: Option<String>,
-        user_id: Option<Uuid>,
-        from_date: Option<DateTime<Utc>>,
-        to_date: Option<DateTime<Utc>>,
-        success_only: Option<bool>,
-        offset: i64,
-        limit: i64,
+        params: QueryEventLogParams,
     ) -> Result<Vec<JsonValue>> {
         let mut where_clauses = vec![String::from("realm_id = $1")];
         let mut param_index = 2;
 
-        if event_category.is_some() {
+        if params.event_category.is_some() {
             where_clauses.push(format!("event_category = ${}", param_index));
             param_index += 1;
         }
 
-        if event_type.is_some() {
+        if params.event_type.is_some() {
             where_clauses.push(format!("event_type = ${}", param_index));
             param_index += 1;
         }
 
-        if resource_type.is_some() {
+        if params.resource_type.is_some() {
             where_clauses.push(format!("resource_type = ${}", param_index));
             param_index += 1;
         }
 
-        if user_id.is_some() {
+        if params.resource_id.is_some() {
+            where_clauses.push(format!("resource_id = ${}", param_index));
+            param_index += 1;
+        }
+
+        if params.user_id.is_some() {
             where_clauses.push(format!("user_id = ${}", param_index));
             param_index += 1;
         }
 
-        if from_date.is_some() {
+        if params.from_date.is_some() {
             where_clauses.push(format!("created_at >= ${}", param_index));
             param_index += 1;
         }
 
-        if to_date.is_some() {
+        if params.to_date.is_some() {
             where_clauses.push(format!("created_at <= ${}", param_index));
             param_index += 1;
         }
 
-        if let Some(true) = success_only {
+        if let Some(true) = params.success_only {
             where_clauses.push(String::from("success = TRUE"));
         }
 
@@ -5385,31 +5547,40 @@ pub mod events {
             param_index + 1
         );
 
-        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&realm_id];
+        let mut sql_params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
+            vec![Box::new(params.realm_id)];
 
-        if let Some(ref cat) = event_category {
-            params.push(cat);
+        if let Some(cat) = params.event_category {
+            sql_params.push(Box::new(cat));
         }
-        if let Some(ref et) = event_type {
-            params.push(et);
+        if let Some(et) = params.event_type {
+            sql_params.push(Box::new(et));
         }
-        if let Some(ref rt) = resource_type {
-            params.push(rt);
+        if let Some(rt) = params.resource_type {
+            sql_params.push(Box::new(rt));
         }
-        if let Some(ref uid) = user_id {
-            params.push(uid);
+        if let Some(rid) = params.resource_id {
+            sql_params.push(Box::new(rid));
         }
-        if let Some(ref from) = from_date {
-            params.push(from);
+        if let Some(uid) = params.user_id {
+            sql_params.push(Box::new(uid));
         }
-        if let Some(ref to) = to_date {
-            params.push(to);
+        if let Some(from) = params.from_date {
+            sql_params.push(Box::new(from));
+        }
+        if let Some(to) = params.to_date {
+            sql_params.push(Box::new(to));
         }
 
-        params.push(&limit);
-        params.push(&offset);
+        sql_params.push(Box::new(params.limit));
+        sql_params.push(Box::new(params.offset));
 
-        let rows = db.query_raw(&query, &params).await?;
+        let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = sql_params
+            .iter()
+            .map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync))
+            .collect();
+
+        let rows = db.query_raw(&query, &params_refs).await?;
 
         Ok(rows
             .into_iter()
@@ -5426,7 +5597,7 @@ pub mod events {
                     "success": row.get::<_, bool>(8),
                     "error_message": row.get::<_, Option<String>>(9),
                     "correlation_id": row.get::<_, Option<Uuid>>(10),
-                    "created_at": row.get::<_, DateTime<Utc>>(11),
+                    "created_at": row.get::<_, chrono::NaiveDateTime>(11).to_string(),
                 })
             })
             .collect())
@@ -5534,8 +5705,11 @@ pub mod events {
             WHERE realm_id = $1 AND created_at >= $2 AND created_at <= $3
         "#;
 
+        let from_naive = from_date.naive_utc();
+        let to_naive = to_date.naive_utc();
+
         match db
-            .query_opt(query, &[&realm_id, &from_date, &to_date])
+            .query_opt(query, &[&realm_id, &from_naive, &to_naive])
             .await?
         {
             Some(row) => Ok(serde_json::json!({
@@ -5620,7 +5794,7 @@ pub mod protocol_mappers {
         "#;
 
         let mapper_id = Uuid::new_v4();
-        let now = Utc::now();
+        let now = Utc::now().naive_utc();
 
         let rows = db
             .query_raw(
@@ -5750,7 +5924,7 @@ pub mod protocol_mappers {
             WHERE id = $3
         "#;
 
-        let now = Utc::now();
+        let now = Utc::now().naive_utc();
         db.execute(query, &[&config, &now, &mapper_id]).await?;
 
         Ok(())
@@ -5764,7 +5938,7 @@ pub mod protocol_mappers {
             WHERE id = $3
         "#;
 
-        let now = Utc::now();
+        let now = Utc::now().naive_utc();
         db.execute(query, &[&enabled, &now, &mapper_id]).await?;
 
         Ok(())
@@ -5828,6 +6002,7 @@ pub mod protocol_mappers {
 
         if rows.is_empty() {
             return Ok(serde_json::json!({
+                "total_mappers": 0,
                 "total_enabled": 0,
                 "total_disabled": 0,
                 "unique_protocols": 0,
@@ -5839,6 +6014,7 @@ pub mod protocol_mappers {
 
         let row = &rows[0];
         Ok(serde_json::json!({
+            "total_mappers": row.get::<_, i64>(0) + row.get::<_, i64>(1),
             "total_enabled": row.get::<_, i64>(0),
             "total_disabled": row.get::<_, i64>(1),
             "unique_protocols": row.get::<_, i64>(2),
@@ -6175,7 +6351,7 @@ pub mod authenticators {
             "total_attempts": row.get::<_, i64>(0),
             "successful_attempts": row.get::<_, i64>(1),
             "failed_attempts": row.get::<_, i64>(2),
-            "unique_users": row.get::<_, i64>(3),
+            "unique_users": row.get::<_, Option<i64>>(3).unwrap_or(0),
             "avg_duration_ms": row.get::<_, Option<f64>>(4).unwrap_or(0.0),
         }))
     }
@@ -6930,8 +7106,7 @@ pub mod auth_flows {
                     &flow
                         .get("realm_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &flow.get("alias").and_then(|v| v.as_str()).unwrap_or(""),
                     &flow.get("description").and_then(|v| v.as_str()),
                     &flow
@@ -7142,14 +7317,12 @@ pub mod auth_flows {
                     &execution
                         .get("flow_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &execution.get("authenticator").and_then(|v| v.as_str()),
                     &execution
                         .get("authenticator_config")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &execution
                         .get("authenticator_flow")
                         .and_then(|v| v.as_bool())
@@ -7165,8 +7338,7 @@ pub mod auth_flows {
                     &execution
                         .get("parent_flow")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &now,
                     &now,
                 ],
@@ -7220,19 +7392,16 @@ pub mod auth_flows {
                     &session
                         .get("realm_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &session
                         .get("user_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &session.get("client_id").and_then(|v| v.as_str()),
                     &session
                         .get("flow_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &session
                         .get("auth_state")
                         .and_then(|v| v.as_str())
@@ -7438,7 +7607,7 @@ pub mod resources {
 
         let uris = request.uris.unwrap_or_default();
         let scopes = request.scopes.unwrap_or_default();
-        let attributes_json = serde_json::to_value(&request.attributes.unwrap_or_default())
+        let attributes_json = serde_json::to_value(request.attributes.unwrap_or_default())
             .map_err(|e| AuthencError::validation(format!("Invalid attributes: {}", e)))?;
 
         let query = r#"
@@ -7811,6 +7980,8 @@ pub async fn store_admin_event(db: &Database, event: &AdminEvent) -> Result<()> 
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         "#;
 
+    // Use default text if realm_name is None, as table might expect string or NULL is allowed
+    // Based on previous code, realm_name is Option<String>.
     db.execute(
         query,
         &[
@@ -7865,23 +8036,22 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
         param_index += 1;
     }
 
-    if let Some(event_types) = &query.event_types {
-        if let Some(event_type) = event_types.first() {
+    if let Some(event_types) = &query.event_types
+        && let Some(event_type) = event_types.first() {
             conditions.push(format!("event_type = ${}", param_index));
             params.push(Box::new(event_type.as_str()));
             param_index += 1;
         }
-    }
 
     if let Some(from_date) = &query.date_from {
         conditions.push(format!("time >= ${}", param_index));
-        params.push(Box::new(from_date.clone()));
+        params.push(Box::new(*from_date));
         param_index += 1;
     }
 
     if let Some(to_date) = &query.date_to {
         conditions.push(format!("time <= ${}", param_index));
-        params.push(Box::new(to_date.clone()));
+        params.push(Box::new(*to_date));
         param_index += 1;
     }
 
@@ -8004,13 +8174,13 @@ pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Resul
 
     if let Some(from_date) = &query.date_from {
         conditions.push(format!("time >= ${}", param_index));
-        params.push(Box::new(from_date.clone()));
+        params.push(Box::new(*from_date));
         param_index += 1;
     }
 
     if let Some(to_date) = &query.date_to {
         conditions.push(format!("time <= ${}", param_index));
-        params.push(Box::new(to_date.clone()));
+        params.push(Box::new(*to_date));
         param_index += 1;
     }
 
@@ -9383,7 +9553,7 @@ pub mod user_consents {
         let metadata = request
             .metadata
             .clone()
-            .unwrap_or_else(|| serde_json::Value::Null);
+            .unwrap_or(serde_json::Value::Null);
 
         let query = r#"
             INSERT INTO user_consents (id, user_id, client_id, scopes, granted_at, expires_at, metadata)
@@ -9575,6 +9745,51 @@ pub mod sessions {
     use super::*;
     use sha2::{Digest, Sha256};
 
+    /// Store a session in the database
+    pub async fn store_session(db: &Database, session: &crate::models::session::Session) -> Result<()> {
+        let token_hash = hash_token(&session.token);
+        let refresh_token_hash = session.refresh_token.as_ref().map(|t| hash_token(t));
+
+        let query = r#"
+            INSERT INTO user_sessions (
+                id, user_id, realm_id, token_hash, refresh_token_hash,
+                expires_at, ip_address, user_agent, created_at,
+                last_activity_at, revoked
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ON CONFLICT (id) DO UPDATE SET
+                last_activity_at = EXCLUDED.last_activity_at,
+                revoked = EXCLUDED.revoked,
+                ip_address = EXCLUDED.ip_address,
+                user_agent = EXCLUDED.user_agent
+        "#;
+
+        let ip_addr: Option<std::net::IpAddr> = session
+            .ip_address
+            .as_ref()
+            .and_then(|ip| ip.parse().ok());
+
+        db.execute(
+            query,
+            &[
+                &session.id,
+                &session.user_id,
+                &session.realm_id,
+                &token_hash,
+                &refresh_token_hash,
+                &session.expires_at,
+                &ip_addr,
+                &session.user_agent,
+                &session.created_at,
+                &session.last_accessed,
+                &session.revoked,
+            ],
+        )
+        .await?;
+
+        Ok(())
+    }
+
     /// Create a new user session
     pub async fn create_user_session(
         db: &Database,
@@ -9648,6 +9863,55 @@ pub mod sessions {
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
             "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
         }))
+    }
+
+    /// Get a user session by ID
+    pub async fn get_user_session(
+        db: &Database,
+        session_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        let query = r#"
+            SELECT id, user_id, realm_id, client_id, device_id,
+                   started_at, expires_at, last_accessed,
+                   idle_expires_at, refresh_count,
+                   refresh_token_expires_at, offline_token_expires_at,
+                   ip_address, user_agent, revoked, revoked_at, revoked_reason,
+                   authentication_method, protocol,
+                   created_at, updated_at
+            FROM user_sessions
+            WHERE id = $1
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&session_id]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row: &tokio_postgres::Row = &rows[0];
+        Ok(Some(serde_json::json!({
+            "id": row.get::<_, Uuid>("id"),
+            "user_id": row.get::<_, Uuid>("user_id"),
+            "realm_id": row.get::<_, Uuid>("realm_id"),
+            "client_id": row.get::<_, Option<Uuid>>("client_id"),
+            "device_id": row.get::<_, Option<Uuid>>("device_id"),
+            "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
+            "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
+            "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_accessed"),
+            "idle_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("idle_expires_at"),
+            "refresh_count": row.get::<_, i32>("refresh_count"),
+            "refresh_token_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("refresh_token_expires_at"),
+            "offline_token_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("offline_token_expires_at"),
+            "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
+            "user_agent": row.get::<_, Option<String>>("user_agent"),
+            "revoked": row.get::<_, bool>("revoked"),
+            "revoked_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("revoked_at"),
+            "revoked_reason": row.get::<_, Option<String>>("revoked_reason"),
+            "authentication_method": row.get::<_, Option<String>>("authentication_method"),
+            "protocol": row.get::<_, Option<String>>("protocol"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+        })))
     }
 
     /// Get a user session by token
@@ -9730,6 +9994,46 @@ pub mod sessions {
                 "user_agent": row.get::<_, Option<String>>("user_agent"),
                 "authentication_method": row.get::<_, Option<String>>("authentication_method"),
                 "protocol": row.get::<_, Option<String>>("protocol"),
+                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+                "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+            }));
+        }
+
+        Ok(sessions)
+    }
+
+    /// Get sessions for a specific device
+    pub async fn get_device_sessions(
+        db: &Database,
+        device_id: Uuid,
+    ) -> Result<Vec<serde_json::Value>> {
+        let query = r#"
+            SELECT id, device_id, user_id, user_session_id,
+                   session_identifier, started_at, last_activity,
+                   ip_address, location, risk_score, risk_factors,
+                   is_active, created_at, updated_at
+            FROM device_sessions
+            WHERE device_id = $1
+            ORDER BY last_activity DESC
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&device_id]).await?;
+
+        let mut sessions = Vec::new();
+        for row in rows {
+            sessions.push(serde_json::json!({
+                "id": row.get::<_, Uuid>("id"),
+                "device_id": row.get::<_, Uuid>("device_id"),
+                "user_id": row.get::<_, Uuid>("user_id"),
+                "user_session_id": row.get::<_, Option<Uuid>>("user_session_id"),
+                "session_identifier": row.get::<_, String>("session_identifier"),
+                "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
+                "last_activity": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity"),
+                "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
+                "location": row.get::<_, Option<serde_json::Value>>("location"),
+                "risk_score": row.get::<_, f64>("risk_score"),
+                "risk_factors": row.get::<_, Option<serde_json::Value>>("risk_factors"),
+                "is_active": row.get::<_, bool>("is_active"),
                 "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
                 "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
             }));
@@ -10276,7 +10580,7 @@ pub mod themes {
         let now = chrono::Utc::now();
         let mut set_clauses = Vec::new();
         let mut param_index = 2;
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
             vec![Box::new(theme_id)];
 
         if let Some(name) = updates.get("name").and_then(|v| v.as_str()) {
@@ -10322,7 +10626,7 @@ pub mod themes {
         );
 
         let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         db.execute(&query, &params_refs).await?;
         Ok(())
@@ -10549,3 +10853,201 @@ pub mod themes {
         }))
     }
 }
+
+/// Database operations for policies
+pub mod policies {
+    use crate::database::Database;
+    use crate::error::{AuthencError, Result};
+    use crate::models::Policy;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    /// Get policies by realm with pagination
+    pub async fn get_policies_by_realm(
+        db: &Database,
+        realm_id: Uuid,
+        page: u32,
+        limit: u32,
+    ) -> Result<Vec<Policy>> {
+        let offset = (page.saturating_sub(1)) * limit;
+        let query = r#"
+            SELECT
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+            FROM policies
+            WHERE realm_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db
+            .query(query, &[&realm_id, &(limit as i64), &(offset as i64)])
+            .await?;
+
+        let mut policies = Vec::new();
+        for row in rows {
+            policies.push(Policy {
+                id: row.get("id"),
+                name: row.get("name"),
+                description: row.get("description"),
+                policy_type: row.get("policy_type"),
+                logic: row.get("logic"),
+                config: row.get("config"),
+                enabled: row.get("enabled"),
+                realm_id: row.get("realm_id"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            });
+        }
+
+        Ok(policies)
+    }
+
+    /// Create a new policy
+    pub async fn create_policy(
+        db: &Database,
+        name: &str,
+        description: Option<&str>,
+        policy_type: &str,
+        logic: &str,
+        config: &serde_json::Value,
+        enabled: bool,
+        realm_id: Uuid,
+    ) -> Result<Policy> {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let query = r#"
+            INSERT INTO policies (
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING
+                id, name, description, policy_type, logic, config,
+                enabled, realm_id, created_at, updated_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &id,
+                    &name,
+                    &description,
+                    &policy_type,
+                    &logic,
+                    &config,
+                    &enabled,
+                    &realm_id,
+                    &now,
+                    &now,
+                ],
+            )
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to create policy: {}", e)))?;
+
+        Ok(Policy {
+            id: row.get("id"),
+            name: row.get("name"),
+            description: row.get("description"),
+            policy_type: row.get("policy_type"),
+            logic: row.get("logic"),
+            config: row.get("config"),
+            enabled: row.get("enabled"),
+            realm_id: row.get("realm_id"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        })
+    }
+}
+
+/// Database operations for SPI configuration
+pub mod spi {
+    use crate::{
+        database::Database,
+        error::{AuthencError, Result},
+    };
+    use chrono::Utc;
+    use log::error;
+    use serde_json::Value;
+
+    /// Upsert SPI provider configuration (Atomic)
+    pub async fn upsert_provider_config(
+        db: &Database,
+        spi_name: &str,
+        provider_id: &str,
+        config: Value,
+        enabled: bool,
+    ) -> Result<()> {
+        let now = Utc::now();
+        let query = r#"
+            INSERT INTO spi_provider_configs (
+                spi_name, provider_id, config, enabled, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $5)
+            ON CONFLICT (spi_name, provider_id)
+            DO UPDATE SET
+                config = EXCLUDED.config,
+                enabled = EXCLUDED.enabled,
+                updated_at = EXCLUDED.updated_at
+        "#;
+
+        db.execute(query, &[&spi_name, &provider_id, &config, &enabled, &now])
+            .await
+            .map_err(|e| {
+                error!("Failed to upsert SPI provider config: {}", e);
+                AuthencError::database(format!("Failed to upsert SPI provider config: {}", e))
+            })?;
+
+        Ok(())
+    }
+
+    /// Get all SPI provider configurations for a given SPI
+    pub async fn get_all_provider_configs(
+        db: &Database,
+        spi_name: &str,
+    ) -> Result<std::collections::HashMap<String, (Value, bool)>> {
+        let query =
+            "SELECT provider_id, config, enabled FROM spi_provider_configs WHERE spi_name = $1";
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&spi_name]).await?;
+
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let pid: String = row.get(0);
+            let config: Value = row.get(1);
+            let enabled: bool = row.get(2);
+            map.insert(pid, (config, enabled));
+        }
+        Ok(map)
+    }
+
+    /// Get SPI provider configuration
+    pub async fn get_provider_config(
+        db: &Database,
+        spi_name: &str,
+        provider_id: &str,
+    ) -> Result<Option<(Value, bool)>> {
+        let query = "SELECT config, enabled FROM spi_provider_configs WHERE spi_name = $1 AND provider_id = $2";
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&spi_name, &provider_id]).await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+        Ok(Some((row.get(0), row.get(1))))
+    }
+}
+
+/// Database operations for realms
+pub mod realms {
+    use crate::{
+        database::Database,
+        error::{AuthencError, Result},
+        models::Realm,
+    };
+
+    /// List all non-deleted realms
+    pub async fn list_realms(db: &Database) -> Result<Vec<Realm>> {
+        let query = r#

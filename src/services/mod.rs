@@ -44,6 +44,8 @@ pub mod scope_store;
 pub mod session_store;
 /// Token management and validation (OAuth2/OIDC tokens)
 pub mod token;
+/// OAuth2 Service for token persistence
+pub mod oauth2;
 /// TOTP secret storage and management
 pub mod totp_store;
 

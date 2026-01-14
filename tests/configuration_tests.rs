@@ -206,7 +206,8 @@ async fn test_configuration_hot_reload() {
 
     let body: serde_json::Value = response.json();
     assert_eq!(body["status"], "completed");
-    assert!(body["changes_applied"].as_u64().unwrap() >= 0);
+    // changes_applied is u64 so it is always >= 0
+    assert!(body["changes_applied"].as_u64().is_some());
 
     // Check reload history
     let response = server.get("/config/reload/history").await;

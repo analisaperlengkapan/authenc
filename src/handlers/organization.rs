@@ -1,4 +1,5 @@
 use crate::database::Database;
+use crate::app::AppState;
 use crate::error::{AuthencError, Result};
 use crate::services::organization::{OrganizationService, OrganizationUpdate};
 use axum::{
@@ -10,9 +11,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
+use crate::app::AppState;
 
 /// Create organization routes
-pub fn create_organization_routes() -> Router<Arc<Database>> {
+pub fn create_organization_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", post(create_organization))
         .route("/", get(list_organizations))
@@ -40,10 +42,10 @@ pub struct CreateOrganizationRequest {
 
 /// Create organization handler
 pub async fn create_organization(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Json(request): Json<CreateOrganizationRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     // In production, get user ID from authentication context
     let created_by = Uuid::new_v4();
@@ -67,10 +69,10 @@ pub async fn create_organization(
 
 /// List organizations handler
 pub async fn list_organizations(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     // In production, implement pagination and filtering
     let organizations: Vec<serde_json::Value> = vec![]; // service.list_organizations().await?;
@@ -83,10 +85,10 @@ pub async fn list_organizations(
 
 /// Get organization handler
 pub async fn get_organization(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     match service.get_organization(&id).await {
         Ok(Some(organization)) => Ok(Json(serde_json::json!({
@@ -100,11 +102,11 @@ pub async fn get_organization(
 
 /// Update organization handler
 pub async fn update_organization(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
     Json(updates): Json<OrganizationUpdate>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     match service.update_organization(&id, &updates).await {
         Ok(_) => Ok(Json(serde_json::json!({
@@ -117,10 +119,10 @@ pub async fn update_organization(
 
 /// Delete organization handler
 pub async fn delete_organization(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     match service.delete_organization(&id).await {
         Ok(_) => Ok(Json(serde_json::json!({
@@ -133,10 +135,10 @@ pub async fn delete_organization(
 
 /// Get organization members handler
 pub async fn get_members(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     match service.get_members(&id).await {
         Ok(members) => Ok(Json(serde_json::json!({
@@ -156,11 +158,11 @@ pub struct AddMemberRequest {
 
 /// Add member handler
 pub async fn add_member(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
     Json(request): Json<AddMemberRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     let role = match request.role.as_str() {
         "owner" => crate::services::organization::OrganizationRole::Owner,
@@ -187,10 +189,10 @@ pub async fn add_member(
 
 /// Remove member handler
 pub async fn remove_member(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     match service.remove_member(&id, &user_id).await {
         Ok(_) => Ok(Json(serde_json::json!({
@@ -209,11 +211,11 @@ pub struct UpdateMemberRoleRequest {
 
 /// Update member role handler
 pub async fn update_member_role(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
     Json(request): Json<UpdateMemberRoleRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     let role = match request.role.as_str() {
         "owner" => crate::services::organization::OrganizationRole::Owner,
@@ -242,11 +244,11 @@ pub struct CreateInvitationRequest {
 
 /// Create invitation handler
 pub async fn create_invitation(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
     Json(request): Json<CreateInvitationRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     let role = match request.role.as_str() {
         "owner" => crate::services::organization::OrganizationRole::Owner,
@@ -285,10 +287,10 @@ pub struct AcceptInvitationRequest {
 
 /// Accept invitation handler
 pub async fn accept_invitation(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Json(request): Json<AcceptInvitationRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     // In production, get user_id from authentication context
     let user_id = Uuid::new_v4();
@@ -305,10 +307,10 @@ pub async fn accept_invitation(
 
 /// Get organization settings handler
 pub async fn get_settings(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     match service.get_settings(&id).await {
         Ok(settings) => Ok(Json(serde_json::json!({
@@ -321,11 +323,11 @@ pub async fn get_settings(
 
 /// Update organization settings handler
 pub async fn update_settings(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(id): Path<Uuid>,
     Json(settings): Json<crate::services::organization::OrganizationSettings>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     match service.update_settings(&settings).await {
         Ok(_) => Ok(Json(serde_json::json!({
@@ -338,10 +340,10 @@ pub async fn update_settings(
 
 /// Get user's organizations handler
 pub async fn get_user_organizations(
-    State(db): State<Arc<Database>>,
+    State(db): State<Database>,
     Path(user_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(db);
+    let service = OrganizationService::new(Arc::new(db));
 
     match service.get_user_organizations(&user_id).await {
         Ok(organizations) => Ok(Json(serde_json::json!({

@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS devices (
     ip_address INET,
     user_agent TEXT,
     location_data JSONB, -- Geographic location data
+    security_features JSONB, -- Device security capabilities
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -122,6 +123,7 @@ CREATE TABLE IF NOT EXISTS webauthn_credentials (
     transports TEXT[], -- Array of transport types
     aaguid UUID,
     attestation_format VARCHAR(50),
+    device_id UUID REFERENCES devices(id) ON DELETE SET NULL, -- Device binding
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_used_at TIMESTAMPTZ,
     enabled BOOLEAN NOT NULL DEFAULT true,
@@ -680,3 +682,22 @@ VALUES (
     true
 )
 ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
+-- SPI CONFIGURATION TABLES
+-- ============================================================================
+
+-- SPI provider configurations
+CREATE TABLE IF NOT EXISTS spi_provider_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    spi_name VARCHAR(255) NOT NULL,
+    provider_id VARCHAR(255) NOT NULL,
+    config JSONB NOT NULL DEFAULT '{}',
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(spi_name, provider_id)
+);
+
+-- Update trigger for spi_provider_configs
+CREATE TRIGGER update_spi_provider_configs_updated_at BEFORE UPDATE ON spi_provider_configs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

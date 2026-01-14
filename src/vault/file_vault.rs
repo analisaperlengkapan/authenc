@@ -2,7 +2,6 @@
 
 use super::{Secret, Vault};
 use async_trait::async_trait;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 /// File-based vault provider for storing secrets in the filesystem
@@ -60,7 +59,7 @@ impl Vault for FileVault {
             path.push(realm);
         }
         path.push(key);
-        match fs::read_to_string(&path) {
+        match tokio::fs::read_to_string(&path).await {
             Ok(value) => Some(Secret {
                 value: value.trim().to_string(),
                 metadata: None,
@@ -82,12 +81,13 @@ impl Vault for FileVault {
         let mut path = self.base_dir.clone();
         if let Some(realm) = realm {
             path.push(realm);
-            fs::create_dir_all(&path).map_err(|e| {
+            tokio::fs::create_dir_all(&path).await.map_err(|e| {
                 super::VaultError::Other(format!("Failed to create realm directory: {}", e))
             })?;
         }
         path.push(key);
-        fs::write(&path, value)
+        tokio::fs::write(&path, value)
+            .await
             .map_err(|e| super::VaultError::Other(format!("Failed to write secret: {}", e)))
     }
 
@@ -97,7 +97,8 @@ impl Vault for FileVault {
             path.push(realm);
         }
         path.push(key);
-        fs::remove_file(&path)
+        tokio::fs::remove_file(&path)
+            .await
             .map_err(|e| super::VaultError::Other(format!("Failed to delete secret: {}", e)))
     }
 
@@ -107,11 +108,16 @@ impl Vault for FileVault {
             path.push(realm);
         }
 
-        match fs::read_dir(&path) {
-            Ok(entries) => Ok(entries
-                .filter_map(|e| e.ok())
-                .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
-                .collect()),
+        match tokio::fs::read_dir(&path).await {
+            Ok(mut entries) => {
+                let mut secrets = Vec::new();
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    if let Some(name) = entry.file_name().to_str() {
+                        secrets.push(name.to_string());
+                    }
+                }
+                Ok(secrets)
+            }
             Err(e) => Err(super::VaultError::Other(format!(
                 "Failed to list secrets: {}",
                 e
@@ -150,6 +156,6 @@ impl Vault for FileVault {
     }
 
     async fn health_check(&self) -> Result<bool, super::VaultError> {
-        Ok(self.base_dir.exists())
+        Ok(tokio::fs::try_exists(&self.base_dir).await.unwrap_or(false))
     }
 }

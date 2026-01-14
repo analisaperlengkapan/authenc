@@ -2,8 +2,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
+use uuid::Uuid;
 
 /// Vault provider trait for secret management
 #[async_trait]
@@ -44,35 +44,39 @@ impl FileVaultProvider {
 impl VaultProvider for FileVaultProvider {
     async fn get_secret(&self, key: &str) -> Result<Option<String>> {
         let file_path = Path::new(&self.base_path).join(key);
-        if file_path.exists() {
-            let content = fs::read_to_string(file_path)?;
-            Ok(Some(content.trim().to_string()))
-        } else {
-            Ok(None)
+        match tokio::fs::read_to_string(file_path).await {
+            Ok(content) => Ok(Some(content.trim().to_string())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
         }
     }
 
     async fn set_secret(&self, key: &str, value: &str) -> Result<()> {
         let file_path = Path::new(&self.base_path).join(key);
         if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent)?;
+            tokio::fs::create_dir_all(parent).await?;
         }
-        fs::write(file_path, value)?;
+
+        // Atomic write: write to temp file then rename to ensure data integrity
+        let tmp_file_path = file_path.with_extension(format!("tmp.{}", Uuid::new_v4()));
+        tokio::fs::write(&tmp_file_path, value).await?;
+        tokio::fs::rename(tmp_file_path, file_path).await?;
         Ok(())
     }
 
     async fn delete_secret(&self, key: &str) -> Result<()> {
         let file_path = Path::new(&self.base_path).join(key);
-        if file_path.exists() {
-            fs::remove_file(file_path)?;
+        match tokio::fs::remove_file(file_path).await {
+            Ok(_) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
         }
-        Ok(())
     }
 
     async fn list_secrets(&self) -> Result<Vec<String>> {
         let mut secrets = Vec::new();
-        if let Ok(entries) = fs::read_dir(&self.base_path) {
-            for entry in entries.flatten() {
+        if let Ok(mut entries) = tokio::fs::read_dir(&self.base_path).await {
+            while let Ok(Some(entry)) = entries.next_entry().await {
                 if let Some(file_name) = entry.file_name().to_str() {
                     secrets.push(file_name.to_string());
                 }
@@ -116,12 +120,16 @@ impl KeyStoreVaultProvider {
 impl VaultProvider for KeyStoreVaultProvider {
     async fn get_secret(&self, key: &str) -> Result<Option<String>> {
         use openssl::pkcs12::Pkcs12;
-        use std::fs;
 
-        // Read PKCS12 file
-        let p12_data = fs::read(&self.keystore_path)?;
-        let p12 = Pkcs12::from_der(&p12_data)?;
-        let parsed = p12.parse2(&self.keystore_password)?;
+        // Read PKCS12 file using async IO
+        let p12_data = tokio::fs::read(&self.keystore_path).await?;
+        let password = self.keystore_password.clone();
+
+        // Parse PKCS12 in a blocking task to avoid blocking the async runtime
+        let parsed = tokio::task::spawn_blocking(move || {
+            let p12 = Pkcs12::from_der(&p12_data)?;
+            p12.parse2(&password)
+        }).await??;
 
         // Try to find the key in the parsed PKCS12 structure
         // Note: PKCS12 typically stores certificates and private keys, not arbitrary secrets
@@ -132,13 +140,12 @@ impl VaultProvider for KeyStoreVaultProvider {
             // Get subject name as text
             let subject_name = cert.subject_name();
             for entry in subject_name.entries() {
-                if let Ok(data) = entry.data().as_utf8() {
-                    if data.to_string().contains(key) {
+                if let Ok(data) = entry.data().as_utf8()
+                    && data.to_string().contains(key) {
                         // In a real implementation, you'd extract the actual secret
                         // For now, return a placeholder
                         return Ok(Some(format!("secret_for_{}", key)));
                     }
-                }
             }
         }
 
@@ -147,7 +154,6 @@ impl VaultProvider for KeyStoreVaultProvider {
 
     async fn set_secret(&self, key: &str, value: &str) -> Result<()> {
         use openssl::pkcs12::Pkcs12;
-        use std::fs;
 
         // PKCS12 is designed for certificate storage, not arbitrary key-value pairs
         // This is a placeholder implementation
@@ -160,9 +166,15 @@ impl VaultProvider for KeyStoreVaultProvider {
         );
 
         // Read existing keystore if it exists
-        if std::path::Path::new(&self.keystore_path).exists() {
-            let p12_data = fs::read(&self.keystore_path)?;
-            let _p12 = Pkcs12::from_der(&p12_data)?;
+        if tokio::fs::try_exists(&self.keystore_path).await.unwrap_or(false) {
+            let p12_data = tokio::fs::read(&self.keystore_path).await?;
+
+            // Parse in blocking task
+            tokio::task::spawn_blocking(move || {
+                let _p12 = Pkcs12::from_der(&p12_data)?;
+                Ok::<(), anyhow::Error>(())
+            }).await??;
+
             // In a real implementation, you would modify the PKCS12 structure
         }
 
@@ -181,14 +193,17 @@ impl VaultProvider for KeyStoreVaultProvider {
 
     async fn list_secrets(&self) -> Result<Vec<String>> {
         use openssl::pkcs12::Pkcs12;
-        use std::fs;
 
         let mut secrets = Vec::new();
 
-        if std::path::Path::new(&self.keystore_path).exists() {
-            let p12_data = fs::read(&self.keystore_path)?;
-            let p12 = Pkcs12::from_der(&p12_data)?;
-            let parsed = p12.parse2(&self.keystore_password)?;
+        if tokio::fs::try_exists(&self.keystore_path).await.unwrap_or(false) {
+            let p12_data = tokio::fs::read(&self.keystore_path).await?;
+            let password = self.keystore_password.clone();
+
+            let parsed = tokio::task::spawn_blocking(move || {
+                let p12 = Pkcs12::from_der(&p12_data)?;
+                p12.parse2(&password)
+            }).await??;
 
             // List certificates in the keystore
             if let Some(cert) = parsed.cert {
@@ -265,13 +280,11 @@ impl VaultProvider for HashiCorpVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(data) = json.get("data").and_then(|d| d.get("data")) {
-                    if let Some(value) = data.get("value") {
-                        if let Some(v) = value.as_str() {
+                if let Some(data) = json.get("data").and_then(|d| d.get("data"))
+                    && let Some(value) = data.get("value")
+                        && let Some(v) = value.as_str() {
                             return Ok(Some(v.to_string()));
                         }
-                    }
-                }
             }
 
             Ok(None)
@@ -360,14 +373,13 @@ impl VaultProvider for HashiCorpVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(keys) = json.get("data").and_then(|d| d.get("keys")) {
-                    if let Some(keys_array) = keys.as_array() {
+                if let Some(keys) = json.get("data").and_then(|d| d.get("keys"))
+                    && let Some(keys_array) = keys.as_array() {
                         return Ok(keys_array
                             .iter()
-                            .filter_map(|k| k.as_str().map(|s| s.to_string()))
+                            .filter_map(|k| k.as_str().map(|s| s.trim_end_matches('/').to_string()))
                             .collect());
                     }
-                }
             }
 
             Ok(vec![])
@@ -438,11 +450,10 @@ impl VaultProvider for AzureKeyVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(value) = json.get("value") {
-                    if let Some(v) = value.as_str() {
+                if let Some(value) = json.get("value")
+                    && let Some(v) = value.as_str() {
                         return Ok(Some(v.to_string()));
                     }
-                }
             }
 
             Ok(None)
@@ -535,8 +546,8 @@ impl VaultProvider for AzureKeyVaultProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(value) = json.get("value") {
-                    if let Some(secrets_array) = value.as_array() {
+                if let Some(value) = json.get("value")
+                    && let Some(secrets_array) = value.as_array() {
                         return Ok(secrets_array
                             .iter()
                             .filter_map(|s| {
@@ -547,7 +558,6 @@ impl VaultProvider for AzureKeyVaultProvider {
                             })
                             .collect());
                     }
-                }
             }
 
             Ok(vec![])
@@ -648,11 +658,10 @@ impl VaultProvider for AwsSecretsManagerProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(secret) = json.get("SecretString") {
-                    if let Some(s) = secret.as_str() {
+                if let Some(secret) = json.get("SecretString")
+                    && let Some(s) = secret.as_str() {
                         return Ok(Some(s.to_string()));
                     }
-                }
             }
 
             Ok(None)
@@ -771,8 +780,8 @@ impl VaultProvider for AwsSecretsManagerProvider {
 
             if response.status().is_success() {
                 let json: serde_json::Value = response.json().await?;
-                if let Some(secrets) = json.get("SecretList") {
-                    if let Some(secrets_array) = secrets.as_array() {
+                if let Some(secrets) = json.get("SecretList")
+                    && let Some(secrets_array) = secrets.as_array() {
                         return Ok(secrets_array
                             .iter()
                             .filter_map(|s| {
@@ -782,7 +791,6 @@ impl VaultProvider for AwsSecretsManagerProvider {
                             })
                             .collect());
                     }
-                }
             }
 
             Ok(vec![])
@@ -849,11 +857,10 @@ impl VaultService {
 
     /// Get secret from default provider
     pub async fn get_secret(&self, key: &str) -> Result<Option<String>> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.get_secret(key).await;
             }
-        }
         Ok(None)
     }
 
@@ -868,11 +875,10 @@ impl VaultService {
 
     /// Store secret in default provider
     pub async fn set_secret(&self, key: &str, value: &str) -> Result<()> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.set_secret(key, value).await;
             }
-        }
         Ok(())
     }
 
@@ -887,11 +893,10 @@ impl VaultService {
 
     /// Delete secret from default provider
     pub async fn delete_secret(&self, key: &str) -> Result<()> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.delete_secret(key).await;
             }
-        }
         Ok(())
     }
 
@@ -906,11 +911,10 @@ impl VaultService {
 
     /// List secrets from default provider
     pub async fn list_secrets(&self) -> Result<Vec<String>> {
-        if let Some(provider_name) = &self.default_provider {
-            if let Some(provider) = self.providers.get(provider_name) {
+        if let Some(provider_name) = &self.default_provider
+            && let Some(provider) = self.providers.get(provider_name) {
                 return provider.list_secrets().await;
             }
-        }
         Ok(vec![])
     }
 

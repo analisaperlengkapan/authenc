@@ -131,7 +131,7 @@ async fn test_user_store_comprehensive_operations() {
     // Test 2: Retrieve users by different methods
     let alice_username = format!("alice{}", unique_suffix);
     let alice = store
-        .get_user_by_username(&alice_username)
+        .get_user_by_username(&realm_id, &alice_username)
         .await
         .unwrap()
         .unwrap();
@@ -140,7 +140,7 @@ async fn test_user_store_comprehensive_operations() {
 
     let bob_username = format!("bob{}", unique_suffix);
     let bob = store
-        .get_user_by_email(&format!("bob{}@example.com", unique_suffix))
+        .get_user_by_email(&realm_id, &format!("bob{}@example.com", unique_suffix))
         .await
         .unwrap()
         .unwrap();
@@ -185,11 +185,11 @@ async fn test_user_store_comprehensive_operations() {
     let non_existent_user = store.get_user(Uuid::new_v4()).await.unwrap();
     assert!(non_existent_user.is_none());
 
-    let non_existent_username = store.get_user_by_username("nonexistent").await.unwrap();
+    let non_existent_username = store.get_user_by_username(&realm_id, "nonexistent").await.unwrap();
     assert!(non_existent_username.is_none());
 
     let non_existent_email = store
-        .get_user_by_email("nonexistent@example.com")
+        .get_user_by_email(&realm_id, "nonexistent@example.com")
         .await
         .unwrap();
     assert!(non_existent_email.is_none());

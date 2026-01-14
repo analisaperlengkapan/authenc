@@ -2,10 +2,11 @@ use crate::error::{AuthencError, Result};
 use crate::utils::crypto_monitor::CryptoMonitor;
 use aes_gcm::{
     Aes256Gcm, Key, Nonce,
-    aead::{Aead, KeyInit, OsRng},
+    aead::{Aead, KeyInit},
 };
 use base64ct::{Base64UrlUnpadded, Encoding};
 use rand::RngCore;
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -16,7 +17,7 @@ pub struct AesGcmService {
 }
 
 /// Encrypted data structure containing ciphertext, nonce, and authentication tag
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptedData {
     /// Base64-encoded ciphertext
     pub ciphertext: String,
@@ -47,13 +48,14 @@ impl Default for AesGcmService {
     }
 }
 
-#[allow(deprecated)] // TODO: Upgrade to generic-array 1.x when aes-gcm updates
 impl AesGcmService {
     /// Create new AES-GCM service with a random key
     pub fn new() -> Self {
         let mut key_bytes = [0u8; 32];
         OsRng.fill_bytes(&mut key_bytes);
-        let key = *Key::<Aes256Gcm>::from_slice(&key_bytes);
+        // We use TryFrom or explicit construction if available.
+        // Key implements TryFrom<&[u8]>.
+        let key = Key::<Aes256Gcm>::try_from(key_bytes.as_slice()).expect("Key size mismatch");
 
         Self { key }
     }
@@ -66,7 +68,10 @@ impl AesGcmService {
             });
         }
 
-        let key = *Key::<Aes256Gcm>::from_slice(key_data);
+        let key =
+            Key::<Aes256Gcm>::try_from(key_data).map_err(|_| AuthencError::ValidationError {
+                message: "Invalid AES key length".to_string(),
+            })?;
         Ok(Self { key })
     }
 
@@ -78,11 +83,12 @@ impl AesGcmService {
             // Generate random nonce
             let mut nonce_bytes = [0u8; 12];
             OsRng.fill_bytes(&mut nonce_bytes);
-            let nonce = Nonce::from_slice(&nonce_bytes);
+            let nonce = Nonce::try_from(nonce_bytes.as_slice())
+                .map_err(|_| AuthencError::CryptographicError)?;
 
             // Encrypt the data
             let ciphertext = cipher
-                .encrypt(nonce, plaintext)
+                .encrypt(&nonce, plaintext)
                 .map_err(|_| AuthencError::CryptographicError)?;
 
             // Split ciphertext and tag (last 16 bytes)
@@ -139,11 +145,12 @@ impl AesGcmService {
             let mut full_ciphertext = ciphertext.clone();
             full_ciphertext.extend_from_slice(&tag);
 
-            let nonce = Nonce::from_slice(&nonce_bytes);
+            let nonce = Nonce::try_from(nonce_bytes.as_slice())
+                .map_err(|_| AuthencError::CryptographicError)?;
 
             // Decrypt
             let plaintext = cipher
-                .decrypt(nonce, full_ciphertext.as_ref())
+                .decrypt(&nonce, full_ciphertext.as_ref())
                 .map_err(|_| AuthencError::CryptographicError)?;
 
             Ok(plaintext)
@@ -290,10 +297,10 @@ impl KeyRotationService {
             Ok(data) => Ok(data),
             Err(_) => {
                 // If key_id provided, try that key
-                if let Some(key_id) = key_id {
-                    if let Some(key_service) = self.previous_keys.get(key_id) {
-                        return key_service.decrypt(encrypted_data);
-                    }
+                if let Some(key_id) = key_id
+                    && let Some(key_service) = self.previous_keys.get(key_id)
+                {
+                    return key_service.decrypt(encrypted_data);
                 }
 
                 // Try all previous keys

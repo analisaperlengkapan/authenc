@@ -19,6 +19,8 @@ pub mod organization;
 pub mod permission;
 /// Permission ticket models
 pub mod permission_ticket;
+/// Policy models
+pub mod policy;
 /// Security realm and domain models
 pub mod realm;
 /// Resource management models
@@ -66,6 +68,7 @@ pub use oauth2::*;
 pub use organization::*;
 pub use permission::Permission;
 pub use permission_ticket::*;
+pub use policy::Policy;
 pub use realm::Realm;
 pub use resource::*;
 pub use resource_server::*;
