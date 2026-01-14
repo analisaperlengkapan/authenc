@@ -215,6 +215,27 @@ pub struct RefreshTokenEntry {
     pub revoked: bool,
 }
 
+/// Access Token Claims for JWT
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AccessTokenClaims {
+    /// Issuer (who created the token)
+    pub iss: String,
+    /// Subject (who the token is about)
+    pub sub: String,
+    /// Audience (who the token is for)
+    pub aud: Vec<String>,
+    /// Expiration time
+    pub exp: usize,
+    /// Issued at time
+    pub iat: usize,
+    /// JWT ID
+    pub jti: String,
+    /// Scope
+    pub scope: String,
+    /// Session ID
+    pub sid: Option<String>,
+}
+
 /// In-memory stores (in production, use Redis or database)
 pub struct OAuth2Stores {
     /// Storage for authorization codes
