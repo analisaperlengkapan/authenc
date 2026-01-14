@@ -593,6 +593,9 @@ impl WebAuthnService {
     /// Store WebAuthn credential in database securely
     pub async fn store_credential_db(&self, credential: &WebauthnCredential) -> Result<()> {
         use crate::database::operations::webauthn as webauthn_db;
+        use tracing::debug;
+
+        debug!("Storing WebAuthn credential securely for user {}", credential.user_id);
 
         // Encrypt sensitive fields
         let mut encrypted_credential = credential.clone();

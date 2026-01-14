@@ -3,7 +3,6 @@
 
 use anyhow::{Result, anyhow};
 use openssl::x509::X509;
-use std::sync::{Arc, Mutex};
 
 use crate::crypto::xmldsig::{
     CertificateValidationResult, CertificateValidator, XmlSecurityLimits, XmlSecurityValidator, XmlSignature,
@@ -88,11 +87,11 @@ pub struct SamlSecurityValidator {
 
     /// CRL manager for revocation checking
     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-    crl_manager: Option<Arc<Mutex<CrlManager>>>,
+    crl_manager: Option<CrlManager>,
 
     /// OCSP client for real-time revocation checking
     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-    ocsp_client: Option<Arc<Mutex<OcspClient>>>,
+    ocsp_client: Option<OcspClient>,
 
     /// Security configuration
     config: SamlSecurityConfig,
@@ -137,7 +136,7 @@ impl SamlSecurityValidator {
                 std::time::Duration::from_secs(config.crl_cache_duration_secs),
                 config.crl_max_size_bytes,
             )?;
-            Some(Arc::new(Mutex::new(manager)))
+            Some(manager)
         } else {
             None
         };
@@ -149,7 +148,7 @@ impl SamlSecurityValidator {
                 std::time::Duration::from_secs(config.ocsp_cache_duration_secs),
                 std::time::Duration::from_secs(config.ocsp_timeout_secs),
             )?;
-            Some(Arc::new(Mutex::new(client)))
+            Some(client)
         } else {
             None
         };
@@ -203,7 +202,7 @@ impl SamlSecurityValidator {
     /// # Returns
     /// * `Ok(())` if signature and certificate are valid
     /// * `Err` if any validation step fails
-    pub fn validate_signature_comprehensive(&self, xml: &str) -> Result<()> {
+    pub async fn validate_signature_comprehensive(&self, xml: &str) -> Result<()> {
         // Extract signature from XML
         let signature = XmlSignature::extract_from_xml(xml)
             .map_err(|e| anyhow!("Failed to extract XML signature: {}", e))?;
@@ -245,10 +244,9 @@ impl SamlSecurityValidator {
 
         // Check certificate revocation via CRL if enabled
         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-        if self.config.enable_crl_check
-            && let Some(crl_manager) = &self.crl_manager {
-                let mut manager = crl_manager.lock().unwrap();
-                match manager.check_revocation(&cert) {
+        if self.config.enable_crl_check {
+            if let Some(crl_manager) = &self.crl_manager {
+                match crl_manager.check_revocation(&cert).await {
                     Ok(RevocationStatus::NotRevoked) => {
                         tracing::debug!("CRL check passed: certificate not revoked");
                     }
@@ -298,8 +296,7 @@ impl SamlSecurityValidator {
                 };
 
                 if let Some(issuer) = issuer {
-                    let mut client = ocsp_client.lock().unwrap();
-                    match client.check_status(&cert, &issuer) {
+                    match ocsp_client.check_status(&cert, &issuer).await {
                         Ok(OcspStatus::Good) => {
                             tracing::debug!("OCSP check passed: certificate is good");
                         }
@@ -353,15 +350,13 @@ impl SamlSecurityValidator {
     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
     pub fn get_cache_stats(&self) -> ((usize, usize), (usize, usize)) {
         let crl_stats = if let Some(crl_manager) = &self.crl_manager {
-            let manager = crl_manager.lock().unwrap();
-            manager.cache_stats()
+            crl_manager.cache_stats()
         } else {
             (0, 0)
         };
 
         let ocsp_stats = if let Some(ocsp_client) = &self.ocsp_client {
-            let client = ocsp_client.lock().unwrap();
-            client.cache_stats()
+            ocsp_client.cache_stats()
         } else {
             (0, 0)
         };
@@ -372,15 +367,13 @@ impl SamlSecurityValidator {
     /// Clear all caches (CRL and OCSP)
     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
     pub fn clear_caches(&mut self) {
-        if let Some(crl_manager) = &self.crl_manager {
-            let mut manager = crl_manager.lock().unwrap();
-            manager.clear_cache();
+        if let Some(crl_manager) = &mut self.crl_manager {
+            crl_manager.clear_cache();
             tracing::debug!("Cleared CRL cache");
         }
 
-        if let Some(ocsp_client) = &self.ocsp_client {
-            let mut client = ocsp_client.lock().unwrap();
-            client.clear_cache();
+        if let Some(ocsp_client) = &mut self.ocsp_client {
+            ocsp_client.clear_cache();
             tracing::debug!("Cleared OCSP cache");
         }
     }

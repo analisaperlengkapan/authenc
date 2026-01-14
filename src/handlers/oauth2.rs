@@ -3,6 +3,7 @@ use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk, verify_ed255
 use crate::database::Database;
 use crate::database::operations::oauth2;
 use crate::error::AuthencError;
+use crate::models::oauth2::AccessTokenClaims;
 use crate::services::stores::consent_store::ConsentStoreTrait;
 use crate::services::stores::user_store::UserStoreTrait;
 use crate::utils::crypto::password::verify_password;
@@ -214,35 +215,6 @@ pub struct RefreshTokenEntry {
     pub revoked: bool,
 }
 
-/// Access Token Claims for JWT
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AccessTokenClaims {
-    /// The issuer of the token
-    pub iss: String,
-    /// The subject (user) identifier
-    pub sub: String,
-    /// The audience (client) identifier
-    pub aud: String,
-    /// The client identifier
-    pub client_id: String,
-    /// The expiration time
-    pub exp: i64,
-    /// The issued at time
-    pub iat: i64,
-    /// The not before time
-    pub nbf: i64,
-    /// The JWT ID for uniqueness
-    pub jti: String,
-    /// The granted scope
-    pub scope: Option<String>,
-    /// The user's roles
-    pub roles: Option<Vec<String>>,
-    /// The user's groups
-    pub groups: Option<Vec<String>>,
-    /// The session identifier
-    pub sid: Option<String>,
-}
-
 /// In-memory stores (in production, use Redis or database)
 pub struct OAuth2Stores {
     /// Storage for authorization codes
@@ -445,7 +417,10 @@ pub async fn validate_client(
             // If client_secret_hash is stored as a hash, verify it
             // If it's stored plain (not recommended but possible in dev), compare directly
             // For this implementation we assume hashed
-            if verify_password(&client.client_secret_hash, secret).unwrap_or(false) {
+            if verify_password(&client.client_secret_hash, secret)
+                .await
+                .unwrap_or(false)
+            {
                 return Ok(true);
             }
 
@@ -780,13 +755,16 @@ async fn handle_authorization_code_grant(
     let access_token = generate_access_token(&access_token_claims);
 
     // Store access token
+    /*
     {
         let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
+    */
 
     // Generate refresh token
     let refresh_token = Uuid::new_v4().to_string();
+    /*
     let refresh_entry = RefreshTokenEntry {
         token: refresh_token.clone(),
         client_id: client_id.clone(),
@@ -800,6 +778,11 @@ async fn handle_authorization_code_grant(
         let mut refresh_tokens = state.oauth2_stores.refresh_tokens.write().await;
         refresh_tokens.insert(refresh_token.clone(), refresh_entry);
     }
+    */
+
+    // Store both tokens
+    state.app_state.oauth2_service.store_token(&access_token, Some(&refresh_token), &access_token_claims).await
+        .map_err(|e| AuthencError::database(format!("Failed to store token: {}", e)))?;
 
     // Generate ID token
     let id_token = generate_id_token(
@@ -867,10 +850,14 @@ async fn handle_client_credentials_grant(
     let access_token = generate_access_token(&access_token_claims);
 
     // Store access token
+    /*
     {
         let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
+    */
+    state.app_state.oauth2_service.store_token(&access_token, None, &access_token_claims).await
+        .map_err(|e| AuthencError::database(format!("Failed to store token: {}", e)))?;
 
     let response = OAuth2TokenResponse {
         access_token,
@@ -932,7 +919,7 @@ async fn handle_password_grant(
     let mut authenticated_user = None;
     if let Some(user) = user_opt {
         if let Some(hash) = &user.password_hash {
-            if verify_password(hash, &password).unwrap_or(false) {
+            if verify_password(hash, &password).await.unwrap_or(false) {
                 authenticated_user = Some(user);
             } else {
                 tracing::warn!("Failed password verification for user: {}", username);
@@ -977,13 +964,16 @@ async fn handle_password_grant(
     let access_token = generate_access_token(&access_token_claims);
 
     // Store access token
+    /*
     {
         let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
+    */
 
     // Generate refresh token
     let refresh_token = Uuid::new_v4().to_string();
+    /*
     let refresh_entry = RefreshTokenEntry {
         token: refresh_token.clone(),
         client_id: client_id.clone(),
@@ -997,6 +987,11 @@ async fn handle_password_grant(
         let mut refresh_tokens = state.oauth2_stores.refresh_tokens.write().await;
         refresh_tokens.insert(refresh_token.clone(), refresh_entry);
     }
+    */
+
+    // Store both tokens
+    state.app_state.oauth2_service.store_token(&access_token, Some(&refresh_token), &access_token_claims).await
+        .map_err(|e| AuthencError::database(format!("Failed to store token: {}", e)))?;
 
     // Generate ID token
     let id_token = generate_id_token(
@@ -1104,13 +1099,16 @@ async fn handle_refresh_token_grant(
     let access_token = generate_access_token(&access_token_claims);
 
     // Store access token
+    /*
     {
         let mut tokens = state.oauth2_stores.access_tokens.write().await;
         tokens.insert(access_token_claims.jti.clone(), access_token_claims);
     }
+    */
 
     // Generate new refresh token (rotate refresh token)
     let new_refresh_token = Uuid::new_v4().to_string();
+    /*
     let new_refresh_entry = RefreshTokenEntry {
         token: new_refresh_token.clone(),
         client_id: client_id.clone(),
@@ -1126,6 +1124,27 @@ async fn handle_refresh_token_grant(
         refresh_tokens.remove(&refresh_token); // Remove old token
         refresh_tokens.insert(new_refresh_token.clone(), new_refresh_entry);
     }
+    */
+
+    // Revoke old access token linked to the refresh token (if we had it, but here we only have the refresh token hash)
+    // The previous implementation removed it from memory map.
+    // In DB, we should revoke the OLD access token that was associated with this refresh token.
+    // But `oauth2_access_tokens` table stores both in one row.
+    // If we are rotating, we are creating a NEW row.
+    // We should revoke the OLD row.
+    // We need to hash the old refresh token to find the old row.
+
+    let mut hasher = Sha256::new();
+    hasher.update(refresh_token.as_bytes());
+    let old_refresh_hash = format!("{:x}", hasher.finalize());
+
+    if let Ok(Some(old_token_record)) = state.app_state.oauth2_service.get_access_token_by_refresh_token(&old_refresh_hash).await {
+        let _ = state.app_state.oauth2_service.revoke_access_token(&old_token_record.token_hash).await;
+    }
+
+    // Store new tokens
+    state.app_state.oauth2_service.store_token(&access_token, Some(&new_refresh_token), &access_token_claims).await
+        .map_err(|e| AuthencError::database(format!("Failed to store token: {}", e)))?;
 
     // Generate ID token
     let id_token = generate_id_token(
@@ -1156,14 +1175,31 @@ pub async fn oauth2_introspect(
     Json(params): Json<OAuth2IntrospectRequest>,
 ) -> Result<Json<OAuth2IntrospectResponse>, AuthencError> {
     let now = Utc::now().timestamp();
-    let stores = &state.oauth2_stores;
+    // let stores = &state.oauth2_stores;
 
     // Try to find access token
     let claims = if let Ok(claims) = verify_and_decode_jwt(&params.token) {
         // Token is validly signed and not expired.
         // Now check if it exists in the store (not revoked).
+        /*
         let tokens = stores.access_tokens.read().await;
         tokens.get(&claims.jti).cloned()
+        */
+
+        let mut hasher = Sha256::new();
+        hasher.update(params.token.as_bytes());
+        let token_hash = format!("{:x}", hasher.finalize());
+
+        match state.app_state.oauth2_service.get_access_token_by_hash(&token_hash).await {
+            Ok(Some(token_record)) => {
+                if !token_record.revoked && token_record.expires_at.timestamp() > now {
+                    Some(claims)
+                } else {
+                    None
+                }
+            },
+            _ => None
+        }
     } else {
         None
     };
@@ -1226,9 +1262,10 @@ pub async fn oauth2_revoke(
     Json(params): Json<OAuth2RevokeRequest>,
 ) -> Result<StatusCode, AuthencError> {
     let token = params.token;
-    let stores = &state.oauth2_stores;
+    // let stores = &state.oauth2_stores;
 
     // Try to revoke refresh token
+    /*
     {
         let mut refresh_tokens = stores.refresh_tokens.write().await;
         if let Some(entry) = refresh_tokens.get_mut(&token) {
@@ -1240,6 +1277,22 @@ pub async fn oauth2_revoke(
     {
         let mut access_tokens = stores.access_tokens.write().await;
         access_tokens.retain(|_, claims| claims.jti != token && claims.sub != token);
+    }
+    */
+
+    // Hash token
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+
+    // Try revoke as access token
+    let _ = state.app_state.oauth2_service.revoke_access_token(&hash).await;
+
+    // Also try to find by refresh token hash (if it's a refresh token)
+    // The same table stores both hashes. If we passed a refresh token, we should find the record by refresh_token_hash.
+    if let Ok(Some(record)) = state.app_state.oauth2_service.get_access_token_by_refresh_token(&hash).await {
+        // Revoke the record (which invalidates both access and refresh token pair)
+        let _ = state.app_state.oauth2_service.revoke_access_token(&record.token_hash).await;
     }
 
     Ok(StatusCode::OK)

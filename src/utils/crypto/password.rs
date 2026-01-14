@@ -7,6 +7,8 @@ use rand::rngs::OsRng;
 /// Argon2 password hashing algorithm with randomly generated salt. The resulting
 /// hash can be safely stored in a database and later used for password verification.
 ///
+/// This function runs asynchronously on a blocking thread to avoid blocking the async runtime.
+///
 /// # Arguments
 /// * `password` - The plaintext password to hash
 ///
@@ -23,16 +25,23 @@ use rand::rngs::OsRng;
 ///
 /// # Example
 /// ```rust
+/// # async fn example() {
 /// use authenc::utils::crypto::password::hash_password;
 ///
-/// let hash = hash_password("my_secure_password").expect("Failed to hash password");
+/// let hash = hash_password("my_secure_password").await.expect("Failed to hash password");
 /// // Store the hash in database
+/// # }
 /// ```
-pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let password_hash = argon2.hash_password(password.as_bytes(), &salt)?;
-    Ok(password_hash.to_string())
+pub async fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
+    let password = password.to_string();
+    tokio::task::spawn_blocking(move || {
+        let salt = SaltString::generate(&mut OsRng);
+        let argon2 = Argon2::default();
+        let password_hash = argon2.hash_password(password.as_bytes(), &salt)?;
+        Ok(password_hash.to_string())
+    })
+    .await
+    .map_err(|_| argon2::password_hash::Error::Password)? // Map JoinError to a generic Password error
 }
 
 /// Verify a password against its hash
@@ -40,6 +49,8 @@ pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Er
 /// This function verifies a plaintext password against a previously computed
 /// Argon2 password hash. It performs a constant-time comparison to prevent
 /// timing attacks and returns whether the password matches the hash.
+///
+/// This function runs asynchronously on a blocking thread to avoid blocking the async runtime.
 ///
 /// # Arguments
 /// * `hash` - The password hash string in PHC format (from `hash_password`)
@@ -58,19 +69,27 @@ pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Er
 ///
 /// # Example
 /// ```rust
+/// # async fn example() {
 /// use authenc::utils::crypto::password::{hash_password, verify_password};
 ///
-/// let hash = hash_password("my_password").unwrap();
-/// let is_valid = verify_password(&hash, "my_password").unwrap();
+/// let hash = hash_password("my_password").await.unwrap();
+/// let is_valid = verify_password(&hash, "my_password").await.unwrap();
 /// assert!(is_valid);
 ///
-/// let is_invalid = verify_password(&hash, "wrong_password").unwrap();
+/// let is_invalid = verify_password(&hash, "wrong_password").await.unwrap();
 /// assert!(!is_invalid);
+/// # }
 /// ```
-pub fn verify_password(hash: &str, password: &str) -> Result<bool, argon2::password_hash::Error> {
-    let parsed_hash = PasswordHash::new(hash)?;
-    let argon2 = Argon2::default();
-    Ok(argon2
-        .verify_password(password.as_bytes(), &parsed_hash)
-        .is_ok())
+pub async fn verify_password(hash: &str, password: &str) -> Result<bool, argon2::password_hash::Error> {
+    let hash = hash.to_string();
+    let password = password.to_string();
+    tokio::task::spawn_blocking(move || {
+        let parsed_hash = PasswordHash::new(&hash)?;
+        let argon2 = Argon2::default();
+        Ok(argon2
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .is_ok())
+    })
+    .await
+    .map_err(|_| argon2::password_hash::Error::Password)? // Map JoinError to a generic Password error
 }
