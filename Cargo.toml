@@ -201,6 +201,9 @@ pqcrypto-mlkem = { version = "0.1.1", optional = true }
 pqcrypto-falcon = { version = "0.4.1", optional = true }
 pqcrypto-traits = "0.3.5"
 
+# WebAuthn
+webauthn-rs = { version = "0.5.0-alpha.2", features = ["axum"] }
+
 # Shamir Secret Sharing dependencies
 curve25519-dalek = "4.1"
 subtle = "2.6"
@@ -214,13 +217,17 @@ metrics-exporter-prometheus = { version = "0.12", default-features = false, feat
 fluent-bundle = "0.16.0"
 unic-langid = "0.9.6"
 axum-test = "18.1"
+webauthn-rs = "0.5.0"
+webauthn-rs-core = "0.5.0"
 
 [dev-dependencies]
+p256 = { version = "0.13.2", features = ["ecdsa-core"] }
 tempfile = "3"
 tokio-test = "0.4"
 serial_test = "3.2"
 lazy_static = "1.5"
 temp-env = "0.3.6"
+webauthn-rs = { version = "0.5.0-alpha.2", features = ["test_utils"] }
 # sqlx removed - using tokio-postgres + deadpool-postgres for better compile speed and flexibility
 
 # Performance optimizations
