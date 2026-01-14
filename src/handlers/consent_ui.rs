@@ -512,7 +512,7 @@ fn generate_consent_html(
 /// Helper function to redirect back to authorization endpoint
 fn redirect_to_authorize(params: ConsentQuery) -> Result<Redirect, AuthencError> {
     // Build authorization URL
-    let mut url = "/oauth2/authorize?".to_string();
+    let mut url = "/oauth2/authorize".to_string();
     let query_params = vec![
         ("client_id", Some(params.client_id)),
         ("scope", params.scope),
@@ -524,14 +524,20 @@ fn redirect_to_authorize(params: ConsentQuery) -> Result<Redirect, AuthencError>
         ("nonce", params.nonce),
     ];
 
-    let query_string = query_params
+    let mut first = true;
+    for (key, value) in query_params
         .into_iter()
-        .filter_map(|(key, value)| value.map(|v| format!("{}={}", key, urlencoding::encode(&v))))
-        .collect::<Vec<_>>()
-        .join("&");
-
-    if !query_string.is_empty() {
-        url.push_str(&query_string);
+        .filter_map(|(k, v)| v.map(|value| (k, value)))
+    {
+        if first {
+            url.push('?');
+            first = false;
+        } else {
+            url.push('&');
+        }
+        url.push_str(key);
+        url.push('=');
+        url.push_str(&urlencoding::encode(&value));
     }
 
     Ok(Redirect::to(&url))
