@@ -136,7 +136,10 @@ impl AdminService for MockAdminService {
                 // Fetch roles and groups concurrently for the response
                 let roles_future = roles::get_user_roles(&self.db, &user.id);
                 let groups_future = groups::get_user_groups(&self.db, user.id);
-                let (roles_result, groups_result) = tokio::join!(roles_future, groups_future);
+                let (roles_result, groups_result): (
+                    crate::error::Result<Vec<crate::models::Role>>,
+                    crate::error::Result<Vec<crate::models::Group>>
+                ) = tokio::join!(roles_future, groups_future);
 
                 let roles = roles_result
                     .map_err(|e| format!("Failed to get user roles: {}", e))?

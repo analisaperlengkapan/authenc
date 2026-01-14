@@ -70,7 +70,7 @@ async fn test_saml_provider_creation() {
     };
 
     let provider = SamlIdentityProvider::new(config, db);
-    assert!(provider.is_ok());
+    assert!(provider.await.is_ok());
 }
 
 #[tokio::test]
@@ -100,7 +100,7 @@ async fn test_saml_authentication() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     // Sample SAML response (base64 encoded)
     // In production, this would be a real SAML assertion
@@ -153,7 +153,7 @@ async fn test_saml_replay_prevention() {
         keystore_path: None,
     };
 
-    let provider = SamlIdentityProvider::new(config, db).unwrap();
+    let provider = SamlIdentityProvider::new(config, db).await.unwrap();
 
     // Test cleanup of expired assertions
     let cleanup_result = provider.cleanup_expired_assertions().await;

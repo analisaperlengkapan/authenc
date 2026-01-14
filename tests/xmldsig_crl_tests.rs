@@ -144,8 +144,8 @@ fn test_extract_crl_distribution_points_empty() {
     assert_eq!(urls.len(), 0);
 }
 
-#[test]
-fn test_check_revocation_no_crl_urls() {
+#[tokio::test]
+async fn test_check_revocation_no_crl_urls() {
     let ca_key = create_test_ca_key();
     let ca_cert = create_test_ca(&ca_key);
     let cert = create_test_cert(&ca_key, &ca_cert, 100);
@@ -154,7 +154,7 @@ fn test_check_revocation_no_crl_urls() {
 
     // Certificate has no CRL distribution points
     // Should return Unknown status
-    let result = crl_manager.check_revocation(&cert).unwrap();
+    let result = crl_manager.check_revocation(&cert).await.unwrap();
     assert_eq!(result, RevocationStatus::Unknown);
 }
 

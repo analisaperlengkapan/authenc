@@ -59,11 +59,12 @@ async fn user_store_basic_flow() {
         .expect("Password hash should be present");
     assert_ne!(password_hash, "password123", "Password should be hashed");
     assert!(
-        authenc::utils::crypto::password::verify_password(&password_hash, "password123").unwrap(),
+        authenc::utils::crypto::password::verify_password(&password_hash, "password123").await.unwrap(),
         "Password verification failed"
     );
     assert!(
         !authenc::utils::crypto::password::verify_password(&password_hash, "wrongpassword")
+            .await
             .unwrap(),
         "Wrong password should fail verification"
     );
