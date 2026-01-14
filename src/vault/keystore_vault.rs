@@ -13,7 +13,7 @@
 use super::{Secret, Vault, VaultError};
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::process::Command;
 
 /// Helper struct to manage temporary password files securely.
@@ -96,13 +96,11 @@ impl KeystoreVault {
         if self.store_type.to_uppercase() == "JKS" {
             return true;
         }
-        if let Some(path) = &self.path {
-            if let Some(ext) = path.extension() {
-                if let Some(ext_str) = ext.to_str() {
+        if let Some(path) = &self.path
+            && let Some(ext) = path.extension()
+                && let Some(ext_str) = ext.to_str() {
                     return ext_str.eq_ignore_ascii_case("jks") || ext_str.eq_ignore_ascii_case("ks");
                 }
-            }
-        }
         false
     }
 
@@ -224,36 +222,32 @@ impl Vault for KeystoreVault {
                      // Extract PEM blocks
 
                      // Look for Private Key
-                     if let Some(start) = part.find("-----BEGIN PRIVATE KEY-----") {
-                         if let Some(end) = part[start..].find("-----END PRIVATE KEY-----") {
+                     if let Some(start) = part.find("-----BEGIN PRIVATE KEY-----")
+                         && let Some(end) = part[start..].find("-----END PRIVATE KEY-----") {
                              secret_value.push_str(&part[start..start+end+25]);
                              secret_value.push('\n');
                          }
-                     }
 
                      // Look for RSA Private Key (legacy)
-                     if let Some(start) = part.find("-----BEGIN RSA PRIVATE KEY-----") {
-                         if let Some(end) = part[start..].find("-----END RSA PRIVATE KEY-----") {
+                     if let Some(start) = part.find("-----BEGIN RSA PRIVATE KEY-----")
+                         && let Some(end) = part[start..].find("-----END RSA PRIVATE KEY-----") {
                              secret_value.push_str(&part[start..start+end+29]);
                              secret_value.push('\n');
                          }
-                     }
 
                      // Look for Encrypted Private Key
-                     if let Some(start) = part.find("-----BEGIN ENCRYPTED PRIVATE KEY-----") {
-                         if let Some(end) = part[start..].find("-----END ENCRYPTED PRIVATE KEY-----") {
+                     if let Some(start) = part.find("-----BEGIN ENCRYPTED PRIVATE KEY-----")
+                         && let Some(end) = part[start..].find("-----END ENCRYPTED PRIVATE KEY-----") {
                              secret_value.push_str(&part[start..start+end+35]);
                              secret_value.push('\n');
                          }
-                     }
 
                      // Look for Certificate
-                     if let Some(start) = part.find("-----BEGIN CERTIFICATE-----") {
-                         if let Some(end) = part[start..].find("-----END CERTIFICATE-----") {
+                     if let Some(start) = part.find("-----BEGIN CERTIFICATE-----")
+                         && let Some(end) = part[start..].find("-----END CERTIFICATE-----") {
                              secret_value.push_str(&part[start..start+end+25]);
                              secret_value.push('\n');
                          }
-                     }
                 }
             }
 
@@ -275,10 +269,7 @@ impl Vault for KeystoreVault {
             let _ = tokio::fs::remove_file(p12_path).await;
         }
 
-        match result {
-            Ok(s) => s,
-            Err(_) => None,
-        }
+        result.unwrap_or_default()
     }
 
     async fn put_secret(

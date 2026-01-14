@@ -51,7 +51,7 @@ async fn user_store_basic_flow() {
 
     let retrieved_user = store.get_user(id).await.unwrap().expect("User not found");
     assert_eq!(retrieved_user.username, "alice");
-    assert!(store.get_user_by_username("alice").await.unwrap().is_some());
+    assert!(store.get_user_by_username(user.realm_id.as_ref().unwrap(), "alice").await.unwrap().is_some());
 
     // Proper password hashing and verification
     let password_hash = retrieved_user

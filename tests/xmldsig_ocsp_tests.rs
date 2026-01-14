@@ -114,8 +114,8 @@ fn test_ocsp_status_enum() {
 }
 
 #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
-#[test]
-fn test_ocsp_check_status_no_url() {
+#[tokio::test]
+async fn test_ocsp_check_status_no_url() {
     use openssl::asn1::Asn1Time;
     use openssl::hash::MessageDigest;
     use openssl::pkey::PKey;
@@ -123,7 +123,7 @@ fn test_ocsp_check_status_no_url() {
     use openssl::x509::X509;
     use openssl::x509::X509NameBuilder;
 
-    let mut client = OcspClient::new().unwrap();
+    let client = OcspClient::new().unwrap();
 
     // Create test certificates (self-signed CA and end-entity cert)
     let rsa = Rsa::generate(2048).unwrap();
@@ -174,7 +174,7 @@ fn test_ocsp_check_status_no_url() {
     let cert = builder2.build();
 
     // Try to check status (will fail because no OCSP URL)
-    let result = client.check_status(&cert, &ca_cert);
+    let result = client.check_status(&cert, &ca_cert).await;
     assert!(result.is_err(), "Should fail - no OCSP URL in certificate");
 }
 

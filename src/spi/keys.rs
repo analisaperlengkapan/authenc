@@ -364,11 +364,10 @@ impl DefaultKeyManager {
 impl KeyManager for DefaultKeyManager {
     async fn get_active_key(&self, algorithm: &str) -> Result<Option<Box<dyn KeyMetadataTrait>>> {
         for provider in &self.providers {
-            if provider.supports_algorithm(algorithm) {
-                if let Some(key) = provider.get_active_key().await? {
+            if provider.supports_algorithm(algorithm)
+                && let Some(key) = provider.get_active_key().await? {
                     return Ok(Some(key));
                 }
-            }
         }
         Ok(None)
     }

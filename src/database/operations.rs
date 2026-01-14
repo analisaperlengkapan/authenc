@@ -609,7 +609,7 @@ pub mod devices {
         }
 
         let mut query_builder = String::from("UPDATE devices SET updated_at = $2");
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
         params.push(Box::new(device_id));
         params.push(Box::new(now));
         let param_index = 3;
@@ -622,7 +622,7 @@ pub mod devices {
         query_builder.push_str(" WHERE id = $1");
 
         let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         db.execute(&query_builder, &params_refs)
             .await
@@ -1492,7 +1492,7 @@ pub mod organizations {
                 id: row.get(0),
                 organization_id: row.get(1),
                 user_id: row.get(2),
-                role: OrganizationRole::from_str(&row.get::<_, String>(3))
+                role: OrganizationRole::parse(&row.get::<_, String>(3))
                     .unwrap_or(OrganizationRole::Member)
                     .as_str()
                     .to_string(),
@@ -2053,10 +2053,11 @@ pub mod users {
         let first_name = request.first_name.clone();
         let last_name = request.last_name.clone();
         let phone_number = request.phone_number.clone();
-        let password_hash = request
-            .password
-            .as_ref()
-            .map(|p| crate::utils::crypto::password::hash_password(p).unwrap_or_default());
+        let password_hash = if let Some(p) = &request.password {
+            Some(crate::utils::crypto::password::hash_password(p).await.unwrap_or_default())
+        } else {
+            None
+        };
         let realm_id = request.realm_id;
         let organization_id = request.organization_id;
         let _attributes_json = request
@@ -2642,7 +2643,7 @@ pub mod users {
 
             // Hash password if provided
             let password_hash = if let Some(password) = &user_req.password {
-                crate::utils::crypto::password::hash_password(password).map_err(|e| {
+                crate::utils::crypto::password::hash_password(password).await.map_err(|e| {
                     crate::error::AuthencError::database(format!("Password hashing failed: {}", e))
                 })?
             } else {
@@ -2699,7 +2700,7 @@ pub mod users {
         for (user_id, update_data) in updates {
             let mut set_clauses = Vec::new();
             let mut param_index = 2; // Start from 2 since $1 is user_id
-            let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
+            let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
                 vec![Box::new(user_id)];
 
             // Build dynamic UPDATE query based on provided fields
@@ -2745,7 +2746,7 @@ pub mod users {
             let query = format!("UPDATE users SET {} WHERE id = $1", set_clauses.join(", "));
 
             let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-                params.iter().map(|p| p.as_ref()).collect();
+                params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
             let affected = transaction.execute(query.as_str(), &params_refs).await?;
             updated_count += affected as usize;
@@ -2900,7 +2901,7 @@ pub mod users {
     ) -> Result<(Vec<serde_json::Value>, i64)> {
         let mut where_clauses: Vec<String> = vec!["deleted_at IS NULL".to_string()];
         let mut param_index = 1;
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
 
         // Realm filter
         if let Some(rid) = realm_id {
@@ -2910,8 +2911,8 @@ pub mod users {
         }
 
         // Full-text search across username, email, first_name, last_name
-        if let Some(search_term) = search {
-            if !search_term.is_empty() {
+        if let Some(search_term) = search
+            && !search_term.is_empty() {
                 where_clauses.push(format!(
                     "(username ILIKE ${} OR email ILIKE ${} OR first_name ILIKE ${} OR last_name ILIKE ${})",
                     param_index, param_index, param_index, param_index
@@ -2920,16 +2921,14 @@ pub mod users {
                 params.push(Box::new(search_pattern));
                 param_index += 1;
             }
-        }
 
         // Email filter
-        if let Some(email_pattern) = email_filter {
-            if !email_pattern.is_empty() {
+        if let Some(email_pattern) = email_filter
+            && !email_pattern.is_empty() {
                 where_clauses.push(format!("email ILIKE ${}", param_index));
                 params.push(Box::new(format!("%{}%", email_pattern)));
                 param_index += 1;
             }
-        }
 
         // Enabled filter
         if let Some(enabled) = enabled_filter {
@@ -2972,7 +2971,7 @@ pub mod users {
         let count_query = format!("SELECT COUNT(*) FROM users WHERE {}", where_clause);
 
         let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         let count_row: tokio_postgres::Row = db.query_one(&count_query, &params_refs).await?;
         let total_count: i64 = count_row.get(0);
@@ -3005,7 +3004,7 @@ pub mod users {
         data_params.push(Box::new(offset_val));
 
         let data_params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            data_params.iter().map(|p| p.as_ref()).collect();
+            data_params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         let rows: Vec<tokio_postgres::Row> = db.query(&data_query, &data_params_refs).await?;
 
@@ -4061,7 +4060,6 @@ pub mod realms {
     }
 
     /// Helper function to convert database row to Realm
-
     fn row_to_realm(row: tokio_postgres::Row) -> Realm {
         Realm {
             id: row.get(0),
@@ -5458,54 +5456,76 @@ pub mod events {
         Ok(rows[0].get(0))
     }
 
+    /// Parameters for querying event log
+    pub struct QueryEventLogParams {
+        /// Realm ID
+        pub realm_id: Uuid,
+        /// Event category
+        pub event_category: Option<String>,
+        /// Event type
+        pub event_type: Option<String>,
+        /// Resource type
+        pub resource_type: Option<String>,
+        /// Resource ID
+        pub resource_id: Option<String>,
+        /// User ID
+        pub user_id: Option<Uuid>,
+        /// Start date
+        pub from_date: Option<DateTime<Utc>>,
+        /// End date
+        pub to_date: Option<DateTime<Utc>>,
+        /// Filter for successful events only
+        pub success_only: Option<bool>,
+        /// Offset for pagination
+        pub offset: i64,
+        /// Limit for pagination
+        pub limit: i64,
+    }
+
     /// Query event log with filtering
     pub async fn query_event_log(
         db: &Database,
-        realm_id: Uuid,
-        event_category: Option<String>,
-        event_type: Option<String>,
-        resource_type: Option<String>,
-        user_id: Option<Uuid>,
-        from_date: Option<DateTime<Utc>>,
-        to_date: Option<DateTime<Utc>>,
-        success_only: Option<bool>,
-        offset: i64,
-        limit: i64,
+        params: QueryEventLogParams,
     ) -> Result<Vec<JsonValue>> {
         let mut where_clauses = vec![String::from("realm_id = $1")];
         let mut param_index = 2;
 
-        if event_category.is_some() {
+        if params.event_category.is_some() {
             where_clauses.push(format!("event_category = ${}", param_index));
             param_index += 1;
         }
 
-        if event_type.is_some() {
+        if params.event_type.is_some() {
             where_clauses.push(format!("event_type = ${}", param_index));
             param_index += 1;
         }
 
-        if resource_type.is_some() {
+        if params.resource_type.is_some() {
             where_clauses.push(format!("resource_type = ${}", param_index));
             param_index += 1;
         }
 
-        if user_id.is_some() {
+        if params.resource_id.is_some() {
+            where_clauses.push(format!("resource_id = ${}", param_index));
+            param_index += 1;
+        }
+
+        if params.user_id.is_some() {
             where_clauses.push(format!("user_id = ${}", param_index));
             param_index += 1;
         }
 
-        if from_date.is_some() {
+        if params.from_date.is_some() {
             where_clauses.push(format!("created_at >= ${}", param_index));
             param_index += 1;
         }
 
-        if to_date.is_some() {
+        if params.to_date.is_some() {
             where_clauses.push(format!("created_at <= ${}", param_index));
             param_index += 1;
         }
 
-        if let Some(true) = success_only {
+        if let Some(true) = params.success_only {
             where_clauses.push(String::from("success = TRUE"));
         }
 
@@ -5527,31 +5547,40 @@ pub mod events {
             param_index + 1
         );
 
-        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&realm_id];
+        let mut sql_params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
+            vec![Box::new(params.realm_id)];
 
-        if let Some(ref cat) = event_category {
-            params.push(cat);
+        if let Some(cat) = params.event_category {
+            sql_params.push(Box::new(cat));
         }
-        if let Some(ref et) = event_type {
-            params.push(et);
+        if let Some(et) = params.event_type {
+            sql_params.push(Box::new(et));
         }
-        if let Some(ref rt) = resource_type {
-            params.push(rt);
+        if let Some(rt) = params.resource_type {
+            sql_params.push(Box::new(rt));
         }
-        if let Some(ref uid) = user_id {
-            params.push(uid);
+        if let Some(rid) = params.resource_id {
+            sql_params.push(Box::new(rid));
         }
-        if let Some(ref from) = from_date {
-            params.push(from);
+        if let Some(uid) = params.user_id {
+            sql_params.push(Box::new(uid));
         }
-        if let Some(ref to) = to_date {
-            params.push(to);
+        if let Some(from) = params.from_date {
+            sql_params.push(Box::new(from));
+        }
+        if let Some(to) = params.to_date {
+            sql_params.push(Box::new(to));
         }
 
-        params.push(&limit);
-        params.push(&offset);
+        sql_params.push(Box::new(params.limit));
+        sql_params.push(Box::new(params.offset));
 
-        let rows = db.query_raw(&query, &params).await?;
+        let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = sql_params
+            .iter()
+            .map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync))
+            .collect();
+
+        let rows = db.query_raw(&query, &params_refs).await?;
 
         Ok(rows
             .into_iter()
@@ -7077,8 +7106,7 @@ pub mod auth_flows {
                     &flow
                         .get("realm_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &flow.get("alias").and_then(|v| v.as_str()).unwrap_or(""),
                     &flow.get("description").and_then(|v| v.as_str()),
                     &flow
@@ -7289,14 +7317,12 @@ pub mod auth_flows {
                     &execution
                         .get("flow_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &execution.get("authenticator").and_then(|v| v.as_str()),
                     &execution
                         .get("authenticator_config")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &execution
                         .get("authenticator_flow")
                         .and_then(|v| v.as_bool())
@@ -7312,8 +7338,7 @@ pub mod auth_flows {
                     &execution
                         .get("parent_flow")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &now,
                     &now,
                 ],
@@ -7367,19 +7392,16 @@ pub mod auth_flows {
                     &session
                         .get("realm_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &session
                         .get("user_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &session.get("client_id").and_then(|v| v.as_str()),
                     &session
                         .get("flow_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s).ok())
-                        .flatten(),
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     &session
                         .get("auth_state")
                         .and_then(|v| v.as_str())
@@ -7585,7 +7607,7 @@ pub mod resources {
 
         let uris = request.uris.unwrap_or_default();
         let scopes = request.scopes.unwrap_or_default();
-        let attributes_json = serde_json::to_value(&request.attributes.unwrap_or_default())
+        let attributes_json = serde_json::to_value(request.attributes.unwrap_or_default())
             .map_err(|e| AuthencError::validation(format!("Invalid attributes: {}", e)))?;
 
         let query = r#"
@@ -8014,23 +8036,22 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
         param_index += 1;
     }
 
-    if let Some(event_types) = &query.event_types {
-        if let Some(event_type) = event_types.first() {
+    if let Some(event_types) = &query.event_types
+        && let Some(event_type) = event_types.first() {
             conditions.push(format!("event_type = ${}", param_index));
             params.push(Box::new(event_type.as_str()));
             param_index += 1;
         }
-    }
 
     if let Some(from_date) = &query.date_from {
         conditions.push(format!("time >= ${}", param_index));
-        params.push(Box::new(from_date.clone()));
+        params.push(Box::new(*from_date));
         param_index += 1;
     }
 
     if let Some(to_date) = &query.date_to {
         conditions.push(format!("time <= ${}", param_index));
-        params.push(Box::new(to_date.clone()));
+        params.push(Box::new(*to_date));
         param_index += 1;
     }
 
@@ -8153,13 +8174,13 @@ pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Resul
 
     if let Some(from_date) = &query.date_from {
         conditions.push(format!("time >= ${}", param_index));
-        params.push(Box::new(from_date.clone()));
+        params.push(Box::new(*from_date));
         param_index += 1;
     }
 
     if let Some(to_date) = &query.date_to {
         conditions.push(format!("time <= ${}", param_index));
-        params.push(Box::new(to_date.clone()));
+        params.push(Box::new(*to_date));
         param_index += 1;
     }
 
@@ -9532,7 +9553,7 @@ pub mod user_consents {
         let metadata = request
             .metadata
             .clone()
-            .unwrap_or_else(|| serde_json::Value::Null);
+            .unwrap_or(serde_json::Value::Null);
 
         let query = r#"
             INSERT INTO user_consents (id, user_id, client_id, scopes, granted_at, expires_at, metadata)
@@ -10559,7 +10580,7 @@ pub mod themes {
         let now = chrono::Utc::now();
         let mut set_clauses = Vec::new();
         let mut param_index = 2;
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> =
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
             vec![Box::new(theme_id)];
 
         if let Some(name) = updates.get("name").and_then(|v| v.as_str()) {
@@ -10605,7 +10626,7 @@ pub mod themes {
         );
 
         let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         db.execute(&query, &params_refs).await?;
         Ok(())
@@ -11018,3 +11039,15 @@ pub mod spi {
         Ok(Some((row.get(0), row.get(1))))
     }
 }
+
+/// Database operations for realms
+pub mod realms {
+    use crate::{
+        database::Database,
+        error::{AuthencError, Result},
+        models::Realm,
+    };
+
+    /// List all non-deleted realms
+    pub async fn list_realms(db: &Database) -> Result<Vec<Realm>> {
+        let query = r#

@@ -190,7 +190,7 @@ impl Requirement {
     }
 
     /// Parse requirement from string
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s.to_uppercase().as_str() {
             "REQUIRED" => Requirement::Required,
             "ALTERNATIVE" => Requirement::Alternative,
@@ -198,6 +198,14 @@ impl Requirement {
             "CONDITIONAL" => Requirement::Conditional,
             _ => Requirement::Required,
         }
+    }
+}
+
+impl std::str::FromStr for Requirement {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::parse(s))
     }
 }
 
@@ -370,13 +378,12 @@ impl Authenticator for OTPAuthenticator {
     }
 
     fn validate_config(&self, config: &JsonValue) -> Result<(), AuthError> {
-        if let Some(length) = config.get("otp_length") {
-            if !length.is_number() {
+        if let Some(length) = config.get("otp_length")
+            && !length.is_number() {
                 return Err(AuthError::InvalidConfiguration(
                     "otp_length must be a number".to_string(),
                 ));
             }
-        }
         Ok(())
     }
 
@@ -508,14 +515,12 @@ impl AuthFlowExecutor {
                 }
                 Requirement::Alternative => {
                     for auth in authenticators.iter() {
-                        if auth.can_authenticate(context).await {
-                            if let Ok(result) = auth.authenticate(context).await {
-                                if result.status == AuthStatus::Success {
+                        if auth.can_authenticate(context).await
+                            && let Ok(result) = auth.authenticate(context).await
+                                && result.status == AuthStatus::Success {
                                     alternative_success = true;
                                     break;
                                 }
-                            }
-                        }
                     }
                 }
                 Requirement::Conditional => {

@@ -100,10 +100,16 @@ pub struct InMemoryClusterCommunication {
     /// Shared broadcast channel for all nodes
     broadcast_tx: broadcast::Sender<(String, Vec<u8>)>,
     /// Receiver for broadcast messages
-    broadcast_rx: RwLock<Option<broadcast::Receiver<(String, Vec<u8>)>>>,
+    broadcast_rx: RwLock<Option<BroadcastReceiver>>,
     /// Individual message channels for direct messaging
-    message_channels: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<(String, Vec<u8>)>>>>,
+    message_channels: Arc<RwLock<MessageChannelMap>>,
 }
+
+/// Type alias for broadcast receiver
+pub type BroadcastReceiver = broadcast::Receiver<(String, Vec<u8>)>;
+
+/// Type alias for message channel map
+pub type MessageChannelMap = HashMap<String, mpsc::UnboundedSender<(String, Vec<u8>)>>;
 
 impl InMemoryClusterCommunication {
     /// Create a new in-memory cluster communication instance
@@ -170,16 +176,21 @@ impl ClusterCommunication for InMemoryClusterCommunication {
     }
 }
 
+/// Type alias for incoming message queue
+pub type IncomingMessageQueue = Vec<(String, Vec<u8>)>;
+/// Type alias for incoming message receiver
+pub type IncomingMessageReceiver = mpsc::UnboundedReceiver<(String, Vec<u8>)>;
+
 /// JGroups-based cluster communication
 pub struct JGroupsClusterCommunication {
     /// Name of the JGroups channel
     _channel_name: String,
     /// Message queue for incoming messages
-    _message_queue: Arc<RwLock<Vec<(String, Vec<u8>)>>>,
+    _message_queue: Arc<RwLock<IncomingMessageQueue>>,
     /// Sender for outgoing messages
     outgoing_tx: mpsc::UnboundedSender<(Option<String>, Vec<u8>)>,
     /// Receiver for incoming messages
-    incoming_rx: Arc<RwLock<mpsc::UnboundedReceiver<(String, Vec<u8>)>>>,
+    incoming_rx: Arc<RwLock<IncomingMessageReceiver>>,
 }
 
 impl JGroupsClusterCommunication {
@@ -198,9 +209,9 @@ impl JGroupsClusterCommunication {
                 if target.is_none() {
                     // Broadcast - echo to all nodes
                     let _ = incoming_tx.send(("broadcast".to_string(), message));
-                } else {
+                } else if let Some(target_id) = target {
                     // Unicast - send to specific node
-                    let _ = incoming_tx.send((target.unwrap(), message));
+                    let _ = incoming_tx.send((target_id, message));
                 }
             }
         });
@@ -428,7 +439,7 @@ impl RaftConsensus {
         *voted_for = Some(self.node_id.clone());
 
         // Request votes from peers
-        let votes_needed = (self.peers.len() + 1) / 2 + 1;
+        let votes_needed = self.peers.len().div_ceil(2) + 1;
         let votes = 1; // Vote for self
 
         // In a real implementation, we'd send vote requests to peers
@@ -661,7 +672,7 @@ pub trait ClusterEventListener: Send + Sync {
 }
 
 /// Session replication service for sticky sessions
-
+///
 /// Distributed cache service
 pub struct DistributedCacheService {
     /// Cluster manager instance
@@ -905,8 +916,8 @@ impl SessionReplicationService {
                 }
             }
             "update_session" => {
-                if let Some(session_id) = msg.get("session_id").and_then(|s| s.as_str()) {
-                    if let Some(updates_data) = msg.get("updates") {
+                if let Some(session_id) = msg.get("session_id").and_then(|s| s.as_str())
+                    && let Some(updates_data) = msg.get("updates") {
                         let updates: HashMap<String, String> =
                             serde_json::from_value(updates_data.clone())?;
                         let mut sessions = self.sessions.write().await;
@@ -917,7 +928,6 @@ impl SessionReplicationService {
                             }
                         }
                     }
-                }
             }
             "delete_session" => {
                 if let Some(session_id) = msg.get("session_id").and_then(|s| s.as_str()) {
@@ -964,8 +974,10 @@ pub struct ClusterConfig {
 
 /// Cluster communication types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ClusterCommunicationType {
     /// Infinispan-based communication
+    #[default]
     Infinispan,
     /// JGroups-based communication
     JGroups,
@@ -973,16 +985,13 @@ pub enum ClusterCommunicationType {
     Custom,
 }
 
-impl Default for ClusterCommunicationType {
-    fn default() -> Self {
-        Self::Infinispan
-    }
-}
 
 /// Cluster membership types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ClusterMembershipType {
     /// Kubernetes-based membership
+    #[default]
     Kubernetes,
     /// Static membership configuration
     Static,
@@ -992,16 +1001,13 @@ pub enum ClusterMembershipType {
     Custom,
 }
 
-impl Default for ClusterMembershipType {
-    fn default() -> Self {
-        Self::Kubernetes
-    }
-}
 
 /// Cluster consensus types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ClusterConsensusType {
     /// Raft consensus algorithm
+    #[default]
     Raft,
     /// Paxos consensus algorithm
     Paxos,
@@ -1011,11 +1017,6 @@ pub enum ClusterConsensusType {
     Custom,
 }
 
-impl Default for ClusterConsensusType {
-    fn default() -> Self {
-        Self::Raft
-    }
-}
 
 /// Multi-cluster federation service
 pub struct MultiClusterFederationService {
@@ -1055,7 +1056,7 @@ impl MultiClusterFederationService {
         // Find matching federation rule
         let mut target_cluster = "local";
 
-        for (_, rule) in &self.federation_rules {
+        for rule in self.federation_rules.values() {
             // Check if all conditions match
             let mut all_conditions_match = true;
             for (key, value) in &rule.conditions {
@@ -1330,11 +1331,10 @@ const CLUSTER_PORT: u16 = 7800;
 /// Helper function to get the local IP address
 fn get_local_ip() -> Option<String> {
     // Check environment variable first (standard practice for containerized environments)
-    if let Ok(addr) = std::env::var("CLUSTER_ADVERTISE_ADDRESS") {
-        if !addr.is_empty() {
+    if let Ok(addr) = std::env::var("CLUSTER_ADVERTISE_ADDRESS")
+        && !addr.is_empty() {
             return Some(addr);
         }
-    }
 
     match std::net::UdpSocket::bind("0.0.0.0:0") {
         Ok(socket) => {

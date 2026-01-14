@@ -260,8 +260,8 @@ impl AppState {
             }
 
             // Register Kafka event listener if configured
-            if let Some(kafka_config) = &config.kafka {
-                if kafka_config.enabled
+            if let Some(kafka_config) = &config.kafka
+                && kafka_config.enabled
                     && !kafka_config.user_events_topic.is_empty()
                     && !kafka_config.admin_events_topic.is_empty()
                 {
@@ -286,7 +286,6 @@ impl AppState {
                         }
                     }
                 }
-            }
         }
 
         // Initialize event retention service

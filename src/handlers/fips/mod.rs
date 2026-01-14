@@ -2,11 +2,10 @@ use axum::{
     Json, Router,
     extract::{State, Path},
     routing::{get, post, put},
-    response::IntoResponse,
     http::StatusCode,
 };
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use crate::app::AppState;
 use crate::services::fips::{
     FipsSecurityProfileProvider, FipsSecurityProvider, SecurityProfile, FipsLevel, FipsComplianceCheck
@@ -78,6 +77,13 @@ struct FipsStatusResponse {
     current_profile: String,
 }
 
+/// Creates the router for FIPS-related endpoints.
+///
+/// This function sets up routes for managing FIPS compliance, security profiles,
+/// and status checks.
+///
+/// # Returns
+/// A `Router` configured with FIPS endpoints.
 pub fn create_fips_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/status", get(get_fips_status))

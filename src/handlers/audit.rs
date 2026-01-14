@@ -112,18 +112,16 @@ fn apply_filters(mut logs: Vec<AuditLog>, query: &AuditLogQuery) -> Vec<AuditLog
     if let Some(ref status) = query.status {
         logs.retain(|l| l.status == *status);
     }
-    if let Some(ref from) = query.from {
-        if let Ok(from_dt) = DateTime::parse_from_rfc3339(from) {
+    if let Some(ref from) = query.from
+        && let Ok(from_dt) = DateTime::parse_from_rfc3339(from) {
             let from_utc = from_dt.with_timezone(&Utc);
             logs.retain(|l| l.timestamp >= from_utc);
         }
-    }
-    if let Some(ref to) = query.to {
-        if let Ok(to_dt) = DateTime::parse_from_rfc3339(to) {
+    if let Some(ref to) = query.to
+        && let Ok(to_dt) = DateTime::parse_from_rfc3339(to) {
             let to_utc = to_dt.with_timezone(&Utc);
             logs.retain(|l| l.timestamp <= to_utc);
         }
-    }
     logs
 }
 
@@ -227,7 +225,7 @@ pub async fn export_audit_logs_csv(
         );
     }
 
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "text/csv")
         .header(
@@ -235,7 +233,15 @@ pub async fn export_audit_logs_csv(
             "attachment; filename=\"audit_logs.csv\"",
         )
         .body(wtr.into())
-        .unwrap())
+        .map_err(|e| {
+            tracing::error!("Failed to build response body: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to generate CSV download".to_string(),
+                }),
+            )
+        })
 }
 
 /// Create audit log routes for the application

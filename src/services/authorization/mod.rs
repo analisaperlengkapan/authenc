@@ -371,11 +371,10 @@ impl AuthorizationManager {
                         .config
                         .get("end_hour")
                         .and_then(|s| s.parse::<u32>().ok()),
-                ) {
-                    if current_hour < start || current_hour >= end {
+                )
+                    && (current_hour < start || current_hour >= end) {
                         return Decision::Deny;
                     }
-                }
 
                 // Check allowed_days (comma-separated: "0,1,2,3,4" for Mon-Fri)
                 if let Some(days_str) = condition.config.get("allowed_days") {
@@ -392,13 +391,11 @@ impl AuthorizationManager {
         }
 
         // Check environment context for explicit time constraints
-        if let Some(requested_time) = context.environment.get("requested_time") {
-            if let Ok(timestamp) = requested_time.parse::<i64>() {
-                if timestamp < now.timestamp() {
+        if let Some(requested_time) = context.environment.get("requested_time")
+            && let Ok(timestamp) = requested_time.parse::<i64>()
+                && timestamp < now.timestamp() {
                     return Decision::Deny; // Request expired
                 }
-            }
-        }
 
         Decision::Permit
     }
@@ -532,33 +529,29 @@ impl AuthorizationManager {
         }
 
         // Check IP reputation
-        if let Some(ip_risk) = context.environment.get("ip_risk_score") {
-            if let Ok(score) = ip_risk.parse::<i32>() {
+        if let Some(ip_risk) = context.environment.get("ip_risk_score")
+            && let Ok(score) = ip_risk.parse::<i32>() {
                 risk_score += score;
             }
-        }
 
         // Check authentication strength
-        if let Some(mfa_status) = context.environment.get("mfa_enabled") {
-            if mfa_status == "false" {
+        if let Some(mfa_status) = context.environment.get("mfa_enabled")
+            && mfa_status == "false" {
                 risk_score += 20; // No MFA = higher risk
             }
-        }
 
         // Check conditions for risk threshold
         for condition in &config.conditions {
             if condition.condition_type == "risk_threshold" {
-                if let Some(threshold_str) = condition.config.get("max_risk_score") {
-                    if let Ok(threshold) = threshold_str.parse::<i32>() {
-                        if risk_score > threshold {
+                if let Some(threshold_str) = condition.config.get("max_risk_score")
+                    && let Ok(threshold) = threshold_str.parse::<i32>()
+                        && risk_score > threshold {
                             return Decision::Deny;
                         }
-                    }
-                }
 
                 // Check if step-up authentication is required
-                if let Some(step_up) = condition.config.get("require_step_up") {
-                    if step_up == "true" && risk_score > 30 {
+                if let Some(step_up) = condition.config.get("require_step_up")
+                    && step_up == "true" && risk_score > 30 {
                         // In production, would trigger step-up auth flow
                         // For now, deny if risk is elevated and step-up not completed
                         if context
@@ -572,7 +565,6 @@ impl AuthorizationManager {
                             return Decision::Deny;
                         }
                     }
-                }
             }
         }
 

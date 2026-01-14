@@ -1218,13 +1218,11 @@ impl FipsSecurityProfileProvider for AdvancedFipsSecurityProvider {
         }
 
         // Check key size if provided
-        if let Some(size) = key_size {
-            if let Some(allowed_sizes) = state.current_profile.key_sizes.get(algorithm) {
-                if !allowed_sizes.contains(&size) {
+        if let Some(size) = key_size
+            && let Some(allowed_sizes) = state.current_profile.key_sizes.get(algorithm)
+                && !allowed_sizes.contains(&size) {
                     return Ok(false);
                 }
-            }
-        }
 
         Ok(true)
     }

@@ -37,13 +37,12 @@ impl I18n {
             bundle
                 .add_resource(res)
                 .expect("Failed to add FTL resource");
-            if let Some(msg) = bundle.get_message(key) {
-                if let Some(pattern) = msg.value() {
+            if let Some(msg) = bundle.get_message(key)
+                && let Some(pattern) = msg.value() {
                     let mut errors = vec![];
                     let value = bundle.format_pattern(pattern, args, &mut errors);
                     return value.to_string();
                 }
-            }
         }
         key.to_string()
     }

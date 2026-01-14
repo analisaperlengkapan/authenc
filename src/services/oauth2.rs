@@ -1,8 +1,10 @@
 use crate::database::Database;
-use crate::error::Result;
-use crate::models::oauth2::{OAuth2AccessToken, OAuth2AuthorizationCode};
+use crate::error::{AuthencError, Result};
+use crate::models::oauth2::{AccessTokenClaims, OAuth2AccessToken, OAuth2AuthorizationCode};
 use crate::database::operations::oauth2;
 use crate::database::operations::tokens;
+use chrono::{DateTime, Utc};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use std::sync::Arc;
 
@@ -21,6 +23,86 @@ impl OAuth2Service {
     /// Store an access token in the database
     pub async fn store_access_token_db(&self, token: &OAuth2AccessToken) -> Result<()> {
         oauth2::store_access_token(&self.db, token).await
+    }
+
+    /// Store a token from claims and raw strings
+    pub async fn store_token(
+        &self,
+        access_token: &str,
+        refresh_token: Option<&str>,
+        claims: &AccessTokenClaims,
+    ) -> Result<()> {
+        // Hash tokens
+        let mut hasher = Sha256::new();
+        hasher.update(access_token.as_bytes());
+        let token_hash = format!("{:x}", hasher.finalize());
+
+        let refresh_token_hash = refresh_token.map(|t| {
+            let mut hasher = Sha256::new();
+            hasher.update(t.as_bytes());
+            format!("{:x}", hasher.finalize())
+        });
+
+        // Parse IDs
+        let id = Uuid::parse_str(&claims.jti)
+            .map_err(|_| AuthencError::validation("Invalid JTI in claims"))?;
+
+        let client_id = Uuid::parse_str(&claims.client_id)
+            .map_err(|_| AuthencError::validation("Invalid client_id in claims"))?;
+
+        // Handle user_id (sub) which might be a user UUID or client_id (for client_credentials)
+        let user_id = if let Ok(uid) = Uuid::parse_str(&claims.sub) {
+            // Check if sub equals client_id, meaning it's a client credentials token (no user)
+            // But sometimes client credentials sub is client_id.
+            // If the sub is the same as client_id, we might treat user_id as None,
+            // OR we treat it as None if we can't parse it (but here we can).
+            // Let's assume if it parses, it's a valid ID.
+            // If the flow was client_credentials, usually user_id is null in DB, but sub is client_id.
+            // We'll set user_id to Some(uid) generally.
+            // However, in our DB schema, user_id implies a user from users table.
+            // If sub == client_id, it might not be in users table.
+            if uid == client_id {
+                None
+            } else {
+                Some(uid)
+            }
+        } else {
+            None
+        };
+
+        let scopes = claims.scope.as_ref()
+            .map(|s| s.split_whitespace().map(String::from).collect())
+            .unwrap_or_default();
+
+        let expires_at = DateTime::<Utc>::from_timestamp(claims.exp, 0)
+            .ok_or(AuthencError::validation("Invalid expiration time"))?;
+
+        // Default refresh expiration to 30 days if not specified in claims (claims usually don't have it)
+        let refresh_expires_at = if refresh_token.is_some() {
+            Some(Utc::now() + chrono::Duration::days(30))
+        } else {
+            None
+        };
+
+        let created_at = DateTime::<Utc>::from_timestamp(claims.iat, 0)
+            .unwrap_or_else(Utc::now);
+
+        let model = OAuth2AccessToken {
+            id,
+            token_hash,
+            refresh_token_hash,
+            client_id,
+            user_id,
+            scopes,
+            expires_at,
+            refresh_expires_at,
+            revoked: false,
+            revoked_at: None,
+            created_at,
+            last_used_at: None,
+        };
+
+        self.store_access_token_db(&model).await
     }
 
     /// Get access token by hash
@@ -48,7 +130,7 @@ impl OAuth2Service {
     /// If separate table or logic is needed, implement here.
     /// Currently, `store_access_token_db` handles both access and refresh token hashes if they are in the same record.
     /// If refresh tokens are tracked independently for rotation, we can use `tokens::rotate_refresh_token` logic but that is session based.
-
+    ///
     /// Store authorization code
     pub async fn store_authorization_code(&self, code: &OAuth2AuthorizationCode) -> Result<()> {
         oauth2::store_authorization_code(&self.db, code).await

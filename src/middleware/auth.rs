@@ -520,6 +520,7 @@ mod tests {
         // 1. Verify that a valid token manually constructed works (sanity check for test harness)
         let valid_claims = Claims {
             sub: "test-user".to_string(),
+            sid: None,
             exp: now + 3600, // Expires in 1 hour
             email: None,
             roles: None,
@@ -547,6 +548,7 @@ mod tests {
         // 2. Test expired token
         let expired_claims = Claims {
             sub: "test-user".to_string(),
+            sid: None,
             exp: now - 3600, // Expired 1 hour ago
             email: None,
             roles: None,

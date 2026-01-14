@@ -400,9 +400,9 @@ impl IdentityProvider for OidcIdentityProvider {
     async fn validate_token(&self, token: &str) -> Result<bool> {
         // Validate JWT access token or ID token
         // Try to decode as JWT first
-        if let Ok(header) = decode_header(token) {
-            if let Some(kid) = header.kid {
-                if let Ok(decoding_key) = self.get_decoding_key(&kid).await {
+        if let Ok(header) = decode_header(token)
+            && let Some(kid) = header.kid
+                && let Ok(decoding_key) = self.get_decoding_key(&kid).await {
                     let mut validation = Validation::new(header.alg);
                     validation.set_issuer(&[&self.issuer_url]);
                     // For access tokens, audience might be different - don't validate
@@ -414,8 +414,6 @@ impl IdentityProvider for OidcIdentityProvider {
                         return Ok(true);
                     }
                 }
-            }
-        }
 
         // If JWT validation fails, try token introspection endpoint
         if let Some(introspection_endpoint) = self.config.config.get("introspection_endpoint") {
@@ -431,11 +429,9 @@ impl IdentityProvider for OidcIdentityProvider {
                 .form(&params)
                 .send()
                 .await
-            {
-                if let Ok(introspection) = response.json::<TokenIntrospection>().await {
+                && let Ok(introspection) = response.json::<TokenIntrospection>().await {
                     return Ok(introspection.active);
                 }
-            }
         }
 
         Ok(false)

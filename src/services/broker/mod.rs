@@ -146,15 +146,14 @@ impl IdentityBrokerRegistry {
         realm_id: &Uuid,
     ) -> Result<Option<User>, String> {
         for (id, broker) in &self.brokers {
-            if let Some(config) = self.provider_configs.get(id) {
-                if config.enabled && &config.realm_id == realm_id {
+            if let Some(config) = self.provider_configs.get(id)
+                && config.enabled && &config.realm_id == realm_id {
                     match broker.authenticate(username, password).await {
                         Ok(Some(user)) => return Ok(Some(user)),
                         Ok(None) => continue,
                         Err(e) => return Err(e),
                     }
                 }
-            }
         }
         Ok(None)
     }

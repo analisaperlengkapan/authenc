@@ -365,11 +365,10 @@ impl SamlService {
         expected_idp_entity_id: &str,
     ) -> Result<SamlUserInfo> {
         // Verify signature if IdP is configured
-        if let Some(idp) = self.identity_providers.get(expected_idp_entity_id) {
-            if !idp.certificate.is_empty() {
+        if let Some(idp) = self.identity_providers.get(expected_idp_entity_id)
+            && !idp.certificate.is_empty() {
                 self.verify_saml_signature(xml, &idp.certificate)?;
             }
-        }
 
         // Parse XML to SamlResponse
         let response: SamlResponse = self.parse_saml_xml(xml)?;

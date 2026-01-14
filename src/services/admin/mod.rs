@@ -1212,8 +1212,7 @@ impl AdminService for AdminManager {
             Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>>,
         ) = if let Some(uid) = user_id {
             (
-                format!(
-                    r#"
+                r#"
                     SELECT s.id, s.user_id, u.username, s.ip_address, s.user_agent,
                            s.started_at, s.last_accessed, s.expires_at, s.client_id
                     FROM user_sessions s
@@ -1221,8 +1220,7 @@ impl AdminService for AdminManager {
                     WHERE s.user_id = $1 AND NOT s.revoked AND s.expires_at > NOW()
                     ORDER BY s.last_accessed DESC
                     LIMIT $2 OFFSET $3
-                    "#
-                ),
+                    "#.to_string(),
                 vec![
                     Box::new(uid) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
                     Box::new(limit as i64) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
@@ -1231,8 +1229,7 @@ impl AdminService for AdminManager {
             )
         } else {
             (
-                format!(
-                    r#"
+                r#"
                     SELECT s.id, s.user_id, u.username, s.ip_address, s.user_agent,
                            s.started_at, s.last_accessed, s.expires_at, s.client_id
                     FROM user_sessions s
@@ -1240,8 +1237,7 @@ impl AdminService for AdminManager {
                     WHERE NOT s.revoked AND s.expires_at > NOW()
                     ORDER BY s.last_accessed DESC
                     LIMIT $1 OFFSET $2
-                    "#
-                ),
+                    "#.to_string(),
                 vec![
                     Box::new(limit as i64) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
                     Box::new(offset as i64) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,

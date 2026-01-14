@@ -159,12 +159,13 @@ pub struct UpdateDeviceRequest {
 
 /// Update device handler
 /// Update device handler
+#[axum::debug_handler]
 pub async fn update_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(update_request): Json<UpdateDeviceRequest>,
-) -> Result<Json<serde_json::Value>> {
+) -> crate::error::Result<impl axum::response::IntoResponse> {
     let service = DeviceService::new(state.database.clone());
 
     let user_id = Uuid::parse_str(&auth_user.id)
@@ -298,11 +299,10 @@ pub async fn get_device_sessions(
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     // Verify ownership
-    if let Some(device) = service.get_device(id).await.map_err(|_| AuthencError::internal("Error checking device"))? {
-        if device.user_id != user_id {
+    if let Some(device) = service.get_device(id).await.map_err(|_| AuthencError::internal("Error checking device"))?
+        && device.user_id != user_id {
             return Err(AuthencError::forbidden("Access denied to this device"));
         }
-    }
 
     match service.get_device_sessions(id).await {
         Ok(sessions) => Ok(Json(serde_json::json!({
@@ -335,11 +335,10 @@ pub async fn create_session(
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     // Verify ownership
-    if let Some(device) = service.get_device(id).await.map_err(|_| AuthencError::internal("Error checking device"))? {
-        if device.user_id != user_id {
+    if let Some(device) = service.get_device(id).await.map_err(|_| AuthencError::internal("Error checking device"))?
+        && device.user_id != user_id {
             return Err(AuthencError::forbidden("Access denied to this device"));
         }
-    }
 
     match service
         .create_session(id, user_id, request.session_id, request.ip_address)

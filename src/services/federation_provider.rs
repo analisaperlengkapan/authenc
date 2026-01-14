@@ -9,11 +9,12 @@ impl Default for FederationRegistry {
 }
 
 /// Trait for federation providers that can authenticate users from external systems
+#[async_trait::async_trait]
 pub trait FederationProvider: Send + Sync {
     /// Get user by username from external system
-    fn get_user_by_username(&self, realm_id: &uuid::Uuid, username: &str) -> Option<User>;
+    async fn get_user_by_username(&self, realm_id: &uuid::Uuid, username: &str) -> Option<User>;
     /// Verify user password against external system
-    fn verify_password(&self, username: &str, password: &str) -> bool;
+    async fn verify_password(&self, username: &str, password: &str) -> bool;
 }
 
 /// Registry for managing multiple federation providers
@@ -36,9 +37,9 @@ impl FederationRegistry {
     }
 
     /// Get user by username across all providers
-    pub fn get_user_by_username(&self, realm_id: &uuid::Uuid, username: &str) -> Option<User> {
+    pub async fn get_user_by_username(&self, realm_id: &uuid::Uuid, username: &str) -> Option<User> {
         for p in &self.providers {
-            if let Some(u) = p.get_user_by_username(realm_id, username) {
+            if let Some(u) = p.get_user_by_username(realm_id, username).await {
                 return Some(u);
             }
         }
@@ -46,9 +47,9 @@ impl FederationRegistry {
     }
 
     /// Verify password across all providers
-    pub fn verify_password(&self, username: &str, password: &str) -> bool {
+    pub async fn verify_password(&self, username: &str, password: &str) -> bool {
         for p in &self.providers {
-            if p.verify_password(username, password) {
+            if p.verify_password(username, password).await {
                 return true;
             }
         }
@@ -62,8 +63,9 @@ pub struct DummyFederationProvider;
 
 const FEDERATED_PASSWORD_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$upp7kNAs9Mqcq+N2/3fUlw$UBWDAYQ5u/9b2KYLcYB1DlTbiczJnJjH7Flz8edIkH0";
 
+#[async_trait::async_trait]
 impl FederationProvider for DummyFederationProvider {
-    fn get_user_by_username(&self, realm_id: &uuid::Uuid, username: &str) -> Option<User> {
+    async fn get_user_by_username(&self, _realm_id: &uuid::Uuid, username: &str) -> Option<User> {
         if username == "federated" {
             Some(User {
                 id: uuid::Uuid::new_v4(),
@@ -107,7 +109,7 @@ impl FederationProvider for DummyFederationProvider {
     /// - Uses constant-time comparison to prevent timing attacks
     /// - Attacker cannot infer password by measuring response time
     /// - In production, passwords should be hashed with bcrypt/argon2
-    fn verify_password(&self, username: &str, password: &str) -> bool {
+    async fn verify_password(&self, username: &str, password: &str) -> bool {
         // Expected credentials (hashed)
         let expected_username = b"federated";
 
@@ -116,7 +118,7 @@ impl FederationProvider for DummyFederationProvider {
 
         // Verify password hash unconditionally to prevent timing attacks based on username validity.
         // Even if the username is incorrect, we perform the expensive hash verification.
-        let password_match_bool = verify_password(FEDERATED_PASSWORD_HASH, password).unwrap_or(false);
+        let password_match_bool = verify_password(FEDERATED_PASSWORD_HASH, password).await.unwrap_or(false);
         let password_match = Choice::from(password_match_bool as u8);
 
         // Both must match - using & for constant-time evaluation of the Choice types
@@ -128,21 +130,21 @@ impl FederationProvider for DummyFederationProvider {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_verify_password_success() {
+    #[tokio::test]
+    async fn test_verify_password_success() {
         let provider = DummyFederationProvider;
-        assert!(provider.verify_password("federated", "federatedpass"));
+        assert!(provider.verify_password("federated", "federatedpass").await);
     }
 
-    #[test]
-    fn test_verify_password_wrong_password() {
+    #[tokio::test]
+    async fn test_verify_password_wrong_password() {
         let provider = DummyFederationProvider;
-        assert!(!provider.verify_password("federated", "wrongpass"));
+        assert!(!provider.verify_password("federated", "wrongpass").await);
     }
 
-    #[test]
-    fn test_verify_password_wrong_username() {
+    #[tokio::test]
+    async fn test_verify_password_wrong_username() {
         let provider = DummyFederationProvider;
-        assert!(!provider.verify_password("wronguser", "federatedpass"));
+        assert!(!provider.verify_password("wronguser", "federatedpass").await);
     }
 }

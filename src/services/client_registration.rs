@@ -155,13 +155,12 @@ impl DefaultClientRegistrationService {
         }
 
         // Validate application type
-        if let Some(app_type) = &request.application_type {
-            if app_type != "web" && app_type != "native" {
+        if let Some(app_type) = &request.application_type
+            && app_type != "web" && app_type != "native" {
                 return Err(AuthencError::ValidationError {
                     message: "Application type must be 'web' or 'native'".to_string(),
                 });
             }
-        }
 
         Ok(())
     }
@@ -193,7 +192,9 @@ impl DefaultClientRegistrationService {
         client: &OidcClient,
         registration_access_token: &str,
     ) -> ClientRegistrationResponse {
-        let response = ClientRegistrationResponse {
+
+
+        ClientRegistrationResponse {
             client_id: client.client_id.clone(),
             client_id_issued_at: Some(chrono::Utc::now().timestamp()),
             client_secret: Some(client.client_secret.clone()),
@@ -231,9 +232,7 @@ impl DefaultClientRegistrationService {
             registration_access_token: Some(registration_access_token.to_string()),
             registration_client_uri: Some(format!("/register/{}", client.client_id)),
             additional_metadata: HashMap::new(),
-        };
-
-        response
+        }
     }
 }
 
