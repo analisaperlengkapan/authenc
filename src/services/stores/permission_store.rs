@@ -1,5 +1,6 @@
 use crate::models::permission::Permission;
 use std::sync::{Arc, RwLock};
+use uuid::Uuid;
 
 /// In-memory store for managing permissions
 pub struct PermissionStore {
@@ -34,11 +35,16 @@ impl PermissionStore {
 
     /// Get permissions by realm ID
     pub fn get_by_realm(&self, realm_id: &str) -> Vec<Permission> {
+        let realm_uuid = match Uuid::parse_str(realm_id) {
+            Ok(uuid) => uuid,
+            Err(_) => return vec![],
+        };
+
         self.permissions
             .read()
             .unwrap()
             .iter()
-            .filter(|p| p.realm_id.to_string() == realm_id)
+            .filter(|p| p.realm_id == realm_uuid)
             .cloned()
             .collect()
     }
