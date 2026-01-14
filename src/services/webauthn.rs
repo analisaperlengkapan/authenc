@@ -1,41 +1,38 @@
 use crate::crypto::aes_gcm::{AesGcmService, EncryptedData};
+use crate::database::operations::{users, webauthn as webauthn_db};
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
 use crate::models::webauthn::*;
-use crate::utils::crypto_monitor::CryptoMonitor;
 use axum::response::Json;
-use base64ct::{Base64UrlUnpadded, Encoding};
-use chrono::Utc;
-use getrandom;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::error;
 use uuid::Uuid;
+use webauthn_rs::prelude::{
+    AuthenticatorTransport, CreationChallengeResponse, CredentialID, Passkey,
+    RegisterPublicKeyCredential, RequestChallengeResponse, UniqueId, UserVerificationPolicy,
+};
+use webauthn_rs::{Webauthn, WebauthnBuilder};
 
 /// WebAuthn service for FIDO2 authentication
 pub struct WebAuthnService {
     db: Arc<Database>,
-    relying_party_id: String,
-    relying_party_name: String,
+    webauthn: Arc<Webauthn>,
     encryption: AesGcmService,
 }
 
 /// WebAuthn registration request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebAuthnRegistrationRequest {
-    /// Username for the WebAuthn credential
     pub username: String,
-    /// Display name for the user
     pub display_name: String,
-    /// Realm ID for the user
     pub realm_id: Uuid,
 }
 
 /// WebAuthn authentication request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebAuthnAuthenticationRequest {
-    /// Username to authenticate
     pub username: String,
-    /// Realm ID for the user
     pub realm_id: Uuid,
 }
 
@@ -48,22 +45,28 @@ impl WebAuthnService {
         jwt_secret: String,
         encryption_key: Option<String>,
     ) -> Self {
-        let key = if let Some(key_str) = encryption_key {
-            // Use dedicated encryption key if provided
-            AesGcmService::derive_key_from_password(&key_str, b"webauthn_credential_storage_v1")
-                .unwrap_or_else(|_| AesGcmService::generate_key())
-        } else {
-            // Fallback to deriving from JWT secret
-            AesGcmService::derive_key_from_password(&jwt_secret, b"webauthn_credential_storage_v1")
-                .unwrap_or_else(|_| AesGcmService::generate_key())
-        };
+        let rp_origin = format!("https://{}", rp_id);
+        let builder = WebauthnBuilder::new(&rp_id, &rp_origin)
+            .expect("Invalid relying party configuration")
+            .rp_name(&rp_name);
+
+        let webauthn = Arc::new(builder.build().expect("Failed to build WebAuthn instance"));
+
+        let key = encryption_key
+            .map(|k| AesGcmService::derive_key_from_password(&k, b"webauthn_credential_storage_v1"))
+            .unwrap_or_else(|| {
+                AesGcmService::derive_key_from_password(
+                    &jwt_secret,
+                    b"webauthn_credential_storage_v1",
+                )
+            })
+            .unwrap_or_else(|_| AesGcmService::generate_key());
 
         let encryption = AesGcmService::with_key(&key).unwrap_or_default();
 
         Self {
             db,
-            relying_party_id: rp_id,
-            relying_party_name: rp_name,
+            webauthn,
             encryption,
         }
     }
@@ -73,98 +76,39 @@ impl WebAuthnService {
         &self,
         request: WebAuthnRegistrationRequest,
     ) -> Result<Json<serde_json::Value>> {
-        // Generate cryptographically secure challenge
-        let challenge_bytes =
-            CryptoMonitor::monitor_rsa_operation("webauthn_challenge_gen", || {
-                let mut challenge = [0u8; 32];
-                getrandom::getrandom(&mut challenge).expect("Failed to generate random challenge");
-                challenge
-            });
+        let user = users::get_user_by_username(&self.db, &request.realm_id, &request.username)
+            .await?
+            .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
-        let challenge_b64 = Base64UrlUnpadded::encode_string(&challenge_bytes);
+        let exclude_credentials = self
+            .get_user_credentials(&request.realm_id, &request.username)
+            .await?
+            .iter()
+            .map(|c| c.credential_id.clone().into())
+            .collect();
 
-        // Create user ID
-        let user_id = Uuid::new_v4().as_bytes().to_vec();
+        let (ccr, passkey_reg) = self
+            .webauthn
+            .start_passkey_registration(
+                UniqueId(user.id.as_bytes().to_vec()),
+                &user.username,
+                &request.display_name,
+                Some(exclude_credentials),
+                Some(AuthenticatorTransport::any()),
+                Some(UserVerificationPolicy::Preferred),
+                None,
+            )
+            .map_err(|e| {
+                error!("WebAuthn registration start failed: {}", e);
+                AuthencError::internal_server_error("Failed to start WebAuthn registration")
+            })?;
 
-        // Create the registration challenge for database storage
-        let _registration_challenge = WebauthnRegistrationChallenge {
-            id: Uuid::new_v4(),
-            user_id: Uuid::nil(), // Would be looked up from username
-            challenge: challenge_bytes.to_vec(),
-            relying_party_id: self.relying_party_id.clone(),
-            relying_party_name: self.relying_party_name.clone(),
-            user_name: request.username.clone(),
-            user_display_name: Some(request.display_name.clone()),
-            user_id_bytes: user_id.clone(),
-            public_key_credential_parameters: vec![
-                WebauthnPublicKeyCredentialParameter {
-                    ty: "public-key".to_string(),
-                    alg: -7, // ES256
-                },
-                WebauthnPublicKeyCredentialParameter {
-                    ty: "public-key".to_string(),
-                    alg: -257, // RS256
-                },
-                WebauthnPublicKeyCredentialParameter {
-                    ty: "public-key".to_string(),
-                    alg: -8, // EdDSA
-                },
-            ],
-            authenticator_selection: Some(WebauthnAuthenticatorSelection {
-                authenticator_attachment: Some("cross-platform".to_string()),
-                require_resident_key: false,
-                user_verification: "preferred".to_string(),
-            }),
-            attestation: Some("direct".to_string()),
-            timeout: Some(60000), // 60 seconds
-            exclude_credentials: vec![],
-            extensions: None,
-            created_at: Utc::now(),
-            expires_at: Utc::now() + chrono::Duration::seconds(300), // 5 minutes
-        };
-
-        // Store challenge in database for verification
-        self.store_challenge(&request.realm_id, &request.username, &challenge_bytes)
+        let passkey_reg_json = serde_json::to_string(&passkey_reg)
+            .map_err(|_| AuthencError::internal_server_error("Failed to serialize challenge state"))?;
+        self.store_challenge(&request.realm_id, &request.username, &passkey_reg_json, "registration")
             .await?;
 
-        // Return proper WebAuthn registration options format
-        let registration_options = WebAuthnRegistrationOptions {
-            challenge: challenge_b64,
-            rp: RelyingParty {
-                id: self.relying_party_id.clone(),
-                name: self.relying_party_name.clone(),
-            },
-            user: WebAuthnUser {
-                id: user_id,
-                name: request.username.clone(),
-                display_name: request.display_name.clone(),
-            },
-            pub_key_cred_params: vec![
-                PubKeyCredParam {
-                    alg: -7, // ES256
-                    typ: "public-key".to_string(),
-                },
-                PubKeyCredParam {
-                    alg: -257, // RS256
-                    typ: "public-key".to_string(),
-                },
-                PubKeyCredParam {
-                    alg: -8, // EdDSA
-                    typ: "public-key".to_string(),
-                },
-            ],
-            authenticator_selection: Some(AuthenticatorSelectionCriteria {
-                authenticator_attachment: Some("cross-platform".to_string()),
-                require_resident_key: Some(false),
-                user_verification: Some("preferred".to_string()),
-            }),
-            timeout: Some(60000),
-            exclude_credentials: vec![],
-            attestation: Some("direct".to_string()),
-            extensions: None,
-        };
-
-        Ok(Json(serde_json::to_value(registration_options).unwrap()))
+        Ok(Json(serde_json::to_value(ccr).unwrap()))
     }
 
     /// Verify WebAuthn registration response
@@ -172,65 +116,54 @@ impl WebAuthnService {
         &self,
         realm_id: &Uuid,
         username: &str,
-        response: WebauthnRegistrationResponse,
+        response: WebAuthnRegistrationResponse,
         device_id: Option<Uuid>,
     ) -> Result<Json<serde_json::Value>> {
-        // Retrieve stored challenge
-        let stored_challenge = self
-            .get_challenge(realm_id, username)
+        let passkey_reg_json = self
+            .get_challenge(realm_id, username, "registration")
             .await?
-            .ok_or_else(|| AuthencError::unauthorized("No challenge found for user"))?;
+            .ok_or_else(|| AuthencError::unauthorized("No registration challenge found for user"))?;
+        let passkey_reg = serde_json::from_str(&passkey_reg_json)
+            .map_err(|_| AuthencError::internal_server_error("Failed to deserialize challenge state"))?;
 
-        // Decode client data JSON
-        let client_data_json: serde_json::Value =
-            serde_json::from_slice(&response.response.client_data_json)
-                .map_err(|_| AuthencError::unauthorized("Invalid client data JSON"))?;
+        let reg_cred: RegisterPublicKeyCredential = response.into();
 
-        // Verify challenge
-        let challenge_b64 = client_data_json["challenge"]
-            .as_str()
-            .ok_or_else(|| AuthencError::unauthorized("Missing challenge in client data"))?;
+        let passkey = self
+            .webauthn
+            .finish_passkey_registration(&reg_cred, &passkey_reg)
+            .map_err(|e| {
+                error!("WebAuthn registration finish failed: {}", e);
+                AuthencError::unauthorized("WebAuthn registration failed verification")
+            })?;
 
-        if challenge_b64 != Base64UrlUnpadded::encode_string(&stored_challenge) {
-            return Err(AuthencError::unauthorized("Challenge mismatch"));
-        }
-
-        // Verify origin
-        let origin = client_data_json["origin"]
-            .as_str()
-            .ok_or_else(|| AuthencError::unauthorized("Missing origin in client data"))?;
-
-        if !self.verify_origin(origin) {
-            return Err(AuthencError::unauthorized("Origin verification failed"));
-        }
-
-        // Parse attestation object (simplified - in production would need full CBOR parsing)
-        // For now, we'll create a mock credential
         let credential = WebauthnCredential {
             id: Uuid::new_v4(),
-            user_id: Uuid::nil(), // Would be looked up from username
-            credential_id: response.raw_id,
-            public_key: vec![],       // Would be extracted from attestation object
-            public_key_algorithm: -7, // ES256
-            signature_counter: 0,
-            attestation_object: Some(response.response.attestation_object),
-            authenticator_data: None, // Not available in registration response
-            user_handle: Some(vec![]),
+            user_id: Uuid::nil(),
+            credential_id: passkey.cred_id().clone().into_inner(),
+            public_key: passkey.pub_key().clone().into_inner(),
+            public_key_algorithm: -7,
+            signature_counter: passkey.sign_count(),
+            attestation_object: None,
+            authenticator_data: None,
+            user_handle: None,
             credential_type: "public-key".to_string(),
-            transports: Some(vec![]),
-            aaguid: None,
-            attestation_format: Some("none".to_string()),
+            transports: Some(
+                passkey
+                    .transports()
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect(),
+            ),
+            aaguid: Some(Uuid::from_bytes(*passkey.aaguid().as_bytes())),
+            attestation_format: Some("packed".to_string()),
             device_id,
-            created_at: Utc::now(),
+            created_at: chrono::Utc::now(),
             last_used_at: None,
             enabled: true,
         };
 
-        // Store credential
         self.store_credential(realm_id, username, &credential).await?;
-
-        // Remove used challenge
-        self.delete_challenge(realm_id, username).await?;
+        self.delete_challenge(realm_id, username, "registration").await?;
 
         Ok(Json(serde_json::json!({
             "success": true,
@@ -244,63 +177,30 @@ impl WebAuthnService {
         &self,
         request: WebAuthnAuthenticationRequest,
     ) -> Result<Json<serde_json::Value>> {
-        // Get user's credentials
-        let credentials = self.get_user_credentials(&request.realm_id, &request.username).await?;
-
-        if credentials.is_empty() {
-            return Err(AuthencError::unauthorized(
-                "No WebAuthn credentials found for user",
-            ));
+        let user_credentials = self.get_user_credentials(&request.realm_id, &request.username).await?;
+        if user_credentials.is_empty() {
+            return Err(AuthencError::unauthorized("No WebAuthn credentials found"));
         }
 
-        // Generate challenge
-        let challenge_bytes =
-            CryptoMonitor::monitor_rsa_operation("webauthn_auth_challenge", || {
-                let mut challenge = [0u8; 32];
-                getrandom::getrandom(&mut challenge).expect("Failed to generate random challenge");
-                challenge
-            });
-
-        let _challenge_b64 = Base64UrlUnpadded::encode_string(&challenge_bytes);
-
-        let allow_credentials: Vec<PublicKeyCredentialDescriptor> = credentials
-            .iter()
-            .map(|cred| PublicKeyCredentialDescriptor {
-                id: cred.credential_id.clone(),
-                typ: "public-key".to_string(),
-                transports: Some(vec![
-                    "usb".to_string(),
-                    "nfc".to_string(),
-                    "ble".to_string(),
-                ]),
-            })
+        let allow_credentials: Vec<CredentialID> = user_credentials
+            .into_iter()
+            .map(|c| c.credential_id.into())
             .collect();
 
-        let auth_challenge = WebauthnAuthenticationChallenge {
-            id: Uuid::new_v4(),
-            user_id: None,
-            challenge: challenge_bytes.to_vec(),
-            relying_party_id: self.relying_party_id.clone(),
-            allow_credentials: allow_credentials
-                .into_iter()
-                .map(|desc| WebauthnCredentialDescriptor {
-                    ty: desc.typ,
-                    id: desc.id,
-                    transports: desc.transports,
-                })
-                .collect(),
-            user_verification: Some("preferred".to_string()),
-            timeout: None,
-            extensions: None,
-            created_at: Utc::now(),
-            expires_at: Utc::now() + chrono::Duration::minutes(5),
-        };
+        let (rcr, passkey_auth) = self
+            .webauthn
+            .start_passkey_authentication(&allow_credentials)
+            .map_err(|e| {
+                error!("WebAuthn authentication start failed: {}", e);
+                AuthencError::internal_server_error("Failed to start WebAuthn authentication")
+            })?;
 
-        // Store challenge
-        self.store_challenge(&request.realm_id, &request.username, &challenge_bytes)
+        let passkey_auth_json = serde_json::to_string(&passkey_auth)
+            .map_err(|_| AuthencError::internal_server_error("Failed to serialize auth state"))?;
+        self.store_challenge(&request.realm_id, &request.username, &passkey_auth_json, "authentication")
             .await?;
 
-        Ok(Json(serde_json::to_value(auth_challenge).unwrap()))
+        Ok(Json(serde_json::to_value(rcr).unwrap()))
     }
 
     /// Verify WebAuthn authentication response
@@ -308,47 +208,42 @@ impl WebAuthnService {
         &self,
         realm_id: &Uuid,
         username: &str,
-        response: WebauthnAuthenticationResponse,
+        response: WebAuthnAuthenticationResponse,
     ) -> Result<Json<serde_json::Value>> {
-        // Retrieve stored challenge
-        let stored_challenge = self
-            .get_challenge(realm_id, username)
+        let passkey_auth_json = self
+            .get_challenge(realm_id, username, "authentication")
             .await?
-            .ok_or_else(|| AuthencError::unauthorized("No challenge found for user"))?;
+            .ok_or_else(|| AuthencError::unauthorized("No authentication challenge found for user"))?;
+        let passkey_auth = serde_json::from_str(&passkey_auth_json)
+            .map_err(|_| AuthencError::internal_server_error("Failed to deserialize auth state"))?;
 
-        // Decode client data JSON
-        let client_data_json: serde_json::Value =
-            serde_json::from_slice(&response.response.client_data_json)
-                .map_err(|_| AuthencError::unauthorized("Invalid client data JSON"))?;
-
-        // Verify challenge
-        let challenge_b64 = client_data_json["challenge"]
-            .as_str()
-            .ok_or_else(|| AuthencError::unauthorized("Missing challenge in client data"))?;
-
-        if challenge_b64 != Base64UrlUnpadded::encode_string(&stored_challenge) {
-            return Err(AuthencError::unauthorized("Challenge mismatch"));
-        }
-
-        // Get credential
-        let _credential = self
-            .get_credential(username, &response.id) // Credential ID is unique enough? Or need realm?
+        let credential_id_str = response.id.clone();
+        let credential_id_bytes = base64ct::Base64UrlUnpadded::decode_vec(&credential_id_str)
+            .map_err(|_| AuthencError::unauthorized("Invalid credential ID format"))?;
+        let db_credential = self
+            .get_credential(&credential_id_bytes)
             .await?
             .ok_or_else(|| AuthencError::unauthorized("Credential not found"))?;
 
-        // Verify signature (simplified - in production would verify against public key)
-        // This is where you'd implement the actual cryptographic verification
+        let passkey = Passkey::new(
+            db_credential.credential_id.into(),
+            db_credential.public_key.into(),
+            db_credential.signature_counter,
+            AuthenticatorTransport::any(),
+            db_credential.aaguid.map(|g| g.into_bytes().into()).unwrap_or_default(),
+        );
 
-        // Update sign count
-        self.update_credential_sign_count(
-            username,
-            &response.id,
-            response.response.authenticator_data.len() as u32,
-        )
-        .await?;
+        let auth_result = self
+            .webauthn
+            .finish_passkey_authentication(&response.into(), &passkey_auth, &passkey)
+            .map_err(|e| {
+                error!("WebAuthn authentication finish failed: {}", e);
+                AuthencError::unauthorized("WebAuthn authentication failed verification")
+            })?;
 
-        // Remove used challenge
-        self.delete_challenge(realm_id, username).await?;
+        self.update_credential_sign_count(&credential_id_str, auth_result.sign_count)
+            .await?;
+        self.delete_challenge(realm_id, username, "authentication").await?;
 
         Ok(Json(serde_json::json!({
             "success": true,
@@ -357,39 +252,27 @@ impl WebAuthnService {
         })))
     }
 
-    // Database operations
-    /// Store WebAuthn challenge for user
-    async fn store_challenge(&self, realm_id: &Uuid, username: &str, challenge: &[u8]) -> Result<()> {
-        use crate::database::operations::users;
-
-        // Get user ID from username
+    /// Store WebAuthn challenge state for user
+    async fn store_challenge(&self, realm_id: &Uuid, username: &str, state: &str, challenge_type: &str) -> Result<()> {
         let user = users::get_user_by_username(&self.db, realm_id, username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
         let client = self.db.get_connection().await?;
-        let challenge_b64 = base64ct::Base64UrlUnpadded::encode_string(challenge);
-        let expires_at = chrono::Utc::now() + chrono::Duration::seconds(300); // 5 minutes
+        let expires_at = chrono::Utc::now() + chrono::Duration::minutes(5);
 
         let query = r#"
             INSERT INTO webauthn_challenges (user_id, challenge, challenge_type, expires_at)
             VALUES ($1, $2, $3, $4)
         "#;
-
         client
-            .execute(
-                query,
-                &[&user.id, &challenge_b64, &"registration", &expires_at],
-            )
+            .execute(query, &[&user.id, &state, &challenge_type, &expires_at])
             .await?;
         Ok(())
     }
 
-    /// Get stored WebAuthn challenge for user
-    async fn get_challenge(&self, realm_id: &Uuid, username: &str) -> Result<Option<Vec<u8>>> {
-        use crate::database::operations::users;
-
-        // Get user ID from username
+    /// Get stored WebAuthn challenge state for user
+    async fn get_challenge(&self, realm_id: &Uuid, username: &str, challenge_type: &str) -> Result<Option<String>> {
         let user = users::get_user_by_username(&self.db, realm_id, username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
@@ -401,21 +284,12 @@ impl WebAuthnService {
             ORDER BY created_at DESC
             LIMIT 1
         "#;
-
-        let row = client
-            .query_opt(query, &[&user.id, &"registration"])
-            .await?;
-        Ok(row.map(|r| {
-            let challenge_b64: String = r.get(0);
-            base64ct::Base64UrlUnpadded::decode_vec(&challenge_b64).unwrap_or_default()
-        }))
+        let row = client.query_opt(query, &[&user.id, &challenge_type]).await?;
+        Ok(row.map(|r| r.get(0)))
     }
 
-    /// Delete stored WebAuthn challenge for user
-    async fn delete_challenge(&self, realm_id: &Uuid, username: &str) -> Result<()> {
-        use crate::database::operations::users;
-
-        // Get user ID from username
+    /// Mark a WebAuthn challenge as used
+    async fn delete_challenge(&self, realm_id: &Uuid, username: &str, challenge_type: &str) -> Result<()> {
         let user = users::get_user_by_username(&self.db, realm_id, username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
@@ -426,8 +300,7 @@ impl WebAuthnService {
             SET used = true
             WHERE user_id = $1 AND challenge_type = $2 AND used = false
         "#;
-
-        client.execute(query, &[&user.id, &"registration"]).await?;
+        client.execute(query, &[&user.id, &challenge_type]).await?;
         Ok(())
     }
 
