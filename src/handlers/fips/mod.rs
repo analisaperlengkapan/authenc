@@ -90,6 +90,6 @@ pub fn create_fips_routes() -> Router<Arc<AppState>> {
         .route("/enable", post(enable_fips_mode))
         .route("/disable", post(disable_fips_mode))
         .route("/profiles", get(get_security_profiles))
-        .route("/profiles/:profile_name", put(set_security_profile))
+        .route("/profiles/{profile_name}", put(set_security_profile))
         .route("/check", get(perform_compliance_check))
 }

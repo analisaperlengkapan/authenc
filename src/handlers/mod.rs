@@ -125,6 +125,79 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         ))
         .with_state(oauth2_state.clone());
 
+    // Create composite router for /api/v1/auth to avoid route overwrites
+    let auth_api_router = Router::new()
+        // Core auth routes
+        .merge(api::auth::create_auth_routes().with_state(state.clone()))
+        // Realm, User, Role, Permission routes
+        .merge(api::realm::create_realm_routes().with_state(state.clone()))
+        .merge(api::user::create_user_routes().with_state(state.clone()))
+        .merge(api::user_role::create_user_role_routes().with_state(state.clone()))
+        .merge(api::user_permission::create_user_permission_routes().with_state(state.clone()))
+        .merge(api::role::create_role_routes().with_state(state.clone()))
+        .merge(api::permission::create_permission_routes().with_state(state.clone()))
+        .merge(api::client::create_client_routes().with_state(state.clone()))
+        // Auth flow routes
+        .merge(api::auth_flow::create_auth_flow_routes().with_state(state.clone()))
+        // Audit routes
+        .merge(api::audit::create_audit_routes().with_state(state.audit_log_store.clone()))
+        // Permission check routes
+        .merge(api::permission_check::create_permission_check_routes().with_state(state.clone()))
+        // Resource routes
+        .merge(api::resource::create_resource_routes().with_state((
+            state.resource_store.clone(),
+            state.permission_ticket_store.clone(),
+            state.scope_store.clone(),
+            state.user_store.clone(),
+        )))
+        .merge(api::resources::create_resources_routes().with_state((
+            state.resource_store.clone(),
+            state.permission_ticket_store.clone(),
+        )))
+        // Account routes
+        .merge(api::account::create_account_routes().with_state(
+            api::account::AccountState {
+                user_store: state.user_store.clone(),
+                session_store: state.session_store.clone(),
+                oidc_client_store: state.oidc_client_store.clone(),
+                totp_store: state.totp_store.clone(),
+                audit_log_store: state.audit_log_store.clone(),
+                social_account_store: state.social_account_store.clone(),
+                consent_store: state.consent_store.clone(),
+                oauth2_service: state.oauth2_service.clone(),
+                webauthn_service: state.webauthn_service.clone(),
+            }
+        ))
+        .merge(api::account::create_consent_routes().with_state(state.clone()))
+        .merge(api::account_credentials::create_account_credentials_routes().with_state(
+            api::account_credentials::AccountCredentialsState {
+                user_store: state.user_store.clone(),
+                totp_store: state.totp_store.clone(),
+                session_store: state.session_store.clone(),
+            },
+        ))
+        // Nested sub-routes
+        .nest(
+            "/social",
+            social::create_social_routes().with_state(state.clone()),
+        )
+        .nest(
+            "/zero-trust",
+            zero_trust::create_zero_trust_routes(),
+        )
+        .nest(
+            "/broker",
+            broker::create_identity_broker_routes(),
+        )
+        .nest(
+            "/federated",
+            federated_auth::create_federated_auth_routes(),
+        )
+        .nest(
+            "/federation",
+            federation::create_federation_routes().with_state(state.clone()),
+        );
+
     let router = Router::new()
         .merge(health::create_health_routes().with_state(state.database.clone()))
         // OAuth2 authorization endpoint (accessible without auth)
@@ -165,90 +238,21 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/oauth2",
             client_registration::create_client_registration_routes().with_state(state.clone()),
         )
-        // Advanced Services API routes
-        // Social login routes
-        .nest(
-            "/api/v1/auth/social",
-            social::create_social_routes().with_state(state.clone()),
-        )
-        // Temporarily disabled authorization routes due to Axum migration
-        // .nest(
-        //     "/api/v1/auth/authorization",
-        //     authorization::create_authorization_routes(),
-        // )
-        .nest(
-            "/api/v1/auth/zero-trust",
-            zero_trust::create_zero_trust_routes(),
-        )
+        // Main Auth API Nest
+        .nest("/api/v1/auth", auth_api_router)
         // FIPS management routes
         .nest(
             "/api/v1/admin/fips",
             fips::create_fips_routes().with_state(state.clone()),
         )
-        // Temporarily disabled broker routes due to Axum migration
-        .nest(
-            "/api/v1/auth/broker",
-            broker::create_identity_broker_routes(),
-        )
-        // Federated authentication routes with JIT provisioning
-        .nest(
-            "/api/v1/auth/federated",
-            federated_auth::create_federated_auth_routes(),
-        )
         // SSO (Single Sign-On) routes
         .merge(sso::create_sso_router().with_state(state.clone()))
-        // SPI-based federation routes for enterprise providers
-        .nest(
-            "/api/v1/auth/federation",
-            federation::create_federation_routes().with_state(state.clone()),
-        )
         // SPI management routes for enterprise features
         .nest(
             "/api/v1/admin/spi",
             spi::create_spi_routes().with_state(state.clone()),
         )
         .nest("/api/v1/admin", admin::create_admin_routes())
-        // API routes for realms, users, roles, permissions
-        .nest(
-            "/api/v1/auth",
-            api::realm::create_realm_routes().with_state(state.clone()),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::user::create_user_routes().with_state(state.clone()),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::user_role::create_user_role_routes().with_state(state.clone()),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::user_permission::create_user_permission_routes().with_state(state.clone()),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::role::create_role_routes().with_state(state.clone()),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::permission::create_permission_routes().with_state(state.clone()),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::client::create_client_routes().with_state(state.clone()),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::audit::create_audit_routes().with_state(state.audit_log_store.clone()),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::auth::create_auth_routes().with_state(state.clone()),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::auth_flow::create_auth_flow_routes().with_state(state.clone()),
-        )
         .nest(
             "/api/v1",
             api::events::create_event_routes().with_state(state.clone()),
@@ -267,55 +271,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .nest(
             "/api/v1/realms",
             api::authenticators::create_authenticator_routes().with_state(state.clone()),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::permission_check::create_permission_check_routes().with_state(state.clone()),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::resource::create_resource_routes().with_state((
-                state.resource_store.clone(),
-                state.permission_ticket_store.clone(),
-                state.scope_store.clone(),
-                state.user_store.clone(),
-            )),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::resources::create_resources_routes().with_state((
-                state.resource_store.clone(),
-                state.permission_ticket_store.clone(),
-            )),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::account::create_account_routes().with_state((
-                state.user_store.clone(),
-                state.session_store.clone(),
-                state.oidc_client_store.clone(),
-                state.totp_store.clone(),
-                state.audit_log_store.clone(),
-                state.social_account_store.clone(),
-            )),
-        )
-        .nest(
-            "/api/v1/auth",
-            api::account::create_consent_routes().with_state(state.clone()),
-        )
-        // .nest(
-        //     "/api/v1/auth",
-        //     api::auth_flow::create_auth_flow_routes().with_state(state.clone()),
-        // )
-        .nest(
-            "/api/v1/auth",
-            api::account_credentials::create_account_credentials_routes().with_state(
-                api::account_credentials::AccountCredentialsState {
-                    user_store: state.user_store.clone(),
-                    totp_store: state.totp_store.clone(),
-                    session_store: state.session_store.clone(),
-                },
-            ),
         )
         // Temporarily disabled organization routes due to Axum migration
         // .nest(

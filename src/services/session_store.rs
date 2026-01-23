@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
@@ -49,6 +50,90 @@ pub struct CreateOfflineTokenParams<'a> {
     pub data: Option<serde_json::Value>,
 }
 
+/// Trait for session store operations
+#[async_trait]
+pub trait SessionStoreTrait: Send + Sync {
+    /// Add session token for user
+    fn add(&self, token: &str, user_id: &str) -> Result<(), String>;
+
+    /// Remove session token
+    fn remove(&self, token: &str) -> Result<(), String>;
+
+    /// Get user ID for session token
+    fn get_user_id(&self, token: &str) -> Result<Option<String>, String>;
+
+    /// Get all session tokens for user
+    fn all_for_user(&self, user_id: &str) -> Result<Vec<String>, String>;
+
+    /// Get all sessions for a user
+    async fn get_user_sessions(&self, user_id: Uuid) -> Result<Vec<Session>, AuthencError>;
+
+    /// Get a specific session by ID
+    async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>, AuthencError>;
+
+    /// Delete a specific session
+    async fn delete_session(&self, session_id: Uuid) -> Result<(), AuthencError>;
+
+    /// Delete all sessions for a user
+    async fn delete_user_sessions(&self, user_id: Uuid) -> Result<(), AuthencError>;
+
+    /// Store a full session object
+    async fn store_session(&self, session: Session) -> Result<(), AuthencError>;
+
+    /// Create a new user session with persistence
+    async fn create_session(
+        &self,
+        params: CreateSessionParams<'_>,
+    ) -> Result<Uuid, AuthencError>;
+
+    /// Get session by token
+    async fn get_session_by_token(
+        &self,
+        token: &str,
+    ) -> Result<Option<serde_json::Value>, AuthencError>;
+
+    /// Touch session to update last accessed time
+    async fn touch_session_db(&self, session_id: Uuid) -> Result<(), AuthencError>;
+
+    /// Rotate refresh token
+    async fn rotate_refresh_token(
+        &self,
+        session_id: Uuid,
+        old_refresh_token: &str,
+        new_refresh_token: &str,
+        client_ip: Option<&str>,
+        user_agent: Option<&str>,
+    ) -> Result<bool, AuthencError>;
+
+    /// Revoke a specific session
+    async fn revoke_session_db(
+        &self,
+        session_id: Uuid,
+        reason: Option<&str>,
+    ) -> Result<(), AuthencError>;
+
+    /// Create offline token
+    async fn create_offline_token(
+        &self,
+        params: CreateOfflineTokenParams<'_>,
+    ) -> Result<Uuid, AuthencError>;
+
+    /// Get offline token
+    async fn get_offline_token(
+        &self,
+        token: &str,
+    ) -> Result<Option<serde_json::Value>, AuthencError>;
+
+    /// Touch offline token to update last used time
+    async fn touch_offline_token(&self, token_id: Uuid) -> Result<(), AuthencError>;
+
+    /// Revoke offline token
+    async fn revoke_offline_token(&self, token_id: Uuid) -> Result<(), AuthencError>;
+
+    /// Cleanup expired sessions
+    async fn cleanup_expired(&self) -> Result<i64, AuthencError>;
+}
+
 /// Session store for managing user authentication sessions
 pub struct SessionStore {
     /// Database connection
@@ -68,17 +153,11 @@ impl SessionStore {
             full_sessions: Arc::new(RwLock::new(HashMap::new())),
         }
     }
+}
 
-    /// Add session token for user
-    ///
-    /// # Arguments
-    /// * `token` - The session token to store
-    /// * `user_id` - The user ID associated with the token
-    ///
-    /// # Returns
-    /// * `Ok(())` on successful storage
-    /// * `Err(String)` if there's a lock poisoning error
-    pub fn add(&self, token: &str, user_id: &str) -> Result<(), String> {
+#[async_trait]
+impl SessionStoreTrait for SessionStore {
+    fn add(&self, token: &str, user_id: &str) -> Result<(), String> {
         let mut sessions = self
             .sessions
             .write()
@@ -87,15 +166,7 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Remove session token
-    ///
-    /// # Arguments
-    /// * `token` - The session token to remove
-    ///
-    /// # Returns
-    /// * `Ok(())` on successful removal
-    /// * `Err(String)` if there's a lock poisoning error
-    pub fn remove(&self, token: &str) -> Result<(), String> {
+    fn remove(&self, token: &str) -> Result<(), String> {
         let mut sessions = self
             .sessions
             .write()
@@ -104,16 +175,7 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Get user ID for session token
-    ///
-    /// # Arguments
-    /// * `token` - The session token to look up
-    ///
-    /// # Returns
-    /// * `Ok(Some(String))` containing the user ID if token exists
-    /// * `Ok(None)` if token doesn't exist
-    /// * `Err(String)` if there's a lock poisoning error
-    pub fn get_user_id(&self, token: &str) -> Result<Option<String>, String> {
+    fn get_user_id(&self, token: &str) -> Result<Option<String>, String> {
         let sessions = self
             .sessions
             .read()
@@ -121,15 +183,7 @@ impl SessionStore {
         Ok(sessions.get(token).cloned())
     }
 
-    /// Get all session tokens for user
-    ///
-    /// # Arguments
-    /// * `user_id` - The user ID to find sessions for
-    ///
-    /// # Returns
-    /// * `Ok(Vec<String>)` containing all session tokens for the user
-    /// * `Err(String)` if there's a lock poisoning error
-    pub fn all_for_user(&self, user_id: &str) -> Result<Vec<String>, String> {
+    fn all_for_user(&self, user_id: &str) -> Result<Vec<String>, String> {
         let sessions = self
             .sessions
             .read()
@@ -146,14 +200,7 @@ impl SessionStore {
             .collect())
     }
 
-    /// Get all sessions for a user
-    ///
-    /// # Arguments
-    /// * `user_id` - The user ID to find sessions for
-    ///
-    /// # Returns
-    /// * `Result<Vec<Session>, AuthencError>` containing all sessions for the user
-    pub async fn get_user_sessions(&self, user_id: Uuid) -> Result<Vec<Session>, AuthencError> {
+    async fn get_user_sessions(&self, user_id: Uuid) -> Result<Vec<Session>, AuthencError> {
         let full_sessions = self
             .full_sessions
             .read()
@@ -168,14 +215,7 @@ impl SessionStore {
         Ok(user_sessions)
     }
 
-    /// Get a specific session by ID
-    ///
-    /// # Arguments
-    /// * `session_id` - The session ID to retrieve
-    ///
-    /// # Returns
-    /// * `Result<Option<Session>, AuthencError>` containing the session if found
-    pub async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>, AuthencError> {
+    async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>, AuthencError> {
         let full_sessions = self
             .full_sessions
             .read()
@@ -184,14 +224,7 @@ impl SessionStore {
         Ok(full_sessions.get(&session_id).cloned())
     }
 
-    /// Delete a specific session
-    ///
-    /// # Arguments
-    /// * `session_id` - The session ID to delete
-    ///
-    /// # Returns
-    /// * `Result<(), AuthencError>` indicating success or failure
-    pub async fn delete_session(&self, session_id: Uuid) -> Result<(), AuthencError> {
+    async fn delete_session(&self, session_id: Uuid) -> Result<(), AuthencError> {
         let mut full_sessions = self
             .full_sessions
             .write()
@@ -201,14 +234,7 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Delete all sessions for a user
-    ///
-    /// # Arguments
-    /// * `user_id` - The user ID to delete sessions for
-    ///
-    /// # Returns
-    /// * `Result<(), AuthencError>` indicating success or failure
-    pub async fn delete_user_sessions(&self, user_id: Uuid) -> Result<(), AuthencError> {
+    async fn delete_user_sessions(&self, user_id: Uuid) -> Result<(), AuthencError> {
         let mut full_sessions = self
             .full_sessions
             .write()
@@ -228,14 +254,7 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Store a full session object
-    ///
-    /// # Arguments
-    /// * `session` - The session to store
-    ///
-    /// # Returns
-    /// * `Result<(), AuthencError>` indicating success or failure
-    pub async fn store_session(&self, session: Session) -> Result<(), AuthencError> {
+    async fn store_session(&self, session: Session) -> Result<(), AuthencError> {
         // Store in memory for fast access
         {
             let mut full_sessions = self
@@ -252,14 +271,7 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Create a new user session with persistence
-    ///
-    /// # Arguments
-    /// * `params` - Session creation parameters
-    ///
-    /// # Returns
-    /// * `Result<Uuid, AuthencError>` with the session ID
-    pub async fn create_session(
+    async fn create_session(
         &self,
         params: CreateSessionParams<'_>,
     ) -> Result<Uuid, AuthencError> {
@@ -286,43 +298,18 @@ impl SessionStore {
         Ok(session_id)
     }
 
-    /// Get session by token
-    ///
-    /// # Arguments
-    /// * `token` - The access token
-    ///
-    /// # Returns
-    /// * `Result<Option<serde_json::Value>, AuthencError>` with session data
-    pub async fn get_session_by_token(
+    async fn get_session_by_token(
         &self,
         token: &str,
     ) -> Result<Option<serde_json::Value>, AuthencError> {
         db_ops::sessions::get_session_by_token(&self.db, token).await
     }
 
-    /// Touch session to update last accessed time
-    ///
-    /// # Arguments
-    /// * `session_id` - The session ID
-    ///
-    /// # Returns
-    /// * `Result<(), AuthencError>`
-    pub async fn touch_session_db(&self, session_id: Uuid) -> Result<(), AuthencError> {
+    async fn touch_session_db(&self, session_id: Uuid) -> Result<(), AuthencError> {
         db_ops::sessions::touch_session(&self.db, session_id).await
     }
 
-    /// Rotate refresh token
-    ///
-    /// # Arguments
-    /// * `session_id` - The session ID
-    /// * `old_refresh_token` - The old refresh token
-    /// * `new_refresh_token` - The new refresh token
-    /// * `client_ip` - Optional client IP
-    /// * `user_agent` - Optional user agent
-    ///
-    /// # Returns
-    /// * `Result<bool, AuthencError>` - true if rotation succeeded
-    pub async fn rotate_refresh_token(
+    async fn rotate_refresh_token(
         &self,
         session_id: Uuid,
         old_refresh_token: &str,
@@ -341,15 +328,7 @@ impl SessionStore {
         .await
     }
 
-    /// Revoke a specific session
-    ///
-    /// # Arguments
-    /// * `session_id` - The session ID to revoke
-    /// * `reason` - Optional reason for revocation
-    ///
-    /// # Returns
-    /// * `Result<(), AuthencError>`
-    pub async fn revoke_session_db(
+    async fn revoke_session_db(
         &self,
         session_id: Uuid,
         reason: Option<&str>,
@@ -357,14 +336,7 @@ impl SessionStore {
         db_ops::sessions::revoke_session(&self.db, session_id, reason).await
     }
 
-    /// Create offline token
-    ///
-    /// # Arguments
-    /// * `params` - Offline token creation parameters
-    ///
-    /// # Returns
-    /// * `Result<Uuid, AuthencError>` with the offline token ID
-    pub async fn create_offline_token(
+    async fn create_offline_token(
         &self,
         params: CreateOfflineTokenParams<'_>,
     ) -> Result<Uuid, AuthencError> {
@@ -388,47 +360,22 @@ impl SessionStore {
         Ok(token_id)
     }
 
-    /// Get offline token
-    ///
-    /// # Arguments
-    /// * `token` - The offline token
-    ///
-    /// # Returns
-    /// * `Result<Option<serde_json::Value>, AuthencError>` with token data
-    pub async fn get_offline_token(
+    async fn get_offline_token(
         &self,
         token: &str,
     ) -> Result<Option<serde_json::Value>, AuthencError> {
         db_ops::sessions::get_offline_token(&self.db, token).await
     }
 
-    /// Touch offline token to update last used time
-    ///
-    /// # Arguments
-    /// * `token_id` - The offline token ID
-    ///
-    /// # Returns
-    /// * `Result<(), AuthencError>`
-    pub async fn touch_offline_token(&self, token_id: Uuid) -> Result<(), AuthencError> {
+    async fn touch_offline_token(&self, token_id: Uuid) -> Result<(), AuthencError> {
         db_ops::sessions::touch_offline_token(&self.db, token_id).await
     }
 
-    /// Revoke offline token
-    ///
-    /// # Arguments
-    /// * `token_id` - The offline token ID
-    ///
-    /// # Returns
-    /// * `Result<(), AuthencError>`
-    pub async fn revoke_offline_token(&self, token_id: Uuid) -> Result<(), AuthencError> {
+    async fn revoke_offline_token(&self, token_id: Uuid) -> Result<(), AuthencError> {
         db_ops::sessions::revoke_offline_token(&self.db, token_id).await
     }
 
-    /// Cleanup expired sessions
-    ///
-    /// # Returns
-    /// * `Result<i64, AuthencError>` with count of deleted sessions
-    pub async fn cleanup_expired(&self) -> Result<i64, AuthencError> {
+    async fn cleanup_expired(&self) -> Result<i64, AuthencError> {
         db_ops::sessions::cleanup_expired_sessions(&self.db).await
     }
 }

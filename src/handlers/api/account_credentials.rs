@@ -10,19 +10,19 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AuthencError;
-use crate::services::session_store::SessionStore;
-use crate::services::stores::user_store::{UserStore, UserStoreTrait};
+use crate::services::session_store::SessionStoreTrait;
+use crate::services::stores::user_store::UserStoreTrait;
 use crate::services::totp_store::TotpStore;
 
 /// State for account credentials handlers
 #[derive(Clone)]
 pub struct AccountCredentialsState {
     /// Store for user data
-    pub user_store: Arc<UserStore>,
+    pub user_store: Arc<dyn UserStoreTrait>,
     /// Store for TOTP (Time-based One-Time Password) data
     pub totp_store: Arc<TotpStore>,
     /// Store for session data
-    pub session_store: Arc<SessionStore>,
+    pub session_store: Arc<dyn SessionStoreTrait>,
 }
 
 /// Create account credentials management routes

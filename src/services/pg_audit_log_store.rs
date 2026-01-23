@@ -36,6 +36,11 @@ impl PgAuditLogStore {
         Ok(Self { pool })
     }
 
+    /// Create new PostgreSQL audit log store with existing pool
+    pub fn with_pool(pool: Pool) -> Self {
+        Self { pool }
+    }
+
     /// Add audit log entry to database
     ///
     /// # Arguments

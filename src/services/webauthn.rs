@@ -378,4 +378,11 @@ impl WebAuthnService {
         webauthn_db::store_credential(&self.db, credential.user_id, &encrypted_credential).await?;
         Ok(())
     }
+
+    /// Delete all WebAuthn credentials for a user
+    pub async fn delete_user_credentials(&self, user_id: Uuid) -> Result<()> {
+        use crate::database::operations::webauthn as webauthn_db;
+        webauthn_db::delete_user_credentials(&self.db, user_id).await?;
+        Ok(())
+    }
 }
