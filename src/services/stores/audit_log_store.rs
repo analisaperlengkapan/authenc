@@ -1,4 +1,4 @@
-use crate::models::audit_log::AuditLog;
+use crate::models::audit_log::{AuditLog, AuditLogFilter};
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -122,4 +122,16 @@ pub trait AuditLogStore: Send + Sync {
     /// # }
     /// ```
     async fn all(&self) -> Result<Vec<AuditLog>>;
+
+    /// Query audit logs with filtering and pagination
+    ///
+    /// This method allows for efficient retrieval of audit logs matching specific
+    /// criteria, pushing filtering down to the storage layer for better performance.
+    ///
+    /// # Arguments
+    /// * `filter` - The filtering criteria
+    ///
+    /// # Returns
+    /// A `Result` containing a vector of matching audit log entries and the total count
+    async fn query(&self, filter: &AuditLogFilter) -> Result<(Vec<AuditLog>, u64)>;
 }
