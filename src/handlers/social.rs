@@ -77,14 +77,8 @@ pub async fn social_callback(
     };
 
     // Fix Open Redirect: Validate redirect_uri
-    if !state_data.redirect_uri.starts_with('/') || state_data.redirect_uri.starts_with("//") {
+    if !state_data.redirect_uri.starts_with('/') || state_data.redirect_uri.starts_with("//") || state_data.redirect_uri.contains('\\') {
         tracing::error!("Invalid redirect URI in state: {}", state_data.redirect_uri);
-        return Err(StatusCode::BAD_REQUEST);
-    }
-
-    // Fix Account Takeover: Verify email is verified
-    if !profile.verified_email {
-        tracing::warn!("Social profile email not verified: {:?}", profile.email);
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -127,6 +121,13 @@ pub async fn social_callback(
         };
 
         if let Some(user) = existing_user {
+             // Fix Account Takeover: Verify email is verified ONLY when linking to EXISTING user
+             if !profile.verified_email {
+                 tracing::warn!("Cannot link social account with unverified email to existing user: {:?}", profile.email);
+                 // We return CONFLICT to indicate that an account exists but we can't link due to security policy
+                 return Err(StatusCode::CONFLICT);
+             }
+
              // Link account
              let req = CreateSocialAccountRequest {
                  provider: provider.clone(),
@@ -161,6 +162,27 @@ pub async fn social_callback(
                   tracing::error!("Failed to create user: {}", e);
                   StatusCode::INTERNAL_SERVER_ERROR
              })?;
+
+             // If the social profile is verified, update the user status
+             if profile.verified_email {
+                 // We don't have update_user exposed conveniently with partial update struct here that takes boolean directly
+                 // without full struct, but let's check UpdateUserRequest.
+                 // UpdateUserRequest has email_verified: Option<bool>.
+                 let update_req = crate::models::user::UpdateUserRequest {
+                     username: None,
+                     email: None,
+                     first_name: None,
+                     last_name: None,
+                     phone_number: None,
+                     enabled: None,
+                     email_verified: Some(true),
+                     phone_verified: None,
+                     require_password_change: None,
+                     attributes: None,
+                 };
+                 // We ignore error on update as user is created, this is non-critical optimization
+                 let _ = state.user_store.update_user(user.id, update_req).await;
+             }
 
              // Link account
              let req = CreateSocialAccountRequest {
