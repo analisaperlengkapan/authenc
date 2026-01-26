@@ -9,6 +9,7 @@ use crate::models::audit_log::AuditLog;
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;
 use axum::{
+    body::Body,
     extract::{Query, State},
     http::StatusCode,
     response::{Json, Response},
@@ -16,8 +17,8 @@ use axum::{
     Extension, Router,
 };
 use chrono::{DateTime, Utc};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::fmt::Write;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -204,26 +205,32 @@ pub async fn export_audit_logs_csv(
     // Apply filters
     let logs = apply_filters(logs, &query);
 
-    // Generate CSV
-    let mut wtr = String::new();
-    wtr.push_str("timestamp,event,user_id,client_id,status,detail\n");
-    for log in logs {
-        let ts = log.timestamp.to_rfc3339();
-        let event = &log.event;
-        let user_id = log.user_id.as_deref().unwrap_or("");
-        let client_id = log.client_id.as_deref().unwrap_or("");
-        let status = &log.status;
-        let detail = log
-            .detail
-            .as_deref()
-            .unwrap_or("")
-            .replace('\n', " ")
-            .replace('"', "'");
-        let _ = writeln!(
-            wtr,
-            "\"{ts}\",\"{event}\",\"{user_id}\",\"{client_id}\",\"{status}\",\"{detail}\""
-        );
-    }
+    // Stream CSV response
+    let stream = futures::stream::iter(logs)
+        .map(|log| {
+            let ts = log.timestamp.to_rfc3339();
+            let event = &log.event;
+            let user_id = log.user_id.as_deref().unwrap_or("");
+            let client_id = log.client_id.as_deref().unwrap_or("");
+            let status = &log.status;
+            let detail = log
+                .detail
+                .as_deref()
+                .unwrap_or("")
+                .replace('\n', " ")
+                .replace('"', "'");
+
+            let line = format!(
+                "\"{ts}\",\"{event}\",\"{user_id}\",\"{client_id}\",\"{status}\",\"{detail}\"\n"
+            );
+            Ok::<_, std::io::Error>(line)
+        });
+
+    let header = futures::stream::iter(vec![Ok(
+        "timestamp,event,user_id,client_id,status,detail\n".to_string(),
+    )]);
+
+    let body_stream = header.chain(stream);
 
     Response::builder()
         .status(StatusCode::OK)
@@ -232,7 +239,7 @@ pub async fn export_audit_logs_csv(
             "Content-Disposition",
             "attachment; filename=\"audit_logs.csv\"",
         )
-        .body(wtr.into())
+        .body(Body::from_stream(body_stream))
         .map_err(|e| {
             tracing::error!("Failed to build response body: {}", e);
             (
