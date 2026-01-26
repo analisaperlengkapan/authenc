@@ -40,18 +40,17 @@ impl SocialStateStore for InMemorySocialStateStore {
             expires_at,
         };
 
-        if let Ok(mut states) = self.states.write() {
-            states.insert(state.to_string(), login_state);
-        }
+        let mut states = self.states.write().map_err(|_| crate::error::AuthencError::internal("Lock poisoned"))?;
+        states.insert(state.to_string(), login_state);
         Ok(())
     }
 
     async fn validate_and_consume_state(&self, state: &str) -> Result<Option<SocialLoginState>> {
-        if let Ok(mut states) = self.states.write() {
-            if let Some(login_state) = states.remove(state) {
-                if login_state.expires_at > chrono::Utc::now() {
-                    return Ok(Some(login_state));
-                }
+        let mut states = self.states.write().map_err(|_| crate::error::AuthencError::internal("Lock poisoned"))?;
+
+        if let Some(login_state) = states.remove(state) {
+            if login_state.expires_at > chrono::Utc::now() {
+                return Ok(Some(login_state));
             }
         }
         Ok(None)
@@ -59,9 +58,8 @@ impl SocialStateStore for InMemorySocialStateStore {
 
     async fn cleanup_expired(&self) -> Result<()> {
         let now = chrono::Utc::now();
-        if let Ok(mut states) = self.states.write() {
-            states.retain(|_, state| state.expires_at > now);
-        }
+        let mut states = self.states.write().map_err(|_| crate::error::AuthencError::internal("Lock poisoned"))?;
+        states.retain(|_, state| state.expires_at > now);
         Ok(())
     }
 }

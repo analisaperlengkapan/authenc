@@ -19,8 +19,10 @@ pub async fn sync_env_configs_to_db(db: &Database, configs: &[(SocialProvider, O
     let realm_id: Uuid = if let Some(row) = realm_row {
         row.get(0)
     } else {
-        // Fallback: get any realm
-        let any_realm_query = "SELECT id FROM realms LIMIT 1";
+        // Fallback: get the oldest realm (usually the initial/default one)
+        // WARNING: In multi-tenant environments, this might associate social providers with an arbitrary realm
+        // if 'master' doesn't exist. This logic is intended for single-tenant or default setups.
+        let any_realm_query = "SELECT id FROM realms ORDER BY created_at ASC LIMIT 1";
         let any_realm = db.query_opt(any_realm_query, &[]).await.map_err(|e| {
             crate::error::AuthencError::database(format!("Failed to query any realm: {}", e))
         })?;

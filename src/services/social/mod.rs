@@ -240,6 +240,10 @@ impl SocialLoginManager {
         let state = uuid::Uuid::new_v4().to_string();
 
         // Store state in backend
+        // Note: The `redirect_uri` passed here is stored in the state but currently NOT used
+        // during the callback phase for verification. It is intended for future use where the
+        // application might want to redirect the user to a specific page after successful login.
+        // For the OAuth flow itself, we MUST use the pre-registered `config.redirect_uri`.
         self.store.create_state(&state, provider.as_str(), redirect_uri, 600) // 10 minutes
             .await
             .map_err(|e| format!("Failed to store state: {}", e))?;
