@@ -540,7 +540,7 @@ impl AppState {
                     .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
                 authorization_url: "https://www.facebook.com/v12.0/dialog/oauth".to_string(),
                 token_url: "https://graph.facebook.com/v12.0/oauth/access_token".to_string(),
-                user_info_url: "https://graph.facebook.com/me".to_string(),
+                user_info_url: "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name,picture".to_string(),
                 scopes: vec!["email".to_string(), "public_profile".to_string()],
                 provider: crate::services::social::SocialProvider::Facebook,
             };

@@ -231,6 +231,9 @@ impl SocialLoginManager {
         provider: &SocialProvider,
         redirect_uri: &str,
     ) -> Result<String, String> {
+        // Clean expired sessions before creating a new one
+        self.clean_expired_sessions();
+
         let config = self
             .get_provider_config(provider)
             .ok_or_else(|| format!("Provider {:?} not configured", provider))?;
@@ -302,12 +305,11 @@ impl SocialLoginManager {
     }
 
     /// Clean expired sessions
-    pub fn clean_expired_sessions(&mut self) {
+    pub fn clean_expired_sessions(&self) {
         let now = chrono::Utc::now();
-        self.sessions
-            .write()
-            .unwrap()
-            .retain(|_, session| session.expires_at > now);
+        if let Ok(mut sessions) = self.sessions.write() {
+            sessions.retain(|_, session| session.expires_at > now);
+        }
     }
 }
 
@@ -355,6 +357,7 @@ impl SocialLoginService for SocialLoginManager {
         let response = self
             .http_client
             .post(&config.token_url)
+            .header("Accept", "application/json")
             .form(&params)
             .send()
             .await
