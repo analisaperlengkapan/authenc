@@ -6,11 +6,17 @@ use axum::{
     Router,
     extract::{Query, State},
     http::StatusCode,
-    response::Json,
+    response::{IntoResponse, Json, Redirect},
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use crate::models::social_account::CreateSocialAccountRequest;
+use crate::models::user::CreateUserRequest;
+use crate::services::sso::SsoSessionManager;
+use crate::services::stores::social_account_store::SocialAccountStoreTrait;
+use crate::services::stores::user_store::UserStoreTrait;
+use uuid::Uuid;
 
 /// Request to initiate social login
 #[derive(Deserialize)]
@@ -37,23 +43,6 @@ pub struct CallbackQuery {
     pub state: String,
 }
 
-/// Social user profile information
-#[derive(Serialize)]
-pub struct SocialUserProfile {
-    /// Social provider that authenticated the user
-    pub provider: SocialProvider,
-    /// User ID from the social provider
-    pub provider_user_id: String,
-    /// Email address from social provider
-    pub email: Option<String>,
-    /// Display name from social provider
-    pub name: Option<String>,
-    /// Avatar/profile image URL
-    pub avatar_url: Option<String>,
-    /// Raw profile data from social provider
-    pub raw_profile: serde_json::Value,
-}
-
 /// Handler for initiating social login
 pub async fn initiate_login(
     State(state): State<Arc<AppState>>,
@@ -75,23 +64,153 @@ pub async fn initiate_login(
 pub async fn social_callback(
     State(state): State<Arc<AppState>>,
     Query(query): Query<CallbackQuery>,
-) -> Result<Json<SocialUserProfile>, StatusCode> {
+) -> Result<impl IntoResponse, StatusCode> {
     // Handle callback and get user profile using shared manager
-    match state.social_login_manager.handle_callback(&query.code, &query.state).await {
-        Ok(profile) => {
-            // Convert to our response format
-            let response_profile = SocialUserProfile {
-                provider: profile.provider,
-                provider_user_id: profile.provider_user_id,
-                email: profile.email,
-                name: profile.name,
-                avatar_url: profile.picture_url,
-                raw_profile: profile.raw_data,
-            };
-            Ok(Json(response_profile))
+    let (profile, state_data) = match state.social_login_manager.handle_callback(&query.code, &query.state).await {
+        Ok(res) => res,
+        Err(e) => {
+            tracing::error!("Social login callback error: {}", e);
+            return Err(StatusCode::BAD_REQUEST);
         }
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    let provider = profile.provider.clone();
+    let provider_user_id = profile.provider_user_id.clone();
+
+    // Check if social account exists
+    let existing_account = state.social_account_store
+        .get_social_account_by_provider(&provider, &provider_user_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let user_id = if let Some(account) = existing_account {
+        account.user_id
+    } else {
+        // Account does not exist. Check if user exists by email.
+
+        // Fetch realms to get a default realm ID
+        let realms = state.realm_service.list_realms().await.map_err(|e| {
+             tracing::error!("Failed to list realms: {}", e);
+             StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+        let realm_id = if let Some(r) = realms.first() {
+            r.id
+        } else {
+            tracing::error!("No realms found in system");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        };
+
+        // Try to find user by email
+        let existing_user = if let Some(email) = &profile.email {
+            state.user_store.get_user_by_email(&realm_id, email).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        } else {
+            None
+        };
+
+        if let Some(user) = existing_user {
+             // Link account
+             let req = CreateSocialAccountRequest {
+                 provider: provider.clone(),
+                 provider_user_id: provider_user_id.clone(),
+                 display_name: profile.name.clone(),
+                 email: profile.email.clone(),
+                 profile_picture_url: profile.picture_url.clone(),
+                 access_token: None,
+                 refresh_token: None,
+                 token_expires_at: None,
+             };
+             state.social_account_store.add_social_account(user.id, req).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+             user.id
+        } else {
+             // Create new user
+             let username = profile.email.clone().unwrap_or_else(|| format!("{}_{}", provider.as_str(), provider_user_id));
+             let email = profile.email.clone().unwrap_or_else(|| format!("{}@placeholder.com", Uuid::new_v4()));
+
+             let req = CreateUserRequest {
+                 username,
+                 email: email.clone(),
+                 password: None,
+                 first_name: profile.first_name.clone(),
+                 last_name: profile.last_name.clone(),
+                 phone_number: None,
+                 realm_id: Some(realm_id),
+                 organization_id: None,
+                 attributes: None,
+             };
+
+             let user = state.user_store.add_user(req).await.map_err(|e| {
+                  tracing::error!("Failed to create user: {}", e);
+                  StatusCode::INTERNAL_SERVER_ERROR
+             })?;
+
+             // Link account
+             let req = CreateSocialAccountRequest {
+                 provider: provider.clone(),
+                 provider_user_id: provider_user_id.clone(),
+                 display_name: profile.name.clone(),
+                 email: profile.email.clone(),
+                 profile_picture_url: profile.picture_url.clone(),
+                 access_token: None,
+                 refresh_token: None,
+                 token_expires_at: None,
+             };
+             state.social_account_store.add_social_account(user.id, req).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+             user.id
+        }
+    };
+
+    // Get user again to get realm_id, or infer it.
+    // We can assume user is in the default realm if we just created it, or whatever realm they were in.
+    // But `sso_session_manager.create_session` needs `realm_id`.
+    // We could optimize by fetching user once.
+
+    // Let's fetch the user to be sure.
+    let user = state.user_store.get_user(user_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    let realm_id = user.realm_id.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let sso_session = state.sso_session_manager.create_session(
+        &user_id.to_string(),
+        &realm_id.to_string(),
+        provider.as_str(),
+        1800, // 30 min idle
+        36000, // 10 hours max
+        false, // remember me
+        None, // IP
+        None, // User Agent
+    ).await.map_err(|e| {
+         tracing::error!("Failed to create SSO session: {}", e);
+         StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let cookie_value = state.sso_cookie_manager.generate_cookie(
+        &sso_session.session_id,
+        &user_id.to_string(),
+        &sso_session.realm_id,
+        36000
+    ).map_err(|e| {
+         tracing::error!("Failed to generate cookie: {}", e);
+         StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Generate response with cookie and redirect
+    let mut response = Redirect::to(&state_data.redirect_uri).into_response();
+
+    // Add Set-Cookie header
+    use axum::http::header::SET_COOKIE;
+    let cookie_header_val = state.sso_cookie_manager.generate_set_cookie_header(&cookie_value, 36000);
+
+    if let Ok(header_value) = cookie_header_val.parse() {
+        response.headers_mut().insert(SET_COOKIE, header_value);
+    } else {
+        tracing::error!("Failed to parse cookie header value");
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
+
+    Ok(response)
 }
 
 /// Create social login routes

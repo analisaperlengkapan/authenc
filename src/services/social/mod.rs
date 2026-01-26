@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use self::state_store::SocialStateStore;
+pub use state_store::SocialLoginState;
 
 /// Social login provider types
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, Hash, PartialEq)]
@@ -140,7 +141,7 @@ pub trait SocialLoginService: Send + Sync {
     ) -> Result<String, String>;
 
     /// Handle OAuth callback
-    async fn handle_callback(&self, code: &str, state: &str) -> Result<SocialUserProfile, String>;
+    async fn handle_callback(&self, code: &str, state: &str) -> Result<(SocialUserProfile, SocialLoginState), String>;
 
     /// Exchange authorization code for access token
     async fn exchange_code_for_token(
@@ -282,7 +283,7 @@ impl SocialLoginService for SocialLoginManager {
         self.generate_auth_url(&provider, redirect_uri).await
     }
 
-    async fn handle_callback(&self, code: &str, state: &str) -> Result<SocialUserProfile, String> {
+    async fn handle_callback(&self, code: &str, state: &str) -> Result<(SocialUserProfile, SocialLoginState), String> {
         // Validate and consume state to prevent replay attacks
         let session = self.validate_and_consume_state(state).await?;
 
@@ -302,7 +303,7 @@ impl SocialLoginService for SocialLoginManager {
             .get_user_profile(&token_response.access_token, &config)
             .await?;
 
-        Ok(profile)
+        Ok((profile, session))
     }
 
     async fn exchange_code_for_token(

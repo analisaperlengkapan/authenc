@@ -60,6 +60,8 @@ pub struct AppState {
     pub oid4vc_service: Arc<crate::services::oid4vc::EnhancedOid4VcManager>,
     /// SSO service for unified single sign-on
     pub sso_service: Arc<dyn crate::services::sso::SsoService>,
+    /// SSO session manager for unified session management
+    pub sso_session_manager: Arc<dyn crate::services::sso::SsoSessionManager>,
     /// SSO cookie manager for secure cookie operations
     pub sso_cookie_manager: Arc<crate::services::sso::SsoCookieManager>,
     /// Event manager for handling application events
@@ -198,13 +200,13 @@ impl AppState {
         ));
 
         // Initialize SSO session manager
-        let sso_session_manager =
+        let sso_session_manager: Arc<dyn crate::services::sso::SsoSessionManager> =
             Arc::new(crate::services::sso::session::DefaultSsoSessionManager::new());
 
         // Initialize SSO service
         let sso_service: Arc<dyn crate::services::sso::SsoService> =
             Arc::new(crate::services::sso::DefaultSsoService::new(
-                sso_session_manager,
+                sso_session_manager.clone(),
                 sso_cookie_manager.clone(),
                 database.clone(),
             ));
@@ -554,6 +556,31 @@ impl AppState {
             env_configs.push((crate::services::social::SocialProvider::Facebook, facebook_config));
         }
 
+        // Register Microsoft provider if configured
+        if let (Ok(client_id), Ok(client_secret)) = (
+            std::env::var("MICROSOFT_CLIENT_ID"),
+            std::env::var("MICROSOFT_CLIENT_SECRET"),
+        ) {
+            let microsoft_config = crate::services::social::OAuthConfig {
+                client_id,
+                client_secret,
+                redirect_uri: std::env::var("MICROSOFT_REDIRECT_URI")
+                    .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
+                authorization_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string(),
+                token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string(),
+                user_info_url: "https://graph.microsoft.com/v1.0/me".to_string(),
+                scopes: vec![
+                    "openid".to_string(),
+                    "email".to_string(),
+                    "profile".to_string(),
+                    "User.Read".to_string(),
+                ],
+                provider: crate::services::social::SocialProvider::Microsoft,
+            };
+            social_manager.register_provider(microsoft_config.clone());
+            env_configs.push((crate::services::social::SocialProvider::Microsoft, microsoft_config));
+        }
+
         // Sync configs to DB
         // We spawn this as a background task or run it here. Running it here might block startup slightly
         // but ensures consistency. However, `sync_env_configs_to_db` is async and we are in async context.
@@ -592,6 +619,7 @@ impl AppState {
             broker_registry,
             oid4vc_service,
             sso_service,
+            sso_session_manager,
             sso_cookie_manager,
             event_manager,
             event_retention_service,
