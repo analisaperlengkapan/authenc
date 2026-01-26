@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use self::state_store::SocialStateStore;
+pub use state_store::SocialLoginState;
 
 /// Social login provider types
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, Hash, PartialEq)]
@@ -137,10 +138,11 @@ pub trait SocialLoginService: Send + Sync {
         &self,
         provider: SocialProvider,
         redirect_uri: &str,
+        realm_id: Option<String>,
     ) -> Result<String, String>;
 
     /// Handle OAuth callback
-    async fn handle_callback(&self, code: &str, state: &str) -> Result<SocialUserProfile, String>;
+    async fn handle_callback(&self, code: &str, state: &str) -> Result<(SocialUserProfile, SocialLoginState), String>;
 
     /// Exchange authorization code for access token
     async fn exchange_code_for_token(
@@ -229,6 +231,7 @@ impl SocialLoginManager {
         &self,
         provider: &SocialProvider,
         redirect_uri: &str,
+        realm_id: Option<String>,
     ) -> Result<String, String> {
         // Clean expired sessions before creating a new one (best effort)
         let _ = self.store.cleanup_expired().await;
@@ -244,7 +247,7 @@ impl SocialLoginManager {
         // during the callback phase for verification. It is intended for future use where the
         // application might want to redirect the user to a specific page after successful login.
         // For the OAuth flow itself, we MUST use the pre-registered `config.redirect_uri`.
-        self.store.create_state(&state, provider.as_str(), redirect_uri, 600) // 10 minutes
+        self.store.create_state(&state, provider.as_str(), redirect_uri, realm_id.as_deref(), 600) // 10 minutes
             .await
             .map_err(|e| format!("Failed to store state: {}", e))?;
 
@@ -278,11 +281,12 @@ impl SocialLoginService for SocialLoginManager {
         &self,
         provider: SocialProvider,
         redirect_uri: &str,
+        realm_id: Option<String>,
     ) -> Result<String, String> {
-        self.generate_auth_url(&provider, redirect_uri).await
+        self.generate_auth_url(&provider, redirect_uri, realm_id).await
     }
 
-    async fn handle_callback(&self, code: &str, state: &str) -> Result<SocialUserProfile, String> {
+    async fn handle_callback(&self, code: &str, state: &str) -> Result<(SocialUserProfile, SocialLoginState), String> {
         // Validate and consume state to prevent replay attacks
         let session = self.validate_and_consume_state(state).await?;
 
@@ -302,7 +306,7 @@ impl SocialLoginService for SocialLoginManager {
             .get_user_profile(&token_response.access_token, &config)
             .await?;
 
-        Ok(profile)
+        Ok((profile, session))
     }
 
     async fn exchange_code_for_token(
@@ -466,6 +470,11 @@ impl SocialLoginManager {
 
     /// Parse Microsoft user profile
     fn parse_microsoft_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        // Microsoft Graph API v1.0/me does not explicitly return an email_verified field.
+        // While enterprise accounts are typically verified, personal accounts might not be.
+        // To prevent Account Takeover (ATO) attacks, we default to false.
+        // This means Microsoft accounts will not auto-link to existing users unless
+        // we implement ID token validation to check specific claims in the future.
         SocialUserProfile {
             provider: SocialProvider::Microsoft,
             provider_user_id: data["id"].as_str().unwrap_or("").to_string(),
