@@ -5,43 +5,23 @@
 
 use crate::database::operations;
 use crate::middleware::auth::AuthUser;
-use crate::models::audit_log::AuditLog;
+use crate::models::audit_log::{AuditLog, AuditLogFilter};
 use crate::services::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;
 use axum::{
-    body::Body,
     extract::{Query, State},
     http::StatusCode,
     response::{Json, Response},
     routing::get,
     Extension, Router,
 };
-use chrono::{DateTime, Utc};
-use futures::StreamExt;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use std::fmt::Write;
 use std::sync::Arc;
 use uuid::Uuid;
 
 /// Query parameters for audit log filtering
-#[derive(Debug, Deserialize)]
-pub struct AuditLogQuery {
-    /// Filter by event type
-    pub event: Option<String>,
-    /// Filter by user ID
-    pub user_id: Option<String>,
-    /// Filter by client ID
-    pub client_id: Option<String>,
-    /// Filter by status (success/failure)
-    pub status: Option<String>,
-    /// Filter by start date (ISO8601)
-    pub from: Option<String>,
-    /// Filter by end date (ISO8601)
-    pub to: Option<String>,
-    /// Maximum number of results
-    pub limit: Option<usize>,
-    /// Offset for pagination
-    pub offset: Option<usize>,
-}
+pub type AuditLogQuery = AuditLogFilter;
 
 /// Response for audit log queries
 #[derive(Debug, Serialize)]
@@ -99,40 +79,13 @@ async fn is_admin(user: &AuthUser, user_store: &UserStore) -> bool {
     }
 }
 
-/// Apply filters to audit logs
-fn apply_filters(mut logs: Vec<AuditLog>, query: &AuditLogQuery) -> Vec<AuditLog> {
-    if let Some(ref event) = query.event {
-        logs.retain(|l| l.event == *event);
-    }
-    if let Some(ref user_id) = query.user_id {
-        logs.retain(|l| l.user_id.as_deref() == Some(user_id.as_str()));
-    }
-    if let Some(ref client_id) = query.client_id {
-        logs.retain(|l| l.client_id.as_deref() == Some(client_id.as_str()));
-    }
-    if let Some(ref status) = query.status {
-        logs.retain(|l| l.status == *status);
-    }
-    if let Some(ref from) = query.from
-        && let Ok(from_dt) = DateTime::parse_from_rfc3339(from) {
-            let from_utc = from_dt.with_timezone(&Utc);
-            logs.retain(|l| l.timestamp >= from_utc);
-        }
-    if let Some(ref to) = query.to
-        && let Ok(to_dt) = DateTime::parse_from_rfc3339(to) {
-            let to_utc = to_dt.with_timezone(&Utc);
-            logs.retain(|l| l.timestamp <= to_utc);
-        }
-    logs
-}
-
 /// Get audit logs with filtering and pagination
 ///
 /// GET /logs
 pub async fn get_audit_logs(
     State(state): State<Arc<AuditHandlerState>>,
     Extension(user): Extension<AuthUser>,
-    Query(query): Query<AuditLogQuery>,
+    Query(mut query): Query<AuditLogQuery>,
 ) -> Result<Json<AuditLogResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Check admin authorization
     if !is_admin(&user, &state.user_store).await {
@@ -144,9 +97,17 @@ pub async fn get_audit_logs(
         ));
     }
 
-    // Get all logs
-    let logs = match state.audit_log_store.all().await {
-        Ok(l) => l,
+    // Set default pagination
+    if query.limit.is_none() {
+        query.limit = Some(100);
+    }
+    if query.offset.is_none() {
+        query.offset = Some(0);
+    }
+
+    // Query logs with database-side filtering and pagination
+    let (logs, total) = match state.audit_log_store.query(&query).await {
+        Ok(res) => res,
         Err(e) => {
             tracing::error!("Audit log query error: {}", e);
             return Err((
@@ -158,16 +119,7 @@ pub async fn get_audit_logs(
         }
     };
 
-    // Apply filters
-    let logs = apply_filters(logs, &query);
-
-    // Apply pagination
-    let offset = query.offset.unwrap_or(0);
-    let limit = query.limit.unwrap_or(100);
-    let total = logs.len();
-    let logs: Vec<AuditLog> = logs.into_iter().skip(offset).take(limit).collect();
-
-    Ok(Json(AuditLogResponse { total, logs }))
+    Ok(Json(AuditLogResponse { total: total as usize, logs }))
 }
 
 /// Export audit logs as CSV
@@ -176,7 +128,7 @@ pub async fn get_audit_logs(
 pub async fn export_audit_logs_csv(
     State(state): State<Arc<AuditHandlerState>>,
     Extension(user): Extension<AuthUser>,
-    Query(query): Query<AuditLogQuery>,
+    Query(mut query): Query<AuditLogQuery>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
     // Check admin authorization
     if !is_admin(&user, &state.user_store).await {
@@ -188,9 +140,13 @@ pub async fn export_audit_logs_csv(
         ));
     }
 
-    // Get all logs
-    let logs = match state.audit_log_store.all().await {
-        Ok(l) => l,
+    // Export all matching logs, ignoring pagination
+    query.limit = None;
+    query.offset = None;
+
+    // Query logs with database-side filtering
+    let (logs, _) = match state.audit_log_store.query(&query).await {
+        Ok(res) => res,
         Err(e) => {
             tracing::error!("Audit log query error: {}", e);
             return Err((
@@ -202,35 +158,26 @@ pub async fn export_audit_logs_csv(
         }
     };
 
-    // Apply filters
-    let logs = apply_filters(logs, &query);
-
-    // Stream CSV response
-    let stream = futures::stream::iter(logs)
-        .map(|log| {
-            let ts = log.timestamp.to_rfc3339();
-            let event = &log.event;
-            let user_id = log.user_id.as_deref().unwrap_or("");
-            let client_id = log.client_id.as_deref().unwrap_or("");
-            let status = &log.status;
-            let detail = log
-                .detail
-                .as_deref()
-                .unwrap_or("")
-                .replace('\n', " ")
-                .replace('"', "'");
-
-            let line = format!(
-                "\"{ts}\",\"{event}\",\"{user_id}\",\"{client_id}\",\"{status}\",\"{detail}\"\n"
-            );
-            Ok::<_, std::io::Error>(line)
-        });
-
-    let header = futures::stream::iter(vec![Ok(
-        "timestamp,event,user_id,client_id,status,detail\n".to_string(),
-    )]);
-
-    let body_stream = header.chain(stream);
+    // Generate CSV
+    let mut wtr = String::new();
+    wtr.push_str("timestamp,event,user_id,client_id,status,detail\n");
+    for log in logs {
+        let ts = log.timestamp.to_rfc3339();
+        let event = &log.event;
+        let user_id = log.user_id.as_deref().unwrap_or("");
+        let client_id = log.client_id.as_deref().unwrap_or("");
+        let status = &log.status;
+        let detail = log
+            .detail
+            .as_deref()
+            .unwrap_or("")
+            .replace('\n', " ")
+            .replace('"', "'");
+        let _ = writeln!(
+            wtr,
+            "\"{ts}\",\"{event}\",\"{user_id}\",\"{client_id}\",\"{status}\",\"{detail}\""
+        );
+    }
 
     Response::builder()
         .status(StatusCode::OK)
@@ -239,7 +186,7 @@ pub async fn export_audit_logs_csv(
             "Content-Disposition",
             "attachment; filename=\"audit_logs.csv\"",
         )
-        .body(Body::from_stream(body_stream))
+        .body(wtr.into())
         .map_err(|e| {
             tracing::error!("Failed to build response body: {}", e);
             (
