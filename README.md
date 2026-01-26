@@ -1,303 +1,368 @@
 # 🔐 Authenc
 
-> **Enterprise-grade Identity and Access Management (IAM) Platform**
+> **Identity and Access Management (IAM) Platform in Rust**
 
 [![Rust](https://img.shields.io/badge/rust-1.90%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-119-blue.svg)](tests/)
 
 ---
 
-## ⚠️ IMPORTANT NOTICE
+## ⚠️ PROJECT STATUS
 
 > [!CAUTION]
-> **🚧 THIS PROJECT IS UNDER ACTIVE DEVELOPMENT 🚧**
+> **DEVELOPMENT VERSION - NOT FOR PRODUCTION**
 >
-> - ❌ **NOT PRODUCTION READY**
-> - ❌ **UNSTABLE API** - Breaking changes may occur at any time
-> - ❌ **NOT FULLY SECURITY AUDITED**
-> - ❌ **INCOMPLETE DOCUMENTATION**
+> This project is actively developed. While core features are implemented and tested:
+> - Some APIs may change between versions
+> - Security audits are ongoing
+> - Documentation is evolving
 >
-> Use only for development and testing purposes. **DO NOT USE FOR SENSITIVE DATA OR PRODUCTION SYSTEMS.**
+> **Current Use:** Development, testing, and experimentation only.
 
 ---
 
 ## 📖 About Authenc
 
-**Authenc** is an enterprise-grade Identity and Access Management (IAM) platform built with Rust, providing comprehensive authentication and authorization solutions for modern applications.
+**Authenc** is an identity and access management (IAM) platform written in Rust. It provides modern authentication and authorization capabilities for applications, with a focus on security and performance.
 
-### 🎯 Key Features
+### ✅ What Works
 
-#### 🔑 Authentication
-- **OAuth 2.0** - Authorization Code, Client Credentials, PKCE, Device Flow
-- **OpenID Connect (OIDC)** - Discovery, JWKS, Userinfo endpoints
-- **SAML 2.0** - SP-Initiated, IdP-Initiated SSO
-- **WebAuthn/FIDO2** - Passwordless authentication
-- **TOTP/HOTP** - Two-factor authentication
-- **Social Login** - Google, GitHub, Facebook, Microsoft, and more
+#### Core Authentication
+- ✅ **OAuth 2.0** - Standard grant types (Authorization Code, Client Credentials, Refresh Token)
+  - PKCE support for public clients
+  - Token introspection and revocation endpoints
+- ✅ **OpenID Connect (OIDC)** - Discovery, ID tokens, userinfo endpoints
+  - Ed25519-signed JWTs throughout
+- ✅ **SAML 2.0** - SP functionality with assertion validation
+- ✅ **TOTP/2FA** - Time-based one-time passwords for multi-factor authentication
 
-#### 🛡️ Security
-- **Zero Trust Architecture** - Continuous verification
-- **Brute Force Protection** - Rate limiting and account lockout
-- **CSRF Protection** - Token-based protection
-- **mTLS** - Mutual TLS for client authentication
-- **DPoP** - Demonstrating Proof of Possession
+#### Security Features
+- ✅ **Cryptography** - Ed25519 for signing, AES-256-GCM for encryption, Argon2id for passwords
+- ✅ **Rate Limiting** - Brute force protection and DDoS mitigation
+- ✅ **Middleware** - CSRF protection, security headers, input validation
+- ✅ **Audit Logging** - Comprehensive event tracking and persistence
 
-#### 🔐 Cryptography
-| Algorithm | Usage |
-|-----------|-------|
-| Ed25519 | JWT signing, default key type |
-| ECDSA P-256/P-384/P-521 | Token signing |
-| Ed448 | High-security signing |
-| AES-256-GCM | Encryption at rest |
-| Argon2id | Password hashing |
-| Shamir Secret Sharing | Key splitting |
-| **Post-Quantum (Experimental)** | ML-DSA, ML-KEM, Falcon |
+#### Enterprise Basics
+- ✅ **Multi-tenancy** - Realm-based tenant isolation
+- ✅ **RBAC** - Role-based access control with permissions
+- ✅ **Federation** - SAML and OIDC identity provider integration
+- ✅ **PostgreSQL Backend** - Persistent user, token, and event storage
 
-#### 🏢 Enterprise Features
-- **Multi-tenancy** - Realm-based isolation
-- **Federation** - LDAP, Active Directory, External IdP
-- **Identity Brokering** - External identity provider integration
-- **Protocol Mappers** - Custom claim mapping
-- **Event System** - Audit logging, webhooks
-- **OID4VC** - OpenID for Verifiable Credentials
+### 🟡 Partially Implemented
+
+- 🟡 **WebAuthn/FIDO2** - Structure exists, functionality being completed
+- 🟡 **Social Login** - Framework ready, individual providers need configuration
+- 🟡 **OID4VC** - Verifiable credentials support (experimental)
+- 🟡 **Zero Trust** - Basic device trust scoring implemented
+
+### ❌ Not Yet Implemented
+
+- ❌ **Admin Web UI** - REST API exists, UI pending
+- ❌ **Clustering** - Single-instance only, no distributed caching yet
+- ❌ **LDAP/AD Sync** - Federation structure exists, sync not implemented
+- ❌ **Social Provider SDKs** - Google, GitHub, etc. need individual integration
 
 ---
 
-## 🏗️ Architecture
+## 📊 Project Stats
+
+- **~74K** lines of Rust code
+- **251** Rust source files  
+- **119** test files
+- **15** database migrations (v0.8+)
+- **416** git commits
+
+---
+
+## 🏗️ Codebase Organization
 
 ```
-authenc/
-├── src/
-│   ├── app.rs              # Application state & configuration
-│   ├── main.rs             # Entry point
-│   ├── lib.rs              # Library exports
-│   │
-│   ├── crypto/             # 🔐 Cryptographic operations
-│   │   ├── ed25519_keys.rs     # Ed25519 key management
-│   │   ├── ecdsa_*.rs          # ECDSA key variants
-│   │   ├── aes_gcm.rs          # AES-GCM encryption
-│   │   ├── shamir.rs           # Secret sharing
-│   │   ├── pqc.rs              # Post-quantum crypto
-│   │   └── xmldsig.rs          # XML signature for SAML
-│   │
-│   ├── database/           # 💾 Database layer
-│   │   ├── operations.rs       # CRUD operations
-│   │   └── migrations/         # Schema files
-│   │
-│   ├── handlers/           # 🌐 HTTP handlers
-│   │   ├── api/                # REST API endpoints
-│   │   ├── oauth2_*.rs         # OAuth2 endpoints
-│   │   ├── oidc_*.rs           # OIDC endpoints
-│   │   ├── saml.rs             # SAML endpoints
-│   │   └── health.rs           # Health checks
-│   │
-│   ├── services/           # ⚙️ Business logic
-│   │   ├── auth_flow.rs        # Authentication flows
-│   │   ├── webauthn.rs         # WebAuthn service
-│   │   ├── device.rs           # Device management
-│   │   ├── oid4vc.rs           # Verifiable Credentials
-│   │   ├── saml.rs             # SAML processing
-│   │   ├── password_policy.rs  # Password policies
-│   │   ├── federation/         # Identity federation
-│   │   ├── sso/                # Single Sign-On
-│   │   └── zero_trust/         # Zero Trust
-│   │
-│   ├── middleware/         # 🔧 HTTP middleware
-│   │   ├── auth_middleware.rs  # JWT validation
-│   │   ├── rate_limit.rs       # Rate limiting
-│   │   ├── csrf_protection.rs  # CSRF protection
-│   │   └── security_headers.rs # Security headers
-│   │
-│   ├── spi/                # 🔌 Service Provider Interface
-│   │   ├── authenticator.rs    # Custom authenticators
-│   │   ├── protocol_mappers.rs # Protocol mapping
-│   │   └── federation.rs       # Federation SPI
-│   │
-│   └── vault/              # 🔒 Secret management
-│       └── hashicorp.rs        # HashiCorp Vault integration
+src/
+├── app.rs              # Application state, service initialization
+├── main.rs             # Server entry point
+├── error.rs            # Error handling and types
 │
-├── migrations/             # 📁 Database migrations (008-021)
-├── tests/                  # 🧪 Integration tests
-└── Cargo.toml              # 📦 Dependencies
+├── models/             # Data models (users, tokens, sessions, etc)
+├── config/             # Configuration management
+├── database/           # PostgreSQL operations & migrations
+│
+├── crypto/             # Cryptographic operations
+│   ├── ed25519_keys.rs     # Ed25519 key generation/signing
+│   ├── ecdsa_*.rs          # ECDSA variants (P-256, P-384, P-521)
+│   ├── aes_gcm.rs          # AES-256-GCM encryption
+│   └── pqc.rs              # Post-quantum crypto (experimental)
+│
+├── handlers/           # HTTP request handlers
+│   ├── oauth2.rs           # OAuth2 authorize/token endpoints
+│   ├── oidc_*.rs           # OIDC discovery, userinfo, jwks
+│   ├── saml.rs             # SAML assertion processing
+│   ├── webauthn.rs         # WebAuthn registration/auth
+│   └── api/                # Admin REST API routes
+│
+├── services/           # Business logic
+│   ├── auth_flow.rs        # Authentication orchestration
+│   ├── device.rs           # Device trust management
+│   ├── saml.rs             # SAML processing
+│   ├── webauthn.rs         # WebAuthn credential handling
+│   ├── federation/         # SAML & OIDC IdP integration
+│   ├── sso/                # Single Sign-On logic
+│   ├── zero_trust/         # Device trust scoring
+│   └── stores/             # Data access layer
+│
+├── middleware/         # HTTP middleware
+│   ├── auth.rs             # JWT validation
+│   ├── rate_limit.rs       # Rate limiting
+│   ├── csrf_protection.rs  # CSRF tokens
+│   └── security_headers.rs # Security headers
+│
+└── spi/                # Service Provider Interface (extensibility)
+    ├── authenticator.rs    # Custom auth providers
+    └── protocol_mappers.rs # Claim mapping
+
+migrations/            # Database schema (v0.8 - v0.21)
+tests/                # 119 test files covering:
+                      # - OAuth2/OIDC flows
+                      # - SAML federation
+                      # - API endpoints
+                      # - Cryptography
+                      # - Device trust
 ```
+
+**Key Metrics:**
+- ~250 source files
+- 74K lines of code
+- 1 main server (Axum web framework)
+- PostgreSQL for persistence
+- Tokio for async runtime
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Getting Started
 
-### Prerequisites
+### Requirements
 
-- **Rust** 1.90+
-- **PostgreSQL** 14+
-- **OpenSSL** (for crypto operations)
+- **Rust 1.90+** - Install from [rustup.rs](https://rustup.rs)
+- **PostgreSQL 14+** - For data persistence
+- **OpenSSL** - For cryptographic operations
 
-### Installation
+### Setup
 
 ```bash
 # Clone repository
 git clone https://github.com/analisaperlengkapan/authenc.git
 cd authenc
 
-# Copy environment file
-cp .env.example .env
+# Configure environment
+export DATABASE_URL="postgresql://user:password@localhost/authenc"
+export JWT_SECRET="change-me-in-production"
+export SERVER_PORT=3000
 
-# Edit configuration
-nano .env
-```
+# Run migrations
+sqlx migrate run
 
-### Configuration (.env)
-
-```env
-# Database
-DATABASE_URL=postgresql://postgres:password@localhost/authenc
-
-# Server
-SERVER_PORT=3000
-SERVER_HOST=0.0.0.0
-
-# Security
-JWT_SECRET=your-super-secret-key-change-in-production
-ENCRYPTION_KEY=32-byte-encryption-key-here
-
-# Features (optional)
-ENABLE_RATE_LIMITING=true
-ENABLE_CSRF_PROTECTION=true
-```
-
-### Running
-
-```bash
-# Development mode
+# Start server
 cargo run
-
-# Production build
-cargo build --release
-./target/release/authenc
-
-# With specific features
-cargo run --features "quantum,admin_console"
 ```
 
-### Docker (Coming Soon)
+Server will start on `http://localhost:3000`
+
+### Quick Test
 
 ```bash
-docker-compose up -d
+# Health check
+curl http://localhost:3000/health
+
+# OIDC discovery
+curl http://localhost:3000/.well-known/openid-configuration
+
+# Create a test user
+curl -X POST http://localhost:3000/api/v1/auth/users \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","email":"test@example.com","password":"Test123!"}'
 ```
 
 ---
 
-## 🔌 API Endpoints
+## 📚 API Overview
 
-### Health & Monitoring
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Basic health check |
-| `/health/ready` | GET | Readiness check (DB) |
-| `/health/live` | GET | Liveness check |
+### Health & Status
+```
+GET  /health              # Basic health check
+GET  /health/ready        # Ready to accept requests
+GET  /health/live         # Liveness probe
+```
 
-### OAuth 2.0 / OIDC
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/.well-known/openid_configuration` | GET | OIDC Discovery |
-| `/oauth2/authorize` | GET | Authorization endpoint |
-| `/oauth2/token` | POST | Token endpoint |
-| `/oauth2/introspect` | POST | Token introspection |
-| `/oauth2/revoke` | POST | Token revocation |
-| `/oauth2/jwks` | GET | JSON Web Key Set |
-| `/oauth2/userinfo` | GET | User info endpoint |
+### OAuth 2.0 & OIDC
+```
+GET  /.well-known/openid-configuration    # OIDC metadata
+GET  /oauth2/authorize                    # Authorization endpoint
+POST /oauth2/token                        # Token endpoint
+POST /oauth2/introspect                   # Token introspection
+POST /oauth2/revoke                       # Token revocation
+GET  /oauth2/jwks                         # Public key set
+GET  /oauth2/userinfo                     # Get user info
+```
+
+### SAML
+```
+POST /saml/acs                            # Assertion Consumer Service
+GET  /saml/metadata                       # SP metadata
+GET  /saml/logout                         # Logout endpoint
+```
 
 ### Admin API
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/admin/stats` | GET | System statistics |
-| `/api/v1/auth/realms` | CRUD | Realm management |
-| `/api/v1/auth/users` | CRUD | User management |
-| `/api/v1/auth/roles` | CRUD | Role management |
-| `/api/v1/auth/clients` | CRUD | Client management |
+```
+CRUD /api/v1/auth/realms                 # Realm management
+CRUD /api/v1/auth/users                  # User CRUD
+CRUD /api/v1/auth/roles                  # Role management
+CRUD /api/v1/auth/clients                # OAuth client management
+GET  /api/v1/admin/stats                 # System statistics
+```
 
-### Advanced Features
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/realms/{id}/event-listeners` | CRUD | Event listeners |
-| `/api/v1/realms/{id}/protocol-mappers` | CRUD | Protocol mappers |
-| `/api/v1/realms/{id}/authenticators` | CRUD | Authenticators |
-| `/oid4vc/.well-known/openid-credential-issuer` | GET | VC Issuer metadata |
+See `tests/` directory for complete API examples.
 
 ---
 
-## 🧪 Testing
+## 🧪 Running Tests
 
 ```bash
 # Run all tests
 cargo test
 
-# Run specific test suite
-cargo test --test session5_rest_api_tests
+# Run specific test module  
+cargo test --test api_integration_tests
 
 # Run with output
-cargo test -- --nocapture
+cargo test -- --nocapture --test-threads=1
+
+# Run only unit tests
+cargo test --lib
 ```
+
+Test files:
+- **119** test files total
+- Unit tests for crypto, stores, models
+- Integration tests for OAuth2, OIDC, SAML flows
+- Admin API endpoint tests
 
 ---
 
-## 📊 Features Matrix
+## 🎯 Feature Status
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| OAuth 2.0 | ✅ Implemented | Core flows working |
-| OIDC | ✅ Implemented | Ed25519 signing |
-| SAML 2.0 | ✅ Implemented | SP & IdP modes |
-| WebAuthn | 🔶 Partial | Basic support |
-| TOTP | ✅ Implemented | RFC 6238 compliant |
-| Social Login | 🔶 Partial | Requires configuration |
-| Zero Trust | 🔶 Partial | Policy engine WIP |
-| OID4VC | ✅ Implemented | 4 credential types |
-| Post-Quantum | 🔬 Experimental | ML-DSA, ML-KEM |
-| Clustering | ⏳ Planned | HA support |
-| Admin UI | ⏳ Planned | Web console |
+| **OAuth 2.0** | ✅ Working | Authorization Code, Client Credentials, Refresh Token with PKCE |
+| **OIDC** | ✅ Working | Discovery, ID tokens, userinfo - Ed25519 signed JWTs |
+| **SAML 2.0** | ✅ Working | SP-initiated SSO with assertion validation |
+| **TOTP/2FA** | ✅ Working | Time-based one-time passwords |
+| **Crypto** | ✅ Working | Ed25519, ECDSA, AES-256-GCM, Argon2id |
+| **Rate Limiting** | ✅ Working | Brute force & DDoS protection |
+| **Audit Logging** | ✅ Working | Event persistence to PostgreSQL |
+| **WebAuthn** | 🟡 Partial | Framework in place, testing underway |
+| **Social Login** | 🟡 Partial | Framework ready, providers need setup |
+| **OID4VC** | 🟡 Partial | Verifiable credentials support (experimental) |
+| **Zero Trust** | 🟡 Partial | Device trust scoring implemented |
+| **Admin Web UI** | ❌ Missing | REST API complete, web console needed |
+| **Clustering** | ❌ Missing | Single-instance only |
+| **LDAP Sync** | ❌ Missing | Federation framework exists |
 
-**Legend:** ✅ Ready | 🔶 Partial | 🔬 Experimental | ⏳ Planned
-
----
-
-## 🔒 Security Considerations
-
-1. **Change default secrets** - Always update JWT_SECRET and ENCRYPTION_KEY
-2. **Use TLS** - Always enable HTTPS in production environments
-3. **Database encryption** - Enable PostgreSQL encryption at rest
-4. **Regular updates** - Keep dependencies updated for security patches
-5. **Audit logs** - Enable and monitor event logging for security incidents
+**Key:** ✅ = Ready | 🟡 = Partial | ❌ = Not yet | 🔬 = Experimental
 
 ---
 
-## 📝 License
+## 🔐 Security Model
 
-This project is licensed under the **Apache License 2.0** - see the [LICENSE](LICENSE) file for details.
+### Cryptography
+- **JWT Signing:** Ed25519 (default), ECDSA P-256/384/521 (configurable)
+- **Encryption:** AES-256-GCM for sensitive data
+- **Passwords:** Argon2id hashing
+- **Key Storage:** In-memory with optional Vault integration
+
+### Authentication Flow
+1. User authenticates (username/password or federated)
+2. JWT token issued with Ed25519 signature
+3. Token includes user ID, realm, roles, device info
+4. Middleware validates token signature on each request
+5. Device trust score evaluated during auth
+
+### Rate Limiting
+- Login attempts: 5 per minute per user
+- Token endpoints: 100 per minute per client
+- API endpoints: Configurable per route
+
+### Audit Trail
+- All authentication events logged to database
+- Failed login attempts tracked
+- Token issuance/revocation logged
+- Configuration changes audited
+
+---
+
+## 🚨 Important Notes
+
+### Before Using
+
+1. ⚠️ **Not Production Ready** - This is a development/learning project
+2. ⚠️ **Change All Secrets** - JWT_SECRET, encryption keys must be unique
+3. ⚠️ **No Security Audit** - This code has not undergone professional security review
+4. ⚠️ **HTTPS Required** - Always use TLS/HTTPS in any non-local deployment
+5. ⚠️ **Database Security** - Use strong passwords, encrypted connections
+
+### What You Should Know
+
+- Single-instance only (no clustering yet)
+- PostgreSQL required (no in-memory mode)
+- Some OAuth2 flows may not match all RFC nuances exactly
+- WebAuthn implementation is incomplete
+- SPI extensions require code modification
+
+---
+
+## � Documentation
+
+- **[README.md](README.md)** - This file
+- **[TODO.md](TODO.md)** - Detailed roadmap
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contributing guidelines
+- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** - Community guidelines
+- **[SECURITY.md](SECURITY.md)** - Security policies
+
+---
+
+## 🔗 Related Resources
+
+- [Rust Book](https://doc.rust-lang.org/book/) - Learn Rust
+- [Tokio Documentation](https://tokio.rs/) - Async runtime
+- [Axum Web Framework](https://github.com/tokio-rs/axum) - Web framework
+- [OAuth 2.0 RFC 6749](https://tools.ietf.org/html/rfc6749)
+- [OpenID Connect Core](https://openid.net/specs/openid-connect-core-1_0.html)
+- [SAML 2.0](https://en.wikipedia.org/wiki/SAML_2.0)
+- [WebAuthn Spec](https://www.w3.org/TR/webauthn-2/)
+
+---
+
+## 📄 License
+
+Apache License 2.0 - See [LICENSE](LICENSE) file
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read our contributing guidelines before submitting PRs.
+Contributions welcome! Please:
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch: `git checkout -b feature/description`
+3. Make changes with tests
+4. Submit a pull request
 
----
-
-## 📞 Support
-
-- 📧 Email: security@authenc.dev
-- 📖 Documentation: [docs.authenc.dev](https://docs.authenc.dev)
-- 🐛 Issues: [GitHub Issues](https://github.com/analisaperlengkapan/authenc/issues)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ---
 
 <p align="center">
-  <b>Built with ❤️ in Rust</b><br>
-  <sub>© 2024-2026 SIMPelv2 Team</sub>
+  <b>Built with Rust 🦀</b><br>
+  <sub>An open source identity and access management platform</sub>
 </p>
+
