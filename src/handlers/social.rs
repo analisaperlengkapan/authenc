@@ -17,6 +17,7 @@ use crate::services::sso::SsoSessionManager;
 use crate::services::stores::social_account_store::SocialAccountStoreTrait;
 use crate::services::stores::user_store::UserStoreTrait;
 use uuid::Uuid;
+use url::Url;
 
 /// Request to initiate social login
 #[derive(Deserialize)]
@@ -77,16 +78,36 @@ pub async fn social_callback(
     };
 
     // Fix Open Redirect: Validate redirect_uri
-    if !state_data.redirect_uri.starts_with('/') || state_data.redirect_uri.starts_with("//") || state_data.redirect_uri.contains('\\') {
-        tracing::error!("Invalid redirect URI in state: {}", state_data.redirect_uri);
+    // We expect a relative path. We validate it by ensuring it starts with / (but not //)
+    // and that it parses successfully when appended to a dummy base.
+    let redirect_uri = &state_data.redirect_uri;
+    if !redirect_uri.starts_with('/')
+        || redirect_uri.starts_with("//")
+        || redirect_uri.contains('\\')
+        || Url::parse(&format!("http://localhost{}", redirect_uri)).is_err()
+    {
+        tracing::error!("Invalid redirect URI in state: {}", redirect_uri);
         return Err(StatusCode::BAD_REQUEST);
     }
 
     let provider = profile.provider.clone();
     let provider_user_id = profile.provider_user_id.clone();
 
+    // Resolve target realm ID
+    // Fix Realm Selection: Use realm_id from state if available
+    let target_realm_id = if let Some(rid_str) = &state_data.realm_id {
+        Uuid::parse_str(rid_str).map_err(|_| {
+            tracing::error!("Invalid realm_id in state");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    } else {
+        // Fallback or Error. For now, erroring is safer to ensure deterministic behavior.
+        tracing::error!("No realm_id associated with social login state");
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
     // Check if social account exists
-    let existing_account = state.social_account_store
+    let existing_account_opt = state.social_account_store
         .get_social_account_by_provider(&provider, &provider_user_id)
         .await
         .map_err(|e| {
@@ -94,28 +115,41 @@ pub async fn social_callback(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    // Fix Cross-Realm Issue: Validate that the existing account belongs to the target realm
+    let existing_account = if let Some(account) = existing_account_opt {
+        // Fetch user to check realm
+        let user_res = state.user_store.get_user(account.user_id).await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        if let Some(user) = user_res {
+            if let Some(user_realm) = user.realm_id {
+                if user_realm == target_realm_id {
+                    Some(account)
+                } else {
+                    tracing::warn!("Social account found for user {} in realm {}, but login requested for realm {}. Treating as new user/linking for target realm.",
+                        user.id, user_realm, target_realm_id);
+                    None
+                }
+            } else {
+                // User has no realm? Should not happen in valid state.
+                None
+            }
+        } else {
+            // Account points to non-existent user? Orphaned account.
+            None
+        }
+    } else {
+        None
+    };
+
     let user_id = if let Some(account) = existing_account {
         account.user_id
     } else {
-        // Fix Realm Selection: Use realm_id from state if available
-        let realm_id = if let Some(rid_str) = state_data.realm_id {
-            Uuid::parse_str(&rid_str).map_err(|_| {
-                tracing::error!("Invalid realm_id in state");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-        } else {
-            // Fallback: This path should ideally be unreachable if we enforce realm_id
-            // But if the state store doesn't return it (e.g. legacy state), we might fallback.
-            // For safety, we should probably fail or use a strictly defined default.
-            // Using first() is still risky but maybe acceptable if we log it.
-            // Better: Fail if no realm is known.
-            tracing::error!("No realm_id associated with social login state");
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        };
+        // Account does not exist or was ignored due to realm mismatch.
 
-        // Try to find user by email
+        // Try to find user by email IN THE TARGET REALM
         let existing_user = if let Some(email) = &profile.email {
-            state.user_store.get_user_by_email(&realm_id, email).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            state.user_store.get_user_by_email(&target_realm_id, email).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         } else {
             None
         };
@@ -139,10 +173,16 @@ pub async fn social_callback(
                  refresh_token: None,
                  token_expires_at: None,
              };
-             state.social_account_store.add_social_account(user.id, req).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+             // Note: This might fail if the DB enforces global uniqueness on (provider, provider_user_id)
+             state.social_account_store.add_social_account(user.id, req).await.map_err(|e| {
+                 tracing::error!("Failed to link account: {}", e);
+                 // If it failed, it might be because it's already linked to another user (in another realm).
+                 // In that case, we can't link it here unless we support one social ID -> multiple users.
+                 StatusCode::CONFLICT
+             })?;
              user.id
         } else {
-             // Create new user
+             // Create new user in TARGET REALM
              let username = profile.email.clone().unwrap_or_else(|| format!("{}_{}", provider.as_str(), provider_user_id));
              let email = profile.email.clone().unwrap_or_else(|| format!("{}@placeholder.com", Uuid::new_v4()));
 
@@ -153,7 +193,7 @@ pub async fn social_callback(
                  first_name: profile.first_name.clone(),
                  last_name: profile.last_name.clone(),
                  phone_number: None,
-                 realm_id: Some(realm_id),
+                 realm_id: Some(target_realm_id),
                  organization_id: None,
                  attributes: None,
              };
@@ -165,9 +205,6 @@ pub async fn social_callback(
 
              // If the social profile is verified, update the user status
              if profile.verified_email {
-                 // We don't have update_user exposed conveniently with partial update struct here that takes boolean directly
-                 // without full struct, but let's check UpdateUserRequest.
-                 // UpdateUserRequest has email_verified: Option<bool>.
                  let update_req = crate::models::user::UpdateUserRequest {
                      username: None,
                      email: None,
@@ -180,7 +217,6 @@ pub async fn social_callback(
                      require_password_change: None,
                      attributes: None,
                  };
-                 // We ignore error on update as user is created, this is non-critical optimization
                  let _ = state.user_store.update_user(user.id, update_req).await;
              }
 
@@ -195,18 +231,26 @@ pub async fn social_callback(
                  refresh_token: None,
                  token_expires_at: None,
              };
-             state.social_account_store.add_social_account(user.id, req).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+             state.social_account_store.add_social_account(user.id, req).await.map_err(|e| {
+                 tracing::error!("Failed to add social account for new user: {}", e);
+                 StatusCode::INTERNAL_SERVER_ERROR
+             })?;
              user.id
         }
     };
 
-    // Get user again to get realm_id
+    // Get user again to confirm realm_id (should match target_realm_id)
     let user = state.user_store.get_user(user_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-    let realm_id = user.realm_id.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Safety check
+    if user.realm_id != Some(target_realm_id) {
+        tracing::error!("Security violation: User realm mismatch during social login");
+        return Err(StatusCode::FORBIDDEN);
+    }
 
     let sso_session = state.sso_session_manager.create_session(
         &user_id.to_string(),
-        &realm_id.to_string(),
+        &target_realm_id.to_string(),
         provider.as_str(),
         1800, // 30 min idle
         36000, // 10 hours max
@@ -229,7 +273,7 @@ pub async fn social_callback(
     })?;
 
     // Generate response with cookie and redirect
-    let mut response = Redirect::to(&state_data.redirect_uri).into_response();
+    let mut response = Redirect::to(redirect_uri).into_response();
 
     // Add Set-Cookie header
     use axum::http::header::SET_COOKIE;
