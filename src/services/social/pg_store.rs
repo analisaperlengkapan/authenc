@@ -75,8 +75,12 @@ impl SocialStateStore for PgSocialStateStore {
 
         if let Some(data) = state_data {
             // Need to fetch provider alias to return `SocialLoginState`
-            let provider_id = data["provider_config_id"].as_str().unwrap();
-            let provider_id_uuid = Uuid::parse_str(provider_id).unwrap();
+            let provider_id = data["provider_config_id"]
+                .as_str()
+                .ok_or_else(|| crate::error::AuthencError::database("Missing provider_config_id in state data"))?;
+
+            let provider_id_uuid = Uuid::parse_str(provider_id)
+                .map_err(|_| crate::error::AuthencError::database("Invalid provider_config_id format"))?;
 
             let query = "SELECT alias FROM oauth2_provider_configs WHERE id = $1";
             let provider_alias: String = self.db.query_one::<tokio_postgres::Row>(query, &[&provider_id_uuid]).await
