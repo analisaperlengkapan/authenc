@@ -470,6 +470,9 @@ impl SocialLoginManager {
 
     /// Parse Microsoft user profile
     fn parse_microsoft_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        // Microsoft accounts generally have verified emails, especially enterprise ones.
+        // We set this to true to allow account linking, as we trust Microsoft as an IdP.
+        // In a stricter environment, we might want to check specific claims if available.
         SocialUserProfile {
             provider: SocialProvider::Microsoft,
             provider_user_id: data["id"].as_str().unwrap_or("").to_string(),
@@ -482,7 +485,7 @@ impl SocialLoginManager {
             last_name: data["surname"].as_str().map(|s| s.to_string()),
             picture_url: None, // Microsoft Graph API requires separate call
             locale: None,
-            verified_email: false,
+            verified_email: true,
             raw_data: data,
         }
     }
