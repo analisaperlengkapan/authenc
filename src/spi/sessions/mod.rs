@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::error::Result;
 use crate::models::session::Session;
-use crate::services::session_store::SessionStore;
+use crate::services::session_store::{SessionStore, SessionStoreTrait};
 use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
 
 /// Session provider types
@@ -85,12 +85,12 @@ pub trait SessionProviderFactory: Send + Sync {
 
 /// Default user session provider implementation
 pub struct DefaultUserSessionProvider {
-    session_store: Arc<SessionStore>,
+    session_store: Arc<dyn SessionStoreTrait>,
 }
 
 impl DefaultUserSessionProvider {
     /// Create a new default user session provider with the given session store
-    pub fn new(session_store: Arc<SessionStore>) -> Self {
+    pub fn new(session_store: Arc<dyn SessionStoreTrait>) -> Self {
         Self { session_store }
     }
 }
@@ -141,28 +141,24 @@ impl UserSessionProvider for DefaultUserSessionProvider {
     }
 
     async fn remove_user_sessions_by_user(&self, user_id: Uuid) -> Result<()> {
-        let sessions = self.session_store.get_user_sessions(user_id).await?;
-        for session in sessions {
-            self.session_store.delete_session(session.id).await?;
-        }
+        self.session_store.delete_user_sessions(user_id).await?;
         Ok(())
     }
 
     async fn remove_expired_user_sessions(&self) -> Result<()> {
-        // This would need to be implemented in SessionStore
-        // For now, we'll leave it as a placeholder
+        self.session_store.cleanup_expired().await?;
         Ok(())
     }
 }
 
 /// Default session provider factory
 pub struct DefaultSessionProviderFactory {
-    session_store: Arc<SessionStore>,
+    session_store: Arc<dyn SessionStoreTrait>,
 }
 
 impl DefaultSessionProviderFactory {
     /// Create a new default session provider factory with the given session store
-    pub fn new(session_store: Arc<SessionStore>) -> Self {
+    pub fn new(session_store: Arc<dyn SessionStoreTrait>) -> Self {
         Self { session_store }
     }
 }

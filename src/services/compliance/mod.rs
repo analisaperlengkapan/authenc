@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::services::stores::ConsentStore;
+use crate::services::stores::ConsentStoreTrait;
 
 /// Enhanced compliance module with SOC 2/3, ISO 27001, etc. (Enterprise-grade)
 pub mod enhanced;
@@ -229,7 +229,7 @@ impl GDPRComplianceChecks {
 
     /// Create a consent management compliance check for GDPR
     pub fn consent_management_check(
-        consent_store: Option<Arc<ConsentStore>>,
+        consent_store: Option<Arc<dyn ConsentStoreTrait>>,
     ) -> Box<dyn ComplianceCheck> {
         Box::new(GDPRConsentManagementCheck {
             requirement: ComplianceRequirement {
@@ -552,7 +552,7 @@ impl ComplianceCheck for GDPRDataRetentionCheck {
 /// GDPR consent management check implementation
 pub struct GDPRConsentManagementCheck {
     requirement: ComplianceRequirement,
-    consent_store: Option<Arc<ConsentStore>>,
+    consent_store: Option<Arc<dyn ConsentStoreTrait>>,
 }
 
 #[async_trait]

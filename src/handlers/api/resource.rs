@@ -15,14 +15,14 @@ use crate::models::user::UserResponse;
 use crate::services::permission_ticket_store::{PermissionTicketStore, PermissionTicketStoreTrait};
 use crate::services::resource_store::{ResourceStore, ResourceStoreTrait};
 use crate::services::scope_store::{ScopeStore, ScopeStoreTrait};
-use crate::services::stores::user_store::{UserStore, UserStoreTrait};
+use crate::services::stores::user_store::UserStoreTrait;
 
 /// Create resource management routes for account console
 pub fn create_resource_routes() -> Router<(
     Arc<ResourceStore>,
     Arc<PermissionTicketStore>,
     Arc<ScopeStore>,
-    Arc<UserStore>,
+    Arc<dyn UserStoreTrait>,
 )> {
     Router::new()
         .route("/resources/{resource_id}", get(get_resource))
@@ -47,7 +47,7 @@ pub async fn get_resource(
         Arc<ResourceStore>,
         Arc<PermissionTicketStore>,
         Arc<ScopeStore>,
-        Arc<UserStore>,
+        Arc<dyn UserStoreTrait>,
     )>,
     Path(resource_id): Path<Uuid>,
 ) -> Result<Json<ResourceResponse>, AuthencError> {
@@ -65,7 +65,7 @@ pub async fn get_resource_permissions(
         Arc<ResourceStore>,
         Arc<PermissionTicketStore>,
         Arc<ScopeStore>,
-        Arc<UserStore>,
+        Arc<dyn UserStoreTrait>,
     )>,
     Path(resource_id): Path<Uuid>,
 ) -> Result<Json<Vec<PermissionResponse>>, AuthencError> {
@@ -121,7 +121,7 @@ pub async fn update_resource_permissions(
         Arc<ResourceStore>,
         Arc<PermissionTicketStore>,
         Arc<ScopeStore>,
-        Arc<UserStore>,
+        Arc<dyn UserStoreTrait>,
     )>,
     Path(resource_id): Path<Uuid>,
     Json(request): Json<UpdatePermissionsRequest>,
@@ -180,7 +180,7 @@ pub async fn get_permission_requests(
         Arc<ResourceStore>,
         Arc<PermissionTicketStore>,
         Arc<ScopeStore>,
-        Arc<UserStore>,
+        Arc<dyn UserStoreTrait>,
     )>,
     Path(resource_id): Path<Uuid>,
 ) -> Result<Json<Vec<PermissionResponse>>, AuthencError> {
@@ -227,7 +227,7 @@ pub async fn get_user_info(
         Arc<ResourceStore>,
         Arc<PermissionTicketStore>,
         Arc<ScopeStore>,
-        Arc<UserStore>,
+        Arc<dyn UserStoreTrait>,
     )>,
     Path(resource_id): Path<Uuid>,
     Query(query): Query<UserQuery>,

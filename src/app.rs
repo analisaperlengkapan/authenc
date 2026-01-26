@@ -15,9 +15,9 @@ pub struct AppState {
     /// Database connection pool
     pub database: Arc<crate::database::Database>,
     /// User data store
-    pub user_store: Arc<crate::services::stores::user_store::UserStore>,
+    pub user_store: Arc<dyn crate::services::stores::user_store::UserStoreTrait>,
     /// Session management store
-    pub session_store: Arc<crate::services::session_store::SessionStore>,
+    pub session_store: Arc<dyn crate::services::session_store::SessionStoreTrait>,
     /// TOTP (Time-based One-Time Password) store
     pub totp_store: Arc<crate::services::totp_store::TotpStore>,
     /// Brute force attack protection service
@@ -29,7 +29,7 @@ pub struct AppState {
     /// Audit log storage
     pub audit_log_store: Arc<crate::services::pg_audit_log_store::PgAuditLogStore>,
     /// User consent management store for GDPR compliance
-    pub consent_store: Arc<crate::services::stores::consent_store::ConsentStore>,
+    pub consent_store: Arc<dyn crate::services::stores::consent_store::ConsentStoreTrait>,
     /// Authentication flow store for pluggable authentication flows
     pub auth_flow_store: Arc<crate::services::stores::auth_flow_store::AuthFlowStore>,
     /// Realm configuration store
@@ -78,6 +78,8 @@ pub struct AppState {
     pub compliance_mode_service: Arc<crate::services::compliance_mode::ComplianceModeService>,
     /// OAuth2 service for token persistence
     pub oauth2_service: Arc<crate::services::oauth2::OAuth2Service>,
+    /// WebAuthn service
+    pub webauthn_service: Arc<crate::services::webauthn::WebAuthnService>,
     /// FIPS security provider
     pub fips_provider: Arc<crate::services::fips::AdvancedFipsSecurityProvider>,
 }
@@ -124,10 +126,10 @@ impl AppState {
         );
 
         // Initialize other services
-        let user_store = Arc::new(crate::services::stores::user_store::UserStore::new(
+        let user_store: Arc<dyn crate::services::stores::user_store::UserStoreTrait> = Arc::new(crate::services::stores::user_store::UserStore::new(
             database.clone(),
         ));
-        let session_store = Arc::new(crate::services::session_store::SessionStore::new(
+        let session_store: Arc<dyn crate::services::session_store::SessionStoreTrait> = Arc::new(crate::services::session_store::SessionStore::new(
             database.clone(),
         ));
         let totp_store = Arc::new(crate::services::totp_store::TotpStore::new());
@@ -464,6 +466,18 @@ impl AppState {
             database.clone(),
         ));
 
+        // Initialize WebAuthn service
+        // TODO: Configure RP ID and name from config
+        let rp_id = "localhost".to_string();
+        let rp_name = "Authenc".to_string();
+        let webauthn_service = Arc::new(crate::services::webauthn::WebAuthnService::new(
+            database.clone(),
+            rp_id,
+            rp_name,
+            config.security.jwt_secret.clone(),
+            None, // Encryption key derived from JWT secret by default
+        ));
+
         // Initialize FIPS provider
         let fips_provider = Arc::new(crate::services::fips::AdvancedFipsSecurityProvider::new());
 
@@ -501,6 +515,7 @@ impl AppState {
             observability_service,
             compliance_mode_service,
             oauth2_service,
+            webauthn_service,
             fips_provider,
         })
     }

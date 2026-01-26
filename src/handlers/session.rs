@@ -3,7 +3,7 @@
 //! This module provides endpoints for listing user sessions
 //! and handling logout operations.
 
-use crate::services::session_store::SessionStore;
+use crate::services::session_store::SessionStoreTrait;
 use crate::utils::crypto::jwt::Claims;
 use axum::{
     Router,
@@ -19,7 +19,7 @@ use std::sync::Arc;
 /// Session state for the router
 pub struct SessionState {
     /// Session store for managing user sessions
-    pub session_store: Arc<SessionStore>,
+    pub session_store: Arc<dyn SessionStoreTrait>,
     /// JWT secret for token validation
     pub jwt_secret: String,
 }
@@ -158,7 +158,7 @@ pub fn create_session_routes() -> Router<Arc<SessionState>> {
 /// Helper function to create SessionState from components
 impl SessionState {
     /// Create a new SessionState
-    pub fn new(session_store: Arc<SessionStore>, jwt_secret: String) -> Self {
+    pub fn new(session_store: Arc<dyn SessionStoreTrait>, jwt_secret: String) -> Self {
         Self {
             session_store,
             jwt_secret,
