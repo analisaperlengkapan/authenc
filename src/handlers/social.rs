@@ -80,10 +80,23 @@ pub async fn social_callback(
     // Fix Open Redirect: Validate redirect_uri
     // We expect a relative path. We validate it by ensuring it starts with / (but not //)
     // and that it parses successfully when appended to a dummy base.
+    // Also check for URL-encoded open redirect attempts
     let redirect_uri = &state_data.redirect_uri;
+
+    // Decode URI to check for hidden sequences like %2f%2f or %5c
+    let decoded_uri = match urlencoding::decode(redirect_uri) {
+        Ok(s) => s.into_owned(),
+        Err(_) => {
+            tracing::error!("Failed to decode redirect URI");
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    };
+
     if !redirect_uri.starts_with('/')
         || redirect_uri.starts_with("//")
         || redirect_uri.contains('\\')
+        || decoded_uri.starts_with("//")
+        || decoded_uri.contains('\\')
         || Url::parse(&format!("http://localhost{}", redirect_uri)).is_err()
     {
         tracing::error!("Invalid redirect URI in state: {}", redirect_uri);
@@ -94,16 +107,29 @@ pub async fn social_callback(
     let provider_user_id = profile.provider_user_id.clone();
 
     // Resolve target realm ID
-    // Fix Realm Selection: Use realm_id from state if available
+    // Fix Realm Selection: Use realm_id from state if available, otherwise query DB for provider's realm
     let target_realm_id = if let Some(rid_str) = &state_data.realm_id {
         Uuid::parse_str(rid_str).map_err(|_| {
             tracing::error!("Invalid realm_id in state");
             StatusCode::INTERNAL_SERVER_ERROR
         })?
     } else {
-        // Fallback or Error. For now, erroring is safer to ensure deterministic behavior.
-        tracing::error!("No realm_id associated with social login state");
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        // Fallback: Query database for the realm associated with this provider
+        // This handles cases where InMemoryStore is used (which doesn't infer realm)
+        // or when PgStore was used but realm_id wasn't in the state payload for some reason
+        let db = &state.database;
+        let query = "SELECT realm_id FROM oauth2_provider_configs WHERE alias = $1";
+        let row = db.query_opt(query, &[&provider.as_str()]).await.map_err(|e| {
+            tracing::error!("Failed to query provider realm: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+        if let Some(row) = row {
+            row.get::<_, Uuid>(0)
+        } else {
+            tracing::error!("No realm found for provider: {:?}", provider);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
     };
 
     // Check if social account exists
