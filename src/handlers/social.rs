@@ -268,9 +268,15 @@ pub async fn social_callback(
     // Get user again to confirm realm_id (should match target_realm_id)
     let user = state.user_store.get_user(user_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Safety check
+    // Safety check - Realm mismatch
     if user.realm_id != Some(target_realm_id) {
         tracing::error!("Security violation: User realm mismatch during social login");
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    // Safety check - User status (disabled/locked)
+    if !user.is_active() {
+        tracing::warn!("Social login attempt for inactive user: {}", user.id);
         return Err(StatusCode::FORBIDDEN);
     }
 
