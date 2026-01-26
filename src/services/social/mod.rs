@@ -264,18 +264,40 @@ impl SocialLoginManager {
         Ok(url.to_string())
     }
 
-    /// Validate OAuth state parameter
-    pub fn validate_state(&self, state: &str) -> Result<SocialLoginSession, String> {
-        // Find session by state
-        for session in self.sessions.read().unwrap().values() {
-            if session.state == state {
+    /// Validate and consume OAuth state parameter
+    ///
+    /// Checks if the state exists and is valid, then removes it to prevent replay attacks.
+    pub fn validate_and_consume_state(&self, state: &str) -> Result<SocialLoginSession, String> {
+        // FIXME: Architectural limitation: In-memory session storage incompatible with clustering.
+        // In a clustered environment, this session validation will fail if the callback hits a different node
+        // than the one that initiated the login.
+        //
+        // TODO: Migrate to a distributed store (e.g., Redis or the `oauth2_states` database table).
+        // The `oauth2_states` table is defined in migration 014 but requires `oauth2_provider_configs`
+        // to be populated, which is currently not done (we use env vars).
+        let mut sessions = self.sessions.write().unwrap();
+
+        // Find session ID by state
+        let session_id = sessions
+            .iter()
+            .find_map(|(id, session)| {
+                if session.state == state {
+                    Some(id.clone())
+                } else {
+                    None
+                }
+            });
+
+        if let Some(id) = session_id {
+            if let Some(session) = sessions.remove(&id) {
                 // Check if session is expired
                 if chrono::Utc::now() > session.expires_at {
                     return Err("Session expired".to_string());
                 }
-                return Ok(session.clone());
+                return Ok(session);
             }
         }
+
         Err("Invalid state parameter".to_string())
     }
 
@@ -300,7 +322,8 @@ impl SocialLoginService for SocialLoginManager {
     }
 
     async fn handle_callback(&self, code: &str, state: &str) -> Result<SocialUserProfile, String> {
-        let session = self.validate_state(state)?;
+        // Validate and consume state to prevent replay attacks
+        let session = self.validate_and_consume_state(state)?;
 
         let config = self
             .get_provider_config(&session.provider)
