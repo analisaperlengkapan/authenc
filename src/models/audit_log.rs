@@ -37,3 +37,36 @@ pub struct AuditLog {
     /// Optional additional details about the event for context
     pub detail: Option<String>,
 }
+
+/// Filter criteria for querying audit logs
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AuditLogFilter {
+    /// Filter by user ID
+    pub user_id: Option<String>,
+    /// Filter by client ID
+    pub client_id: Option<String>,
+    /// Filter by status
+    pub status: Option<String>,
+    /// Filter by start date (inclusive)
+    pub start_date: Option<DateTime<Utc>>,
+    /// Filter by end date (inclusive)
+    pub end_date: Option<DateTime<Utc>>,
+}
+
+/// Pagination parameters for queries
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Pagination {
+    /// Maximum number of items to return
+    pub limit: i64,
+    /// Number of items to skip
+    pub offset: i64,
+}
+
+impl Default for Pagination {
+    fn default() -> Self {
+        Self {
+            limit: 50,
+            offset: 0,
+        }
+    }
+}
