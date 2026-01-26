@@ -483,8 +483,12 @@ impl AppState {
         // Initialize FIPS provider
         let fips_provider = Arc::new(crate::services::fips::AdvancedFipsSecurityProvider::new());
 
-        // Initialize Social Login Manager
-        let mut social_manager = crate::services::social::SocialLoginManager::new();
+        // Initialize Social Login Manager with persistent store
+        let pg_store = crate::services::social::pg_store::PgSocialStateStore::new(database.clone());
+        let social_manager = crate::services::social::SocialLoginManager::with_store(Arc::new(pg_store));
+
+        // Prepare list of env configs for syncing
+        let mut env_configs = Vec::new();
 
         // Register Google provider if configured
         if let (Ok(client_id), Ok(client_secret)) = (
@@ -506,7 +510,8 @@ impl AppState {
                 ],
                 provider: crate::services::social::SocialProvider::Google,
             };
-            social_manager.register_provider(google_config);
+            social_manager.register_provider(google_config.clone());
+            env_configs.push((crate::services::social::SocialProvider::Google, google_config));
         }
 
         // Register GitHub provider if configured
@@ -525,7 +530,8 @@ impl AppState {
                 scopes: vec!["user:email".to_string()],
                 provider: crate::services::social::SocialProvider::GitHub,
             };
-            social_manager.register_provider(github_config);
+            social_manager.register_provider(github_config.clone());
+            env_configs.push((crate::services::social::SocialProvider::GitHub, github_config));
         }
 
         // Register Facebook provider if configured
@@ -544,7 +550,19 @@ impl AppState {
                 scopes: vec!["email".to_string(), "public_profile".to_string()],
                 provider: crate::services::social::SocialProvider::Facebook,
             };
-            social_manager.register_provider(facebook_config);
+            social_manager.register_provider(facebook_config.clone());
+            env_configs.push((crate::services::social::SocialProvider::Facebook, facebook_config));
+        }
+
+        // Sync configs to DB
+        // We spawn this as a background task or run it here. Running it here might block startup slightly
+        // but ensures consistency. However, `sync_env_configs_to_db` is async and we are in async context.
+        if !env_configs.is_empty() {
+            if let Err(e) = crate::services::social::db_sync::sync_env_configs_to_db(&database, &env_configs).await {
+                tracing::warn!("Failed to sync social providers to database: {}. Clustering for social login may not work correctly.", e);
+            } else {
+                tracing::info!("Synced {} social providers to database.", env_configs.len());
+            }
         }
 
         let social_login_manager = Arc::new(social_manager);

@@ -1,6 +1,13 @@
+pub mod state_store;
+pub mod in_memory_store;
+pub mod pg_store;
+pub mod db_sync;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use self::state_store::SocialStateStore;
 
 /// Social login provider types
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, Hash, PartialEq)]
@@ -122,23 +129,6 @@ pub struct SocialUserProfile {
     pub raw_data: serde_json::Value,
 }
 
-/// Social login session
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SocialLoginSession {
-    /// Unique session identifier
-    pub session_id: String,
-    /// OAuth state parameter
-    pub state: String,
-    /// Social provider type
-    pub provider: SocialProvider,
-    /// Redirect URI after authentication
-    pub redirect_uri: String,
-    /// Session creation timestamp
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    /// Session expiration timestamp
-    pub expires_at: chrono::DateTime<chrono::Utc>,
-}
-
 /// Social login service trait
 #[async_trait]
 pub trait SocialLoginService: Send + Sync {
@@ -165,9 +155,6 @@ pub trait SocialLoginService: Send + Sync {
         access_token: &str,
         config: &OAuthConfig,
     ) -> Result<SocialUserProfile, String>;
-
-    /// Validate session
-    async fn validate_session(&self, session_id: &str) -> Result<bool, String>;
 }
 
 /// OAuth 2.0 token response
@@ -187,14 +174,12 @@ pub struct OAuthTokenResponse {
     pub id_token: Option<String>,
 }
 
-use std::sync::RwLock;
-
 /// Social Login Manager
 pub struct SocialLoginManager {
     /// Configured OAuth providers
-    providers: HashMap<SocialProvider, OAuthConfig>,
-    /// Active login sessions
-    sessions: RwLock<HashMap<String, SocialLoginSession>>,
+    providers: RwLock<HashMap<SocialProvider, OAuthConfig>>,
+    /// State store for OAuth sessions
+    store: Arc<dyn SocialStateStore>,
     /// HTTP client for API calls
     http_client: reqwest::Client,
 }
@@ -206,52 +191,58 @@ impl Default for SocialLoginManager {
 }
 
 impl SocialLoginManager {
-    /// Create new social login manager
+    /// Create new social login manager with in-memory store (default)
     pub fn new() -> Self {
         Self {
-            providers: HashMap::new(),
-            sessions: RwLock::new(HashMap::new()),
+            providers: RwLock::new(HashMap::new()),
+            store: Arc::new(in_memory_store::InMemorySocialStateStore::new()),
+            http_client: reqwest::Client::new(),
+        }
+    }
+
+    /// Create new social login manager with custom store
+    pub fn with_store(store: Arc<dyn SocialStateStore>) -> Self {
+        Self {
+            providers: RwLock::new(HashMap::new()),
+            store,
             http_client: reqwest::Client::new(),
         }
     }
 
     /// Register OAuth provider
-    pub fn register_provider(&mut self, config: OAuthConfig) {
-        self.providers.insert(config.provider.clone(), config);
+    pub fn register_provider(&self, config: OAuthConfig) {
+        if let Ok(mut providers) = self.providers.write() {
+            providers.insert(config.provider.clone(), config);
+        }
     }
 
     /// Get OAuth configuration for provider
-    pub fn get_provider_config(&self, provider: &SocialProvider) -> Option<&OAuthConfig> {
-        self.providers.get(provider)
+    pub fn get_provider_config(&self, provider: &SocialProvider) -> Option<OAuthConfig> {
+        if let Ok(providers) = self.providers.read() {
+            return providers.get(provider).cloned();
+        }
+        None
     }
 
     /// Generate OAuth authorization URL
-    pub fn generate_auth_url(
+    pub async fn generate_auth_url(
         &self,
         provider: &SocialProvider,
         redirect_uri: &str,
     ) -> Result<String, String> {
-        // Clean expired sessions before creating a new one
-        self.clean_expired_sessions();
+        // Clean expired sessions before creating a new one (best effort)
+        let _ = self.store.cleanup_expired().await;
 
         let config = self
             .get_provider_config(provider)
             .ok_or_else(|| format!("Provider {:?} not configured", provider))?;
 
         let state = uuid::Uuid::new_v4().to_string();
-        let session_id = uuid::Uuid::new_v4().to_string();
 
-        // Create session
-        let session = SocialLoginSession {
-            session_id: session_id.clone(),
-            state: state.clone(),
-            provider: provider.clone(),
-            redirect_uri: redirect_uri.to_string(),
-            created_at: chrono::Utc::now(),
-            expires_at: chrono::Utc::now() + chrono::Duration::minutes(10),
-        };
-
-        self.sessions.write().unwrap().insert(session_id, session);
+        // Store state in backend
+        self.store.create_state(&state, provider.as_str(), redirect_uri, 600) // 10 minutes
+            .await
+            .map_err(|e| format!("Failed to store state: {}", e))?;
 
         // Build authorization URL
         let mut url = url::Url::parse(&config.authorization_url)
@@ -268,48 +259,12 @@ impl SocialLoginManager {
     }
 
     /// Validate and consume OAuth state parameter
-    ///
-    /// Checks if the state exists and is valid, then removes it to prevent replay attacks.
-    pub fn validate_and_consume_state(&self, state: &str) -> Result<SocialLoginSession, String> {
-        // FIXME: Architectural limitation: In-memory session storage incompatible with clustering.
-        // In a clustered environment, this session validation will fail if the callback hits a different node
-        // than the one that initiated the login.
-        //
-        // TODO: Migrate to a distributed store (e.g., Redis or the `oauth2_states` database table).
-        // The `oauth2_states` table is defined in migration 014 but requires `oauth2_provider_configs`
-        // to be populated, which is currently not done (we use env vars).
-        let mut sessions = self.sessions.write().unwrap();
+    pub async fn validate_and_consume_state(&self, state: &str) -> Result<state_store::SocialLoginState, String> {
+        let session = self.store.validate_and_consume_state(state)
+            .await
+            .map_err(|e| format!("State validation error: {}", e))?;
 
-        // Find session ID by state
-        let session_id = sessions
-            .iter()
-            .find_map(|(id, session)| {
-                if session.state == state {
-                    Some(id.clone())
-                } else {
-                    None
-                }
-            });
-
-        if let Some(id) = session_id {
-            if let Some(session) = sessions.remove(&id) {
-                // Check if session is expired
-                if chrono::Utc::now() > session.expires_at {
-                    return Err("Session expired".to_string());
-                }
-                return Ok(session);
-            }
-        }
-
-        Err("Invalid state parameter".to_string())
-    }
-
-    /// Clean expired sessions
-    pub fn clean_expired_sessions(&self) {
-        let now = chrono::Utc::now();
-        if let Ok(mut sessions) = self.sessions.write() {
-            sessions.retain(|_, session| session.expires_at > now);
-        }
+        session.ok_or_else(|| "Invalid or expired state parameter".to_string())
     }
 }
 
@@ -320,23 +275,27 @@ impl SocialLoginService for SocialLoginManager {
         provider: SocialProvider,
         redirect_uri: &str,
     ) -> Result<String, String> {
-        self.generate_auth_url(&provider, redirect_uri)
+        self.generate_auth_url(&provider, redirect_uri).await
     }
 
     async fn handle_callback(&self, code: &str, state: &str) -> Result<SocialUserProfile, String> {
         // Validate and consume state to prevent replay attacks
-        let session = self.validate_and_consume_state(state)?;
+        let session = self.validate_and_consume_state(state).await?;
+
+        // Convert string provider back to enum
+        let provider = std::str::FromStr::from_str(&session.provider)
+            .map_err(|e| format!("Invalid provider in state: {}", e))?;
 
         let config = self
-            .get_provider_config(&session.provider)
+            .get_provider_config(&provider)
             .ok_or_else(|| "Provider configuration not found".to_string())?;
 
         // Exchange code for token
-        let token_response = self.exchange_code_for_token(code, config).await?;
+        let token_response = self.exchange_code_for_token(code, &config).await?;
 
         // Get user profile
         let profile = self
-            .get_user_profile(&token_response.access_token, config)
+            .get_user_profile(&token_response.access_token, &config)
             .await?;
 
         Ok(profile)
@@ -423,14 +382,6 @@ impl SocialLoginService for SocialLoginManager {
         };
 
         Ok(profile)
-    }
-
-    async fn validate_session(&self, session_id: &str) -> Result<bool, String> {
-        if let Some(session) = self.sessions.read().unwrap().get(session_id) {
-            Ok(chrono::Utc::now() <= session.expires_at)
-        } else {
-            Ok(false)
-        }
     }
 }
 
@@ -655,182 +606,6 @@ impl SocialLoginManager {
             locale: data["locale"].as_str().map(|s| s.to_string()),
             verified_email: data["email_verified"].as_bool().unwrap_or(false),
             raw_data: data,
-        }
-    }
-}
-
-/// Pre-configured OAuth configurations for popular providers
-pub struct OAuthConfigs;
-
-impl OAuthConfigs {
-    /// Create Google OAuth configuration
-    pub fn google() -> OAuthConfig {
-        OAuthConfig {
-            client_id: std::env::var("GOOGLE_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("GOOGLE_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("GOOGLE_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: "https://accounts.google.com/o/oauth2/auth".to_string(),
-            token_url: "https://oauth2.googleapis.com/token".to_string(),
-            user_info_url: "https://www.googleapis.com/oauth2/v2/userinfo".to_string(),
-            scopes: vec![
-                "openid".to_string(),
-                "profile".to_string(),
-                "email".to_string(),
-            ],
-            provider: SocialProvider::Google,
-        }
-    }
-
-    /// Create GitHub OAuth configuration
-    pub fn github() -> OAuthConfig {
-        OAuthConfig {
-            client_id: std::env::var("GITHUB_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("GITHUB_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("GITHUB_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: "https://github.com/login/oauth/authorize".to_string(),
-            token_url: "https://github.com/login/oauth/access_token".to_string(),
-            user_info_url: "https://api.github.com/user".to_string(),
-            scopes: vec!["user:email".to_string()],
-            provider: SocialProvider::GitHub,
-        }
-    }
-
-    /// Create Microsoft OAuth configuration
-    pub fn microsoft() -> OAuthConfig {
-        OAuthConfig {
-            client_id: std::env::var("MICROSOFT_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("MICROSOFT_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("MICROSOFT_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-                .to_string(),
-            token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string(),
-            user_info_url: "https://graph.microsoft.com/v1.0/me".to_string(),
-            scopes: vec![
-                "openid".to_string(),
-                "profile".to_string(),
-                "email".to_string(),
-            ],
-            provider: SocialProvider::Microsoft,
-        }
-    }
-
-    /// Create LinkedIn OAuth configuration
-    pub fn linkedin() -> OAuthConfig {
-        OAuthConfig {
-            client_id: std::env::var("LINKEDIN_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("LINKEDIN_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("LINKEDIN_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: "https://www.linkedin.com/oauth/v2/authorization".to_string(),
-            token_url: "https://www.linkedin.com/oauth/v2/accessToken".to_string(),
-            user_info_url: "https://api.linkedin.com/v2/people/~".to_string(),
-            scopes: vec!["r_liteprofile".to_string(), "r_emailaddress".to_string()],
-            provider: SocialProvider::LinkedIn,
-        }
-    }
-
-    /// Create Twitter OAuth configuration
-    pub fn twitter() -> OAuthConfig {
-        OAuthConfig {
-            client_id: std::env::var("TWITTER_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("TWITTER_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("TWITTER_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: "https://twitter.com/i/oauth2/authorize".to_string(),
-            token_url: "https://api.twitter.com/2/oauth2/token".to_string(),
-            user_info_url: "https://api.twitter.com/2/users/me".to_string(),
-            scopes: vec!["tweet.read".to_string(), "users.read".to_string()],
-            provider: SocialProvider::Twitter,
-        }
-    }
-
-    /// Create Apple OAuth configuration
-    pub fn apple() -> OAuthConfig {
-        OAuthConfig {
-            client_id: std::env::var("APPLE_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("APPLE_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("APPLE_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: "https://appleid.apple.com/auth/authorize".to_string(),
-            token_url: "https://appleid.apple.com/auth/token".to_string(),
-            user_info_url: "https://appleid.apple.com/auth/userinfo".to_string(),
-            scopes: vec!["name".to_string(), "email".to_string()],
-            provider: SocialProvider::Apple,
-        }
-    }
-
-    /// Create Discord OAuth configuration
-    pub fn discord() -> OAuthConfig {
-        OAuthConfig {
-            client_id: std::env::var("DISCORD_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("DISCORD_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("DISCORD_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: "https://discord.com/api/oauth2/authorize".to_string(),
-            token_url: "https://discord.com/api/oauth2/token".to_string(),
-            user_info_url: "https://discord.com/api/users/@me".to_string(),
-            scopes: vec!["identify".to_string(), "email".to_string()],
-            provider: SocialProvider::Discord,
-        }
-    }
-
-    /// Create Slack OAuth configuration
-    pub fn slack() -> OAuthConfig {
-        OAuthConfig {
-            client_id: std::env::var("SLACK_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("SLACK_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("SLACK_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: "https://slack.com/oauth/v2/authorize".to_string(),
-            token_url: "https://slack.com/api/oauth.v2.access".to_string(),
-            user_info_url: "https://slack.com/api/users.identity".to_string(),
-            scopes: vec!["identity.basic".to_string(), "identity.email".to_string()],
-            provider: SocialProvider::Slack,
-        }
-    }
-
-    /// Create Amazon OAuth configuration
-    pub fn amazon() -> OAuthConfig {
-        OAuthConfig {
-            client_id: std::env::var("AMAZON_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("AMAZON_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("AMAZON_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: "https://www.amazon.com/ap/oa".to_string(),
-            token_url: "https://api.amazon.com/auth/o2/token".to_string(),
-            user_info_url: "https://api.amazon.com/user/profile".to_string(),
-            scopes: vec!["profile".to_string(), "profile:user_id".to_string()],
-            provider: SocialProvider::Amazon,
-        }
-    }
-
-    /// Create Okta OAuth configuration
-    pub fn okta(domain: &str) -> OAuthConfig {
-        OAuthConfig {
-            client_id: std::env::var("OKTA_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("OKTA_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("OKTA_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: format!("https://{}/oauth2/default/v1/authorize", domain),
-            token_url: format!("https://{}/oauth2/default/v1/token", domain),
-            user_info_url: format!("https://{}/oauth2/default/v1/userinfo", domain),
-            scopes: vec![
-                "openid".to_string(),
-                "profile".to_string(),
-                "email".to_string(),
-            ],
-            provider: SocialProvider::Okta,
-        }
-    }
-
-    /// Create Auth0 OAuth configuration
-    pub fn auth0(domain: &str) -> OAuthConfig {
-        OAuthConfig {
-            client_id: std::env::var("AUTH0_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("AUTH0_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("AUTH0_REDIRECT_URI").unwrap_or_default(),
-            authorization_url: format!("https://{}/authorize", domain),
-            token_url: format!("https://{}/oauth/token", domain),
-            user_info_url: format!("https://{}/userinfo", domain),
-            scopes: vec![
-                "openid".to_string(),
-                "profile".to_string(),
-                "email".to_string(),
-            ],
-            provider: SocialProvider::Auth0,
         }
     }
 }
