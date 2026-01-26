@@ -37,3 +37,24 @@ pub struct AuditLog {
     /// Optional additional details about the event for context
     pub detail: Option<String>,
 }
+
+/// Query parameters for audit log filtering
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogFilter {
+    /// Filter by event type
+    pub event: Option<String>,
+    /// Filter by user ID
+    pub user_id: Option<String>,
+    /// Filter by client ID
+    pub client_id: Option<String>,
+    /// Filter by status (success/failure)
+    pub status: Option<String>,
+    /// Filter by start date (ISO8601)
+    pub from: Option<String>,
+    /// Filter by end date (ISO8601)
+    pub to: Option<String>,
+    /// Maximum number of results
+    pub limit: Option<usize>,
+    /// Offset for pagination
+    pub offset: Option<usize>,
+}
