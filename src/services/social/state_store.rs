@@ -12,6 +12,8 @@ pub struct SocialLoginState {
     pub provider: String,
     /// Redirect URI
     pub redirect_uri: String,
+    /// Realm ID associated with this state
+    pub realm_id: Option<String>,
     /// Expiration timestamp
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
@@ -25,6 +27,7 @@ pub trait SocialStateStore: Send + Sync {
         state: &str,
         provider: &str,
         redirect_uri: &str,
+        realm_id: Option<&str>,
         expires_in: i64,
     ) -> Result<()>;
 

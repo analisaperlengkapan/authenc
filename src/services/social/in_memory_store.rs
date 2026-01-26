@@ -30,6 +30,7 @@ impl SocialStateStore for InMemorySocialStateStore {
         state: &str,
         provider: &str,
         redirect_uri: &str,
+        realm_id: Option<&str>,
         expires_in: i64,
     ) -> Result<()> {
         let expires_at = chrono::Utc::now() + chrono::Duration::seconds(expires_in);
@@ -37,6 +38,7 @@ impl SocialStateStore for InMemorySocialStateStore {
             state: state.to_string(),
             provider: provider.to_string(),
             redirect_uri: redirect_uri.to_string(),
+            realm_id: realm_id.map(String::from),
             expires_at,
         };
 

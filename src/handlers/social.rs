@@ -25,6 +25,8 @@ pub struct InitiateLoginRequest {
     pub provider: SocialProvider,
     /// URI to redirect to after successful authentication
     pub redirect_uri: String,
+    /// Realm ID to initiate login for (optional, defaults to provider realm)
+    pub realm_id: Option<String>,
 }
 
 /// Response containing authorization URL for social login
@@ -50,7 +52,7 @@ pub async fn initiate_login(
 ) -> Result<Json<InitiateLoginResponse>, StatusCode> {
     // Generate authorization URL using shared manager
     match state.social_login_manager
-        .initiate_login(request.provider, &request.redirect_uri)
+        .initiate_login(request.provider, &request.redirect_uri, request.realm_id)
         .await
     {
         Ok(url) => Ok(Json(InitiateLoginResponse {
@@ -74,6 +76,18 @@ pub async fn social_callback(
         }
     };
 
+    // Fix Open Redirect: Validate redirect_uri
+    if !state_data.redirect_uri.starts_with('/') || state_data.redirect_uri.starts_with("//") {
+        tracing::error!("Invalid redirect URI in state: {}", state_data.redirect_uri);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Fix Account Takeover: Verify email is verified
+    if !profile.verified_email {
+        tracing::warn!("Social profile email not verified: {:?}", profile.email);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let provider = profile.provider.clone();
     let provider_user_id = profile.provider_user_id.clone();
 
@@ -89,18 +103,19 @@ pub async fn social_callback(
     let user_id = if let Some(account) = existing_account {
         account.user_id
     } else {
-        // Account does not exist. Check if user exists by email.
-
-        // Fetch realms to get a default realm ID
-        let realms = state.realm_service.list_realms().await.map_err(|e| {
-             tracing::error!("Failed to list realms: {}", e);
-             StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-        let realm_id = if let Some(r) = realms.first() {
-            r.id
+        // Fix Realm Selection: Use realm_id from state if available
+        let realm_id = if let Some(rid_str) = state_data.realm_id {
+            Uuid::parse_str(&rid_str).map_err(|_| {
+                tracing::error!("Invalid realm_id in state");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
         } else {
-            tracing::error!("No realms found in system");
+            // Fallback: This path should ideally be unreachable if we enforce realm_id
+            // But if the state store doesn't return it (e.g. legacy state), we might fallback.
+            // For safety, we should probably fail or use a strictly defined default.
+            // Using first() is still risky but maybe acceptable if we log it.
+            // Better: Fail if no realm is known.
+            tracing::error!("No realm_id associated with social login state");
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         };
 
@@ -163,12 +178,7 @@ pub async fn social_callback(
         }
     };
 
-    // Get user again to get realm_id, or infer it.
-    // We can assume user is in the default realm if we just created it, or whatever realm they were in.
-    // But `sso_session_manager.create_session` needs `realm_id`.
-    // We could optimize by fetching user once.
-
-    // Let's fetch the user to be sure.
+    // Get user again to get realm_id
     let user = state.user_store.get_user(user_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
     let realm_id = user.realm_id.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 

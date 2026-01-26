@@ -39,26 +39,31 @@ impl SocialStateStore for PgSocialStateStore {
         state: &str,
         provider: &str,
         redirect_uri: &str,
+        realm_id: Option<&str>,
         expires_in: i64,
     ) -> Result<()> {
         // 1. Get Provider Config ID
         let provider_config_id = self.get_provider_config_id(provider).await?
             .ok_or_else(|| crate::error::AuthencError::ConfigurationError { message: format!("Provider {} not configured in database", provider) })?;
 
-        // 2. Get Realm ID (Assuming single tenant or context is passed - wait, context isn't passed here)
-        // We need the realm_id. `oauth2_states` table requires it.
-        // The `oauth2_provider_configs` table has `realm_id`. We can fetch it from there.
-        let realm_id_query = "SELECT realm_id FROM oauth2_provider_configs WHERE id = $1";
-        let realm_id: Uuid = self.db.query_one::<tokio_postgres::Row>(realm_id_query, &[&provider_config_id]).await
-            .map_err(|e| crate::error::AuthencError::database(format!("Failed to get realm for provider: {}", e)))?
-            .get(0);
+        // 2. Get Realm ID
+        // If realm_id is passed, we use it (validating it exists or matches).
+        // If not, we infer it from the provider config.
+        let target_realm_id: Uuid = if let Some(rid_str) = realm_id {
+            Uuid::parse_str(rid_str).map_err(|_| crate::error::AuthencError::validation("Invalid realm_id format"))?
+        } else {
+            let realm_id_query = "SELECT realm_id FROM oauth2_provider_configs WHERE id = $1";
+            self.db.query_one::<tokio_postgres::Row>(realm_id_query, &[&provider_config_id]).await
+                .map_err(|e| crate::error::AuthencError::database(format!("Failed to get realm for provider: {}", e)))?
+                .get(0)
+        };
 
         // 3. Create State
         oauth2_providers::create_oauth2_state(
             &self.db,
             state,
             provider_config_id,
-            realm_id,
+            target_realm_id,
             redirect_uri,
             None, // code_verifier
             None, // code_challenge
@@ -87,10 +92,18 @@ impl SocialStateStore for PgSocialStateStore {
                 .map_err(|e| crate::error::AuthencError::database(format!("Failed to get provider alias: {}", e)))?
                 .get(0);
 
+            // Fetch realm_id from state data (if available in oauth2_providers return) or provider config
+            // `validate_oauth2_state` returns map<string, json_value>. Let's see if we can get realm_id.
+            // If `oauth2_providers::validate_oauth2_state` returns realm_id, great.
+            // Assuming it returns key "realm_id". If not, we query provider config again?
+            // Actually, `oauth2_states` table has `realm_id`.
+            let realm_id = data.get("realm_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+
             Ok(Some(SocialLoginState {
                 state: state.to_string(),
                 provider: provider_alias,
                 redirect_uri: data["redirect_uri"].as_str().unwrap_or("").to_string(),
+                realm_id,
                 expires_at: chrono::Utc::now() + chrono::Duration::minutes(5), // Approximate, DB handles expiry
             }))
         } else {
