@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::services::social::{
-    OAuthConfig, SocialLoginManager, SocialLoginService, SocialProvider,
+    SocialLoginService, SocialProvider,
 };
 use axum::{
     Router,
@@ -56,73 +56,11 @@ pub struct SocialUserProfile {
 
 /// Handler for initiating social login
 pub async fn initiate_login(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<InitiateLoginRequest>,
 ) -> Result<Json<InitiateLoginResponse>, StatusCode> {
-    // Create social login manager with configurations
-    let mut manager = SocialLoginManager::new();
-
-    // Register providers based on environment variables
-    if let (Ok(client_id), Ok(client_secret)) = (
-        std::env::var("GOOGLE_CLIENT_ID"),
-        std::env::var("GOOGLE_CLIENT_SECRET"),
-    ) {
-        let google_config = OAuthConfig {
-            client_id,
-            client_secret,
-            redirect_uri: std::env::var("GOOGLE_REDIRECT_URI")
-                .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
-            authorization_url: "https://accounts.google.com/o/oauth2/auth".to_string(),
-            token_url: "https://oauth2.googleapis.com/token".to_string(),
-            user_info_url: "https://www.googleapis.com/oauth2/v2/userinfo".to_string(),
-            scopes: vec![
-                "openid".to_string(),
-                "email".to_string(),
-                "profile".to_string(),
-            ],
-            provider: SocialProvider::Google,
-        };
-        manager.register_provider(google_config);
-    }
-
-    if let (Ok(client_id), Ok(client_secret)) = (
-        std::env::var("GITHUB_CLIENT_ID"),
-        std::env::var("GITHUB_CLIENT_SECRET"),
-    ) {
-        let github_config = OAuthConfig {
-            client_id,
-            client_secret,
-            redirect_uri: std::env::var("GITHUB_REDIRECT_URI")
-                .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
-            authorization_url: "https://github.com/login/oauth/authorize".to_string(),
-            token_url: "https://github.com/login/oauth/access_token".to_string(),
-            user_info_url: "https://api.github.com/user".to_string(),
-            scopes: vec!["user:email".to_string()],
-            provider: SocialProvider::GitHub,
-        };
-        manager.register_provider(github_config);
-    }
-
-    if let (Ok(client_id), Ok(client_secret)) = (
-        std::env::var("FACEBOOK_CLIENT_ID"),
-        std::env::var("FACEBOOK_CLIENT_SECRET"),
-    ) {
-        let facebook_config = OAuthConfig {
-            client_id,
-            client_secret,
-            redirect_uri: std::env::var("FACEBOOK_REDIRECT_URI")
-                .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
-            authorization_url: "https://www.facebook.com/v12.0/dialog/oauth".to_string(),
-            token_url: "https://graph.facebook.com/v12.0/oauth/access_token".to_string(),
-            user_info_url: "https://graph.facebook.com/me".to_string(),
-            scopes: vec!["email".to_string(), "public_profile".to_string()],
-            provider: SocialProvider::Facebook,
-        };
-        manager.register_provider(facebook_config);
-    }
-
-    // Generate authorization URL
-    match manager
+    // Generate authorization URL using shared manager
+    match state.social_login_manager
         .initiate_login(request.provider, &request.redirect_uri)
         .await
     {
@@ -135,73 +73,11 @@ pub async fn initiate_login(
 
 /// Handler for social login callback
 pub async fn social_callback(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Query(query): Query<CallbackQuery>,
 ) -> Result<Json<SocialUserProfile>, StatusCode> {
-    // Create social login manager with configurations
-    let mut manager = SocialLoginManager::new();
-
-    // Register providers based on environment variables
-    if let (Ok(client_id), Ok(client_secret)) = (
-        std::env::var("GOOGLE_CLIENT_ID"),
-        std::env::var("GOOGLE_CLIENT_SECRET"),
-    ) {
-        let google_config = OAuthConfig {
-            client_id,
-            client_secret,
-            redirect_uri: std::env::var("GOOGLE_REDIRECT_URI")
-                .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
-            authorization_url: "https://accounts.google.com/o/oauth2/auth".to_string(),
-            token_url: "https://oauth2.googleapis.com/token".to_string(),
-            user_info_url: "https://www.googleapis.com/oauth2/v2/userinfo".to_string(),
-            scopes: vec![
-                "openid".to_string(),
-                "email".to_string(),
-                "profile".to_string(),
-            ],
-            provider: SocialProvider::Google,
-        };
-        manager.register_provider(google_config);
-    }
-
-    if let (Ok(client_id), Ok(client_secret)) = (
-        std::env::var("GITHUB_CLIENT_ID"),
-        std::env::var("GITHUB_CLIENT_SECRET"),
-    ) {
-        let github_config = OAuthConfig {
-            client_id,
-            client_secret,
-            redirect_uri: std::env::var("GITHUB_REDIRECT_URI")
-                .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
-            authorization_url: "https://github.com/login/oauth/authorize".to_string(),
-            token_url: "https://github.com/login/oauth/access_token".to_string(),
-            user_info_url: "https://api.github.com/user".to_string(),
-            scopes: vec!["user:email".to_string()],
-            provider: SocialProvider::GitHub,
-        };
-        manager.register_provider(github_config);
-    }
-
-    if let (Ok(client_id), Ok(client_secret)) = (
-        std::env::var("FACEBOOK_CLIENT_ID"),
-        std::env::var("FACEBOOK_CLIENT_SECRET"),
-    ) {
-        let facebook_config = OAuthConfig {
-            client_id,
-            client_secret,
-            redirect_uri: std::env::var("FACEBOOK_REDIRECT_URI")
-                .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
-            authorization_url: "https://www.facebook.com/v12.0/dialog/oauth".to_string(),
-            token_url: "https://graph.facebook.com/v12.0/oauth/access_token".to_string(),
-            user_info_url: "https://graph.facebook.com/me".to_string(),
-            scopes: vec!["email".to_string(), "public_profile".to_string()],
-            provider: SocialProvider::Facebook,
-        };
-        manager.register_provider(facebook_config);
-    }
-
-    // Handle callback and get user profile
-    match manager.handle_callback(&query.code, &query.state).await {
+    // Handle callback and get user profile using shared manager
+    match state.social_login_manager.handle_callback(&query.code, &query.state).await {
         Ok(profile) => {
             // Convert to our response format
             let response_profile = SocialUserProfile {

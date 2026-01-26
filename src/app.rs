@@ -82,6 +82,8 @@ pub struct AppState {
     pub webauthn_service: Arc<crate::services::webauthn::WebAuthnService>,
     /// FIPS security provider
     pub fips_provider: Arc<crate::services::fips::AdvancedFipsSecurityProvider>,
+    /// Social login manager for handling OAuth flows
+    pub social_login_manager: Arc<crate::services::social::SocialLoginManager>,
 }
 
 // Support extraction of database for health checks
@@ -481,6 +483,90 @@ impl AppState {
         // Initialize FIPS provider
         let fips_provider = Arc::new(crate::services::fips::AdvancedFipsSecurityProvider::new());
 
+        // Initialize Social Login Manager with persistent store
+        let pg_store = crate::services::social::pg_store::PgSocialStateStore::new(database.clone());
+        let social_manager = crate::services::social::SocialLoginManager::with_store(Arc::new(pg_store));
+
+        // Prepare list of env configs for syncing
+        let mut env_configs = Vec::new();
+
+        // Register Google provider if configured
+        if let (Ok(client_id), Ok(client_secret)) = (
+            std::env::var("GOOGLE_CLIENT_ID"),
+            std::env::var("GOOGLE_CLIENT_SECRET"),
+        ) {
+            let google_config = crate::services::social::OAuthConfig {
+                client_id,
+                client_secret,
+                redirect_uri: std::env::var("GOOGLE_REDIRECT_URI")
+                    .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
+                authorization_url: "https://accounts.google.com/o/oauth2/auth".to_string(),
+                token_url: "https://oauth2.googleapis.com/token".to_string(),
+                user_info_url: "https://www.googleapis.com/oauth2/v2/userinfo".to_string(),
+                scopes: vec![
+                    "openid".to_string(),
+                    "email".to_string(),
+                    "profile".to_string(),
+                ],
+                provider: crate::services::social::SocialProvider::Google,
+            };
+            social_manager.register_provider(google_config.clone());
+            env_configs.push((crate::services::social::SocialProvider::Google, google_config));
+        }
+
+        // Register GitHub provider if configured
+        if let (Ok(client_id), Ok(client_secret)) = (
+            std::env::var("GITHUB_CLIENT_ID"),
+            std::env::var("GITHUB_CLIENT_SECRET"),
+        ) {
+            let github_config = crate::services::social::OAuthConfig {
+                client_id,
+                client_secret,
+                redirect_uri: std::env::var("GITHUB_REDIRECT_URI")
+                    .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
+                authorization_url: "https://github.com/login/oauth/authorize".to_string(),
+                token_url: "https://github.com/login/oauth/access_token".to_string(),
+                user_info_url: "https://api.github.com/user".to_string(),
+                scopes: vec!["user:email".to_string()],
+                provider: crate::services::social::SocialProvider::GitHub,
+            };
+            social_manager.register_provider(github_config.clone());
+            env_configs.push((crate::services::social::SocialProvider::GitHub, github_config));
+        }
+
+        // Register Facebook provider if configured
+        if let (Ok(client_id), Ok(client_secret)) = (
+            std::env::var("FACEBOOK_CLIENT_ID"),
+            std::env::var("FACEBOOK_CLIENT_SECRET"),
+        ) {
+            let facebook_config = crate::services::social::OAuthConfig {
+                client_id,
+                client_secret,
+                redirect_uri: std::env::var("FACEBOOK_REDIRECT_URI")
+                    .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
+                authorization_url: "https://www.facebook.com/v12.0/dialog/oauth".to_string(),
+                token_url: "https://graph.facebook.com/v12.0/oauth/access_token".to_string(),
+                user_info_url: "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name,picture".to_string(),
+                scopes: vec!["email".to_string(), "public_profile".to_string()],
+                provider: crate::services::social::SocialProvider::Facebook,
+            };
+            social_manager.register_provider(facebook_config.clone());
+            env_configs.push((crate::services::social::SocialProvider::Facebook, facebook_config));
+        }
+
+        // Sync configs to DB
+        // We spawn this as a background task or run it here. Running it here might block startup slightly
+        // but ensures consistency. However, `sync_env_configs_to_db` is async and we are in async context.
+        if !env_configs.is_empty() {
+            if let Err(e) = crate::services::social::db_sync::sync_env_configs_to_db(&database, &env_configs).await {
+                tracing::warn!("Failed to sync social providers to database: {}. Clustering for social login may not work correctly.", e);
+            } else {
+                tracing::info!("Synced {} social providers to database.", env_configs.len());
+            }
+        }
+
+        let social_login_manager = Arc::new(social_manager);
+
         Ok(Self {
             config,
             database,
@@ -517,116 +603,10 @@ impl AppState {
             oauth2_service,
             webauthn_service,
             fips_provider,
+            social_login_manager,
         })
     }
 
-    /// Initialize social identity brokers from environment variables
-    pub fn initialize_social_brokers(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        use crate::services::broker::{
-            IdentityProviderConfig, IdentityProviderType, SocialConfig, SocialIdentityBroker,
-        };
-        use uuid::Uuid;
-
-        // Initialize Google broker if configured
-        if let (Ok(client_id), Ok(client_secret)) = (
-            std::env::var("GOOGLE_CLIENT_ID"),
-            std::env::var("GOOGLE_CLIENT_SECRET"),
-        ) {
-            let google_config = SocialConfig {
-                client_id,
-                client_secret,
-                redirect_uri: std::env::var("GOOGLE_REDIRECT_URI")
-                    .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
-                scopes: vec![
-                    "openid".to_string(),
-                    "email".to_string(),
-                    "profile".to_string(),
-                ],
-            };
-            let _google_broker =
-                SocialIdentityBroker::new(google_config, IdentityProviderType::SocialGoogle);
-
-            let _provider_config = IdentityProviderConfig {
-                id: Uuid::new_v4(),
-                name: "Google".to_string(),
-                provider_type: IdentityProviderType::SocialGoogle,
-                enabled: true,
-                config: serde_json::json!({
-                    "client_id": std::env::var("GOOGLE_CLIENT_ID").unwrap(),
-                    "client_secret": std::env::var("GOOGLE_CLIENT_SECRET").unwrap(),
-                    "redirect_uri": std::env::var("GOOGLE_REDIRECT_URI").unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string())
-                }),
-                realm_id: Uuid::new_v4(), // Default realm
-            };
-
-            // We need to make broker_registry mutable, but it's in Arc. Let's skip this for now.
-            // self.broker_registry.register_broker(provider_config, Box::new(google_broker));
-        }
-
-        // Initialize GitHub broker if configured
-        if let (Ok(client_id), Ok(client_secret)) = (
-            std::env::var("GITHUB_CLIENT_ID"),
-            std::env::var("GITHUB_CLIENT_SECRET"),
-        ) {
-            let github_config = SocialConfig {
-                client_id,
-                client_secret,
-                redirect_uri: std::env::var("GITHUB_REDIRECT_URI")
-                    .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
-                scopes: vec!["user:email".to_string()],
-            };
-            let _github_broker =
-                SocialIdentityBroker::new(github_config, IdentityProviderType::SocialGitHub);
-
-            let _provider_config = IdentityProviderConfig {
-                id: Uuid::new_v4(),
-                name: "GitHub".to_string(),
-                provider_type: IdentityProviderType::SocialGitHub,
-                enabled: true,
-                config: serde_json::json!({
-                    "client_id": std::env::var("GITHUB_CLIENT_ID").unwrap(),
-                    "client_secret": std::env::var("GITHUB_CLIENT_SECRET").unwrap(),
-                    "redirect_uri": std::env::var("GITHUB_REDIRECT_URI").unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string())
-                }),
-                realm_id: Uuid::new_v4(), // Default realm
-            };
-
-            // self.broker_registry.register_broker(provider_config, Box::new(github_broker));
-        }
-
-        // Initialize Facebook broker if configured
-        if let (Ok(client_id), Ok(client_secret)) = (
-            std::env::var("FACEBOOK_CLIENT_ID"),
-            std::env::var("FACEBOOK_CLIENT_SECRET"),
-        ) {
-            let facebook_config = SocialConfig {
-                client_id,
-                client_secret,
-                redirect_uri: std::env::var("FACEBOOK_REDIRECT_URI")
-                    .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
-                scopes: vec!["email".to_string(), "public_profile".to_string()],
-            };
-            let _facebook_broker =
-                SocialIdentityBroker::new(facebook_config, IdentityProviderType::SocialFacebook);
-
-            let _provider_config = IdentityProviderConfig {
-                id: Uuid::new_v4(),
-                name: "Facebook".to_string(),
-                provider_type: IdentityProviderType::SocialFacebook,
-                enabled: true,
-                config: serde_json::json!({
-                    "client_id": std::env::var("FACEBOOK_CLIENT_ID").unwrap(),
-                    "client_secret": std::env::var("FACEBOOK_CLIENT_SECRET").unwrap(),
-                    "redirect_uri": std::env::var("FACEBOOK_REDIRECT_URI").unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string())
-                }),
-                realm_id: Uuid::new_v4(), // Default realm
-            };
-
-            // self.broker_registry.register_broker(provider_config, Box::new(facebook_broker));
-        }
-
-        Ok(())
-    }
 }
 
 /// Application builder for configuring and running the server
@@ -642,14 +622,7 @@ impl ApplicationBuilder {
 
     /// Build the application state
     pub async fn build_state(self) -> Result<AppState> {
-        let state = AppState::new(self.config).await?;
-
-        // Initialize social identity brokers
-        if let Err(e) = state.initialize_social_brokers() {
-            tracing::warn!("Failed to initialize social brokers: {}", e);
-        }
-
-        Ok(state)
+        AppState::new(self.config).await
     }
 
     /// Run the application server
