@@ -1,4 +1,4 @@
-use crate::models::audit_log::AuditLog;
+use crate::models::audit_log::{AuditLog, AuditLogFilter, Pagination};
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -31,7 +31,7 @@ use async_trait::async_trait;
 /// ```rust
 /// use async_trait::async_trait;
 /// use authenc::services::stores::audit_log_store::AuditLogStore;
-/// use authenc::models::audit_log::AuditLog;
+/// use authenc::models::audit_log::{AuditLog, AuditLogFilter, Pagination};
 ///
 /// struct DatabaseAuditStore {
 ///     // database connection
@@ -44,8 +44,8 @@ use async_trait::async_trait;
 ///         Ok(())
 ///     }
 ///     
-///     async fn all(&self) -> Result<Vec<AuditLog>, anyhow::Error> {
-///         // Retrieve all audit logs
+///     async fn search(&self, _filter: Option<AuditLogFilter>, _pagination: Option<Pagination>) -> Result<Vec<AuditLog>, anyhow::Error> {
+///         // Search audit logs
 ///         Ok(vec![])
 ///     }
 /// }
@@ -90,6 +90,17 @@ pub trait AuditLogStore: Send + Sync {
     /// ```
     async fn add_log(&self, log: &AuditLog) -> Result<()>;
 
+    /// Retrieve audit log entries matching filter criteria with pagination
+    ///
+    /// # Arguments
+    /// * `filter` - Optional filter criteria
+    /// * `pagination` - Optional pagination parameters
+    ///
+    /// # Returns
+    /// * `Ok(Vec<AuditLog>)` containing matching audit log entries
+    /// * `Err(anyhow::Error)` if query fails
+    async fn search(&self, filter: Option<AuditLogFilter>, pagination: Option<Pagination>) -> Result<Vec<AuditLog>>;
+
     /// Retrieve all audit log entries from storage
     ///
     /// This method retrieves all audit log entries from the storage backend.
@@ -121,5 +132,8 @@ pub trait AuditLogStore: Send + Sync {
     /// # Ok(())
     /// # }
     /// ```
-    async fn all(&self) -> Result<Vec<AuditLog>>;
+    #[deprecated(note = "Use search() with pagination instead")]
+    async fn all(&self) -> Result<Vec<AuditLog>> {
+        self.search(None, None).await
+    }
 }

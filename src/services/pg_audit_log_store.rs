@@ -5,7 +5,7 @@ impl Clone for PgAuditLogStore {
         }
     }
 }
-use crate::models::audit_log::AuditLog;
+use crate::models::audit_log::{AuditLog, AuditLogFilter, Pagination};
 use crate::services::stores::audit_log_store::AuditLogStore;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -54,14 +54,67 @@ impl PgAuditLogStore {
         Ok(())
     }
 
-    /// Get all audit log entries ordered by timestamp descending
+    /// Retrieve audit log entries matching filter criteria with pagination
+    ///
+    /// # Arguments
+    /// * `filter` - Optional filter criteria
+    /// * `pagination` - Optional pagination parameters
     ///
     /// # Returns
-    /// * `Ok(Vec<AuditLog>)` containing all audit log entries
+    /// * `Ok(Vec<AuditLog>)` containing matching audit log entries
     /// * `Err(anyhow::Error)` if database query fails
-    pub async fn all(&self) -> Result<Vec<AuditLog>> {
+    pub async fn search(&self, filter: Option<AuditLogFilter>, pagination: Option<Pagination>) -> Result<Vec<AuditLog>> {
         let client = self.pool.get().await?;
-        let rows = client.query("SELECT timestamp, event, user_id, client_id, status, detail FROM audit_logs ORDER BY timestamp DESC", &[]).await?;
+
+        let mut query = String::from("SELECT timestamp, event, user_id, client_id, status, detail FROM audit_logs WHERE 1=1");
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
+        let mut param_idx = 1;
+
+        if let Some(f) = filter {
+            if let Some(user_id) = f.user_id {
+                query.push_str(&format!(" AND user_id = ${}", param_idx));
+                params.push(Box::new(user_id));
+                param_idx += 1;
+            }
+            if let Some(client_id) = f.client_id {
+                query.push_str(&format!(" AND client_id = ${}", param_idx));
+                params.push(Box::new(client_id));
+                param_idx += 1;
+            }
+            if let Some(status) = f.status {
+                query.push_str(&format!(" AND status = ${}", param_idx));
+                params.push(Box::new(status));
+                param_idx += 1;
+            }
+            if let Some(start_date) = f.start_date {
+                let ts: std::time::SystemTime = start_date.into();
+                query.push_str(&format!(" AND timestamp >= ${}", param_idx));
+                params.push(Box::new(ts));
+                param_idx += 1;
+            }
+            if let Some(end_date) = f.end_date {
+                let ts: std::time::SystemTime = end_date.into();
+                query.push_str(&format!(" AND timestamp <= ${}", param_idx));
+                params.push(Box::new(ts));
+                param_idx += 1;
+            }
+        }
+
+        query.push_str(" ORDER BY timestamp DESC");
+
+        if let Some(p) = pagination {
+            query.push_str(&format!(" LIMIT ${}", param_idx));
+            params.push(Box::new(p.limit));
+            param_idx += 1;
+
+            query.push_str(&format!(" OFFSET ${}", param_idx));
+            params.push(Box::new(p.offset));
+        }
+
+        let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+
+        let rows = client.query(&query, &params_refs).await?;
+
         Ok(rows
             .into_iter()
             .map(|row| {
@@ -78,6 +131,15 @@ impl PgAuditLogStore {
             })
             .collect())
     }
+
+    /// Get all audit log entries ordered by timestamp descending
+    ///
+    /// # Returns
+    /// * `Ok(Vec<AuditLog>)` containing all audit log entries
+    /// * `Err(anyhow::Error)` if database query fails
+    pub async fn all(&self) -> Result<Vec<AuditLog>> {
+        self.search(None, None).await
+    }
 }
 
 #[async_trait]
@@ -86,7 +148,7 @@ impl AuditLogStore for PgAuditLogStore {
         self.add_log(log).await
     }
 
-    async fn all(&self) -> Result<Vec<AuditLog>> {
-        self.all().await
+    async fn search(&self, filter: Option<AuditLogFilter>, pagination: Option<Pagination>) -> Result<Vec<AuditLog>> {
+        self.search(filter, pagination).await
     }
 }
