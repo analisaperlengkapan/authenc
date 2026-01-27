@@ -482,7 +482,16 @@ impl IdentityBroker for LdapIdentityBroker {
         match auth_ldap.simple_bind(&user_entry.dn, password).await {
             Ok(_) => {
                 // Authentication successful
-                let groups = self.fetch_user_groups(&mut auth_ldap, &user_entry.dn).await?;
+                // Use service account connection (ldap) for group fetch to ensure consistent role mapping
+                // and avoid permission issues where users cannot read their own group memberships.
+                // Handle errors gracefully to prevent lockout if group search fails.
+                let groups = match self.fetch_user_groups(&mut ldap, &user_entry.dn).await {
+                    Ok(groups) => groups,
+                    Err(e) => {
+                        tracing::warn!("Failed to fetch groups for user {}: {}", username, e);
+                        Vec::new()
+                    }
+                };
                 let roles = self.map_groups_to_roles(&groups);
 
                 // Create user from LDAP entry
