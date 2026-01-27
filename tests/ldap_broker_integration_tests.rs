@@ -45,6 +45,10 @@ async fn test_ldap_broker_authentication() {
         email_attr: "mail".to_string(),
         first_name_attr: "givenName".to_string(),
         last_name_attr: "sn".to_string(),
+        role_mappings: std::collections::HashMap::new(),
+        group_name_attr: "cn".to_string(),
+        group_member_attr: "member".to_string(),
+        group_object_class: "groupOfNames".to_string(),
     };
 
     // Create LDAP broker
@@ -106,6 +110,10 @@ async fn test_ldap_broker_user_info() {
         email_attr: "mail".to_string(),
         first_name_attr: "givenName".to_string(),
         last_name_attr: "sn".to_string(),
+        role_mappings: std::collections::HashMap::new(),
+        group_name_attr: "cn".to_string(),
+        group_member_attr: "member".to_string(),
+        group_object_class: "groupOfNames".to_string(),
     };
 
     // Create LDAP broker
@@ -173,6 +181,10 @@ async fn test_ldap_broker_registry_integration() {
         email_attr: "mail".to_string(),
         first_name_attr: "givenName".to_string(),
         last_name_attr: "sn".to_string(),
+        role_mappings: std::collections::HashMap::new(),
+        group_name_attr: "cn".to_string(),
+        group_member_attr: "member".to_string(),
+        group_object_class: "groupOfNames".to_string(),
     };
 
     // Create LDAP broker
@@ -254,7 +266,19 @@ async fn test_ldap_broker_user_sync() {
         email_attr: "mail".to_string(),
         first_name_attr: "givenName".to_string(),
         last_name_attr: "sn".to_string(),
+        role_mappings: std::collections::HashMap::new(),
+        group_name_attr: "cn".to_string(),
+        group_member_attr: "member".to_string(),
+        group_object_class: "groupOfNames".to_string(),
     };
+
+    // Configure role mappings
+    let mut role_mappings = std::collections::HashMap::new();
+    role_mappings.insert("developers".to_string(), "dev".to_string());
+    role_mappings.insert("admins".to_string(), "admin".to_string());
+
+    let mut ldap_config = ldap_config;
+    ldap_config.role_mappings = role_mappings;
 
     // Create LDAP broker
     let ldap_broker = LdapIdentityBroker::new(ldap_config);
@@ -279,6 +303,26 @@ async fn test_ldap_broker_user_sync() {
             assert_eq!(user.first_name, Some("Test".to_string()));
             assert_eq!(user.last_name, Some("User".to_string()));
             assert!(user.federated);
+
+            // Verify mapped roles
+            if let Some(attrs) = user.attributes {
+                let mapped_roles = attrs
+                    .get("mapped_roles")
+                    .expect("mapped_roles should be present");
+                let roles_array = mapped_roles
+                    .as_array()
+                    .expect("mapped_roles should be an array");
+                let roles: Vec<String> = roles_array
+                    .iter()
+                    .map(|v| v.as_str().unwrap().to_string())
+                    .collect();
+
+                assert!(roles.contains(&"dev".to_string()));
+                assert!(roles.contains(&"admin".to_string()));
+            } else {
+                panic!("User attributes missing");
+            }
+
             println!("LDAP user sync successful for user: {}", user.username);
         }
         Err(e) => {

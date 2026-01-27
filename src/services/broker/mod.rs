@@ -239,6 +239,34 @@ pub struct LdapConfig {
     pub first_name_attr: String,
     /// LDAP attribute for last name
     pub last_name_attr: String,
+
+    /// Map of LDAP groups to Authenc roles
+    #[serde(default)]
+    pub role_mappings: std::collections::HashMap<String, String>,
+
+    /// LDAP attribute to use for group name matching (default: cn)
+    #[serde(default = "default_group_name_attr")]
+    pub group_name_attr: String,
+
+    /// LDAP attribute in group entry that holds member DN/UID (default: member)
+    #[serde(default = "default_group_member_attr")]
+    pub group_member_attr: String,
+
+    /// LDAP object class for groups (default: groupOfNames)
+    #[serde(default = "default_group_object_class")]
+    pub group_object_class: String,
+}
+
+fn default_group_name_attr() -> String {
+    "cn".to_string()
+}
+
+fn default_group_member_attr() -> String {
+    "member".to_string()
+}
+
+fn default_group_object_class() -> String {
+    "groupOfNames".to_string()
 }
 
 impl LdapIdentityBroker {
@@ -324,6 +352,53 @@ impl LdapIdentityBroker {
         self.user_cache.insert(identifier, cached);
     }
 
+    /// Fetch groups for a user from LDAP
+    async fn fetch_user_groups(
+        &self,
+        ldap: &mut ldap3::Ldap,
+        user_dn: &str,
+    ) -> Result<Vec<String>, String> {
+        // Construct filter to find groups where the user is a member
+        let escaped_dn = escape_ldap_filter_value(user_dn);
+        let filter = format!(
+            "(&(objectClass={})({}={}))",
+            self.config.group_object_class, self.config.group_member_attr, escaped_dn
+        );
+
+        let mut stream = ldap
+            .streaming_search(
+                &self.config.group_search_base,
+                ldap3::Scope::Subtree,
+                &filter,
+                vec![&self.config.group_name_attr],
+            )
+            .await
+            .map_err(|e| format!("LDAP group search failed: {}", e))?;
+
+        let mut groups = Vec::new();
+        while let Ok(Some(entry)) = stream.next().await {
+            let entry = SearchEntry::construct(entry);
+            if let Some(values) = entry.attrs.get(&self.config.group_name_attr) {
+                if let Some(val) = values.first() {
+                    groups.push(val.clone());
+                }
+            }
+        }
+
+        Ok(groups)
+    }
+
+    /// Map LDAP groups to Authenc roles
+    fn map_groups_to_roles(&self, groups: &[String]) -> Vec<String> {
+        let mut roles = Vec::new();
+        for group in groups {
+            if let Some(role) = self.config.role_mappings.get(group) {
+                roles.push(role.clone());
+            }
+        }
+        roles
+    }
+
     /// Get or create LDAP connection from pool
     async fn get_connection(&self) -> Result<ldap3::Ldap, String> {
         let mut pool = self.connection_pool.lock().await;
@@ -405,8 +480,29 @@ impl IdentityBroker for LdapIdentityBroker {
         // Attempt user bind
         match auth_ldap.simple_bind(&user_entry.dn, password).await {
             Ok(_) => {
-                // Authentication successful, create user from LDAP entry
-                create_user_from_ldap_entry(&user_entry, &self.config).map(Some)
+                // Authentication successful
+                let groups = self.fetch_user_groups(&mut auth_ldap, &user_entry.dn).await?;
+                let roles = self.map_groups_to_roles(&groups);
+
+                // Create user from LDAP entry
+                let mut user = create_user_from_ldap_entry(&user_entry, &self.config)?;
+
+                // Initialize attributes if None
+                if user.attributes.is_none() {
+                    user.attributes = Some(serde_json::Value::Object(serde_json::Map::new()));
+                }
+
+                // Add mapped roles to attributes
+                if let Some(ref mut attrs) = user.attributes {
+                    if let Some(obj) = attrs.as_object_mut() {
+                        obj.insert(
+                            "mapped_roles".to_string(),
+                            serde_json::to_value(roles).unwrap_or_default(),
+                        );
+                    }
+                }
+
+                Ok(Some(user))
             }
             Err(_) => {
                 tracing::info!("LDAP authentication failed for user {}", username);
@@ -455,7 +551,26 @@ impl IdentityBroker for LdapIdentityBroker {
         };
 
         // Create user from LDAP entry
-        let user = create_user_from_ldap_entry(&user_entry, &self.config)?;
+        let mut user = create_user_from_ldap_entry(&user_entry, &self.config)?;
+
+        // Fetch user groups
+        let groups = self.fetch_user_groups(&mut ldap, &user_entry.dn).await?;
+        let roles = self.map_groups_to_roles(&groups);
+
+        // Initialize attributes if None
+        if user.attributes.is_none() {
+            user.attributes = Some(serde_json::Value::Object(serde_json::Map::new()));
+        }
+
+        // Add mapped roles to attributes
+        if let Some(ref mut attrs) = user.attributes {
+            if let Some(obj) = attrs.as_object_mut() {
+                obj.insert(
+                    "mapped_roles".to_string(),
+                    serde_json::to_value(roles).unwrap_or_default(),
+                );
+            }
+        }
 
         // Cache the result
         self.cache_user(identifier.to_string(), user.clone());
@@ -466,6 +581,18 @@ impl IdentityBroker for LdapIdentityBroker {
     async fn sync_user(&self, external_user: &ExternalUser) -> Result<User, String> {
         // For LDAP sync, we create a user based on external user data
         // In a real implementation, you might want to sync additional attributes
+        let mut attributes = serde_json::to_value(&external_user.attributes)
+            .map_err(|e| format!("Failed to serialize attributes: {}", e))?;
+
+        // Map groups to roles
+        let roles = self.map_groups_to_roles(&external_user.groups);
+        if let Some(obj) = attributes.as_object_mut() {
+            obj.insert(
+                "mapped_roles".to_string(),
+                serde_json::to_value(roles).unwrap_or_default(),
+            );
+        }
+
         let user = User {
             id: Uuid::new_v4(),
             username: external_user
@@ -492,10 +619,7 @@ impl IdentityBroker for LdapIdentityBroker {
             require_password_change: false,
             realm_id: None,
             organization_id: None,
-            attributes: Some(
-                serde_json::to_value(&external_user.attributes)
-                    .map_err(|e| format!("Failed to serialize attributes: {}", e))?,
-            ),
+            attributes: Some(attributes),
             enabled: true,
             federated: true,
             created_at: chrono::Utc::now(),
@@ -509,6 +633,22 @@ impl IdentityBroker for LdapIdentityBroker {
     fn provider_type(&self) -> IdentityProviderType {
         IdentityProviderType::LDAP
     }
+}
+
+/// Helper function to escape LDAP filter values
+fn escape_ldap_filter_value(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for c in value.chars() {
+        match c {
+            '(' => escaped.push_str("\\28"),
+            ')' => escaped.push_str("\\29"),
+            '\\' => escaped.push_str("\\5c"),
+            '*' => escaped.push_str("\\2a"),
+            '\0' => escaped.push_str("\\00"),
+            _ => escaped.push(c),
+        }
+    }
+    escaped
 }
 
 /// Helper function to create User from LDAP search entry
@@ -859,6 +999,47 @@ mod tests {
         assert_eq!(user.first_name, Some("Test".to_string()));
         assert_eq!(user.last_name, Some("User".to_string()));
         assert!(user.federated);
+    }
+
+    #[test]
+    fn test_ldap_map_groups_to_roles() {
+        let mut config = LdapConfig {
+            host: "localhost".to_string(),
+            port: 389,
+            bind_dn: "cn=admin".to_string(),
+            bind_password: "password".to_string(),
+            user_search_base: "ou=users".to_string(),
+            user_search_filter: "(uid={0})".to_string(),
+            group_search_base: "ou=groups".to_string(),
+            username_attr: "uid".to_string(),
+            email_attr: "mail".to_string(),
+            first_name_attr: "givenName".to_string(),
+            last_name_attr: "sn".to_string(),
+            role_mappings: std::collections::HashMap::new(),
+            group_name_attr: "cn".to_string(),
+            group_member_attr: "member".to_string(),
+            group_object_class: "groupOfNames".to_string(),
+        };
+
+        config
+            .role_mappings
+            .insert("developers".to_string(), "dev-role".to_string());
+        config
+            .role_mappings
+            .insert("admins".to_string(), "admin-role".to_string());
+
+        let broker = LdapIdentityBroker::new(config);
+
+        let groups = vec![
+            "developers".to_string(),
+            "users".to_string(),
+            "admins".to_string(),
+        ];
+        let roles = broker.map_groups_to_roles(&groups);
+
+        assert_eq!(roles.len(), 2);
+        assert!(roles.contains(&"dev-role".to_string()));
+        assert!(roles.contains(&"admin-role".to_string()));
     }
 }
 
