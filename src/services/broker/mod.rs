@@ -385,6 +385,8 @@ impl LdapIdentityBroker {
             }
         }
 
+        let _ = stream.finish().await;
+
         Ok(groups)
     }
 
