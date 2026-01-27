@@ -465,6 +465,9 @@ impl IdentityBroker for LdapIdentityBroker {
             Err(e) => return Err(format!("LDAP streaming search failed: {}", e)),
         };
 
+        // Ensure stream is closed before reusing connection
+        let _ = stream.finish().await;
+
         // Create new connection for authentication (LDAP doesn't allow multiple binds on same connection)
         let (auth_conn, mut auth_ldap) =
             ldap3::LdapConnAsync::new(&format!("ldap://{}:{}", self.config.host, self.config.port))
@@ -561,11 +564,21 @@ impl IdentityBroker for LdapIdentityBroker {
             Err(e) => return Err(format!("LDAP streaming search failed: {}", e)),
         };
 
+        // Ensure stream is closed before reusing connection
+        let _ = stream.finish().await;
+
         // Create user from LDAP entry
         let mut user = create_user_from_ldap_entry(&user_entry, &self.config)?;
 
         // Fetch user groups
-        let groups = self.fetch_user_groups(&mut ldap, &user_entry.dn).await?;
+        // Handle errors gracefully to prevent failure if group search fails.
+        let groups = match self.fetch_user_groups(&mut ldap, &user_entry.dn).await {
+            Ok(groups) => groups,
+            Err(e) => {
+                tracing::warn!("Failed to fetch groups for user {}: {}", identifier, e);
+                Vec::new()
+            }
+        };
         let roles = self.map_groups_to_roles(&groups);
 
         // Initialize attributes if None
