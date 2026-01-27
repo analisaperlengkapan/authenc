@@ -438,7 +438,8 @@ impl IdentityBroker for LdapIdentityBroker {
         let mut ldap = self.get_connection().await?;
 
         // Search for user by username
-        let filter = format!("(&{}={})", self.config.username_attr, username);
+        let escaped_username = escape_ldap_filter_value(username);
+        let filter = format!("({}={})", self.config.username_attr, escaped_username);
         let mut stream = ldap
             .streaming_search(
                 &self.config.user_search_base,
@@ -521,9 +522,10 @@ impl IdentityBroker for LdapIdentityBroker {
         let mut ldap = self.get_connection().await?;
 
         // Search for user by username or email
+        let escaped_identifier = escape_ldap_filter_value(identifier);
         let filter = format!(
             "(|({}={})({}={}))",
-            self.config.username_attr, identifier, self.config.email_attr, identifier
+            self.config.username_attr, escaped_identifier, self.config.email_attr, escaped_identifier
         );
         let mut stream = ldap
             .streaming_search(
