@@ -58,3 +58,5 @@ pub mod protocol_mappers;
 /// Authorization policy evaluation API handlers
 pub mod authorization;
 pub use authorization::create_authorization_routes;
+/// WebAuthn API handlers for FIDO2 authentication
+pub mod webauthn;
