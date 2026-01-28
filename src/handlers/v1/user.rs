@@ -1,5 +1,5 @@
 use crate::app::AppState;
-use crate::handlers::api::auth_bearer::AuthBearer;
+use crate::handlers::v1::auth_bearer::AuthBearer;
 use crate::models::user::{self, User};
 use crate::services::stores::user_store::UserStoreTrait;
 use axum::{

@@ -3,11 +3,11 @@
 //! This module provides endpoints for querying and exporting audit logs
 //! with filtering and pagination support.
 
-use crate::database::operations;
+use crate::database::{operations, Database};
 use crate::middleware::auth::AuthUser;
 use crate::models::audit_log::{AuditLog, AuditLogFilter};
-use crate::services::pg_audit_log_store::PgAuditLogStore;
-use crate::services::stores::user_store::UserStore;
+use crate::services::stores::pg_audit_log_store::PgAuditLogStore;
+use crate::services::stores::user_store::UserStoreTrait;
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -37,15 +37,22 @@ pub struct AuditHandlerState {
     /// Audit log store
     pub audit_log_store: Arc<PgAuditLogStore>,
     /// User store for authentication
-    pub user_store: Arc<UserStore>,
+    pub user_store: Arc<dyn UserStoreTrait>,
+    /// Database connection
+    pub database: Arc<Database>,
 }
 
 impl AuditHandlerState {
     /// Create new audit handler state
-    pub fn new(audit_log_store: Arc<PgAuditLogStore>, user_store: Arc<UserStore>) -> Self {
+    pub fn new(
+        audit_log_store: Arc<PgAuditLogStore>,
+        user_store: Arc<dyn UserStoreTrait>,
+        database: Arc<Database>,
+    ) -> Self {
         Self {
             audit_log_store,
             user_store,
+            database,
         }
     }
 }
@@ -58,7 +65,7 @@ pub struct ErrorResponse {
 }
 
 /// Check if user is admin using AuthUser from middleware and DB verification
-async fn is_admin(user: &AuthUser, user_store: &UserStore) -> bool {
+async fn is_admin(user: &AuthUser, database: &Database) -> bool {
     // 1. Extract user ID
     let user_id = match Uuid::parse_str(&user.id) {
         Ok(uid) => uid,
@@ -70,7 +77,7 @@ async fn is_admin(user: &AuthUser, user_store: &UserStore) -> bool {
 
     // 2. Check user roles from database to ensure up-to-date permissions
     // Note: We check DB instead of trusting the token roles immediately for higher security on admin actions
-    match operations::roles::get_user_roles(user_store.database(), &user_id).await {
+    match operations::roles::get_user_roles(database, &user_id).await {
         Ok(roles) => roles.iter().any(|r| r.name == "admin"),
         Err(e) => {
             tracing::error!("Failed to fetch roles for user {}: {}", user_id, e);
@@ -88,7 +95,7 @@ pub async fn get_audit_logs(
     Query(mut query): Query<AuditLogQuery>,
 ) -> Result<Json<AuditLogResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Check admin authorization
-    if !is_admin(&user, &state.user_store).await {
+    if !is_admin(&user, &state.database).await {
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
@@ -131,7 +138,7 @@ pub async fn export_audit_logs_csv(
     Query(mut query): Query<AuditLogQuery>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
     // Check admin authorization
-    if !is_admin(&user, &state.user_store).await {
+    if !is_admin(&user, &state.database).await {
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {

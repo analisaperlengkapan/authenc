@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::database;
-use crate::handlers::api::auth_bearer::AuthBearer;
+use crate::handlers::v1::auth_bearer::AuthBearer;
 use crate::models::events::{AuthDetails, OperationType, ResourceType};
 use crate::services::events::AdminEventBuilder;
 use axum::{

@@ -27,7 +27,7 @@ pub struct AppState {
     /// Federation provider registry
     pub federation_registry: Arc<crate::services::federation_provider::FederationRegistry>,
     /// Audit log storage
-    pub audit_log_store: Arc<crate::services::pg_audit_log_store::PgAuditLogStore>,
+    pub audit_log_store: Arc<crate::services::stores::pg_audit_log_store::PgAuditLogStore>,
     /// User consent management store for GDPR compliance
     pub consent_store: Arc<dyn crate::services::stores::consent_store::ConsentStoreTrait>,
     /// Authentication flow store for pluggable authentication flows
@@ -112,7 +112,7 @@ impl AppState {
 
         // Initialize audit log store
         let audit_log_store = Arc::new(
-            crate::services::pg_audit_log_store::PgAuditLogStore::new(&config.database_url())
+            crate::services::stores::pg_audit_log_store::PgAuditLogStore::new(&config.database_url())
                 .await
                 .map_err(|e| {
                     AuthencError::database(format!("Failed to init audit store: {}", e))
@@ -659,7 +659,7 @@ impl ApplicationBuilder {
 
         #[cfg(feature = "axum")]
         {
-            use crate::axum_app::AxumApp;
+            use crate::web::AxumApp;
             let app = AxumApp::new(state);
             app.run().await?;
         }

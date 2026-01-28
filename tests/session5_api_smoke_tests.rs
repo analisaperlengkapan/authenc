@@ -7,13 +7,13 @@ fn test_session5_api_handlers_compile() {
     // If this compiles, all API modules and their route functions exist
 
     // Event Listener API
-    let _: fn() -> _ = authenc::handlers::api::event_listeners::create_event_listener_routes;
+    let _: fn() -> _ = authenc::handlers::v1::event_listeners::create_event_listener_routes;
 
     // Protocol Mapper API
-    let _: fn() -> _ = authenc::handlers::api::protocol_mappers::create_protocol_mapper_routes;
+    let _: fn() -> _ = authenc::handlers::v1::protocol_mappers::create_protocol_mapper_routes;
 
     // Authenticator API
-    let _: fn() -> _ = authenc::handlers::api::authenticators::create_authenticator_routes;
+    let _: fn() -> _ = authenc::handlers::v1::authenticators::create_authenticator_routes;
 
     println!("✅ All 3 Session 5 API handler modules exist with route functions");
     println!("✅ Total 22 REST endpoints available (Event:6, Protocol:8, Auth:8)");

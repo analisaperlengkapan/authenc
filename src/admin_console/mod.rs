@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::app::AppState;
 use crate::database::Database;
-use crate::handlers::api::auth_bearer::AuthBearer;
+use crate::handlers::v1::auth_bearer::AuthBearer;
 use crate::services::admin::{AdminManager, AdminService};
 use crate::services::stores::user_store::UserStoreTrait;
 

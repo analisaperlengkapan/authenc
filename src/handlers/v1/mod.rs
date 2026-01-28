@@ -1,6 +1,8 @@
 /// Audit logging API handlers for security monitoring and compliance
 pub mod audit;
 pub use audit::{add_audit_log, create_audit_routes, get_audit_logs};
+/// Admin API handlers
+pub mod admin;
 /// Authentication API handlers for login/logout
 pub mod auth;
 pub use auth::create_auth_routes;

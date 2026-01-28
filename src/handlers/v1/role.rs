@@ -1,5 +1,5 @@
 use crate::app::AppState;
-use crate::handlers::api::auth_bearer::AuthBearer;
+use crate::handlers::v1::auth_bearer::AuthBearer;
 use crate::models::events::{OperationType, ResourceType};
 use crate::models::role::Role;
 use crate::services::events::AdminEventBuilder;

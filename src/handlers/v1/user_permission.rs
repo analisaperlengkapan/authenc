@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::database;
-use crate::handlers::api::auth_bearer::AuthBearer;
+use crate::handlers::v1::auth_bearer::AuthBearer;
 use axum::{
     Router,
     extract::{Path, State},
@@ -28,7 +28,7 @@ use uuid::Uuid;
 ///
 /// # Example
 /// ```rust
-/// use authenc::handlers::api::user_permission::create_user_permission_routes;
+/// use authenc::handlers::v1::user_permission::create_user_permission_routes;
 /// use authenc::app::AppState;
 /// use authenc::config::AppConfig;
 /// use std::sync::Arc;

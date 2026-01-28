@@ -31,10 +31,10 @@ pub mod models;
 pub mod utils;
 
 // Framework integrations
-/// Axum web framework integration
+/// Web framework integration
 #[cfg(feature = "axum")]
 #[cfg_attr(docsrs, doc(cfg(feature = "axum")))]
-pub mod axum_app;
+pub mod web;
 
 // Database layer
 /// Database operations and connection management

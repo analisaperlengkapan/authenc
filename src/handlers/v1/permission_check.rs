@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::database::operations;
-use crate::handlers::api::auth_bearer::AuthBearer;
+use crate::handlers::v1::auth_bearer::AuthBearer;
 use axum::{
     Router,
     extract::{Path, Query, State},

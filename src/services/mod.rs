@@ -51,27 +51,7 @@ pub mod totp_store;
 
 // Core entity stores from services/stores/
 /// Core entity storage services
-pub mod stores {
-    /// Audit log storage service
-    pub mod audit_log_store;
-    /// Authentication flow storage service
-    pub mod auth_flow_store;
-    /// Consent storage service for GDPR compliance
-    pub mod consent_store;
-    /// Permission storage service
-    pub mod permission_store;
-    /// Realm storage service
-    pub mod realm_store;
-    /// Role storage service
-    pub mod role_store;
-    /// Social account storage service
-    pub mod social_account_store;
-    /// User storage service
-    pub mod user_store;
-
-    // Re-export commonly used types from sub-modules
-    pub use consent_store::{ConsentStore, ConsentStoreTrait};
-}
+pub mod stores;
 
 // Re-export for convenience
 pub use stores::*;
@@ -93,8 +73,6 @@ pub mod events;
 pub mod kafka_audit_log_sink;
 /// Kafka-based event streaming
 pub mod kafka_event_listener;
-/// PostgreSQL audit log storage
-pub mod pg_audit_log_store;
 /// PostgreSQL event storage
 pub mod pg_event_store;
 
