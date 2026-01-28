@@ -144,7 +144,8 @@ impl AppState {
                 {
                     match crate::services::stores::redis_session_store::RedisSessionStore::new(&redis_url, database.clone()) {
                         Ok(store) => {
-                            tracing::info!("Using Redis session store at {}", redis_url);
+                            // Redact URL to avoid leaking credentials
+                            tracing::info!("Using Redis session store (URL redacted)");
                             Arc::new(store)
                         },
                         Err(e) => {

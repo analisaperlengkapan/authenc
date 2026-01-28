@@ -232,25 +232,51 @@ impl IdentityProvider for LdapIdentityProvider {
 
         // 2. Bind (Service Account or Anonymous)
         if let (Some(dn), Some(pw)) = (&self.bind_dn, &self.bind_password) {
-            if let Err(e) = ldap.simple_bind(dn, pw).await {
-                return Ok(AuthResponse {
-                    success: false,
-                    user_id: None,
-                    username: None,
-                    email: None,
-                    groups: vec![],
-                    roles: vec![],
-                    attributes: HashMap::new(),
-                    token: None,
-                    refresh_token: None,
-                    expires_at: None,
-                    error: Some(format!("LDAP bind failed (service account): {}", e)),
-                });
+            match ldap.simple_bind(dn, pw).await {
+                Ok(res) => {
+                    if let Err(e) = res.success() {
+                        return Ok(AuthResponse {
+                            success: false,
+                            user_id: None,
+                            username: None,
+                            email: None,
+                            groups: vec![],
+                            roles: vec![],
+                            attributes: HashMap::new(),
+                            token: None,
+                            refresh_token: None,
+                            expires_at: None,
+                            error: Some(format!("LDAP bind failed (service account): {}", e)),
+                        });
+                    }
+                }
+                Err(e) => {
+                    return Ok(AuthResponse {
+                        success: false,
+                        user_id: None,
+                        username: None,
+                        email: None,
+                        groups: vec![],
+                        roles: vec![],
+                        attributes: HashMap::new(),
+                        token: None,
+                        refresh_token: None,
+                        expires_at: None,
+                        error: Some(format!("LDAP bind failed (service account): {}", e)),
+                    });
+                }
             }
         } else {
              // Try anonymous bind
-             if let Err(e) = ldap.simple_bind("", "").await {
-                 tracing::debug!("Anonymous bind failed: {}", e);
+             match ldap.simple_bind("", "").await {
+                 Ok(res) => {
+                     if let Err(e) = res.success() {
+                         tracing::debug!("Anonymous bind failed: {}", e);
+                     }
+                 }
+                 Err(e) => {
+                     tracing::debug!("Anonymous bind failed: {}", e);
+                 }
              }
         }
 
@@ -325,20 +351,39 @@ impl IdentityProvider for LdapIdentityProvider {
         let user_dn = entry.dn.clone();
 
         // 4. Authenticate (Bind as User)
-        if let Err(e) = ldap.simple_bind(&user_dn, password).await {
-             return Ok(AuthResponse {
-                success: false,
-                user_id: None,
-                username: None,
-                email: None,
-                groups: vec![],
-                roles: vec![],
-                attributes: HashMap::new(),
-                token: None,
-                refresh_token: None,
-                expires_at: None,
-                error: Some(format!("Authentication failed: Invalid credentials ({})", e)),
-            });
+        match ldap.simple_bind(&user_dn, password).await {
+            Ok(res) => {
+                if let Err(e) = res.success() {
+                    return Ok(AuthResponse {
+                        success: false,
+                        user_id: None,
+                        username: None,
+                        email: None,
+                        groups: vec![],
+                        roles: vec![],
+                        attributes: HashMap::new(),
+                        token: None,
+                        refresh_token: None,
+                        expires_at: None,
+                        error: Some(format!("Authentication failed: Invalid credentials ({})", e)),
+                    });
+                }
+            }
+            Err(e) => {
+                return Ok(AuthResponse {
+                    success: false,
+                    user_id: None,
+                    username: None,
+                    email: None,
+                    groups: vec![],
+                    roles: vec![],
+                    attributes: HashMap::new(),
+                    token: None,
+                    refresh_token: None,
+                    expires_at: None,
+                    error: Some(format!("Authentication failed: {}", e)),
+                });
+            }
         }
 
         // 5. Success - Map attributes

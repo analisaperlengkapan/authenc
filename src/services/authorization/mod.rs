@@ -675,7 +675,9 @@ impl AuthorizationService for AuthorizationManager {
             .map_err(|e| format!("Failed to create policy: {}", e))?;
 
         // Update in-memory cache
-        self.add_policy(policy);
+        let mut cached_policy = policy;
+        cached_policy.id = policy_id;
+        self.add_policy(cached_policy);
 
         Ok(policy_id)
     }

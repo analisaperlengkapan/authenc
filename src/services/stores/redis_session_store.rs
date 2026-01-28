@@ -124,10 +124,8 @@ impl SessionStoreTrait for RedisSessionStore {
         // 1. Delete from Redis
         let _ = self.delete_session_from_redis(id).await;
 
-        // 2. Delete from DB?
-        // SessionStore implementation logic: "full_sessions.remove(&session_id);"
-        // It does NOT explicitly delete from DB in default impl, likely relying on revocation or expiration cleanup.
-        // However, if we want to ensure it's gone from cache, Redis delete is sufficient for performance.
+        // 2. Revoke in DB to prevent resurrection
+        db_ops::sessions::revoke_session(&self.db, id, Some("Deleted via RedisSessionStore")).await?;
 
         Ok(())
     }
@@ -151,9 +149,8 @@ impl SessionStoreTrait for RedisSessionStore {
         }
         let _: () = conn.del(&user_key).await.unwrap_or(());
 
-        // 2. Delegate to DB?
-        // SessionStore implementation: "full_sessions.retain...".
-        // It doesn't seem to call DB delete.
+        // 2. Revoke in DB to prevent resurrection
+        db_ops::sessions::revoke_user_sessions(&self.db, user_id, Some("Deleted via RedisSessionStore")).await?;
 
         Ok(())
     }
