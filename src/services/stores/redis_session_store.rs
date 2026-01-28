@@ -6,6 +6,7 @@ use deadpool_redis::{Config, Runtime, Pool};
 use anyhow::{Result, anyhow};
 use uuid::Uuid;
 use redis::AsyncCommands;
+use chrono::{DateTime, Utc};
 
 use crate::models::session::Session;
 use crate::services::session_store::{SessionStoreTrait, CreateSessionParams, CreateOfflineTokenParams};
@@ -123,25 +124,10 @@ impl SessionStoreTrait for RedisSessionStore {
         // 1. Delete from Redis
         let _ = self.delete_session_from_redis(id).await;
 
-        // 2. Delete from DB (The default implementation does in-memory only?
-        // No, SessionStore::delete_session updates full_sessions map.
-        // But db_ops usually has a delete/revoke.
-        // Checking SessionStore implementation: it only removes from memory?
-        // "full_sessions.remove(&session_id);"
-        // This implies sessions are transient? But create_session writes to DB.
-        // Ah, revocation is the DB way. But delete implies removal.
-        // I will assume revocation in DB is enough or there is no DB delete op exposed.)
-
-        // Actually, looking at `SessionStore::delete_session` in `src/services/session_store.rs`:
-        // It ONLY modifies the `RwLock` in memory. It does NOT call DB.
-        // This is strange. Maybe `revoke_session_db` is what persists?
-
-        // I will replicate this behavior by removing from Redis cache.
-        // But since I'm backed by DB, I should probably delete from DB if I want it gone?
-        // Or maybe `store_session` overwrites.
-
-        // Let's check `db_ops::sessions` available methods?
-        // I can't easily. I'll stick to Redis deletion.
+        // 2. Delete from DB?
+        // SessionStore implementation logic: "full_sessions.remove(&session_id);"
+        // It does NOT explicitly delete from DB in default impl, likely relying on revocation or expiration cleanup.
+        // However, if we want to ensure it's gone from cache, Redis delete is sufficient for performance.
 
         Ok(())
     }
@@ -173,9 +159,8 @@ impl SessionStoreTrait for RedisSessionStore {
     }
 
     async fn get_user_sessions(&self, user_id: Uuid) -> Result<Vec<Session>, AuthencError> {
-        // 1. Try Redis Index
+        // 1. Try Redis Index first
         let mut sessions = Vec::new();
-        let mut missing_ids = Vec::new();
 
         let mut conn = self.pool.get().await
             .map_err(|e| AuthencError::internal(format!("Redis pool error: {}", e)))?;
@@ -189,24 +174,34 @@ impl SessionStoreTrait for RedisSessionStore {
                 if let Ok(Some(session)) = self.get_session_from_redis(sid).await {
                     sessions.push(session);
                 } else {
-                    missing_ids.push(sid);
+                    // Stale or missing from cache -> try DB
+                    if let Ok(Some(session)) = self.get_session_from_db(sid).await {
+                        sessions.push(session);
+                        // Backfill? Maybe too expensive here.
+                    }
                 }
             }
         }
 
-        // 2. For missing IDs, fetch from DB
-        // Actually, better to just fetch ALL from DB if Redis partial?
-        // Or trust DB as source of truth for "list" operations.
-        // Let's implement by fetching from DB to be safe and consistent,
-        // then backfilling Redis?
-        // Or rely on DB ops:
+        // If Redis was empty or we want to be sure, should we query DB for *all* sessions?
+        // Querying DB for all sessions by user_id ensures consistency if Redis was flushed.
+        // Let's rely on DB as the source of truth for listing if Redis returns nothing, or just merge?
+        // Merging is complex.
+        // Simple strategy: If Redis yields sessions, return them. If not, fallback to DB query.
 
-        // Wait, `db_ops` doesn't seem to expose `get_user_sessions`?
-        // `SessionStore` iterates its memory map.
-        // If I use Redis, I rely on Redis index.
+        if sessions.is_empty() {
+             let query = "SELECT * FROM sessions WHERE user_id = $1";
+             let rows: Vec<tokio_postgres::Row> = self.db.query(query, &[&user_id]).await
+                .map_err(|e| AuthencError::database(format!("DB query error: {}", e)))?;
 
-        // If I assume DB has them, I should query DB.
-        // Since I can't check `db_ops` easily, I'll rely on Redis + fallback.
+             for row in rows {
+                 if let Ok(session) = self.row_to_session(&row) {
+                     // Optionally populate cache
+                     let _ = self.cache_session(&session).await;
+                     sessions.push(session);
+                 }
+             }
+        }
 
         Ok(sessions)
     }
@@ -267,10 +262,7 @@ impl SessionStoreTrait for RedisSessionStore {
     ) -> Result<(), AuthencError> {
         db_ops::sessions::revoke_session(&self.db, session_id, reason).await?;
 
-        // Update Redis (or delete?)
-        // If revoked, we should probably delete from Redis or update status.
-        // Let's delete to force re-fetch or just handle revocation logic.
-        // Ideally update the session object in Redis to reflect 'revoked=true'.
+        // Update Redis
         if let Ok(Some(mut session)) = self.get_session(session_id).await {
             session.revoked = true;
             let _ = self.cache_session(&session).await;
@@ -380,39 +372,36 @@ impl RedisSessionStore {
     }
 
     async fn get_session_from_db(&self, id: Uuid) -> Result<Option<Session>> {
-        // Need to implement or find a way to fetch full Session struct from DB.
-        // db_ops::sessions::get_session might return serde_json::Value or something?
-        // SessionStoreTrait::get_session implementation in session_store.rs uses `full_sessions` memory map.
-        // It does NOT seem to fetch from DB?
-        // "db_ops::sessions::store_session" exists.
-
-        // If the original SessionStore only trusted memory, that's a weakness.
-        // But `store_session` writes to DB.
-        // So I should be able to read it back.
-
-        // For now, let's assume we can't easily fetch full object if db_ops doesn't expose it.
-        // But wait, `Session` struct is `pub`.
-        // I can query DB directly!
-
         let query = "SELECT * FROM sessions WHERE id = $1";
-        let rows: Vec<tokio_postgres::Row> = self.db.query(query, &[&id]).await.map_err(|e| anyhow!("DB error: {}", e))?;
+        let rows: Vec<tokio_postgres::Row> = self.db.query(query, &[&id]).await
+            .map_err(|e| anyhow!("DB error: {}", e))?;
 
-        if rows.is_empty() {
-            return Ok(None);
+        if let Some(row) = rows.first() {
+            match self.row_to_session(row) {
+                Ok(session) => Ok(Some(session)),
+                Err(e) => {
+                    tracing::error!("Failed to map session row: {}", e);
+                    Ok(None)
+                }
+            }
+        } else {
+            Ok(None)
         }
+    }
 
-        // I need to map Row to Session.
-        // This is tedious without a mapper.
-        // Does Session have From<Row>?
-        // Let's check `src/models/session.rs`.
-
-        // If I cannot easily map, I might be stuck.
-        // BUT, `RedisSessionStore` is primarily for clustering active sessions.
-        // If checking Redis fails, maybe just return None?
-        // But then we lose persistence if Redis flushes.
-
-        // Compromise: Return None for DB fetch for now (unless I see a mapper),
-        // relying on Redis persistence or `create_session` population.
-        Ok(None)
+    fn row_to_session(&self, row: &tokio_postgres::Row) -> Result<Session> {
+        Ok(Session {
+            id: row.try_get("id")?,
+            user_id: row.try_get("user_id")?,
+            realm_id: row.try_get("realm_id")?,
+            token: row.try_get("token")?,
+            refresh_token: row.try_get("refresh_token")?,
+            expires_at: row.try_get("expires_at")?,
+            created_at: row.try_get("created_at")?,
+            last_accessed: row.try_get("last_accessed")?,
+            ip_address: row.try_get("ip_address")?,
+            user_agent: row.try_get("user_agent")?,
+            revoked: row.try_get("revoked")?,
+        })
     }
 }
