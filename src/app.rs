@@ -133,9 +133,32 @@ impl AppState {
         let user_store: Arc<dyn crate::services::stores::user_store::UserStoreTrait> = Arc::new(crate::services::stores::user_store::UserStore::new(
             database.clone(),
         ));
-        let session_store: Arc<dyn crate::services::session_store::SessionStoreTrait> = Arc::new(crate::services::session_store::SessionStore::new(
-            database.clone(),
-        ));
+
+        // Initialize session store (Redis or Database)
+        let session_store: Arc<dyn crate::services::session_store::SessionStoreTrait> =
+            if let Ok(redis_url) = std::env::var("REDIS_URL") {
+                #[cfg(feature = "redis-store")]
+                {
+                    match crate::services::stores::redis_session_store::RedisSessionStore::new(&redis_url, database.clone()) {
+                        Ok(store) => {
+                            tracing::info!("Using Redis session store at {}", redis_url);
+                            Arc::new(store)
+                        },
+                        Err(e) => {
+                            tracing::warn!("Failed to initialize Redis session store: {}. Falling back to database.", e);
+                            Arc::new(crate::services::session_store::SessionStore::new(database.clone()))
+                        }
+                    }
+                }
+                #[cfg(not(feature = "redis-store"))]
+                {
+                    tracing::warn!("REDIS_URL present but 'redis-store' feature not enabled. Using database session store.");
+                    Arc::new(crate::services::session_store::SessionStore::new(database.clone()))
+                }
+            } else {
+                Arc::new(crate::services::session_store::SessionStore::new(database.clone()))
+            };
+
         let totp_store = Arc::new(crate::services::totp_store::TotpStore::new());
 
         let brute_force_protector = Arc::new(

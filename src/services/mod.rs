@@ -68,6 +68,9 @@ pub mod stores {
     pub mod social_account_store;
     /// User storage service
     pub mod user_store;
+    /// Redis session store implementation
+    #[cfg(feature = "redis-store")]
+    pub mod redis_session_store;
 
     // Re-export commonly used types from sub-modules
     pub use consent_store::{ConsentStore, ConsentStoreTrait};
