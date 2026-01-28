@@ -152,6 +152,8 @@ impl AppState {
                 }
                 #[cfg(not(feature = "redis-store"))]
                 {
+                    // Silence unused variable warning
+                    let _ = redis_url;
                     tracing::warn!("REDIS_URL present but 'redis-store' feature not enabled. Using database session store.");
                     Arc::new(crate::services::session_store::SessionStore::new(database.clone()))
                 }
