@@ -5,6 +5,7 @@
 
 use crate::config::AppConfig;
 use crate::error::{AuthencError, Result};
+use crate::services::authorization::AuthorizationService;
 use std::sync::Arc;
 
 /// Comprehensive application state with all services
@@ -86,6 +87,8 @@ pub struct AppState {
     pub fips_provider: Arc<crate::services::fips::AdvancedFipsSecurityProvider>,
     /// Social login manager for handling OAuth flows
     pub social_login_manager: Arc<crate::services::social::SocialLoginManager>,
+    /// Authorization manager for fine-grained permissions
+    pub authorization_manager: Arc<crate::services::authorization::AuthorizationManager>,
 }
 
 // Support extraction of database for health checks
@@ -619,6 +622,13 @@ impl AppState {
 
         let social_login_manager = Arc::new(social_manager);
 
+        // Initialize authorization manager
+        let authorization_manager = Arc::new(
+            crate::services::authorization::AuthorizationManager::new(database.clone()),
+        );
+        // Preload policies (best effort)
+        let _ = authorization_manager.reload().await;
+
         Ok(Self {
             config,
             database,
@@ -657,6 +667,7 @@ impl AppState {
             webauthn_service,
             fips_provider,
             social_login_manager,
+            authorization_manager,
         })
     }
 
