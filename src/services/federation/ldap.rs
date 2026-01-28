@@ -21,6 +21,8 @@ pub struct LdapIdentityProvider {
     bind_password: Option<String>,
     /// User search filter template (e.g. "(uid={})")
     user_search_filter: String,
+    /// Role mappings (LDAP Group -> Authenc Role)
+    role_mappings: HashMap<String, String>,
 }
 
 impl LdapIdentityProvider {
@@ -47,6 +49,12 @@ impl LdapIdentityProvider {
             .cloned()
             .unwrap_or_else(|| "(uid={})".to_string());
 
+        let role_mappings = if let Some(json) = config.config.get("role_mappings") {
+            serde_json::from_str(json).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+
         Ok(Self {
             config,
             url,
@@ -54,6 +62,7 @@ impl LdapIdentityProvider {
             bind_dn,
             bind_password,
             user_search_filter,
+            role_mappings,
         })
     }
 
@@ -130,6 +139,17 @@ impl LdapIdentityProvider {
         // If username is still missing, try to infer from DN or use id
         if user_info.username.is_none() {
             user_info.username = Some(entry.dn.clone());
+        }
+
+        // Apply role mapping
+        for group in &user_info.groups {
+            if let Some(role) = self.role_mappings.get(group) {
+                user_info.roles.push(role.clone());
+            } else {
+                 // Try mapping using partial match (e.g. if group is a DN)
+                 // e.g. "CN=Admins,OU=Groups,DC=example,DC=com" -> map key "Admins"
+                 // For now, we only support exact match as defined in the mapping
+            }
         }
 
         user_info
@@ -355,6 +375,8 @@ impl IdentityProvider for LdapIdentityProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
+    use crate::services::federation::IdentityProviderType;
 
     #[test]
     fn test_escape_ldap_filter() {
@@ -363,5 +385,33 @@ mod tests {
         assert_eq!(escape_ldap_filter_value("test(user)"), "test\\28user\\29");
         assert_eq!(escape_ldap_filter_value("test\\user"), "test\\5cuser");
         assert_eq!(escape_ldap_filter_value("test\0user"), "test\\00user");
+    }
+
+    #[tokio::test]
+    async fn test_role_mapping_parsing() {
+        let mut config_map = HashMap::new();
+        config_map.insert("url".to_string(), "ldap://localhost".to_string());
+        config_map.insert("base_dn".to_string(), "dc=example,dc=com".to_string());
+
+        // Define role mappings JSON
+        let mappings = r#"{"Admins": "admin", "Developers": "dev"}"#;
+        config_map.insert("role_mappings".to_string(), mappings.to_string());
+
+        let config = IdentityProviderConfig {
+            id: Uuid::new_v4(),
+            name: "ldap".to_string(),
+            display_name: "LDAP".to_string(),
+            provider_type: IdentityProviderType::LDAP,
+            enabled: true,
+            config: config_map,
+            realm_id: Uuid::new_v4(),
+            truststore_path: None,
+            keystore_path: None,
+        };
+
+        let provider = LdapIdentityProvider::new(config).await.unwrap();
+        assert_eq!(provider.role_mappings.len(), 2);
+        assert_eq!(provider.role_mappings.get("Admins").unwrap(), "admin");
+        assert_eq!(provider.role_mappings.get("Developers").unwrap(), "dev");
     }
 }
