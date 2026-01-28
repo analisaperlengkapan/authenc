@@ -774,49 +774,79 @@ impl AuthorizationService for AuthorizationManager {
         let rows: Vec<tokio_postgres::Row> = self.database.query(query, &[]).await
             .map_err(|e| format!("Failed to load policies: {}", e))?;
 
+        let mut new_policies = HashMap::new();
+
+        for row in rows {
+            let config_json: String = row.try_get("config").unwrap_or("{}".to_string());
+            let config: PolicyConfig = serde_json::from_str(&config_json).unwrap_or(PolicyConfig {
+                roles: vec![],
+                attributes: HashMap::new(),
+                conditions: vec![],
+            });
+
+            let policy_type_str: String = row.try_get("policy_type").unwrap_or("RoleBased".to_string());
+            let policy_type = match policy_type_str.as_str() {
+                "AttributeBased" => PolicyType::AttributeBased,
+                "TimeBased" => PolicyType::TimeBased,
+                "LocationBased" => PolicyType::LocationBased,
+                "RiskBased" => PolicyType::RiskBased,
+                "Custom" => PolicyType::Custom,
+                _ => PolicyType::RoleBased,
+            };
+
+            let logic_str: String = row.try_get("logic").unwrap_or("Positive".to_string());
+            let logic = match logic_str.as_str() {
+                "Negative" => LogicType::Negative,
+                "Consensus" => LogicType::Consensus,
+                "Affirmative" => LogicType::Affirmative,
+                _ => LogicType::Positive,
+            };
+
+            let policy = Policy {
+                id: row.try_get("id").map_err(|e: tokio_postgres::Error| e.to_string())?,
+                name: row.try_get("name").unwrap_or_default(),
+                description: row.try_get("description").unwrap_or_default(),
+                policy_type,
+                logic,
+                config,
+                enabled: row.try_get("enabled").unwrap_or(true),
+                realm_id: row.try_get("realm_id").map_err(|e: tokio_postgres::Error| e.to_string())?,
+            };
+
+            new_policies.insert(policy.id, policy);
+        }
+
+        // Load permissions from DB
+        let query_perms = "SELECT * FROM authorization_permissions WHERE deleted_at IS NULL";
+        let perm_rows: Vec<tokio_postgres::Row> = self.database.query(query_perms, &[]).await
+            .map_err(|e| format!("Failed to load permissions: {}", e))?;
+
+        let mut new_permissions = HashMap::new();
+
+        for row in perm_rows {
+             let id: Uuid = row.try_get("id").map_err(|e: tokio_postgres::Error| e.to_string())?;
+             let name: String = row.try_get("name").unwrap_or_default();
+             let description: String = row.try_get("description").unwrap_or_default();
+             let resource_id: Uuid = row.try_get("resource_id").map_err(|e: tokio_postgres::Error| e.to_string())?;
+
+             // Assuming Postgres arrays for scopes and policies
+             let scopes: Vec<String> = row.try_get("scopes").unwrap_or_default();
+             let policies: Vec<Uuid> = row.try_get("policies").unwrap_or_default();
+
+             let permission = Permission {
+                 id, name, description, resource_id, scopes, policies
+             };
+             new_permissions.insert(permission.id, permission);
+        }
+
+        // Atomic swap
         {
             let mut policies = self.policies.write().map_err(|e| e.to_string())?;
-            policies.clear();
-
-            for row in rows {
-                let config_json: String = row.try_get("config").unwrap_or("{}".to_string());
-                let config: PolicyConfig = serde_json::from_str(&config_json).unwrap_or(PolicyConfig {
-                    roles: vec![],
-                    attributes: HashMap::new(),
-                    conditions: vec![],
-                });
-
-                let policy_type_str: String = row.try_get("policy_type").unwrap_or("RoleBased".to_string());
-                let policy_type = match policy_type_str.as_str() {
-                    "AttributeBased" => PolicyType::AttributeBased,
-                    "TimeBased" => PolicyType::TimeBased,
-                    "LocationBased" => PolicyType::LocationBased,
-                    "RiskBased" => PolicyType::RiskBased,
-                    "Custom" => PolicyType::Custom,
-                    _ => PolicyType::RoleBased,
-                };
-
-                let logic_str: String = row.try_get("logic").unwrap_or("Positive".to_string());
-                let logic = match logic_str.as_str() {
-                    "Negative" => LogicType::Negative,
-                    "Consensus" => LogicType::Consensus,
-                    "Affirmative" => LogicType::Affirmative,
-                    _ => LogicType::Positive,
-                };
-
-                let policy = Policy {
-                    id: row.try_get("id").map_err(|e: tokio_postgres::Error| e.to_string())?,
-                    name: row.try_get("name").unwrap_or_default(),
-                    description: row.try_get("description").unwrap_or_default(),
-                    policy_type,
-                    logic,
-                    config,
-                    enabled: row.try_get("enabled").unwrap_or(true),
-                    realm_id: row.try_get("realm_id").map_err(|e: tokio_postgres::Error| e.to_string())?,
-                };
-
-                policies.insert(policy.id, policy);
-            }
+            *policies = new_policies;
+        }
+        {
+            let mut permissions = self.permissions.write().map_err(|e| e.to_string())?;
+            *permissions = new_permissions;
         }
 
         Ok(())

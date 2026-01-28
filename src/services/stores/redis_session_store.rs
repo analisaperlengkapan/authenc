@@ -187,7 +187,7 @@ impl SessionStoreTrait for RedisSessionStore {
         // Simple strategy: If Redis yields sessions, return them. If not, fallback to DB query.
 
         if sessions.is_empty() {
-             let query = "SELECT * FROM sessions WHERE user_id = $1";
+             let query = "SELECT * FROM sessions WHERE user_id = $1 AND revoked = false";
              let rows: Vec<tokio_postgres::Row> = self.db.query(query, &[&user_id]).await
                 .map_err(|e| AuthencError::database(format!("DB query error: {}", e)))?;
 

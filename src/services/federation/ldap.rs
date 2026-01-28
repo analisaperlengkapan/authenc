@@ -389,6 +389,9 @@ impl IdentityProvider for LdapIdentityProvider {
         // 5. Success - Map attributes
         let user_info = self.map_attributes(&entry);
 
+        // Unbind connection
+        let _ = ldap.unbind().await;
+
         Ok(AuthResponse {
             success: true,
             user_id: Some(user_info.id),

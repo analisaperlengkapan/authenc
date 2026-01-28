@@ -104,7 +104,20 @@ impl WebAuthnService {
         let key = format!("reg:{}:{}", request.realm_id, request.username);
         self.reg_states.insert(key.clone(), (state, Utc::now()));
 
+        // Cleanup expired states lazily
+        self.cleanup_expired_states();
+
         Ok(Json(serde_json::to_value(challenge).unwrap()))
+    }
+
+    /// Cleanup expired authentication/registration states
+    fn cleanup_expired_states(&self) {
+        let now = Utc::now();
+        let ttl = Duration::minutes(5);
+
+        // Remove items older than TTL
+        self.auth_states.retain(|_, (_, timestamp)| *timestamp + ttl > now);
+        self.reg_states.retain(|_, (_, timestamp)| *timestamp + ttl > now);
     }
 
     /// Verify WebAuthn registration response
@@ -194,6 +207,9 @@ impl WebAuthnService {
         // Store state in memory
         let key = format!("auth:{}:{}", request.realm_id, request.username);
         self.auth_states.insert(key, (state, Utc::now()));
+
+        // Cleanup expired states lazily
+        self.cleanup_expired_states();
 
         Ok(Json(serde_json::to_value(challenge).unwrap()))
     }
