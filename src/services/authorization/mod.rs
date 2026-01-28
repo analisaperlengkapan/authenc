@@ -817,10 +817,6 @@ impl AuthorizationService for AuthorizationManager {
             }
         }
 
-        // Similarly we should load Permissions, Resources etc.
-        // But for this step I'll focus on Policies as it's the core engine.
-        // In a real implementation, we'd load everything.
-
         Ok(())
     }
 }

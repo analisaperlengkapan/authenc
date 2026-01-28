@@ -240,6 +240,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Main Auth API Nest
         .nest("/api/v1/auth", auth_api_router)
+        // Authorization API
+        .nest("/api/v1", api::create_authorization_routes().with_state(state.clone()))
         // FIPS management routes
         .nest(
             "/api/v1/admin/fips",
