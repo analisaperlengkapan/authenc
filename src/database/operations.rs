@@ -9870,6 +9870,52 @@ pub mod sessions {
             )
             .await?;
 
+        // Store tokens if client_id is present (OAuth2 flow)
+        if let Some(cid) = client_id {
+            let token_id = Uuid::new_v4();
+            let mut hasher = Sha256::new();
+            hasher.update(token.as_bytes());
+            let token_hash = format!("{:x}", hasher.finalize());
+
+            let refresh_token_hash = refresh_token.map(|rt| {
+                let mut hasher = Sha256::new();
+                hasher.update(rt.as_bytes());
+                format!("{:x}", hasher.finalize())
+            });
+
+            let scopes: Vec<String> = Vec::new();
+            let refresh_expires_at = if refresh_token.is_some() {
+                Some(expires_at)
+            } else {
+                None
+            };
+
+            let token_query = r#"
+                INSERT INTO oauth2_access_tokens (
+                    id, token_hash, refresh_token_hash, client_id, user_id, scopes,
+                    expires_at, refresh_expires_at, created_at, session_id
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            "#;
+
+            db.execute(
+                token_query,
+                &[
+                    &token_id,
+                    &token_hash,
+                    &refresh_token_hash,
+                    &cid,
+                    &user_id,
+                    &scopes,
+                    &expires_at,
+                    &refresh_expires_at,
+                    &now,
+                    &session_id_str,
+                ],
+            )
+            .await?;
+        }
+
         // Note: realm_id, client_id, token_hash etc are not stored in user_sessions schema
         Ok(serde_json::json!({
             "id": row.get::<_, Uuid>("id"),
