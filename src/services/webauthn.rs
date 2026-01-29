@@ -16,7 +16,10 @@ use webauthn_rs::prelude::{
 };
 use webauthn_rs::{Webauthn, WebauthnBuilder};
 use dashmap::DashMap;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
+
+// Import proto types if not in prelude
+// use webauthn_rs_proto::{AuthenticatorAttestationResponse, AuthenticatorAssertionResponse};
 
 /// WebAuthn service for FIDO2 authentication
 pub struct WebAuthnService {
