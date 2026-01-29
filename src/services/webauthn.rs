@@ -1,5 +1,5 @@
 use crate::crypto::aes_gcm::{AesGcmService, EncryptedData};
-use crate::database::operations::{users, webauthn as webauthn_db};
+use crate::database::operations::users;
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
 use crate::models::webauthn::{WebauthnCredential, WebauthnAuthenticationResponse, WebauthnRegistrationResponse};
@@ -7,12 +7,12 @@ use axum::response::Json;
 use base64ct::Encoding;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::info;
 use url::Url;
 use uuid::Uuid;
 use webauthn_rs::prelude::{
     CredentialID, Passkey, RegisterPublicKeyCredential, PublicKeyCredential,
-    Base64UrlSafeData, PasskeyAuthentication, PasskeyRegistration
+    PasskeyAuthentication, PasskeyRegistration
 };
 use webauthn_rs::{Webauthn, WebauthnBuilder};
 use dashmap::DashMap;

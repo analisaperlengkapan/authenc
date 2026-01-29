@@ -337,9 +337,8 @@ impl IdentityProvider for LdapIdentityProvider {
 
         // Find first entry result (skip referrals for now)
         let mut entry_opt: Option<SearchEntry> = None;
-        for res in search_result {
+        if let Some(res) = search_result.into_iter().next() {
             entry_opt = Some(SearchEntry::construct(res));
-            break;
         }
 
         let entry = match entry_opt {
