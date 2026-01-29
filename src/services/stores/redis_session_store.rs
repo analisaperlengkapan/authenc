@@ -84,12 +84,35 @@ impl SessionStoreTrait for RedisSessionStore {
             .ok_or_else(|| AuthencError::internal("Invalid session ID returned"))?;
 
         // 2. Cache in Redis
-        // We need the full session object to cache it.
-        // Ideally DB returns it, or we construct it, or we fetch it.
-        // For simplicity/consistency, let's fetch what we just created.
-        if let Ok(Some(session)) = self.get_session_from_db(session_id).await {
-             let _ = self.cache_session(&session).await;
-        }
+        // Construct session object from params and result to ensure token is present
+        // (Sessions retrieved from DB have empty tokens, so we must cache the one we just created with the token)
+        let created_at: DateTime<Utc> = result.get("started_at")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_else(Utc::now);
+
+        let expires_at: DateTime<Utc> = result.get("expires_at")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_else(|| Utc::now() + chrono::Duration::seconds(params.expires_in));
+
+        let last_accessed: DateTime<Utc> = result.get("last_accessed")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_else(Utc::now);
+
+        let session = Session {
+            id: session_id,
+            user_id: params.user_id,
+            realm_id: params.realm_id,
+            token: params.token.to_string(),
+            refresh_token: params.refresh_token.map(|s| s.to_string()),
+            expires_at,
+            created_at,
+            last_accessed,
+            ip_address: params.ip_address.map(|s| s.to_string()),
+            user_agent: params.user_agent.map(|s| s.to_string()),
+            revoked: false,
+        };
+
+        let _ = self.cache_session(&session).await;
 
         Ok(session_id)
     }
@@ -102,8 +125,10 @@ impl SessionStoreTrait for RedisSessionStore {
 
         // 2. Try DB
         if let Ok(Some(session)) = self.get_session_from_db(id).await {
-            // Populate cache
-            let _ = self.cache_session(&session).await;
+            // Populate cache ONLY if token is present (DB sessions have empty tokens)
+            if !session.token.is_empty() {
+                let _ = self.cache_session(&session).await;
+            }
             return Ok(Some(session));
         }
 
@@ -202,8 +227,10 @@ impl SessionStoreTrait for RedisSessionStore {
 
              for row in rows {
                  if let Ok(session) = self.row_to_session(&row) {
-                     // Optionally populate cache
-                     let _ = self.cache_session(&session).await;
+                     // Optionally populate cache ONLY if token is present
+                     if !session.token.is_empty() {
+                         let _ = self.cache_session(&session).await;
+                     }
                      sessions.push(session);
                  }
              }

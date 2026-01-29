@@ -363,11 +363,32 @@ impl IdentityProvider for LdapIdentityProvider {
 
         let user_dn = entry.dn.clone();
 
-        // 4. Authenticate (Bind as User)
-        match ldap.simple_bind(&user_dn, password).await {
+        // 4. Close service connection before user bind to prevent taint/reuse
+        let _ = ldap.unbind().await;
+
+        // 5. Authenticate (Bind as User) using NEW connection
+        let (conn2, mut ldap2) = match self.connect().await {
+            Ok(c) => c,
+            Err(e) => return Ok(AuthResponse {
+                success: false,
+                user_id: None,
+                username: None,
+                email: None,
+                groups: vec![],
+                roles: vec![],
+                attributes: HashMap::new(),
+                token: None,
+                refresh_token: None,
+                expires_at: None,
+                error: Some(format!("Failed to connect to LDAP for verification: {}", e)),
+            }),
+        };
+        ldap3::drive!(conn2);
+
+        match ldap2.simple_bind(&user_dn, password).await {
             Ok(res) => {
                 if let Err(e) = res.success() {
-                    let _ = ldap.unbind().await;
+                    let _ = ldap2.unbind().await;
                     return Ok(AuthResponse {
                         success: false,
                         user_id: None,
@@ -384,7 +405,7 @@ impl IdentityProvider for LdapIdentityProvider {
                 }
             }
             Err(e) => {
-                let _ = ldap.unbind().await;
+                let _ = ldap2.unbind().await;
                 return Ok(AuthResponse {
                     success: false,
                     user_id: None,
@@ -401,11 +422,11 @@ impl IdentityProvider for LdapIdentityProvider {
             }
         }
 
-        // 5. Success - Map attributes
-        let user_info = self.map_attributes(&entry);
+        // Unbind user connection
+        let _ = ldap2.unbind().await;
 
-        // Unbind connection
-        let _ = ldap.unbind().await;
+        // 6. Success - Map attributes (from service account search)
+        let user_info = self.map_attributes(&entry);
 
         Ok(AuthResponse {
             success: true,

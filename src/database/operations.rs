@@ -6592,7 +6592,7 @@ pub mod webauthn {
     /// Update signature count after authentication
     pub async fn update_signature_count(
         db: &Database,
-        credential_id: &str,
+        credential_id: &[u8],
         new_count: i64,
     ) -> Result<()> {
         let now = Utc::now();

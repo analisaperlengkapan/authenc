@@ -107,8 +107,10 @@ impl WebAuthnService {
         let key = format!("reg:{}:{}", request.realm_id, request.username);
         self.reg_states.insert(key.clone(), (state, Utc::now()));
 
-        // Cleanup expired states lazily
-        self.cleanup_expired_states();
+        // Cleanup expired states lazily (probabilistic: 1 in 100)
+        if rand::random::<u8>() % 100 == 0 {
+            self.cleanup_expired_states();
+        }
 
         Ok(Json(serde_json::to_value(challenge).unwrap()))
     }
@@ -211,8 +213,10 @@ impl WebAuthnService {
         let key = format!("auth:{}:{}", request.realm_id, request.username);
         self.auth_states.insert(key, (state, Utc::now()));
 
-        // Cleanup expired states lazily
-        self.cleanup_expired_states();
+        // Cleanup expired states lazily (probabilistic: 1 in 100)
+        if rand::random::<u8>() % 100 == 0 {
+            self.cleanup_expired_states();
+        }
 
         Ok(Json(serde_json::to_value(challenge).unwrap()))
     }
@@ -242,10 +246,9 @@ impl WebAuthnService {
 
         // Update signature counter
         let cred_id_bytes: Vec<u8> = auth_result.cred_id().clone().into();
-        let cred_id_str = base64ct::Base64UrlUnpadded::encode_string(&cred_id_bytes);
         // Note: auth_result.counter() might be needed if field is private, but checking docs showed it's usually accessible or method.
         // Assuming .counter() method exists based on previous errors.
-        self.update_credential_sign_count(username, &cred_id_str, auth_result.counter()).await?;
+        self.update_credential_sign_count(username, &cred_id_bytes, auth_result.counter()).await?;
 
         info!("WebAuthn authentication successful for user: {}", username);
         Ok(Json(serde_json::json!({"status": "authenticated"})))
@@ -374,7 +377,7 @@ impl WebAuthnService {
     async fn update_credential_sign_count(
         &self,
         _username: &str,
-        credential_id: &str,
+        credential_id: &[u8],
         sign_count: u32,
     ) -> Result<()> {
         use crate::database::operations::webauthn as webauthn_db;

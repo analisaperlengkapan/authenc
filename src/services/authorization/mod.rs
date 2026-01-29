@@ -218,18 +218,21 @@ pub struct Scope {
     pub icon_uri: Option<String>,
 }
 
+/// Internal state for Authorization Manager
+#[derive(Default)]
+struct AuthorizationState {
+    policies: HashMap<Uuid, Policy>,
+    resource_servers: HashMap<Uuid, ResourceServer>,
+    permissions: HashMap<Uuid, Permission>,
+    scopes: HashMap<Uuid, Scope>,
+}
+
 /// Authorization Manager - main service
 pub struct AuthorizationManager {
     /// Database connection
     database: Arc<crate::database::Database>,
-    /// Internal storage for policies
-    policies: Arc<RwLock<HashMap<Uuid, Policy>>>,
-    /// Internal storage for resource servers
-    resource_servers: Arc<RwLock<HashMap<Uuid, ResourceServer>>>,
-    /// Internal storage for permissions
-    permissions: Arc<RwLock<HashMap<Uuid, Permission>>>,
-    /// Internal storage for scopes
-    scopes: Arc<RwLock<HashMap<Uuid, Scope>>>,
+    /// Internal state
+    state: Arc<RwLock<AuthorizationState>>,
 }
 
 impl AuthorizationManager {
@@ -237,10 +240,7 @@ impl AuthorizationManager {
     pub fn new(database: Arc<crate::database::Database>) -> Self {
         Self {
             database,
-            policies: Arc::new(RwLock::new(HashMap::new())),
-            resource_servers: Arc::new(RwLock::new(HashMap::new())),
-            permissions: Arc::new(RwLock::new(HashMap::new())),
-            scopes: Arc::new(RwLock::new(HashMap::new())),
+            state: Arc::new(RwLock::new(AuthorizationState::default())),
         }
     }
 }
@@ -248,15 +248,15 @@ impl AuthorizationManager {
 impl AuthorizationManager {
     /// Add policy to memory
     pub fn add_policy(&self, policy: Policy) {
-        if let Ok(mut policies) = self.policies.write() {
-            policies.insert(policy.id, policy);
+        if let Ok(mut state) = self.state.write() {
+            state.policies.insert(policy.id, policy);
         }
     }
 
     /// Add permission to memory
     pub fn add_permission(&self, permission: Permission) {
-        if let Ok(mut permissions) = self.permissions.write() {
-            permissions.insert(permission.id, permission);
+        if let Ok(mut state) = self.state.write() {
+            state.permissions.insert(permission.id, permission);
         }
     }
 
@@ -266,8 +266,8 @@ impl AuthorizationManager {
         context: &AuthorizationContext,
         policy_ids: &[Uuid],
     ) -> Decision {
-        let policies = match self.policies.read() {
-            Ok(p) => p,
+        let state = match self.state.read() {
+            Ok(s) => s,
             Err(_) => return Decision::Undecided,
         };
 
@@ -275,7 +275,7 @@ impl AuthorizationManager {
         let mut deny_count = 0;
 
         for policy_id in policy_ids {
-            if let Some(policy) = policies.get(policy_id) {
+            if let Some(policy) = state.policies.get(policy_id) {
                 if !policy.enabled {
                     continue;
                 }
@@ -575,15 +575,15 @@ impl AuthorizationManager {
 
     /// Check permissions for resource access
     pub fn check_permissions(&self, context: &AuthorizationContext) -> Decision {
-        let permissions = match self.permissions.read() {
-            Ok(p) => p,
+        let state = match self.state.read() {
+            Ok(s) => s,
             Err(_) => return Decision::Undecided,
         };
 
         // Find relevant permissions for the resource
         let mut relevant_permissions = Vec::new();
 
-        for permission in permissions.values() {
+        for permission in state.permissions.values() {
             if permission.resource_id.to_string() == context.resource.id
                 && permission.scopes.contains(&context.action)
             {
@@ -613,9 +613,9 @@ impl AuthorizationService for AuthorizationManager {
     }
 
     async fn get_policies(&self, realm_id: &Uuid) -> Result<Vec<Policy>, String> {
-        let policies_lock = self.policies.read().map_err(|e| e.to_string())?;
+        let state = self.state.read().map_err(|e| e.to_string())?;
 
-        let policies: Vec<Policy> = policies_lock
+        let policies: Vec<Policy> = state.policies
             .values()
             .filter(|p| &p.realm_id == realm_id)
             .cloned()
@@ -761,8 +761,8 @@ impl AuthorizationService for AuthorizationManager {
         }
 
         // Remove from cache
-        if let Ok(mut policies) = self.policies.write() {
-            policies.remove(policy_id);
+        if let Ok(mut state) = self.state.write() {
+            state.policies.remove(policy_id);
         }
 
         Ok(())
@@ -841,12 +841,10 @@ impl AuthorizationService for AuthorizationManager {
 
         // Atomic swap
         {
-            let mut policies = self.policies.write().map_err(|e| e.to_string())?;
-            *policies = new_policies;
-        }
-        {
-            let mut permissions = self.permissions.write().map_err(|e| e.to_string())?;
-            *permissions = new_permissions;
+            let mut state = self.state.write().map_err(|e| e.to_string())?;
+            state.policies = new_policies;
+            state.permissions = new_permissions;
+            // Note: resource_servers and scopes should also be reloaded if they were persisted
         }
 
         Ok(())
