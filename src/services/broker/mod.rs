@@ -425,9 +425,14 @@ impl LdapIdentityBroker {
         });
 
         // Bind with service account
-        ldap.simple_bind(&self.config.bind_dn, &self.config.bind_password)
+        let res = ldap
+            .simple_bind(&self.config.bind_dn, &self.config.bind_password)
             .await
             .map_err(|e| format!("LDAP service bind failed: {}", e))?;
+
+        if let Err(e) = res.success() {
+            return Err(format!("LDAP service bind failed: {}", e));
+        }
 
         *pool = Some(ldap.clone());
         Ok(ldap)
