@@ -10102,9 +10102,10 @@ pub mod sessions {
               AND revoked = false
         "#;
 
+        let session_id_str = session_id.to_string();
         let affected = db.execute(
             query,
-            &[&new_hash, &refresh_expires, &now, &old_hash, &session_id]
+            &[&new_hash, &refresh_expires, &now, &old_hash, &session_id_str]
         ).await?;
 
         Ok(affected > 0)
