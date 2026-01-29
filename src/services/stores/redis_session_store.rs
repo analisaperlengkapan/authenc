@@ -194,7 +194,8 @@ impl SessionStoreTrait for RedisSessionStore {
                     s.ip_address, s.user_agent, s.terminated as revoked
                 FROM user_sessions s
                 JOIN users u ON s.user_id = u.id
-                WHERE s.user_id = $1 AND s.terminated = false
+                WHERE s.user_id = $1 AND s.terminated = false AND s.expires_at > NOW()
+                ORDER BY s.last_activity_at DESC
              "#;
              let rows: Vec<tokio_postgres::Row> = self.db.query(query, &[&user_id]).await
                 .map_err(|e| AuthencError::database(format!("DB query error: {}", e)))?;
