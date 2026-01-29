@@ -279,10 +279,8 @@ impl SessionStoreTrait for RedisSessionStore {
         .await?;
 
         if success {
-            // Invalidate/Update Redis
-             if let Ok(Some(session)) = self.get_session_from_db(session_id).await {
-                 let _ = self.cache_session(&session).await;
-             }
+            // Invalidate Redis cache to prevent storing empty tokens (from DB retrieval)
+            let _ = self.delete_session_from_redis(session_id).await;
         }
 
         Ok(success)
