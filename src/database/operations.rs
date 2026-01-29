@@ -9926,11 +9926,25 @@ pub mod sessions {
     /// Get a user session by token
     pub async fn get_session_by_token(
         db: &Database,
-        _token: &str,
+        token: &str,
     ) -> Result<Option<serde_json::Value>> {
-        // Schema limitation: user_sessions does not store token_hash.
-        // We cannot securely lookup session by token from user_sessions table alone.
-        // This functionality requires schema migration to link oauth2_access_tokens with user_sessions properly.
+        let token_hash = hash_token(token);
+
+        // 1. Find session_id from oauth2_access_tokens
+        let token_query = "SELECT session_id FROM oauth2_access_tokens WHERE token_hash = $1 AND revoked = false AND expires_at > NOW()";
+        let token_rows = db.query(token_query, &[&token_hash]).await?;
+
+        if token_rows.is_empty() {
+            return Ok(None);
+        }
+
+        // 2. Retrieve session using ID
+        let session_id_opt: Option<Uuid> = token_rows[0].try_get("session_id").ok().flatten();
+
+        if let Some(session_id) = session_id_opt {
+             return get_user_session(db, session_id).await;
+        }
+
         Ok(None)
     }
 
@@ -10019,16 +10033,35 @@ pub mod sessions {
 
     /// Rotate refresh token
     pub async fn rotate_refresh_token(
-        _db: &Database,
-        _session_id: Uuid,
-        _old_refresh_token: &str,
-        _new_refresh_token: &str,
+        db: &Database,
+        session_id: Uuid,
+        old_refresh_token: &str,
+        new_refresh_token: &str,
         _client_ip: Option<&str>,
         _user_agent: Option<&str>,
     ) -> Result<bool> {
-        // Schema limitation: user_sessions does not store refresh tokens.
-        // Rotation not possible via user_sessions table.
-        Ok(false)
+        let old_hash = hash_token(old_refresh_token);
+        let new_hash = hash_token(new_refresh_token);
+        let now = chrono::Utc::now();
+        // Default 30 days extension, should ideally match client policy
+        let refresh_expires = now + chrono::Duration::days(30);
+
+        let query = r#"
+            UPDATE oauth2_access_tokens
+            SET refresh_token_hash = $1,
+                refresh_expires_at = $2,
+                last_used_at = $3
+            WHERE refresh_token_hash = $4
+              AND session_id = $5
+              AND revoked = false
+        "#;
+
+        let affected = db.execute(
+            query,
+            &[&new_hash, &refresh_expires, &now, &old_hash, &session_id]
+        ).await?;
+
+        Ok(affected > 0)
     }
 
     /// Revoke a session

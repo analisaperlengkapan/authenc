@@ -240,6 +240,7 @@ impl IdentityProvider for LdapIdentityProvider {
             match ldap.simple_bind(dn, pw).await {
                 Ok(res) => {
                     if let Err(e) = res.success() {
+                        let _ = ldap.unbind().await;
                         return Ok(AuthResponse {
                             success: false,
                             user_id: None,
@@ -256,6 +257,7 @@ impl IdentityProvider for LdapIdentityProvider {
                     }
                 }
                 Err(e) => {
+                    let _ = ldap.unbind().await;
                     return Ok(AuthResponse {
                         success: false,
                         user_id: None,
@@ -298,22 +300,26 @@ impl IdentityProvider for LdapIdentityProvider {
             attrs
         ).await {
             Ok(res) => res.0,
-            Err(e) => return Ok(AuthResponse {
-                success: false,
-                user_id: None,
-                username: None,
-                email: None,
-                groups: vec![],
-                roles: vec![],
-                attributes: HashMap::new(),
-                token: None,
-                refresh_token: None,
-                expires_at: None,
-                error: Some(format!("LDAP search failed: {}", e)),
-            }),
+            Err(e) => {
+                let _ = ldap.unbind().await;
+                return Ok(AuthResponse {
+                    success: false,
+                    user_id: None,
+                    username: None,
+                    email: None,
+                    groups: vec![],
+                    roles: vec![],
+                    attributes: HashMap::new(),
+                    token: None,
+                    refresh_token: None,
+                    expires_at: None,
+                    error: Some(format!("LDAP search failed: {}", e)),
+                });
+            }
         };
 
         if search_result.is_empty() {
+             let _ = ldap.unbind().await;
              return Ok(AuthResponse {
                 success: false,
                 user_id: None,
@@ -338,19 +344,22 @@ impl IdentityProvider for LdapIdentityProvider {
 
         let entry = match entry_opt {
             Some(e) => e,
-            None => return Ok(AuthResponse {
-                success: false,
-                user_id: None,
-                username: None,
-                email: None,
-                groups: vec![],
-                roles: vec![],
-                attributes: HashMap::new(),
-                token: None,
-                refresh_token: None,
-                expires_at: None,
-                error: Some("User not found (only referrals returned)".to_string()),
-            }),
+            None => {
+                let _ = ldap.unbind().await;
+                return Ok(AuthResponse {
+                    success: false,
+                    user_id: None,
+                    username: None,
+                    email: None,
+                    groups: vec![],
+                    roles: vec![],
+                    attributes: HashMap::new(),
+                    token: None,
+                    refresh_token: None,
+                    expires_at: None,
+                    error: Some("User not found (only referrals returned)".to_string()),
+                });
+            }
         };
 
         let user_dn = entry.dn.clone();
@@ -359,6 +368,7 @@ impl IdentityProvider for LdapIdentityProvider {
         match ldap.simple_bind(&user_dn, password).await {
             Ok(res) => {
                 if let Err(e) = res.success() {
+                    let _ = ldap.unbind().await;
                     return Ok(AuthResponse {
                         success: false,
                         user_id: None,
@@ -375,6 +385,7 @@ impl IdentityProvider for LdapIdentityProvider {
                 }
             }
             Err(e) => {
+                let _ = ldap.unbind().await;
                 return Ok(AuthResponse {
                     success: false,
                     user_id: None,
