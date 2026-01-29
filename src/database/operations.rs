@@ -9932,7 +9932,7 @@ pub mod sessions {
 
         // 1. Find session_id from oauth2_access_tokens
         let token_query = "SELECT session_id FROM oauth2_access_tokens WHERE token_hash = $1 AND revoked = false AND expires_at > NOW()";
-        let token_rows = db.query(token_query, &[&token_hash]).await?;
+        let token_rows: Vec<tokio_postgres::Row> = db.query(token_query, &[&token_hash]).await?;
 
         if token_rows.is_empty() {
             return Ok(None);
