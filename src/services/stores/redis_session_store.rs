@@ -369,7 +369,8 @@ impl RedisSessionStore {
     }
 
     async fn get_session_from_db(&self, id: Uuid) -> Result<Option<Session>> {
-        let query = "SELECT * FROM sessions WHERE id = $1";
+        // Filter out revoked sessions for safety and consistency
+        let query = "SELECT * FROM sessions WHERE id = $1 AND revoked = false";
         let rows: Vec<tokio_postgres::Row> = self.db.query(query, &[&id]).await
             .map_err(|e| anyhow!("DB error: {}", e))?;
 

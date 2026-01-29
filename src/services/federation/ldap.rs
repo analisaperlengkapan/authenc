@@ -8,6 +8,11 @@ use std::collections::HashMap;
 use super::{AuthRequest, AuthResponse, IdentityProvider, IdentityProviderConfig, UserInfo};
 
 /// LDAP Identity Provider
+///
+/// This implementation differs from `LdapIdentityBroker` in `src/services/broker/mod.rs`.
+/// - `LdapIdentityProvider`: Implements federation pattern (sync-on-login), uses `memberOf` for roles, simpler connection management.
+/// - `LdapIdentityBroker`: Implements broker pattern, supports connection pooling, user caching, and separate group searches.
+/// Use this provider for standard federation where the LDAP server supports `memberOf`.
 pub struct LdapIdentityProvider {
     /// Provider configuration
     config: IdentityProviderConfig,
