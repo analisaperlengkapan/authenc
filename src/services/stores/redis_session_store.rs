@@ -187,7 +187,15 @@ impl SessionStoreTrait for RedisSessionStore {
         // Simple strategy: If Redis yields sessions, return them. If not, fallback to DB query.
 
         if sessions.is_empty() {
-             let query = "SELECT * FROM sessions WHERE user_id = $1 AND revoked = false";
+             let query = r#"
+                SELECT
+                    s.id, s.user_id, u.realm_id,
+                    s.started_at as created_at, s.expires_at, s.last_activity_at as last_accessed,
+                    s.ip_address, s.user_agent, s.terminated as revoked
+                FROM user_sessions s
+                JOIN users u ON s.user_id = u.id
+                WHERE s.user_id = $1 AND s.terminated = false
+             "#;
              let rows: Vec<tokio_postgres::Row> = self.db.query(query, &[&user_id]).await
                 .map_err(|e| AuthencError::database(format!("DB query error: {}", e)))?;
 
@@ -259,11 +267,8 @@ impl SessionStoreTrait for RedisSessionStore {
     ) -> Result<(), AuthencError> {
         db_ops::sessions::revoke_session(&self.db, session_id, reason).await?;
 
-        // Update Redis
-        if let Ok(Some(mut session)) = self.get_session(session_id).await {
-            session.revoked = true;
-            let _ = self.cache_session(&session).await;
-        }
+        // Remove from Redis to ensure subsequent lookups fail or hit DB (where it is now revoked)
+        let _ = self.delete_session_from_redis(session_id).await;
 
         Ok(())
     }
@@ -370,7 +375,15 @@ impl RedisSessionStore {
 
     async fn get_session_from_db(&self, id: Uuid) -> Result<Option<Session>> {
         // Filter out revoked sessions for safety and consistency
-        let query = "SELECT * FROM sessions WHERE id = $1 AND revoked = false";
+        let query = r#"
+            SELECT
+                s.id, s.user_id, u.realm_id,
+                s.started_at as created_at, s.expires_at, s.last_activity_at as last_accessed,
+                s.ip_address, s.user_agent, s.terminated as revoked
+            FROM user_sessions s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.id = $1 AND s.terminated = false
+        "#;
         let rows: Vec<tokio_postgres::Row> = self.db.query(query, &[&id]).await
             .map_err(|e| anyhow!("DB error: {}", e))?;
 
@@ -388,16 +401,21 @@ impl RedisSessionStore {
     }
 
     fn row_to_session(&self, row: &tokio_postgres::Row) -> Result<Session> {
+        // Note: DB doesn't store the cleartext token, so we return empty strings.
+        // This means sessions retrieved from DB cannot be used where token is required,
+        // but are valid for existence checks.
+        let ip_addr: Option<std::net::IpAddr> = row.try_get("ip_address")?;
+
         Ok(Session {
             id: row.try_get("id")?,
             user_id: row.try_get("user_id")?,
             realm_id: row.try_get("realm_id")?,
-            token: row.try_get("token")?,
-            refresh_token: row.try_get("refresh_token")?,
+            token: String::new(), // Token not available in DB
+            refresh_token: None,  // Refresh token not available in DB
             expires_at: row.try_get("expires_at")?,
             created_at: row.try_get("created_at")?,
             last_accessed: row.try_get("last_accessed")?,
-            ip_address: row.try_get("ip_address")?,
+            ip_address: ip_addr.map(|ip| ip.to_string()),
             user_agent: row.try_get("user_agent")?,
             revoked: row.try_get("revoked")?,
         })

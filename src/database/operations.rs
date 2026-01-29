@@ -9778,19 +9778,16 @@ pub mod sessions {
 
     /// Store a session in the database
     pub async fn store_session(db: &Database, session: &crate::models::session::Session) -> Result<()> {
-        let token_hash = hash_token(&session.token);
-        let refresh_token_hash = session.refresh_token.as_ref().map(|t| hash_token(t));
-
         let query = r#"
             INSERT INTO user_sessions (
-                id, user_id, realm_id, token_hash, refresh_token_hash,
-                expires_at, ip_address, user_agent, created_at,
-                last_activity_at, revoked
+                id, session_id, user_id,
+                expires_at, ip_address, user_agent, started_at,
+                last_activity_at, terminated, created_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (id) DO UPDATE SET
                 last_activity_at = EXCLUDED.last_activity_at,
-                revoked = EXCLUDED.revoked,
+                terminated = EXCLUDED.terminated,
                 ip_address = EXCLUDED.ip_address,
                 user_agent = EXCLUDED.user_agent
         "#;
@@ -9800,20 +9797,22 @@ pub mod sessions {
             .as_ref()
             .and_then(|ip| ip.parse().ok());
 
+        // Use ID string as session_id since we don't have a separate ID
+        let session_id_str = session.id.to_string();
+
         db.execute(
             query,
             &[
                 &session.id,
+                &session_id_str,
                 &session.user_id,
-                &session.realm_id,
-                &token_hash,
-                &refresh_token_hash,
                 &session.expires_at,
                 &ip_addr,
                 &session.user_agent,
                 &session.created_at,
                 &session.last_accessed,
                 &session.revoked,
+                &session.created_at,
             ],
         )
         .await?;
@@ -9835,27 +9834,21 @@ pub mod sessions {
         authentication_method: Option<&str>,
         protocol: Option<&str>,
     ) -> Result<serde_json::Value> {
-        // Hash tokens for storage
-        let token_hash = hash_token(token);
-        let refresh_token_hash = refresh_token.map(hash_token);
-
         let expires_at = chrono::Utc::now() + chrono::Duration::seconds(expires_in);
-        let refresh_token_expires_at = refresh_token.map(|_| {
-            chrono::Utc::now() + chrono::Duration::days(30) // 30 days for refresh tokens
-        });
+        let now = chrono::Utc::now();
+        let session_uuid = Uuid::new_v4();
+        let session_id_str = session_uuid.to_string();
 
         let query = r#"
             INSERT INTO user_sessions (
-                user_id, realm_id, client_id,
-                token_hash, refresh_token_hash,
-                expires_at, refresh_token_expires_at,
+                id, session_id, user_id,
+                expires_at,
                 ip_address, user_agent,
-                authentication_method, protocol
+                started_at, created_at, last_activity_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING id, user_id, realm_id, client_id, started_at, expires_at,
-                      last_accessed, refresh_count, revoked, authentication_method, protocol,
-                      created_at, updated_at
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, session_id, user_id, started_at, expires_at,
+                      last_activity_at, terminated, created_at
         "#;
 
         let ip_addr: Option<std::net::IpAddr> = ip_address.and_then(|ip| ip.parse().ok());
@@ -9864,35 +9857,31 @@ pub mod sessions {
             .query_one(
                 query,
                 &[
+                    &session_uuid,
+                    &session_id_str,
                     &user_id,
-                    &realm_id,
-                    &client_id,
-                    &token_hash,
-                    &refresh_token_hash,
                     &expires_at,
-                    &refresh_token_expires_at,
                     &ip_addr,
                     &user_agent,
-                    &authentication_method,
-                    &protocol,
+                    &now,
+                    &now,
+                    &now,
                 ],
             )
             .await?;
 
+        // Note: realm_id, client_id, token_hash etc are not stored in user_sessions schema
         Ok(serde_json::json!({
             "id": row.get::<_, Uuid>("id"),
+            "session_id": row.get::<_, String>("session_id"),
             "user_id": row.get::<_, Uuid>("user_id"),
-            "realm_id": row.get::<_, Uuid>("realm_id"),
-            "client_id": row.get::<_, Option<Uuid>>("client_id"),
+            "realm_id": realm_id, // Passed through
+            "client_id": client_id, // Passed through
             "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
             "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
-            "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_accessed"),
-            "refresh_count": row.get::<_, i32>("refresh_count"),
-            "revoked": row.get::<_, bool>("revoked"),
-            "authentication_method": row.get::<_, Option<String>>("authentication_method"),
-            "protocol": row.get::<_, Option<String>>("protocol"),
-            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
-            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+            "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity_at"),
+            "revoked": row.get::<_, bool>("terminated"),
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at")
         }))
     }
 
@@ -9902,13 +9891,10 @@ pub mod sessions {
         session_id: Uuid,
     ) -> Result<Option<serde_json::Value>> {
         let query = r#"
-            SELECT id, user_id, realm_id, client_id, device_id,
-                   started_at, expires_at, last_accessed,
-                   idle_expires_at, refresh_count,
-                   refresh_token_expires_at, offline_token_expires_at,
-                   ip_address, user_agent, revoked, revoked_at, revoked_reason,
-                   authentication_method, protocol,
-                   created_at, updated_at
+            SELECT id, session_id, user_id, device_id,
+                   started_at, expires_at, last_activity_at,
+                   terminated, terminated_at, terminated_reason,
+                   ip_address, user_agent, created_at
             FROM user_sessions
             WHERE id = $1
         "#;
@@ -9922,90 +9908,41 @@ pub mod sessions {
         let row: &tokio_postgres::Row = &rows[0];
         Ok(Some(serde_json::json!({
             "id": row.get::<_, Uuid>("id"),
+            "session_id": row.get::<_, String>("session_id"),
             "user_id": row.get::<_, Uuid>("user_id"),
-            "realm_id": row.get::<_, Uuid>("realm_id"),
-            "client_id": row.get::<_, Option<Uuid>>("client_id"),
-            "device_id": row.get::<_, Option<Uuid>>("device_id"),
+            "device_id": row.try_get::<_, Option<Uuid>>("device_id").ok().flatten(),
             "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
             "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
-            "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_accessed"),
-            "idle_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("idle_expires_at"),
-            "refresh_count": row.get::<_, i32>("refresh_count"),
-            "refresh_token_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("refresh_token_expires_at"),
-            "offline_token_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("offline_token_expires_at"),
+            "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity_at"),
+            "revoked": row.get::<_, bool>("terminated"),
+            "revoked_at": row.try_get::<_, Option<chrono::DateTime<chrono::Utc>>>("terminated_at").ok().flatten(),
+            "revoked_reason": row.try_get::<_, Option<String>>("terminated_reason").ok().flatten(),
             "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
             "user_agent": row.get::<_, Option<String>>("user_agent"),
-            "revoked": row.get::<_, bool>("revoked"),
-            "revoked_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("revoked_at"),
-            "revoked_reason": row.get::<_, Option<String>>("revoked_reason"),
-            "authentication_method": row.get::<_, Option<String>>("authentication_method"),
-            "protocol": row.get::<_, Option<String>>("protocol"),
-            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
-            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at")
         })))
     }
 
     /// Get a user session by token
     pub async fn get_session_by_token(
         db: &Database,
-        token: &str,
+        _token: &str,
     ) -> Result<Option<serde_json::Value>> {
-        let token_hash = hash_token(token);
-
-        let query = r#"
-            SELECT id, user_id, realm_id, client_id,
-                   started_at, expires_at, last_accessed,
-                   idle_expires_at, refresh_count,
-                   refresh_token_expires_at, offline_token_expires_at,
-                   ip_address, user_agent, revoked, revoked_at, revoked_reason,
-                   authentication_method, protocol,
-                   created_at, updated_at
-            FROM user_sessions
-            WHERE token_hash = $1
-        "#;
-
-        let rows: Vec<tokio_postgres::Row> = db.query(query, &[&token_hash]).await?;
-
-        if rows.is_empty() {
-            return Ok(None);
-        }
-
-        let row: &tokio_postgres::Row = &rows[0];
-        Ok(Some(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "user_id": row.get::<_, Uuid>("user_id"),
-            "realm_id": row.get::<_, Uuid>("realm_id"),
-            "client_id": row.get::<_, Option<Uuid>>("client_id"),
-            "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
-            "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
-            "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_accessed"),
-            "idle_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("idle_expires_at"),
-            "refresh_count": row.get::<_, i32>("refresh_count"),
-            "refresh_token_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("refresh_token_expires_at"),
-            "offline_token_expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("offline_token_expires_at"),
-            "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
-            "user_agent": row.get::<_, Option<String>>("user_agent"),
-            "revoked": row.get::<_, bool>("revoked"),
-            "revoked_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("revoked_at"),
-            "revoked_reason": row.get::<_, Option<String>>("revoked_reason"),
-            "authentication_method": row.get::<_, Option<String>>("authentication_method"),
-            "protocol": row.get::<_, Option<String>>("protocol"),
-            "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
-            "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
-        })))
+        // Schema limitation: user_sessions does not store token_hash.
+        // We cannot securely lookup session by token from user_sessions table alone.
+        // This functionality requires schema migration to link oauth2_access_tokens with user_sessions properly.
+        Ok(None)
     }
 
     /// Get all active sessions for a user
     pub async fn get_user_sessions(db: &Database, user_id: Uuid) -> Result<Vec<serde_json::Value>> {
         let query = r#"
-            SELECT id, user_id, realm_id, client_id,
-                   started_at, expires_at, last_accessed,
-                   refresh_count, ip_address, user_agent,
-                   authentication_method, protocol,
-                   created_at, updated_at
+            SELECT id, session_id, user_id,
+                   started_at, expires_at, last_activity_at,
+                   ip_address, user_agent, created_at
             FROM user_sessions
-            WHERE user_id = $1 AND NOT revoked AND expires_at > NOW()
-            ORDER BY last_accessed DESC
+            WHERE user_id = $1 AND NOT terminated AND expires_at > NOW()
+            ORDER BY last_activity_at DESC
         "#;
 
         let rows: Vec<tokio_postgres::Row> = db.query(query, &[&user_id]).await?;
@@ -10014,19 +9951,14 @@ pub mod sessions {
         for row in rows {
             sessions.push(serde_json::json!({
                 "id": row.get::<_, Uuid>("id"),
+                "session_id": row.get::<_, String>("session_id"),
                 "user_id": row.get::<_, Uuid>("user_id"),
-                "realm_id": row.get::<_, Uuid>("realm_id"),
-                "client_id": row.get::<_, Option<Uuid>>("client_id"),
                 "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
                 "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
-                "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_accessed"),
-                "refresh_count": row.get::<_, i32>("refresh_count"),
+                "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity_at"),
                 "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
                 "user_agent": row.get::<_, Option<String>>("user_agent"),
-                "authentication_method": row.get::<_, Option<String>>("authentication_method"),
-                "protocol": row.get::<_, Option<String>>("protocol"),
-                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
-                "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
+                "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at")
             }));
         }
 
@@ -10077,8 +10009,8 @@ pub mod sessions {
     pub async fn touch_session(db: &Database, session_id: Uuid) -> Result<()> {
         let query = r#"
             UPDATE user_sessions
-            SET last_accessed = NOW(), updated_at = NOW()
-            WHERE id = $1 AND NOT revoked
+            SET last_activity_at = NOW()
+            WHERE id = $1 AND NOT terminated
         "#;
 
         db.execute(query, &[&session_id]).await?;
@@ -10087,58 +10019,16 @@ pub mod sessions {
 
     /// Rotate refresh token
     pub async fn rotate_refresh_token(
-        db: &Database,
-        session_id: Uuid,
-        old_refresh_token: &str,
-        new_refresh_token: &str,
-        client_ip: Option<&str>,
-        user_agent: Option<&str>,
+        _db: &Database,
+        _session_id: Uuid,
+        _old_refresh_token: &str,
+        _new_refresh_token: &str,
+        _client_ip: Option<&str>,
+        _user_agent: Option<&str>,
     ) -> Result<bool> {
-        let old_hash = hash_token(old_refresh_token);
-        let new_hash = hash_token(new_refresh_token);
-
-        // Verify old token matches
-        let verify_query = r#"
-            SELECT id FROM user_sessions
-            WHERE id = $1 AND refresh_token_hash = $2 AND NOT revoked
-        "#;
-
-        let rows: Vec<tokio_postgres::Row> =
-            db.query(verify_query, &[&session_id, &old_hash]).await?;
-        if rows.is_empty() {
-            return Ok(false);
-        }
-
-        // Update with new token
-        let update_query = r#"
-            UPDATE user_sessions
-            SET refresh_token_hash = $1,
-                refresh_count = refresh_count + 1,
-                refresh_token_expires_at = NOW() + INTERVAL '30 days',
-                updated_at = NOW()
-            WHERE id = $2
-        "#;
-
-        db.execute(update_query, &[&new_hash, &session_id]).await?;
-
-        // Log rotation
-        let ip_addr: Option<std::net::IpAddr> = client_ip.and_then(|ip| ip.parse().ok());
-
-        let log_query = r#"
-            INSERT INTO refresh_token_history (
-                user_session_id, old_token_hash, new_token_hash,
-                client_ip, user_agent
-            )
-            VALUES ($1, $2, $3, $4, $5)
-        "#;
-
-        db.execute(
-            log_query,
-            &[&session_id, &old_hash, &new_hash, &ip_addr, &user_agent],
-        )
-        .await?;
-
-        Ok(true)
+        // Schema limitation: user_sessions does not store refresh tokens.
+        // Rotation not possible via user_sessions table.
+        Ok(false)
     }
 
     /// Revoke a session
@@ -10149,10 +10039,9 @@ pub mod sessions {
     ) -> Result<()> {
         let query = r#"
             UPDATE user_sessions
-            SET revoked = TRUE,
-                revoked_at = NOW(),
-                revoked_reason = $2,
-                updated_at = NOW()
+            SET terminated = TRUE,
+                terminated_at = NOW(),
+                terminated_reason = $2
             WHERE id = $1
         "#;
 
@@ -10168,11 +10057,10 @@ pub mod sessions {
     ) -> Result<i64> {
         let query = r#"
             UPDATE user_sessions
-            SET revoked = TRUE,
-                revoked_at = NOW(),
-                revoked_reason = $2,
-                updated_at = NOW()
-            WHERE user_id = $1 AND NOT revoked
+            SET terminated = TRUE,
+                terminated_at = NOW(),
+                terminated_reason = $2
+            WHERE user_id = $1 AND NOT terminated
         "#;
 
         let count = db.execute(query, &[&user_id, &reason]).await?;
@@ -10183,7 +10071,7 @@ pub mod sessions {
     pub async fn cleanup_expired_sessions(db: &Database) -> Result<i64> {
         let query = r#"
             DELETE FROM user_sessions
-            WHERE expires_at < NOW() OR (idle_expires_at IS NOT NULL AND idle_expires_at < NOW())
+            WHERE expires_at < NOW()
         "#;
 
         let count = db.execute(query, &[]).await?;
