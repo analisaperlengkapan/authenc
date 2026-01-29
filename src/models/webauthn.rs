@@ -162,6 +162,7 @@ pub struct WebauthnAuthenticationChallenge {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebauthnPublicKeyCredentialParameter {
     /// Type of the credential (usually "public-key")
+    #[serde(rename = "type")]
     pub ty: String,
     /// Cryptographic algorithm identifier
     pub alg: i32,
@@ -182,6 +183,7 @@ pub struct WebauthnAuthenticatorSelection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebauthnCredentialDescriptor {
     /// Type of the credential descriptor (usually "public-key")
+    #[serde(rename = "type")]
     pub ty: String,
     /// Credential ID bytes
     pub id: Vec<u8>,
@@ -199,6 +201,7 @@ pub struct WebauthnRegistrationResponse {
     /// Authenticator response containing attestation data
     pub response: WebauthnAuthenticatorAttestationResponse,
     /// Type of the credential (usually "public-key")
+    #[serde(rename = "type")]
     pub ty: String,
     /// Client extensions used during registration
     pub extensions: Option<serde_json::Value>,
@@ -214,6 +217,7 @@ pub struct WebauthnAuthenticationResponse {
     /// Authenticator response containing assertion data
     pub response: WebauthnAuthenticatorAssertionResponse,
     /// Type of the credential (usually "public-key")
+    #[serde(rename = "type")]
     pub ty: String,
     /// Client extensions used during authentication
     pub extensions: Option<serde_json::Value>,

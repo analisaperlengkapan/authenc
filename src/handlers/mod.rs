@@ -176,6 +176,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 session_store: state.session_store.clone(),
             },
         ))
+        // WebAuthn routes
+        .merge(api::webauthn::create_webauthn_routes().with_state(state.clone()))
         // Nested sub-routes
         .nest(
             "/social",
@@ -240,6 +242,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Main Auth API Nest
         .nest("/api/v1/auth", auth_api_router)
+        // Authorization API
+        .nest("/api/v1", api::create_authorization_routes().with_state(state.clone()))
         // FIPS management routes
         .nest(
             "/api/v1/admin/fips",

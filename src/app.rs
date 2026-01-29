@@ -5,6 +5,7 @@
 
 use crate::config::AppConfig;
 use crate::error::{AuthencError, Result};
+use crate::services::authorization::AuthorizationService;
 use std::sync::Arc;
 
 /// Comprehensive application state with all services
@@ -86,6 +87,8 @@ pub struct AppState {
     pub fips_provider: Arc<crate::services::fips::AdvancedFipsSecurityProvider>,
     /// Social login manager for handling OAuth flows
     pub social_login_manager: Arc<crate::services::social::SocialLoginManager>,
+    /// Authorization manager for fine-grained permissions
+    pub authorization_manager: Arc<crate::services::authorization::AuthorizationManager>,
 }
 
 // Support extraction of database for health checks
@@ -133,9 +136,35 @@ impl AppState {
         let user_store: Arc<dyn crate::services::stores::user_store::UserStoreTrait> = Arc::new(crate::services::stores::user_store::UserStore::new(
             database.clone(),
         ));
-        let session_store: Arc<dyn crate::services::session_store::SessionStoreTrait> = Arc::new(crate::services::session_store::SessionStore::new(
-            database.clone(),
-        ));
+
+        // Initialize session store (Redis or Database)
+        let session_store: Arc<dyn crate::services::session_store::SessionStoreTrait> =
+            if let Ok(redis_url) = std::env::var("REDIS_URL") {
+                #[cfg(feature = "redis-store")]
+                {
+                    match crate::services::stores::redis_session_store::RedisSessionStore::new(&redis_url, database.clone()) {
+                        Ok(store) => {
+                            // Redact URL to avoid leaking credentials
+                            tracing::info!("Using Redis session store (URL redacted)");
+                            Arc::new(store)
+                        },
+                        Err(e) => {
+                            tracing::warn!("Failed to initialize Redis session store: {}. Falling back to database.", e);
+                            Arc::new(crate::services::session_store::SessionStore::new(database.clone()))
+                        }
+                    }
+                }
+                #[cfg(not(feature = "redis-store"))]
+                {
+                    // Silence unused variable warning
+                    let _ = redis_url;
+                    tracing::warn!("REDIS_URL present but 'redis-store' feature not enabled. Using database session store.");
+                    Arc::new(crate::services::session_store::SessionStore::new(database.clone()))
+                }
+            } else {
+                Arc::new(crate::services::session_store::SessionStore::new(database.clone()))
+            };
+
         let totp_store = Arc::new(crate::services::totp_store::TotpStore::new());
 
         let brute_force_protector = Arc::new(
@@ -594,6 +623,13 @@ impl AppState {
 
         let social_login_manager = Arc::new(social_manager);
 
+        // Initialize authorization manager
+        let authorization_manager = Arc::new(
+            crate::services::authorization::AuthorizationManager::new(database.clone()),
+        );
+        // Preload policies (best effort)
+        let _ = authorization_manager.reload().await;
+
         Ok(Self {
             config,
             database,
@@ -632,6 +668,7 @@ impl AppState {
             webauthn_service,
             fips_provider,
             social_login_manager,
+            authorization_manager,
         })
     }
 

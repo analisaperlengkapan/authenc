@@ -485,7 +485,7 @@ impl Default for BasicSecurityConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservabilityConfig {
     /// Log level (trace, debug, info, warn, error)
-    #[serde(with = "log_level_serde")]
+    #[serde(with = "log_level_serializer")]
     pub log_level: tracing::Level,
 
     /// Enable metrics collection
@@ -978,7 +978,7 @@ mod tests {
 }
 
 /// Serde module for log level serialization
-mod log_level_serde {
+mod log_level_serializer {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use tracing::Level;
 

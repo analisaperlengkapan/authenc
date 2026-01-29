@@ -7,6 +7,8 @@ pub mod audit_log_store;
 pub mod consent_store;
 pub mod auth_flow_store;
 pub mod social_account_store;
+#[cfg(feature = "redis-store")]
+pub mod redis_session_store;
 
 // Re-export commonly used types
 pub use consent_store::{ConsentStore, ConsentStoreTrait};

@@ -14,7 +14,10 @@ pub mod oidc;
 pub mod saml;
 /// SAML security utilities
 pub mod saml_security;
+/// LDAP identity provider implementation
+pub mod ldap;
 
+use ldap::LdapIdentityProvider;
 use oidc::OidcIdentityProvider;
 use saml::SamlIdentityProvider;
 
@@ -456,6 +459,9 @@ impl FederationService {
             ),
             IdentityProviderType::OIDC => {
                 Box::new(OidcIdentityProvider::new(config.clone()).await?)
+            }
+            IdentityProviderType::LDAP => {
+                Box::new(LdapIdentityProvider::new(config.clone()).await?)
             }
             _ => return Err(anyhow::anyhow!("Unsupported provider type")),
         };

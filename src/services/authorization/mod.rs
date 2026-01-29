@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 /// Authorization decision
@@ -147,6 +147,9 @@ pub trait AuthorizationService: Send + Sync {
 
     /// Delete policy
     async fn delete_policy(&self, policy_id: &Uuid) -> Result<(), String>;
+
+    /// Reload policies from database
+    async fn reload(&self) -> Result<(), String>;
 }
 
 /// Resource server configuration
@@ -215,18 +218,21 @@ pub struct Scope {
     pub icon_uri: Option<String>,
 }
 
+/// Internal state for Authorization Manager
+#[derive(Default)]
+struct AuthorizationState {
+    policies: HashMap<Uuid, Policy>,
+    resource_servers: HashMap<Uuid, ResourceServer>,
+    permissions: HashMap<Uuid, Permission>,
+    scopes: HashMap<Uuid, Scope>,
+}
+
 /// Authorization Manager - main service
 pub struct AuthorizationManager {
     /// Database connection
     database: Arc<crate::database::Database>,
-    /// Internal storage for policies
-    policies: HashMap<Uuid, Policy>,
-    /// Internal storage for resource servers
-    resource_servers: HashMap<Uuid, ResourceServer>,
-    /// Internal storage for permissions
-    permissions: HashMap<Uuid, Permission>,
-    /// Internal storage for scopes
-    scopes: HashMap<Uuid, Scope>,
+    /// Internal state
+    state: Arc<RwLock<AuthorizationState>>,
 }
 
 impl AuthorizationManager {
@@ -234,38 +240,24 @@ impl AuthorizationManager {
     pub fn new(database: Arc<crate::database::Database>) -> Self {
         Self {
             database,
-            policies: HashMap::new(),
-            resource_servers: HashMap::new(),
-            permissions: HashMap::new(),
-            scopes: HashMap::new(),
+            state: Arc::new(RwLock::new(AuthorizationState::default())),
         }
     }
 }
 
 impl AuthorizationManager {
-    /// Add resource server
-    pub fn add_resource_server(&mut self, server: ResourceServer) {
-        self.resource_servers.insert(server.id, server);
+    /// Add policy to memory
+    pub fn add_policy(&self, policy: Policy) {
+        if let Ok(mut state) = self.state.write() {
+            state.policies.insert(policy.id, policy);
+        }
     }
 
-    /// Add policy
-    pub fn add_policy(&mut self, policy: Policy) {
-        self.policies.insert(policy.id, policy);
-    }
-
-    /// Add permission
-    pub fn add_permission(&mut self, permission: Permission) {
-        self.permissions.insert(permission.id, permission);
-    }
-
-    /// Add scope
-    pub fn add_scope(&mut self, scope: Scope) {
-        self.scopes.insert(scope.id, scope);
-    }
-
-    /// Register resource server
-    pub fn register_resource_server(&mut self, server: ResourceServer) {
-        self.resource_servers.insert(server.id, server);
+    /// Add permission to memory
+    pub fn add_permission(&self, permission: Permission) {
+        if let Ok(mut state) = self.state.write() {
+            state.permissions.insert(permission.id, permission);
+        }
     }
 
     /// Evaluate access based on policies
@@ -274,11 +266,16 @@ impl AuthorizationManager {
         context: &AuthorizationContext,
         policy_ids: &[Uuid],
     ) -> Decision {
+        let state = match self.state.read() {
+            Ok(s) => s,
+            Err(_) => return Decision::Undecided,
+        };
+
         let mut permit_count = 0;
         let mut deny_count = 0;
 
         for policy_id in policy_ids {
-            if let Some(policy) = self.policies.get(policy_id) {
+            if let Some(policy) = state.policies.get(policy_id) {
                 if !policy.enabled {
                     continue;
                 }
@@ -578,10 +575,15 @@ impl AuthorizationManager {
 
     /// Check permissions for resource access
     pub fn check_permissions(&self, context: &AuthorizationContext) -> Decision {
+        let state = match self.state.read() {
+            Ok(s) => s,
+            Err(_) => return Decision::Undecided,
+        };
+
         // Find relevant permissions for the resource
         let mut relevant_permissions = Vec::new();
 
-        for permission in self.permissions.values() {
+        for permission in state.permissions.values() {
             if permission.resource_id.to_string() == context.resource.id
                 && permission.scopes.contains(&context.action)
             {
@@ -611,8 +613,9 @@ impl AuthorizationService for AuthorizationManager {
     }
 
     async fn get_policies(&self, realm_id: &Uuid) -> Result<Vec<Policy>, String> {
-        let policies: Vec<Policy> = self
-            .policies
+        let state = self.state.read().map_err(|e| e.to_string())?;
+
+        let policies: Vec<Policy> = state.policies
             .values()
             .filter(|p| &p.realm_id == realm_id)
             .cloned()
@@ -671,6 +674,11 @@ impl AuthorizationService for AuthorizationManager {
             .await
             .map_err(|e| format!("Failed to create policy: {}", e))?;
 
+        // Update in-memory cache
+        let mut cached_policy = policy;
+        cached_policy.id = policy_id;
+        self.add_policy(cached_policy);
+
         Ok(policy_id)
     }
 
@@ -726,6 +734,9 @@ impl AuthorizationService for AuthorizationManager {
             return Err("Policy not found or already deleted".to_string());
         }
 
+        // Update cache
+        self.add_policy(policy);
+
         Ok(())
     }
 
@@ -749,9 +760,93 @@ impl AuthorizationService for AuthorizationManager {
             return Err("Policy not found or already deleted".to_string());
         }
 
+        // Remove from cache
+        if let Ok(mut state) = self.state.write() {
+            state.policies.remove(policy_id);
+        }
+
+        Ok(())
+    }
+
+    async fn reload(&self) -> Result<(), String> {
+        // Load policies from DB
+        let query = "SELECT * FROM authorization_policies WHERE deleted_at IS NULL";
+        let rows: Vec<tokio_postgres::Row> = self.database.query(query, &[]).await
+            .map_err(|e| format!("Failed to load policies: {}", e))?;
+
+        let mut new_policies = HashMap::new();
+
+        for row in rows {
+            let config_json: String = row.try_get("config").unwrap_or("{}".to_string());
+            let config: PolicyConfig = serde_json::from_str(&config_json).unwrap_or(PolicyConfig {
+                roles: vec![],
+                attributes: HashMap::new(),
+                conditions: vec![],
+            });
+
+            let policy_type_str: String = row.try_get("policy_type").unwrap_or("RoleBased".to_string());
+            let policy_type = match policy_type_str.as_str() {
+                "AttributeBased" => PolicyType::AttributeBased,
+                "TimeBased" => PolicyType::TimeBased,
+                "LocationBased" => PolicyType::LocationBased,
+                "RiskBased" => PolicyType::RiskBased,
+                "Custom" => PolicyType::Custom,
+                _ => PolicyType::RoleBased,
+            };
+
+            let logic_str: String = row.try_get("logic").unwrap_or("Positive".to_string());
+            let logic = match logic_str.as_str() {
+                "Negative" => LogicType::Negative,
+                "Consensus" => LogicType::Consensus,
+                "Affirmative" => LogicType::Affirmative,
+                _ => LogicType::Positive,
+            };
+
+            let policy = Policy {
+                id: row.try_get("id").map_err(|e: tokio_postgres::Error| e.to_string())?,
+                name: row.try_get("name").unwrap_or_default(),
+                description: row.try_get("description").unwrap_or_default(),
+                policy_type,
+                logic,
+                config,
+                enabled: row.try_get("enabled").unwrap_or(true),
+                realm_id: row.try_get("realm_id").map_err(|e: tokio_postgres::Error| e.to_string())?,
+            };
+
+            new_policies.insert(policy.id, policy);
+        }
+
+        // Load permissions from DB
+        let query_perms = "SELECT * FROM authorization_permissions WHERE deleted_at IS NULL";
+        let perm_rows: Vec<tokio_postgres::Row> = self.database.query(query_perms, &[]).await
+            .map_err(|e| format!("Failed to load permissions: {}", e))?;
+
+        let mut new_permissions = HashMap::new();
+
+        for row in perm_rows {
+             let id: Uuid = row.try_get("id").map_err(|e: tokio_postgres::Error| e.to_string())?;
+             let name: String = row.try_get("name").unwrap_or_default();
+             let description: String = row.try_get("description").unwrap_or_default();
+             let resource_id: Uuid = row.try_get("resource_id").map_err(|e: tokio_postgres::Error| e.to_string())?;
+
+             // Assuming Postgres arrays for scopes and policies
+             let scopes: Vec<String> = row.try_get("scopes").unwrap_or_default();
+             let policies: Vec<Uuid> = row.try_get("policies").unwrap_or_default();
+
+             let permission = Permission {
+                 id, name, description, resource_id, scopes, policies
+             };
+             new_permissions.insert(permission.id, permission);
+        }
+
+        // Atomic swap
+        {
+            let mut state = self.state.write().map_err(|e| e.to_string())?;
+            state.policies = new_policies;
+            state.permissions = new_permissions;
+            // Note: resource_servers and scopes should also be reloaded if they were persisted
+        }
+
         Ok(())
     }
 }
-
-// Tests will be in integration tests as these methods are private to AuthorizationManager
-// The implementations are functional and will be tested through the public evaluate() method

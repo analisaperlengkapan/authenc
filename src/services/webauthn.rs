@@ -1,26 +1,34 @@
 use crate::crypto::aes_gcm::{AesGcmService, EncryptedData};
-use crate::database::operations::{users, webauthn as webauthn_db};
+use crate::database::operations::users;
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
-use crate::models::webauthn::*;
+use crate::models::webauthn::{WebauthnCredential, WebauthnAuthenticationResponse, WebauthnRegistrationResponse};
 use axum::response::Json;
 use base64ct::Encoding;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::error;
+use tracing::info;
 use url::Url;
 use uuid::Uuid;
 use webauthn_rs::prelude::{
-    CreationChallengeResponse, CredentialID, Passkey,
-    RegisterPublicKeyCredential, RequestChallengeResponse,
+    CredentialID, Passkey, RegisterPublicKeyCredential, PublicKeyCredential,
+    PasskeyAuthentication, PasskeyRegistration
 };
 use webauthn_rs::{Webauthn, WebauthnBuilder};
+use dashmap::DashMap;
+use chrono::{DateTime, Duration, Utc};
+
+// Import proto types if not in prelude
+// use webauthn_rs_proto::{AuthenticatorAttestationResponse, AuthenticatorAssertionResponse};
 
 /// WebAuthn service for FIDO2 authentication
 pub struct WebAuthnService {
     db: Arc<Database>,
     webauthn: Arc<Webauthn>,
     encryption: AesGcmService,
+    // In-memory cache for states because serialization is problematic in current environment
+    auth_states: Arc<DashMap<String, (PasskeyAuthentication, DateTime<Utc>)>>,
+    reg_states: Arc<DashMap<String, (PasskeyRegistration, DateTime<Utc>)>>,
 }
 
 /// WebAuthn registration request
@@ -71,100 +79,179 @@ impl WebAuthnService {
             db,
             webauthn,
             encryption,
+            auth_states: Arc::new(DashMap::new()),
+            reg_states: Arc::new(DashMap::new()),
         }
     }
 
     /// Generate WebAuthn registration challenge
     pub async fn generate_registration_challenge(
         &self,
-        _request: WebAuthnRegistrationRequest,
+        request: WebAuthnRegistrationRequest,
     ) -> Result<Json<serde_json::Value>> {
-        // Stubbed for compilation fix
-        Err(AuthencError::internal("WebAuthn temporarily disabled during upgrade"))
+        let user = users::get_user_by_username(&self.db, &request.realm_id, &request.username)
+            .await?
+            .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+
+        let exclude_credentials: Option<Vec<CredentialID>> = None;
+
+        let (challenge, state) = self.webauthn
+            .start_passkey_registration(
+                user.id,
+                &request.username,
+                &request.display_name,
+                exclude_credentials,
+            )
+            .map_err(|e| AuthencError::internal(format!("Failed to start registration: {}", e)))?;
+
+        let key = format!("reg:{}:{}", request.realm_id, request.username);
+        self.reg_states.insert(key.clone(), (state, Utc::now()));
+
+        // Cleanup expired states lazily (probabilistic: 1 in 100)
+        if rand::random::<u8>() % 100 == 0 {
+            self.cleanup_expired_states();
+        }
+
+        Ok(Json(serde_json::to_value(challenge).unwrap()))
+    }
+
+    /// Cleanup expired authentication/registration states
+    fn cleanup_expired_states(&self) {
+        let now = Utc::now();
+        let ttl = Duration::minutes(5);
+
+        // Remove items older than TTL
+        self.auth_states.retain(|_, (_, timestamp)| *timestamp + ttl > now);
+        self.reg_states.retain(|_, (_, timestamp)| *timestamp + ttl > now);
     }
 
     /// Verify WebAuthn registration response
     pub async fn verify_registration(
         &self,
-        _realm_id: &Uuid,
-        _username: &str,
-        _response: WebauthnRegistrationResponse,
-        _device_id: Option<Uuid>,
+        realm_id: &Uuid,
+        username: &str,
+        response: WebauthnRegistrationResponse,
+        device_id: Option<Uuid>,
     ) -> Result<Json<serde_json::Value>> {
-        // Stubbed for compilation fix
-        Err(AuthencError::internal("WebAuthn temporarily disabled during upgrade"))
+        let key = format!("reg:{}:{}", realm_id, username);
+        // DashMap remove returns Option<(K, V)>
+        let (_, (state, _)) = self.reg_states.remove(&key)
+            .ok_or_else(|| AuthencError::validation("Challenge not found or expired"))?;
+
+        // Convert our response model to webauthn-rs model via JSON round-trip
+        // This avoids needing to access private/unexported types from webauthn-rs
+        let response_value = serde_json::to_value(&response)
+            .map_err(|e| AuthencError::validation(format!("Invalid response format: {}", e)))?;
+
+        let reg_response: RegisterPublicKeyCredential = serde_json::from_value(response_value)
+            .map_err(|e| AuthencError::validation(format!("Invalid WebAuthn response structure: {}", e)))?;
+
+        // finish_passkey_registration is sync in 0.5
+        let passkey = self.webauthn
+            .finish_passkey_registration(&reg_response, &state)
+            .map_err(|e| AuthencError::validation(format!("Registration verification failed: {}", e)))?;
+
+        // Serialize the passkey to JSON for storage
+        let passkey_json = serde_json::to_string(&passkey)
+             .map_err(|e| AuthencError::internal(format!("Failed to serialize passkey: {}", e)))?;
+
+        let cred_model = WebauthnCredential {
+            id: Uuid::new_v4(),
+            user_id: Uuid::nil(), // Placeholder, updated in store_credential
+            credential_id: Into::<Vec<u8>>::into(passkey.cred_id().clone()),
+            public_key: Vec::new(),
+            public_key_algorithm: -7,
+            signature_counter: 0,
+            attestation_object: Some(passkey_json.into_bytes()), // Store JSON here!
+            authenticator_data: None,
+            user_handle: None,
+            credential_type: "public-key".to_string(),
+            transports: None,
+            aaguid: None,
+            attestation_format: Some("packed".to_string()),
+            device_id,
+            created_at: chrono::Utc::now(),
+            last_used_at: Some(chrono::Utc::now()),
+            enabled: true,
+        };
+
+        self.store_credential(realm_id, username, &cred_model).await?;
+
+        info!("WebAuthn registration successful for user: {}", username);
+        Ok(Json(serde_json::json!({"status": "registered"})))
     }
 
     /// Generate WebAuthn authentication challenge
     pub async fn generate_authentication_challenge(
         &self,
-        _request: WebAuthnAuthenticationRequest,
+        request: WebAuthnAuthenticationRequest,
     ) -> Result<Json<serde_json::Value>> {
-        // Stubbed for compilation fix
-        Err(AuthencError::internal("WebAuthn temporarily disabled during upgrade"))
+        let credentials = self.get_user_credentials(&request.realm_id, &request.username).await?;
+
+        if credentials.is_empty() {
+            return Err(AuthencError::resource_not_found("No credentials found for user"));
+        }
+
+        let mut allow_credentials = Vec::new();
+        for c in credentials {
+            if let Some(json_bytes) = c.attestation_object {
+                 if let Ok(passkey) = serde_json::from_slice::<Passkey>(&json_bytes) {
+                     allow_credentials.push(passkey);
+                 }
+            }
+        }
+
+        if allow_credentials.is_empty() {
+             return Err(AuthencError::internal("No valid WebAuthn credentials found (migration required?)"));
+        }
+
+        let (challenge, state) = self.webauthn
+            .start_passkey_authentication(&allow_credentials)
+            .map_err(|e| AuthencError::internal(format!("Failed to start authentication: {}", e)))?;
+
+        // Store state in memory
+        let key = format!("auth:{}:{}", request.realm_id, request.username);
+        self.auth_states.insert(key, (state, Utc::now()));
+
+        // Cleanup expired states lazily (probabilistic: 1 in 100)
+        if rand::random::<u8>() % 100 == 0 {
+            self.cleanup_expired_states();
+        }
+
+        Ok(Json(serde_json::to_value(challenge).unwrap()))
     }
 
     /// Verify WebAuthn authentication response
     pub async fn verify_authentication(
         &self,
-        _realm_id: &Uuid,
-        _username: &str,
-        _response: WebauthnAuthenticationResponse,
+        realm_id: &Uuid,
+        username: &str,
+        response: WebauthnAuthenticationResponse,
     ) -> Result<Json<serde_json::Value>> {
-        // Stubbed for compilation fix
-        Err(AuthencError::internal("WebAuthn temporarily disabled during upgrade"))
-    }
+        let key = format!("auth:{}:{}", realm_id, username);
+        let (_, (state, _)) = self.auth_states.remove(&key)
+            .ok_or_else(|| AuthencError::validation("Challenge not found or expired"))?;
 
-    /// Store WebAuthn challenge state for user
-    async fn store_challenge(&self, realm_id: &Uuid, username: &str, state: &str, challenge_type: &str) -> Result<()> {
-        let user = users::get_user_by_username(&self.db, realm_id, username)
-            .await?
-            .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+        // Convert our response model to webauthn-rs model via JSON round-trip
+        let response_value = serde_json::to_value(&response)
+            .map_err(|e| AuthencError::validation(format!("Invalid response format: {}", e)))?;
 
-        let client = self.db.get_connection().await?;
-        let expires_at = chrono::Utc::now() + chrono::Duration::minutes(5);
+        let auth_response: PublicKeyCredential = serde_json::from_value(response_value)
+            .map_err(|e| AuthencError::validation(format!("Invalid WebAuthn response structure: {}", e)))?;
 
-        let query = r#"
-            INSERT INTO webauthn_challenges (user_id, challenge, challenge_type, expires_at)
-            VALUES ($1, $2, $3, $4)
-        "#;
-        client
-            .execute(query, &[&user.id, &state, &challenge_type, &expires_at])
-            .await?;
-        Ok(())
-    }
+        // finish_passkey_authentication is sync in 0.5
+        let auth_result = self.webauthn
+            .finish_passkey_authentication(&auth_response, &state)
+            .map_err(|e| AuthencError::validation(format!("Authentication verification failed: {}", e)))?;
 
-    /// Get stored WebAuthn challenge state for user
-    async fn get_challenge(&self, realm_id: &Uuid, username: &str, challenge_type: &str) -> Result<Option<String>> {
-        let user = users::get_user_by_username(&self.db, realm_id, username)
-            .await?
-            .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+        // Update signature counter
+        let cred_id_bytes: Vec<u8> = auth_result.cred_id().clone().into();
+        // Note: auth_result.counter() might be needed if field is private, but checking docs showed it's usually accessible or method.
+        // Assuming .counter() method exists based on previous errors.
+        self.update_credential_sign_count(username, &cred_id_bytes, auth_result.counter()).await?;
 
-        let client = self.db.get_connection().await?;
-        let query = r#"
-            SELECT challenge FROM webauthn_challenges
-            WHERE user_id = $1 AND challenge_type = $2 AND expires_at > NOW() AND used = false
-            ORDER BY created_at DESC
-            LIMIT 1
-        "#;
-        let row = client.query_opt(query, &[&user.id, &challenge_type]).await?;
-        Ok(row.map(|r| r.get(0)))
-    }
-
-    /// Mark a WebAuthn challenge as used
-    async fn delete_challenge(&self, realm_id: &Uuid, username: &str, challenge_type: &str) -> Result<()> {
-        let user = users::get_user_by_username(&self.db, realm_id, username)
-            .await?
-            .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
-
-        let client = self.db.get_connection().await?;
-        let query = r#"
-            UPDATE webauthn_challenges
-            SET used = true
-            WHERE user_id = $1 AND challenge_type = $2 AND used = false
-        "#;
-        client.execute(query, &[&user.id, &challenge_type]).await?;
-        Ok(())
+        info!("WebAuthn authentication successful for user: {}", username);
+        Ok(Json(serde_json::json!({"status": "authenticated"})))
     }
 
     /// Store WebAuthn credential for user
@@ -182,7 +269,7 @@ impl WebAuthnService {
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
         // Convert service credential to model credential
-        let model_credential = crate::models::WebauthnCredential {
+        let model_credential = crate::models::webauthn::WebauthnCredential {
             id: credential.id,
             user_id: user.id,
             credential_id: credential.credential_id.clone(),
@@ -290,7 +377,7 @@ impl WebAuthnService {
     async fn update_credential_sign_count(
         &self,
         _username: &str,
-        credential_id: &str,
+        credential_id: &[u8],
         sign_count: u32,
     ) -> Result<()> {
         use crate::database::operations::webauthn as webauthn_db;

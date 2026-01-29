@@ -425,9 +425,14 @@ impl LdapIdentityBroker {
         });
 
         // Bind with service account
-        ldap.simple_bind(&self.config.bind_dn, &self.config.bind_password)
+        let res = ldap
+            .simple_bind(&self.config.bind_dn, &self.config.bind_password)
             .await
             .map_err(|e| format!("LDAP service bind failed: {}", e))?;
+
+        if let Err(e) = res.success() {
+            return Err(format!("LDAP service bind failed: {}", e));
+        }
 
         *pool = Some(ldap.clone());
         Ok(ldap)
@@ -485,7 +490,12 @@ impl IdentityBroker for LdapIdentityBroker {
 
         // Attempt user bind
         match auth_ldap.simple_bind(&user_entry.dn, password).await {
-            Ok(_) => {
+            Ok(res) => {
+                if let Err(_) = res.success() {
+                    tracing::info!("LDAP authentication failed for user {} (invalid credentials RC)", username);
+                    return Ok(None);
+                }
+
                 // Authentication successful
                 // Use service account connection (ldap) for group fetch to ensure consistent role mapping
                 // and avoid permission issues where users cannot read their own group memberships.
