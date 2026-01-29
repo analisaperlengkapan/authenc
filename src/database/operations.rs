@@ -9985,7 +9985,11 @@ pub mod sessions {
         }
 
         // 2. Retrieve session using ID
-        let session_id_opt: Option<Uuid> = token_rows[0].try_get("session_id").ok().flatten();
+        let session_id_opt: Option<Uuid> = token_rows[0]
+            .try_get::<_, Option<String>>("session_id")
+            .ok()
+            .flatten()
+            .and_then(|s| Uuid::parse_str(&s).ok());
 
         if let Some(session_id) = session_id_opt {
              return get_user_session(db, session_id).await;
