@@ -3,7 +3,7 @@
 //! This module provides endpoints for listing user sessions
 //! and handling logout operations.
 
-use crate::services::session_store::SessionStoreTrait;
+use crate::services::stores::session_store::SessionStoreTrait;
 use crate::utils::crypto::jwt::Claims;
 use axum::{
     Router,

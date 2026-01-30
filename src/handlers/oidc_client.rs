@@ -4,7 +4,7 @@
 //! including listing, creating, and deleting clients.
 
 use crate::models::oidc_client::OidcClient;
-use crate::services::oidc_client_store::OidcClientStore;
+use crate::services::stores::oidc_client_store::OidcClientStore;
 use axum::{
     Router,
     extract::{Path, State},

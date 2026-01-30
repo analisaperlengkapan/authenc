@@ -10,8 +10,8 @@ use std::sync::Arc;
 use crate::error::AuthencError;
 use crate::middleware::auth::AuthUser;
 use crate::models::resource::ResourceResponse;
-use crate::services::permission_ticket_store::{PermissionTicketStore, PermissionTicketStoreTrait};
-use crate::services::resource_store::{ResourceStore, ResourceStoreTrait};
+use crate::services::stores::permission_ticket_store::{PermissionTicketStore, PermissionTicketStoreTrait};
+use crate::services::stores::resource_store::{ResourceStore, ResourceStoreTrait};
 
 /// Create resources management routes for account console
 pub fn create_resources_routes() -> Router<(Arc<ResourceStore>, Arc<PermissionTicketStore>)> {

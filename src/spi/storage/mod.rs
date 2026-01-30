@@ -281,13 +281,13 @@ impl Provider for DefaultUserStorageProvider {
 
 /// Default client storage provider implementation
 pub struct DefaultClientStorageProvider {
-    oidc_client_store: Arc<crate::services::oidc_client_store::OidcClientStore>,
+    oidc_client_store: Arc<crate::services::stores::oidc_client_store::OidcClientStore>,
 }
 
 impl DefaultClientStorageProvider {
     /// Create a new default client storage provider
     pub fn new(
-        oidc_client_store: Arc<crate::services::oidc_client_store::OidcClientStore>,
+        oidc_client_store: Arc<crate::services::stores::oidc_client_store::OidcClientStore>,
     ) -> Self {
         Self { oidc_client_store }
     }
@@ -447,12 +447,12 @@ impl Provider for DefaultRoleStorageProvider {
 
 /// Default group storage provider implementation
 pub struct DefaultGroupStorageProvider {
-    group_store: Arc<crate::services::group_store::GroupStore>,
+    group_store: Arc<crate::services::stores::group_store::GroupStore>,
 }
 
 impl DefaultGroupStorageProvider {
     /// Create a new default group storage provider
-    pub fn new(group_store: Arc<crate::services::group_store::GroupStore>) -> Self {
+    pub fn new(group_store: Arc<crate::services::stores::group_store::GroupStore>) -> Self {
         Self { group_store }
     }
 }
@@ -547,18 +547,18 @@ pub trait StorageProviderFactory: ProviderFactory<dyn StorageProvider> {
 /// Default storage provider factory
 pub struct DefaultStorageProviderFactory {
     user_store: Arc<dyn UserStoreTrait>,
-    oidc_client_store: Arc<crate::services::oidc_client_store::OidcClientStore>,
+    oidc_client_store: Arc<crate::services::stores::oidc_client_store::OidcClientStore>,
     role_store: Arc<crate::services::stores::role_store::RoleStore>,
-    group_store: Arc<crate::services::group_store::GroupStore>,
+    group_store: Arc<crate::services::stores::group_store::GroupStore>,
 }
 
 impl DefaultStorageProviderFactory {
     /// Create a new default storage provider factory with the given stores
     pub fn new(
         user_store: Arc<dyn UserStoreTrait>,
-        oidc_client_store: Arc<crate::services::oidc_client_store::OidcClientStore>,
+        oidc_client_store: Arc<crate::services::stores::oidc_client_store::OidcClientStore>,
         role_store: Arc<crate::services::stores::role_store::RoleStore>,
-        group_store: Arc<crate::services::group_store::GroupStore>,
+        group_store: Arc<crate::services::stores::group_store::GroupStore>,
     ) -> Self {
         Self {
             user_store,

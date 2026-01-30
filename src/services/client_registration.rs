@@ -10,7 +10,7 @@ use crate::models::client_registration::{
     ClientRegistrationRequest, ClientRegistrationResponse, ClientUpdateRequest, SoftwareStatement,
 };
 use crate::models::oidc_client::OidcClient;
-use crate::services::oidc_client_store::OidcClientStore;
+use crate::services::stores::oidc_client_store::OidcClientStore;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 
 /// Service for handling OAuth 2.0 Dynamic Client Registration (RFC 7591/7592)

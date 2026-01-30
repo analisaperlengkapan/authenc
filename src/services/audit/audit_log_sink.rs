@@ -76,7 +76,7 @@ impl AuditLogSink for MultiAuditLogSink {
 /// ```
 pub struct PgAuditLogSink {
     /// PostgreSQL audit log store instance
-    pub store: crate::services::pg_audit_log_store::PgAuditLogStore,
+    pub store: crate::services::stores::pg_audit_log_store::PgAuditLogStore,
 }
 
 impl PgAuditLogSink {
@@ -87,7 +87,7 @@ impl PgAuditLogSink {
     ///
     /// # Returns
     /// A new PgAuditLogSink instance
-    pub fn new(store: crate::services::pg_audit_log_store::PgAuditLogStore) -> Self {
+    pub fn new(store: crate::services::stores::pg_audit_log_store::PgAuditLogStore) -> Self {
         Self { store }
     }
 }

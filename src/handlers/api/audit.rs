@@ -1,5 +1,5 @@
 use crate::models::audit_log::AuditLog;
-use crate::services::pg_audit_log_store::PgAuditLogStore;
+use crate::services::stores::pg_audit_log_store::PgAuditLogStore;
 use axum::{
     Router,
     extract::{Path, State},

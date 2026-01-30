@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::error::Result;
 use crate::models::session::Session;
-use crate::services::session_store::SessionStoreTrait;
+use crate::services::stores::session_store::SessionStoreTrait;
 use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
 
 /// Session provider types

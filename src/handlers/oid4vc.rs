@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::app::AppState;
-use crate::services::oid4vc::{
+use crate::services::protocols::oid4vc::{
     CredentialAuthorizationRequest, CredentialRequest, CredentialTokenRequest, Oid4VcService,
 };
 
@@ -119,7 +119,7 @@ async fn issue_credential(
 /// POST /credentials/verify
 pub async fn verify_credential(
     State(state): State<Arc<AppState>>,
-    Json(credential): Json<crate::services::oid4vc::VerifiableCredential>,
+    Json(credential): Json<crate::services::protocols::oid4vc::VerifiableCredential>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     match state.oid4vc_service.verify_credential(&credential).await {
         Ok(is_valid) => Ok(Json(json!({

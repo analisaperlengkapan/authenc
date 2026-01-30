@@ -3,7 +3,7 @@
 //! This module provides endpoints for verifying TOTP codes
 //! during two-factor authentication.
 
-use crate::services::totp_store::TotpStore;
+use crate::services::stores::totp_store::TotpStore;
 use axum::{
     Router,
     extract::{Path, State},

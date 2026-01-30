@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::models::events::{AdminEvent, Event};
-use crate::services::event_retention::{RetentionCleanupResult, RetentionStats};
+use crate::services::events::event_retention::{RetentionCleanupResult, RetentionStats};
 use axum::{
     Router,
     extract::{Query, State},

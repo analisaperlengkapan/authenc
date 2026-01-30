@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::error::AuthencError;
-use crate::services::webauthn::{
+use crate::services::protocols::webauthn::{
     WebAuthnAuthenticationRequest, WebAuthnRegistrationRequest,
 };
 use crate::models::webauthn::{

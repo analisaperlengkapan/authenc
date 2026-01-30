@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::{error, info, warn};
 
-use crate::services::pg_audit_log_store::PgAuditLogStore;
+use crate::services::stores::pg_audit_log_store::PgAuditLogStore;
 
 /// Configuration for security monitoring
 #[derive(Clone, Debug)]
