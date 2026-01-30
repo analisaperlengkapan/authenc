@@ -871,7 +871,7 @@ async fn handle_password_grant(
         // Check if account is locked
         if user.is_locked() {
             tracing::warn!("Login attempt on locked account: {}", username);
-            return Err(AuthencError::unauthorized("Account is locked"));
+            return Err(AuthencError::validation("Invalid username or password"));
         }
 
         if let Some(hash) = &user.password_hash {

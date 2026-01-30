@@ -149,6 +149,7 @@ impl UserStoreTrait for MockUserStore {
         let mut users = self.users.write().unwrap();
         if let Some(user) = users.get_mut(&user_id) {
             user.last_login_at = Some(chrono::Utc::now());
+            user.login_count += 1;
             user.failed_login_attempts = 0;
             user.account_locked = false;
             user.account_locked_until = None;

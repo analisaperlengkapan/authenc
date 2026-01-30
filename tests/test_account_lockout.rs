@@ -236,8 +236,8 @@ async fn test_account_lockout_logic() {
         .unwrap();
 
     let response = router.clone().oneshot(request).await.unwrap();
-    // Should be locked
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    // Should be locked - returns 400 now as per updated best practice
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     // Manually unlock
     mock_user_store.unlock_account(user_id).await.unwrap();

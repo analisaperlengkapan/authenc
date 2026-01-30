@@ -2202,6 +2202,7 @@ pub mod users {
         let query = r#"
             UPDATE users SET
                 last_login_at = $2,
+                login_count = login_count + 1,
                 failed_login_attempts = 0,
                 account_locked = false,
                 account_locked_until = NULL,
