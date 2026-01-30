@@ -15,6 +15,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Create federation routes using SPI providers
 pub fn create_federation_routes() -> Router<Arc<AppState>> {
@@ -42,6 +43,8 @@ pub struct LdapAuthResponse {
     pub success: bool,
     /// User information if authentication succeeded
     pub user_info: Option<LdapUserInfo>,
+    /// Authentication token (JWT) if successful
+    pub token: Option<String>,
     /// Error message if authentication failed
     pub error: Option<String>,
 }
@@ -175,6 +178,91 @@ fn convert_to_ldap_user_info(user: crate::models::User) -> LdapUserInfo {
     }
 }
 
+/// Logic for processing LDAP authentication and JIT provisioning
+pub async fn process_ldap_authentication(
+    provider: &dyn LdapFederationProvider,
+    state: &AppState,
+    request: &LdapAuthRequest,
+) -> std::result::Result<Json<LdapAuthResponse>, (StatusCode, Json<serde_json::Value>)> {
+    // Attempt authentication
+    match provider
+        .authenticate(&request.username, &request.password)
+        .await
+    {
+        Ok(Some(user_info)) => {
+            // Convert SPI user info to response format
+            let ldap_user_info = convert_to_ldap_user_info(user_info.clone());
+
+            // Perform JIT provisioning
+            if let Some(realm_id) = user_info.realm_id {
+                // Use a deterministic UUID for the default LDAP SPI provider
+                // Using a constant UUID since we don't have v5 feature enabled
+                let provider_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+
+                let jit_request = crate::models::user::JITUserProvisioningRequest {
+                    identity_provider_id: provider_id,
+                    external_id: user_info.username.clone(), // LDAP uses username/DN as external ID usually
+                    external_username: Some(user_info.username.clone()),
+                    external_email: Some(user_info.email.clone()),
+                    first_name: user_info.first_name.clone(),
+                    last_name: user_info.last_name.clone(),
+                    external_attributes: user_info.attributes.clone(),
+                    realm_id,
+                };
+
+                // Provision user
+                match state.jit_provisioning_service.provision_user(jit_request).await {
+                    Ok(response) => {
+                        let user = response.user;
+
+                        // Generate JWT
+                        if let Ok(token) = crate::utils::crypto::jwt::generate_jwt(&user.id.to_string()) {
+                            Ok(Json(LdapAuthResponse {
+                                success: true,
+                                user_info: Some(ldap_user_info),
+                                token: Some(token),
+                                error: None,
+                            }))
+                        } else {
+                             Ok(Json(LdapAuthResponse {
+                                success: true,
+                                user_info: Some(ldap_user_info),
+                                token: None,
+                                error: Some("Failed to generate token".to_string()),
+                            }))
+                        }
+                    },
+                    Err(e) => Ok(Json(LdapAuthResponse {
+                        success: false,
+                        user_info: None,
+                        token: None,
+                        error: Some(format!("JIT Provisioning failed: {}", e)),
+                    }))
+                }
+            } else {
+                 Ok(Json(LdapAuthResponse {
+                    success: false,
+                    user_info: None,
+                    token: None,
+                    error: Some("Realm ID missing in user info".to_string()),
+                }))
+            }
+        }
+        Ok(None) => Ok(Json(LdapAuthResponse {
+            success: false,
+            user_info: None,
+            token: None,
+            error: Some("Invalid credentials".to_string()),
+        })),
+        Err(e) => Ok(Json(LdapAuthResponse {
+            success: false,
+            user_info: None,
+            token: None,
+            error: Some(format!("Authentication error: {}", e)),
+        })),
+    }
+}
+
 /// LDAP authentication handler using SPI
 pub async fn ldap_authenticate(
     State(state): State<Arc<AppState>>,
@@ -192,37 +280,13 @@ pub async fn ldap_authenticate(
             return Ok(Json(LdapAuthResponse {
                 success: false,
                 user_info: None,
+                token: None,
                 error: Some("LDAP federation not configured".to_string()),
             }));
         }
     };
 
-    // Attempt authentication
-    match provider
-        .authenticate(&request.username, &request.password)
-        .await
-    {
-        Ok(Some(user_info)) => {
-            // Convert SPI user info to response format
-            let user_info = convert_to_ldap_user_info(user_info);
-
-            Ok(Json(LdapAuthResponse {
-                success: true,
-                user_info: Some(user_info),
-                error: None,
-            }))
-        }
-        Ok(None) => Ok(Json(LdapAuthResponse {
-            success: false,
-            user_info: None,
-            error: Some("Invalid credentials".to_string()),
-        })),
-        Err(e) => Ok(Json(LdapAuthResponse {
-            success: false,
-            user_info: None,
-            error: Some(format!("Authentication error: {}", e)),
-        })),
-    }
+    process_ldap_authentication(provider, &state, &request).await
 }
 
 /// LDAP user search handler using SPI

@@ -2202,6 +2202,7 @@ pub mod users {
         let query = r#"
             UPDATE users SET
                 last_login_at = $2,
+                login_count = login_count + 1,
                 failed_login_attempts = 0,
                 account_locked = false,
                 account_locked_until = NULL,
@@ -2213,7 +2214,7 @@ pub mod users {
     }
 
     /// Record failed login attempt
-    pub async fn record_failed_login(db: &Database, user_id: Uuid) -> Result<()> {
+    pub async fn record_failed_login(db: &Database, user_id: Uuid) -> Result<i32> {
         let now = Utc::now();
         let query = r#"
             UPDATE users SET
@@ -2221,9 +2222,10 @@ pub mod users {
                 last_failed_login_at = $2,
                 updated_at = $2
             WHERE id = $1
+            RETURNING failed_login_attempts
         "#;
-        db.execute(query, &[&user_id, &now]).await?;
-        Ok(())
+        let row: tokio_postgres::Row = db.query_one(query, &[&user_id, &now]).await?;
+        Ok(row.get(0))
     }
 
     /// Update password

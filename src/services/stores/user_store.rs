@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
+use chrono::{DateTime, Utc};
 
 use crate::database::{Database, operations};
 use crate::error::AuthencError;
@@ -70,6 +71,22 @@ pub trait UserStoreTrait: Send + Sync {
         user_id: Uuid,
         password_hash: String,
     ) -> Result<(), AuthencError>;
+
+    /// Record successful login
+    async fn record_login(&self, user_id: Uuid) -> Result<(), AuthencError>;
+
+    /// Record failed login attempt and return new count
+    async fn record_failed_login(&self, user_id: Uuid) -> Result<i32, AuthencError>;
+
+    /// Lock user account
+    async fn lock_account(
+        &self,
+        user_id: Uuid,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<(), AuthencError>;
+
+    /// Unlock user account
+    async fn unlock_account(&self, user_id: Uuid) -> Result<(), AuthencError>;
 }
 
 /// Implementation of UserStoreTrait for UserStore
@@ -125,5 +142,25 @@ impl UserStoreTrait for UserStore {
         password_hash: String,
     ) -> Result<(), AuthencError> {
         operations::users::update_password(&self.database, user_id, &password_hash).await
+    }
+
+    async fn record_login(&self, user_id: Uuid) -> Result<(), AuthencError> {
+        operations::users::record_login(&self.database, user_id).await
+    }
+
+    async fn record_failed_login(&self, user_id: Uuid) -> Result<i32, AuthencError> {
+        operations::users::record_failed_login(&self.database, user_id).await
+    }
+
+    async fn lock_account(
+        &self,
+        user_id: Uuid,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<(), AuthencError> {
+        operations::users::lock_account(&self.database, user_id, until).await
+    }
+
+    async fn unlock_account(&self, user_id: Uuid) -> Result<(), AuthencError> {
+        operations::users::unlock_account(&self.database, user_id).await
     }
 }

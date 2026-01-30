@@ -144,4 +144,56 @@ impl UserStoreTrait for MockUserStore {
             Err(AuthencError::not_found("User not found"))
         }
     }
+
+    async fn record_login(&self, user_id: Uuid) -> Result<()> {
+        let mut users = self.users.write().unwrap();
+        if let Some(user) = users.get_mut(&user_id) {
+            user.last_login_at = Some(chrono::Utc::now());
+            user.login_count += 1;
+            user.failed_login_attempts = 0;
+            user.account_locked = false;
+            user.account_locked_until = None;
+            Ok(())
+        } else {
+            Err(AuthencError::not_found("User not found"))
+        }
+    }
+
+    async fn record_failed_login(&self, user_id: Uuid) -> Result<i32> {
+        let mut users = self.users.write().unwrap();
+        if let Some(user) = users.get_mut(&user_id) {
+            user.failed_login_attempts += 1;
+            user.last_failed_login_at = Some(chrono::Utc::now());
+            Ok(user.failed_login_attempts)
+        } else {
+            Err(AuthencError::not_found("User not found"))
+        }
+    }
+
+    async fn lock_account(
+        &self,
+        user_id: Uuid,
+        until: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<()> {
+        let mut users = self.users.write().unwrap();
+        if let Some(user) = users.get_mut(&user_id) {
+            user.account_locked = true;
+            user.account_locked_until = until;
+            Ok(())
+        } else {
+            Err(AuthencError::not_found("User not found"))
+        }
+    }
+
+    async fn unlock_account(&self, user_id: Uuid) -> Result<()> {
+        let mut users = self.users.write().unwrap();
+        if let Some(user) = users.get_mut(&user_id) {
+            user.account_locked = false;
+            user.account_locked_until = None;
+            user.failed_login_attempts = 0;
+            Ok(())
+        } else {
+            Err(AuthencError::not_found("User not found"))
+        }
+    }
 }
