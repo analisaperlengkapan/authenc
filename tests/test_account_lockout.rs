@@ -6,6 +6,7 @@ use authenc::services::session_store::SessionStoreTrait;
 use authenc::services::stores::consent_store::ConsentStoreTrait;
 use authenc::services::realm::RealmService;
 use authenc::services::oauth2::ClientValidator;
+use authenc::models::oauth2::OAuth2Client;
 use axum::{
     body::Body,
     http::{Request, StatusCode, header},
@@ -30,11 +31,28 @@ struct MockClientValidator;
 
 #[async_trait]
 impl ClientValidator for MockClientValidator {
-    async fn validate_client(&self, client_id: &str, _client_secret: Option<&str>) -> authenc::error::Result<bool> {
+    async fn validate_client(&self, client_id: &str, _client_secret: Option<&str>) -> authenc::error::Result<Option<OAuth2Client>> {
         if client_id == "test-client" {
-            Ok(true)
+            Ok(Some(OAuth2Client {
+                id: uuid::Uuid::new_v4(),
+                client_id: "test-client".to_string(),
+                client_secret_hash: "secret".to_string(),
+                client_name: "Test Client".to_string(),
+                client_type: "public".to_string(),
+                redirect_uris: vec![],
+                scopes: vec![],
+                grant_types: vec![],
+                response_types: vec![],
+                token_endpoint_auth_method: "none".to_string(),
+                owner_id: None,
+                realm_id: Some(uuid::Uuid::nil()),
+                enabled: true,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                deleted_at: None,
+            }))
         } else {
-            Ok(false)
+            Ok(None)
         }
     }
 }

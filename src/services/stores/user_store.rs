@@ -75,8 +75,8 @@ pub trait UserStoreTrait: Send + Sync {
     /// Record successful login
     async fn record_login(&self, user_id: Uuid) -> Result<(), AuthencError>;
 
-    /// Record failed login attempt
-    async fn record_failed_login(&self, user_id: Uuid) -> Result<(), AuthencError>;
+    /// Record failed login attempt and return new count
+    async fn record_failed_login(&self, user_id: Uuid) -> Result<i32, AuthencError>;
 
     /// Lock user account
     async fn lock_account(
@@ -148,7 +148,7 @@ impl UserStoreTrait for UserStore {
         operations::users::record_login(&self.database, user_id).await
     }
 
-    async fn record_failed_login(&self, user_id: Uuid) -> Result<(), AuthencError> {
+    async fn record_failed_login(&self, user_id: Uuid) -> Result<i32, AuthencError> {
         operations::users::record_failed_login(&self.database, user_id).await
     }
 

@@ -1,6 +1,6 @@
 use crate::database::Database;
 use crate::error::{AuthencError, Result};
-use crate::models::oauth2::{AccessTokenClaims, OAuth2AccessToken, OAuth2AuthorizationCode};
+use crate::models::oauth2::{AccessTokenClaims, OAuth2AccessToken, OAuth2AuthorizationCode, OAuth2Client};
 use crate::database::operations::oauth2;
 use crate::database::operations::tokens;
 use chrono::{DateTime, Utc};
@@ -13,8 +13,8 @@ use crate::utils::crypto::password::verify_password;
 /// Trait for validating OAuth2 clients
 #[async_trait]
 pub trait ClientValidator: Send + Sync {
-    /// Validate client credentials
-    async fn validate_client(&self, client_id: &str, client_secret: Option<&str>) -> Result<bool>;
+    /// Validate client credentials and return client if valid
+    async fn validate_client(&self, client_id: &str, client_secret: Option<&str>) -> Result<Option<OAuth2Client>>;
 }
 
 /// Database-backed client validator
@@ -30,11 +30,11 @@ impl DbClientValidator {
 
 #[async_trait]
 impl ClientValidator for DbClientValidator {
-    async fn validate_client(&self, client_id: &str, client_secret: Option<&str>) -> Result<bool> {
+    async fn validate_client(&self, client_id: &str, client_secret: Option<&str>) -> Result<Option<OAuth2Client>> {
         // Try to find client in database
         if let Ok(Some(client)) = oauth2::get_client_by_id(&self.db, client_id).await {
             if !client.enabled {
-                return Ok(false);
+                return Ok(None);
             }
 
             if let Some(secret) = client_secret {
@@ -43,22 +43,22 @@ impl ClientValidator for DbClientValidator {
                     .await
                     .unwrap_or(false)
                 {
-                    return Ok(true);
+                    return Ok(Some(client));
                 }
 
                 // Fallback for simple comparison
                 if client.client_secret_hash == secret {
-                    return Ok(true);
+                    return Ok(Some(client));
                 }
             } else {
                 // Public client check
                 if client.client_type == "public" {
-                    return Ok(true);
+                    return Ok(Some(client));
                 }
             }
         }
 
-        Ok(false)
+        Ok(None)
     }
 }
 

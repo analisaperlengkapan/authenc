@@ -129,7 +129,7 @@ fn is_public_endpoint(path: &str) -> bool {
         path,
         "/health" | "/health/" | "/health/ready" | "/health/live" |
         "/oauth2/token" | "/oauth2/jwks" | "/.well-known/oauth-authorization-server" |
-        "/.well-known/openid_configuration"
+        "/.well-known/openid-configuration"
     )
 }
 

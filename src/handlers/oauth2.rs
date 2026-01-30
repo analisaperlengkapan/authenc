@@ -492,14 +492,12 @@ pub async fn oauth2_authorize(
     }
 
     // Validate client
-    if !state
+    let _client = state
         .app_state
         .client_validator
         .validate_client(&params.client_id, None)
         .await?
-    {
-        return Err(AuthencError::validation("Invalid client_id"));
-    }
+        .ok_or(AuthencError::validation("Invalid client_id"))?;
 
     // Validate scope
     let scopes = validate_scope(params.scope.as_deref(), &params.client_id)?;
@@ -641,14 +639,12 @@ async fn handle_authorization_code_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !state
+    let _client = state
         .app_state
         .client_validator
         .validate_client(&client_id, params.client_secret.as_deref())
         .await?
-    {
-        return Err(AuthencError::validation("Invalid client credentials"));
-    }
+        .ok_or(AuthencError::validation("Invalid client credentials"))?;
 
     // Retrieve and validate authorization code
     let code_entry = {
@@ -783,14 +779,12 @@ async fn handle_client_credentials_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client credentials
-    if !state
+    let _client = state
         .app_state
         .client_validator
         .validate_client(&client_id, params.client_secret.as_deref())
         .await?
-    {
-        return Err(AuthencError::validation("Invalid client credentials"));
-    }
+        .ok_or(AuthencError::validation("Invalid client credentials"))?;
 
     // Validate scope
     let scopes = validate_scope(params.scope.as_deref(), &client_id)?;
@@ -853,21 +847,13 @@ async fn handle_password_grant(
         .client_id
         .ok_or(AuthencError::validation("client_id required"))?;
 
-    // Validate client
-    if !state
+    // Validate client and get client object
+    let client = state
         .app_state
         .client_validator
         .validate_client(&client_id, params.client_secret.as_deref())
         .await?
-    {
-        return Err(AuthencError::validation("Invalid client credentials"));
-    }
-
-    // Fetch client to get realm_id for user lookup
-    let client = oauth2::get_client_by_id(&state.app_state.database, &client_id)
-        .await
-        .map_err(|e| AuthencError::database(format!("Database error: {}", e)))?
-        .ok_or(AuthencError::validation("Invalid client_id"))?;
+        .ok_or(AuthencError::validation("Invalid client credentials"))?;
 
     // Use default realm if client has no realm (though it should)
     let realm_id = client.realm_id.unwrap_or(Uuid::nil());
@@ -896,10 +882,10 @@ async fn handle_password_grant(
             } else {
                 // Failed login
                 tracing::warn!("Failed password verification for user: {}", username);
-                let _ = state.app_state.user_store.record_failed_login(user.id).await;
+                let failed_attempts = state.app_state.user_store.record_failed_login(user.id).await.unwrap_or(0);
 
                 // Check for lockout (5 attempts default)
-                if user.failed_login_attempts + 1 >= 5 {
+                if failed_attempts >= 5 {
                     tracing::warn!("Locking account for user: {} due to too many failed attempts", username);
                     let _ = state
                         .app_state
@@ -1013,15 +999,12 @@ async fn handle_refresh_token_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(
-        &state.app_state.database,
-        &client_id,
-        params.client_secret.as_deref(),
-    )
-    .await?
-    {
-        return Err(AuthencError::validation("Invalid client credentials"));
-    }
+    let _client = state
+        .app_state
+        .client_validator
+        .validate_client(&client_id, params.client_secret.as_deref())
+        .await?
+        .ok_or(AuthencError::validation("Invalid client credentials"))?;
 
     // Retrieve and validate refresh token
     let refresh_entry = {
@@ -1406,14 +1389,12 @@ pub async fn test_oauth2_authorize(
     }
 
     // Validate client
-    if !state
+    let _client = state
         .app_state
         .client_validator
         .validate_client(&params.client_id, None)
         .await?
-    {
-        return Err(AuthencError::validation("Invalid client_id"));
-    }
+        .ok_or(AuthencError::validation("Invalid client_id"))?;
 
     // Validate scope
     let scopes = validate_scope(params.scope.as_deref(), &params.client_id)?;

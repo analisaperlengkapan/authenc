@@ -158,12 +158,12 @@ impl UserStoreTrait for MockUserStore {
         }
     }
 
-    async fn record_failed_login(&self, user_id: Uuid) -> Result<()> {
+    async fn record_failed_login(&self, user_id: Uuid) -> Result<i32> {
         let mut users = self.users.write().unwrap();
         if let Some(user) = users.get_mut(&user_id) {
             user.failed_login_attempts += 1;
             user.last_failed_login_at = Some(chrono::Utc::now());
-            Ok(())
+            Ok(user.failed_login_attempts)
         } else {
             Err(AuthencError::not_found("User not found"))
         }
