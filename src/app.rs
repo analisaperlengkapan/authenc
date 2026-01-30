@@ -18,17 +18,17 @@ pub struct AppState {
     /// User data store
     pub user_store: Arc<dyn crate::services::stores::user_store::UserStoreTrait>,
     /// Session management store
-    pub session_store: Arc<dyn crate::services::session_store::SessionStoreTrait>,
+    pub session_store: Arc<dyn crate::services::stores::session_store::SessionStoreTrait>,
     /// TOTP (Time-based One-Time Password) store
-    pub totp_store: Arc<crate::services::totp_store::TotpStore>,
+    pub totp_store: Arc<crate::services::stores::totp_store::TotpStore>,
     /// Brute force attack protection service
-    pub brute_force_protector: Arc<crate::services::brute_force_protector::BruteForceProtector>,
+    pub brute_force_protector: Arc<crate::services::security::brute_force_protector::BruteForceProtector>,
     /// Anomaly detection service
-    pub anomaly_detector: Arc<crate::services::anomaly_detector::AnomalyDetector>,
+    pub anomaly_detector: Arc<crate::services::security::anomaly_detector::AnomalyDetector>,
     /// Federation provider registry
     pub federation_registry: Arc<crate::services::federation_provider::FederationRegistry>,
     /// Audit log storage
-    pub audit_log_store: Arc<crate::services::pg_audit_log_store::PgAuditLogStore>,
+    pub audit_log_store: Arc<crate::services::stores::pg_audit_log_store::PgAuditLogStore>,
     /// User consent management store for GDPR compliance
     pub consent_store: Arc<dyn crate::services::stores::consent_store::ConsentStoreTrait>,
     /// Authentication flow store for pluggable authentication flows
@@ -42,23 +42,23 @@ pub struct AppState {
     /// Permission management store
     pub permission_store: Arc<crate::services::stores::permission_store::PermissionStore>,
     /// Resource management store
-    pub resource_store: Arc<crate::services::resource_store::ResourceStore>,
+    pub resource_store: Arc<crate::services::stores::resource_store::ResourceStore>,
     /// Resource server management store
-    pub resource_server_store: Arc<crate::services::resource_server_store::ResourceServerStore>,
+    pub resource_server_store: Arc<crate::services::stores::resource_server_store::ResourceServerStore>,
     /// Permission ticket management store
     pub permission_ticket_store:
-        Arc<crate::services::permission_ticket_store::PermissionTicketStore>,
+        Arc<crate::services::stores::permission_ticket_store::PermissionTicketStore>,
     /// Scope management store
-    pub scope_store: Arc<crate::services::scope_store::ScopeStore>,
+    pub scope_store: Arc<crate::services::stores::scope_store::ScopeStore>,
     /// OIDC client store for OAuth2/OIDC client management
-    pub oidc_client_store: Arc<crate::services::oidc_client_store::OidcClientStore>,
+    pub oidc_client_store: Arc<crate::services::stores::oidc_client_store::OidcClientStore>,
     /// Social account store for social login account linking
     pub social_account_store:
         Arc<crate::services::stores::social_account_store::SocialAccountStore>,
     /// Identity broker registry for external authentication providers
     pub broker_registry: Arc<crate::services::broker::IdentityBrokerRegistry>,
     /// OID4VC service for verifiable credentials
-    pub oid4vc_service: Arc<crate::services::oid4vc::EnhancedOid4VcManager>,
+    pub oid4vc_service: Arc<crate::services::protocols::oid4vc::EnhancedOid4VcManager>,
     /// SSO service for unified single sign-on
     pub sso_service: Arc<dyn crate::services::sso::SsoService>,
     /// SSO session manager for unified session management
@@ -68,9 +68,9 @@ pub struct AppState {
     /// Event manager for handling application events
     pub event_manager: Arc<tokio::sync::RwLock<crate::services::events::EventManager>>,
     /// Event retention service for managing event lifecycle
-    pub event_retention_service: Arc<crate::services::event_retention::EventRetentionService>,
+    pub event_retention_service: Arc<crate::services::events::event_retention::EventRetentionService>,
     /// Audit log sink for persistent audit logging
-    pub audit_log_sink: Arc<dyn crate::services::audit_log_sink::AuditLogSink>,
+    pub audit_log_sink: Arc<dyn crate::services::audit::audit_log_sink::AuditLogSink>,
     /// SPI manager for pluggable enterprise components
     pub spi_manager: Arc<crate::spi::SpiManager>,
     /// Cluster manager for high availability
@@ -82,7 +82,7 @@ pub struct AppState {
     /// OAuth2 service for token persistence
     pub oauth2_service: Arc<crate::services::oauth2::OAuth2Service>,
     /// WebAuthn service
-    pub webauthn_service: Arc<crate::services::webauthn::WebAuthnService>,
+    pub webauthn_service: Arc<crate::services::protocols::webauthn::WebAuthnService>,
     /// FIPS security provider
     pub fips_provider: Arc<crate::services::fips::AdvancedFipsSecurityProvider>,
     /// Social login manager for handling OAuth flows
@@ -119,7 +119,7 @@ impl AppState {
 
         // Initialize audit log store
         let audit_log_store = Arc::new(
-            crate::services::pg_audit_log_store::PgAuditLogStore::new(&config.database_url())
+            crate::services::stores::pg_audit_log_store::PgAuditLogStore::new(&config.database_url())
                 .await
                 .map_err(|e| {
                     AuthencError::database(format!("Failed to init audit store: {}", e))
@@ -142,7 +142,7 @@ impl AppState {
         ));
 
         // Initialize session store (Redis or Database)
-        let session_store: Arc<dyn crate::services::session_store::SessionStoreTrait> =
+        let session_store: Arc<dyn crate::services::stores::session_store::SessionStoreTrait> =
             if let Ok(redis_url) = std::env::var("REDIS_URL") {
                 #[cfg(feature = "redis-store")]
                 {
@@ -154,7 +154,7 @@ impl AppState {
                         },
                         Err(e) => {
                             tracing::warn!("Failed to initialize Redis session store: {}. Falling back to database.", e);
-                            Arc::new(crate::services::session_store::SessionStore::new(database.clone()))
+                            Arc::new(crate::services::stores::session_store::SessionStore::new(database.clone()))
                         }
                     }
                 }
@@ -163,22 +163,22 @@ impl AppState {
                     // Silence unused variable warning
                     let _ = redis_url;
                     tracing::warn!("REDIS_URL present but 'redis-store' feature not enabled. Using database session store.");
-                    Arc::new(crate::services::session_store::SessionStore::new(database.clone()))
+                    Arc::new(crate::services::stores::session_store::SessionStore::new(database.clone()))
                 }
             } else {
-                Arc::new(crate::services::session_store::SessionStore::new(database.clone()))
+                Arc::new(crate::services::stores::session_store::SessionStore::new(database.clone()))
             };
 
-        let totp_store = Arc::new(crate::services::totp_store::TotpStore::new());
+        let totp_store = Arc::new(crate::services::stores::totp_store::TotpStore::new());
 
         let brute_force_protector = Arc::new(
-            crate::services::brute_force_protector::BruteForceProtector::new(
+            crate::services::security::brute_force_protector::BruteForceProtector::new(
                 config.security.brute_force_max_attempts as usize,
                 config.security.brute_force_window_seconds,
             ),
         );
 
-        let anomaly_detector = Arc::new(crate::services::anomaly_detector::AnomalyDetector::new());
+        let anomaly_detector = Arc::new(crate::services::security::anomaly_detector::AnomalyDetector::new());
         let federation_registry =
             Arc::new(crate::services::federation_provider::FederationRegistry::new());
         let realm_store = Arc::new(crate::services::stores::realm_store::RealmStore::new());
@@ -188,20 +188,20 @@ impl AppState {
         let role_store = Arc::new(crate::services::stores::role_store::RoleStore::new());
         let permission_store =
             Arc::new(crate::services::stores::permission_store::PermissionStore::new());
-        let resource_store = Arc::new(crate::services::resource_store::ResourceStore::new(
+        let resource_store = Arc::new(crate::services::stores::resource_store::ResourceStore::new(
             database.clone(),
         ));
         let resource_server_store = Arc::new(
-            crate::services::resource_server_store::ResourceServerStore::new(database.clone()),
+            crate::services::stores::resource_server_store::ResourceServerStore::new(database.clone()),
         );
         let permission_ticket_store = Arc::new(
-            crate::services::permission_ticket_store::PermissionTicketStore::new(database.clone()),
+            crate::services::stores::permission_ticket_store::PermissionTicketStore::new(database.clone()),
         );
-        let scope_store = Arc::new(crate::services::scope_store::ScopeStore::new(
+        let scope_store = Arc::new(crate::services::stores::scope_store::ScopeStore::new(
             database.clone(),
         ));
         let oidc_client_store = Arc::new(
-            crate::services::oidc_client_store::OidcClientStore::with_database(database.clone()),
+            crate::services::stores::oidc_client_store::OidcClientStore::with_database(database.clone()),
         );
 
         // Initialize social account store
@@ -215,7 +215,7 @@ impl AppState {
         let broker_registry = Arc::new(crate::services::broker::IdentityBrokerRegistry::new());
 
         // Initialize OID4VC service
-        let oid4vc_service = Arc::new(crate::services::oid4vc::EnhancedOid4VcManager::new(
+        let oid4vc_service = Arc::new(crate::services::protocols::oid4vc::EnhancedOid4VcManager::new(
             "https://authenc.example.com".to_string(),
         ));
 
@@ -245,13 +245,13 @@ impl AppState {
             ));
 
         // Initialize audit log sink
-        let audit_log_sink: Arc<dyn crate::services::audit_log_sink::AuditLogSink> = if let Some(
+        let audit_log_sink: Arc<dyn crate::services::audit::audit_log_sink::AuditLogSink> = if let Some(
             kafka_config,
         ) =
             &config.kafka
         {
             if kafka_config.enabled {
-                match crate::services::kafka_audit_log_sink::KafkaAuditLogSink::new(
+                match crate::services::audit::kafka_audit_log_sink::KafkaAuditLogSink::new(
                     &kafka_config.brokers,
                     &kafka_config.audit_topic,
                 ) {
@@ -261,18 +261,18 @@ impl AppState {
                             "Failed to initialize Kafka audit log sink: {}. Falling back to PostgreSQL sink.",
                             e
                         );
-                        Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new(
+                        Arc::new(crate::services::audit::audit_log_sink::PgAuditLogSink::new(
                             (*audit_log_store).clone(),
                         ))
                     }
                 }
             } else {
-                Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new(
+                Arc::new(crate::services::audit::audit_log_sink::PgAuditLogSink::new(
                     (*audit_log_store).clone(),
                 ))
             }
         } else {
-            Arc::new(crate::services::audit_log_sink::PgAuditLogSink::new(
+            Arc::new(crate::services::audit::audit_log_sink::PgAuditLogSink::new(
                 (*audit_log_store).clone(),
             ))
         };
@@ -281,7 +281,7 @@ impl AppState {
         let event_manager = crate::services::events::create_shared_event_manager();
 
         // Initialize event store provider
-        let event_store = Arc::new(crate::services::pg_event_store::PgEventStoreProvider::new(
+        let event_store = Arc::new(crate::services::stores::pg_event_store::PgEventStoreProvider::new(
             database.clone(),
         ));
         event_store.init_tables().await.map_err(|e| {
@@ -294,7 +294,7 @@ impl AppState {
             manager.set_store_provider(event_store.clone());
 
             // Register default event listeners
-            for listener in crate::services::event_listeners::create_default_listeners() {
+            for listener in crate::services::events::event_listeners::create_default_listeners() {
                 manager.register_listener(listener);
             }
 
@@ -304,7 +304,7 @@ impl AppState {
                     && !kafka_config.user_events_topic.is_empty()
                     && !kafka_config.admin_events_topic.is_empty()
                 {
-                    match crate::services::kafka_event_listener::KafkaEventListener::new(
+                    match crate::services::events::kafka_event_listener::KafkaEventListener::new(
                         &kafka_config.brokers,
                         &kafka_config.user_events_topic,
                         &kafka_config.admin_events_topic,
@@ -329,7 +329,7 @@ impl AppState {
 
         // Initialize event retention service
         let event_retention_service = Arc::new(
-            crate::services::event_retention::EventRetentionService::new(
+            crate::services::events::event_retention::EventRetentionService::new(
                 config.events.clone(),
                 database.clone(),
                 event_store,
@@ -415,7 +415,7 @@ impl AppState {
                 user_store.clone(),
                 oidc_client_store.clone(),
                 role_store.clone(),
-                Arc::new(crate::services::group_store::GroupStore::new()),
+                Arc::new(crate::services::stores::group_store::GroupStore::new()),
             ),
         );
         spi_manager.registry_mut().register_factory(
@@ -507,7 +507,7 @@ impl AppState {
         // TODO: Configure RP ID and name from config
         let rp_id = "localhost".to_string();
         let rp_name = "Authenc".to_string();
-        let webauthn_service = Arc::new(crate::services::webauthn::WebAuthnService::new(
+        let webauthn_service = Arc::new(crate::services::protocols::webauthn::WebAuthnService::new(
             database.clone(),
             rp_id,
             rp_name,

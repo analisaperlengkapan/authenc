@@ -245,7 +245,7 @@ pub struct ZeroTrustManager {
     // Adaptive control policies
     adaptive_policies: Vec<ZeroTrustPolicy>,
     // Anomaly detector for detecting unusual patterns
-    anomaly_detector: Option<Box<dyn crate::services::anomaly_detector::AnomalyDetectorTrait>>,
+    anomaly_detector: Option<Box<dyn crate::services::security::anomaly_detector::AnomalyDetectorTrait>>,
 }
 
 impl Default for ZeroTrustManager {
@@ -298,7 +298,7 @@ impl ZeroTrustManager {
     /// Set anomaly detector for enhanced risk assessment
     pub fn set_anomaly_detector(
         &mut self,
-        detector: Box<dyn crate::services::anomaly_detector::AnomalyDetectorTrait>,
+        detector: Box<dyn crate::services::security::anomaly_detector::AnomalyDetectorTrait>,
     ) {
         self.anomaly_detector = Some(detector);
     }
@@ -450,7 +450,7 @@ impl ZeroTrustManager {
     async fn calculate_behavioral_risk(
         &self,
         context: &AuthContext,
-        detector: &dyn crate::services::anomaly_detector::AnomalyDetectorTrait,
+        detector: &dyn crate::services::security::anomaly_detector::AnomalyDetectorTrait,
     ) -> f64 {
         // Check if IP is new for this user
         let user_id_str = context.user_id.to_string();

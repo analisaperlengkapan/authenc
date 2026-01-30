@@ -16,16 +16,16 @@ use crate::error::AuthencError;
 use crate::models::session::SessionResponse;
 use crate::models::social_account::SocialAccountResponse;
 use crate::models::user::{UpdateUserRequest, UserResponse};
-use crate::services::oidc_client_store::OidcClientStore;
-use crate::services::pg_audit_log_store::PgAuditLogStore;
-use crate::services::session_store::SessionStoreTrait;
+use crate::services::stores::oidc_client_store::OidcClientStore;
+use crate::services::stores::pg_audit_log_store::PgAuditLogStore;
+use crate::services::stores::session_store::SessionStoreTrait;
 use crate::services::social::SocialProvider;
 use crate::services::stores::consent_store::ConsentStoreTrait;
 use crate::services::stores::social_account_store::{SocialAccountStore, SocialAccountStoreTrait};
 use crate::services::stores::user_store::UserStoreTrait;
-use crate::services::totp_store::TotpStore;
+use crate::services::stores::totp_store::TotpStore;
 use crate::services::oauth2::OAuth2Service;
-use crate::services::webauthn::WebAuthnService;
+use crate::services::protocols::webauthn::WebAuthnService;
 
 /// Request to setup TOTP
 #[derive(Debug, Deserialize, Serialize)]

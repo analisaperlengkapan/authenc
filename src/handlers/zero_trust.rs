@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::error::AuthencError;
-use crate::services::anomaly_detector::AnomalyDetectorTrait;
-use crate::services::zero_trust::{
+use crate::services::security::anomaly_detector::AnomalyDetectorTrait;
+use crate::services::security::zero_trust::{
     AdaptiveControls, AuthContext, ComplianceStatus, DeviceTrust, RiskAssessment, RiskLevel,
     TrustLevel,
 };
@@ -31,7 +31,7 @@ pub struct AssessRiskRequest {
     /// IP address of the request
     pub ip_address: String,
     /// Geographic location information
-    pub location: Option<crate::services::zero_trust::Location>,
+    pub location: Option<crate::services::security::zero_trust::Location>,
 }
 
 #[derive(Serialize)]
@@ -110,7 +110,7 @@ pub async fn assess_risk(
     Json(request): Json<AssessRiskRequest>,
 ) -> Result<Json<RiskAssessmentResponse>, StatusCode> {
     // Create device trust info
-    let device_info = crate::services::zero_trust::DeviceInfo {
+    let device_info = crate::services::security::zero_trust::DeviceInfo {
         user_agent: request.user_agent.clone(),
         ip_address: request.ip_address.clone(),
         location: request.location.clone(),

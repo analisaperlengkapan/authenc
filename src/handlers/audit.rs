@@ -6,7 +6,7 @@
 use crate::database::operations;
 use crate::middleware::auth::AuthUser;
 use crate::models::audit_log::{AuditLog, AuditLogFilter};
-use crate::services::pg_audit_log_store::PgAuditLogStore;
+use crate::services::stores::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;
 use axum::{
     extract::{Query, State},

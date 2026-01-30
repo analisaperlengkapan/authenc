@@ -10,9 +10,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AuthencError;
-use crate::services::session_store::SessionStoreTrait;
+use crate::services::stores::session_store::SessionStoreTrait;
 use crate::services::stores::user_store::UserStoreTrait;
-use crate::services::totp_store::TotpStore;
+use crate::services::stores::totp_store::TotpStore;
 
 /// State for account credentials handlers
 #[derive(Clone)]

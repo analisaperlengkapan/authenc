@@ -9,9 +9,9 @@
 use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
 use crate::handlers::oidc_ed25519::OidcIdTokenClaims;
 use crate::models::audit_log::AuditLog;
-use crate::services::oidc_client_store::OidcClientStore;
-use crate::services::oidc_code_store::OidcCodeStore;
-use crate::services::pg_audit_log_store::PgAuditLogStore;
+use crate::services::stores::oidc_client_store::OidcClientStore;
+use crate::services::stores::oidc_code_store::OidcCodeStore;
+use crate::services::stores::pg_audit_log_store::PgAuditLogStore;
 use crate::services::stores::user_store::UserStore;
 use axum::{
     Form, Router,

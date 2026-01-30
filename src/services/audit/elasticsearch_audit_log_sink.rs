@@ -1,5 +1,5 @@
 use crate::models::audit_log::AuditLog;
-use crate::services::audit_log_sink::AuditLogSink;
+use crate::services::audit::AuditLogSink;
 use reqwest::Client;
 use serde_json::json;
 

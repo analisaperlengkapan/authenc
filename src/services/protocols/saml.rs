@@ -673,7 +673,7 @@ impl SamlService {
             .map_err(|e| AuthencError::validation(format!("Failed to serialize request: {}", e)))?;
 
         // Store in database with 5 minute TTL for replay prevention
-        crate::services::saml_signature::saml_storage::store_saml_request(
+        crate::services::protocols::saml_signature::saml_storage::store_saml_request(
             &self.db,
             request_id,
             "AuthnRequest",
@@ -692,7 +692,7 @@ impl SamlService {
 
     async fn retrieve_authn_request(&self, request_id: &str) -> Result<Option<SamlAuthnRequest>> {
         let message =
-            crate::services::saml_signature::saml_storage::get_saml_request(&self.db, request_id)
+            crate::services::protocols::saml_signature::saml_storage::get_saml_request(&self.db, request_id)
                 .await?;
 
         match message {

@@ -1,9 +1,9 @@
-use crate::services::anomaly_detector::AnomalyDetector;
-use crate::services::brute_force_protector::BruteForceProtector;
+use crate::services::security::anomaly_detector::AnomalyDetector;
+use crate::services::security::brute_force_protector::BruteForceProtector;
 use crate::services::federation_provider::FederationRegistry;
-use crate::services::session_store::SessionStore;
-use crate::services::totp_store::TotpStore;
-use crate::services::user_store::UserStore;
+use crate::services::stores::session_store::SessionStore;
+use crate::services::stores::totp_store::TotpStore;
+use crate::services::stores::user_store::UserStore;
 use std::sync::Arc;
 
 /// Aggregates all dependencies for the login handler.

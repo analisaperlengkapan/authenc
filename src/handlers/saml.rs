@@ -8,7 +8,7 @@ use crate::services::admin::AdminService;
 use crate::services::federation::jit_provisioning::{
     DefaultJITProvisioningService, JITProvisioningService,
 };
-use crate::services::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
+use crate::services::protocols::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
 use async_trait::async_trait;
 use axum::{
     Router,

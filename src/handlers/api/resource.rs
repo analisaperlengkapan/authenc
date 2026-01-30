@@ -12,9 +12,9 @@ use uuid::Uuid;
 use crate::error::AuthencError;
 use crate::models::resource::ResourceResponse;
 use crate::models::user::UserResponse;
-use crate::services::permission_ticket_store::{PermissionTicketStore, PermissionTicketStoreTrait};
-use crate::services::resource_store::{ResourceStore, ResourceStoreTrait};
-use crate::services::scope_store::{ScopeStore, ScopeStoreTrait};
+use crate::services::stores::permission_ticket_store::{PermissionTicketStore, PermissionTicketStoreTrait};
+use crate::services::stores::resource_store::{ResourceStore, ResourceStoreTrait};
+use crate::services::stores::scope_store::{ScopeStore, ScopeStoreTrait};
 use crate::services::stores::user_store::UserStoreTrait;
 
 /// Create resource management routes for account console

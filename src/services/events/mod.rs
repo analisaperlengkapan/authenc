@@ -5,6 +5,15 @@ use tokio::sync::RwLock;
 use crate::error::Result;
 use crate::models::events::{AdminEvent, Event};
 
+/// Event listener implementations
+pub mod event_listeners;
+/// Event retention and lifecycle management
+pub mod event_retention;
+/// Kafka-based event streaming
+pub mod kafka_event_listener;
+#[cfg(test)]
+mod event_retention_tests;
+
 /// Event listener provider trait - SPI for custom event handlers
 #[async_trait]
 pub trait EventListenerProvider: Send + Sync {
