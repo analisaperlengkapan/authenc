@@ -89,6 +89,10 @@ pub struct AppState {
     pub social_login_manager: Arc<crate::services::social::SocialLoginManager>,
     /// Authorization manager for fine-grained permissions
     pub authorization_manager: Arc<crate::services::authorization::AuthorizationManager>,
+    /// JIT provisioning service for federated users
+    pub jit_provisioning_service: Arc<dyn crate::services::federation::jit_provisioning::JITProvisioningService>,
+    /// OAuth2 client validator
+    pub client_validator: Arc<dyn crate::services::oauth2::ClientValidator>,
 }
 
 // Support extraction of database for health checks
@@ -630,6 +634,20 @@ impl AppState {
         // Preload policies (best effort)
         let _ = authorization_manager.reload().await;
 
+        // Initialize admin service for JIT
+        let admin_service = Arc::new(crate::services::admin::AdminManager::new(database.clone()));
+
+        // Initialize JIT provisioning service
+        let jit_provisioning_service = Arc::new(
+            crate::services::federation::jit_provisioning::DefaultJITProvisioningService::new(
+                database.clone(),
+                admin_service,
+            ),
+        );
+
+        // Initialize client validator
+        let client_validator = Arc::new(crate::services::oauth2::DbClientValidator::new(database.clone()));
+
         Ok(Self {
             config,
             database,
@@ -669,6 +687,8 @@ impl AppState {
             fips_provider,
             social_login_manager,
             authorization_manager,
+            jit_provisioning_service,
+            client_validator,
         })
     }
 

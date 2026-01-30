@@ -5,12 +5,14 @@ use authenc::services::stores::user_store::UserStoreTrait;
 use authenc::services::session_store::SessionStoreTrait;
 use authenc::services::stores::consent_store::ConsentStoreTrait;
 use authenc::services::realm::RealmService;
+use authenc::services::oauth2::ClientValidator;
 use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
 use tower::ServiceExt; // for `oneshot`
 use std::sync::Arc;
+use async_trait::async_trait;
 
 #[path = "mocks/mod.rs"]
 mod mocks;
@@ -22,6 +24,19 @@ use mocks::realm_service::MockRealmService;
 struct MockAuditLogSink;
 impl authenc::services::audit_log_sink::AuditLogSink for MockAuditLogSink {
     fn send(&self, _log: &authenc::models::audit_log::AuditLog) {}
+}
+
+struct MockClientValidator;
+
+#[async_trait]
+impl ClientValidator for MockClientValidator {
+    async fn validate_client(&self, client_id: &str, _client_secret: Option<&str>) -> authenc::error::Result<bool> {
+        if client_id == "test-client" {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
 }
 
 #[tokio::test]
@@ -82,6 +97,13 @@ async fn test_account_lockout_logic() {
     let pg_social_store = authenc::services::social::pg_store::PgSocialStateStore::new(database.clone());
     let social_login_manager = Arc::new(authenc::services::social::SocialLoginManager::with_store(Arc::new(pg_social_store)));
 
+    // Initialize JIT Service
+    let admin_manager = Arc::new(authenc::services::admin::AdminManager::new(database.clone()));
+    let jit_provisioning_service = Arc::new(authenc::services::federation::jit_provisioning::DefaultJITProvisioningService::new(
+        database.clone(),
+        admin_manager
+    ));
+
     let state = AppState {
         config: Arc::new(config),
         database,
@@ -121,6 +143,8 @@ async fn test_account_lockout_logic() {
         social_login_manager,
         authorization_manager,
         sso_session_manager,
+        jit_provisioning_service,
+        client_validator: Arc::new(MockClientValidator),
     };
 
     let router = authenc::handlers::create_router(Arc::new(state.clone()));

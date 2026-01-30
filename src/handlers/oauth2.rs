@@ -401,50 +401,6 @@ pub fn generate_id_token(
     })
 }
 
-/// Validate client credentials
-pub async fn validate_client(
-    db: &Database,
-    client_id: &str,
-    client_secret: Option<&str>,
-) -> Result<bool, AuthencError> {
-    // Allow test client for integration testing without database
-    if client_id == "test-client" {
-        return Ok(true);
-    }
-
-    // Try to find client in database
-    if let Ok(Some(client)) = oauth2::get_client_by_id(db, client_id).await {
-        if !client.enabled {
-            return Ok(false);
-        }
-
-        if let Some(secret) = client_secret {
-            // Verify secret
-            // If client_secret_hash is stored as a hash, verify it
-            // If it's stored plain (not recommended but possible in dev), compare directly
-            // For this implementation we assume hashed
-            if verify_password(&client.client_secret_hash, secret)
-                .await
-                .unwrap_or(false)
-            {
-                return Ok(true);
-            }
-
-            // Fallback for simple comparison (e.g. if hash is just the secret in some tests/configs)
-            // or if verify_password failed (e.g. invalid hash format)
-            if client.client_secret_hash == secret {
-                return Ok(true);
-            }
-        } else {
-            // Public client check
-            if client.client_type == "public" {
-                return Ok(true);
-            }
-        }
-    }
-
-    Ok(false)
-}
 
 /// Validate scope
 pub fn validate_scope(
@@ -536,7 +492,12 @@ pub async fn oauth2_authorize(
     }
 
     // Validate client
-    if !validate_client(&state.app_state.database, &params.client_id, None).await? {
+    if !state
+        .app_state
+        .client_validator
+        .validate_client(&params.client_id, None)
+        .await?
+    {
         return Err(AuthencError::validation("Invalid client_id"));
     }
 
@@ -680,12 +641,11 @@ async fn handle_authorization_code_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(
-        &state.app_state.database,
-        &client_id,
-        params.client_secret.as_deref(),
-    )
-    .await?
+    if !state
+        .app_state
+        .client_validator
+        .validate_client(&client_id, params.client_secret.as_deref())
+        .await?
     {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
@@ -823,12 +783,11 @@ async fn handle_client_credentials_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client credentials
-    if !validate_client(
-        &state.app_state.database,
-        &client_id,
-        params.client_secret.as_deref(),
-    )
-    .await?
+    if !state
+        .app_state
+        .client_validator
+        .validate_client(&client_id, params.client_secret.as_deref())
+        .await?
     {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
@@ -895,43 +854,20 @@ async fn handle_password_grant(
         .ok_or(AuthencError::validation("client_id required"))?;
 
     // Validate client
-    if !validate_client(
-        &state.app_state.database,
-        &client_id,
-        params.client_secret.as_deref(),
-    )
-    .await?
+    if !state
+        .app_state
+        .client_validator
+        .validate_client(&client_id, params.client_secret.as_deref())
+        .await?
     {
         return Err(AuthencError::validation("Invalid client credentials"));
     }
 
     // Fetch client to get realm_id for user lookup
-    let client = if client_id == "test-client" {
-        // Create dummy client for testing
-        crate::models::oauth2::OAuth2Client {
-            id: Uuid::new_v4(),
-            client_id: "test-client".to_string(),
-            client_secret_hash: "hashed_secret".to_string(),
-            client_name: "Test Client".to_string(),
-            client_type: "public".to_string(),
-            redirect_uris: vec!["http://localhost/callback".to_string()],
-            scopes: vec!["openid".to_string(), "profile".to_string(), "email".to_string()],
-            grant_types: vec!["password".to_string()],
-            response_types: vec!["token".to_string()],
-            token_endpoint_auth_method: "none".to_string(),
-            owner_id: None,
-            realm_id: None,
-            enabled: true,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            deleted_at: None,
-        }
-    } else {
-        oauth2::get_client_by_id(&state.app_state.database, &client_id)
-            .await
-            .map_err(|e| AuthencError::database(format!("Database error: {}", e)))?
-            .ok_or(AuthencError::validation("Invalid client_id"))?
-    };
+    let client = oauth2::get_client_by_id(&state.app_state.database, &client_id)
+        .await
+        .map_err(|e| AuthencError::database(format!("Database error: {}", e)))?
+        .ok_or(AuthencError::validation("Invalid client_id"))?;
 
     // Use default realm if client has no realm (though it should)
     let realm_id = client.realm_id.unwrap_or(Uuid::nil());
@@ -1470,7 +1406,12 @@ pub async fn test_oauth2_authorize(
     }
 
     // Validate client
-    if !validate_client(&state.app_state.database, &params.client_id, None).await? {
+    if !state
+        .app_state
+        .client_validator
+        .validate_client(&params.client_id, None)
+        .await?
+    {
         return Err(AuthencError::validation("Invalid client_id"));
     }
 

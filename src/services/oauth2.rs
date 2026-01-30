@@ -7,6 +7,60 @@ use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use std::sync::Arc;
+use async_trait::async_trait;
+use crate::utils::crypto::password::verify_password;
+
+/// Trait for validating OAuth2 clients
+#[async_trait]
+pub trait ClientValidator: Send + Sync {
+    /// Validate client credentials
+    async fn validate_client(&self, client_id: &str, client_secret: Option<&str>) -> Result<bool>;
+}
+
+/// Database-backed client validator
+pub struct DbClientValidator {
+    db: Arc<Database>,
+}
+
+impl DbClientValidator {
+    pub fn new(db: Arc<Database>) -> Self {
+        Self { db }
+    }
+}
+
+#[async_trait]
+impl ClientValidator for DbClientValidator {
+    async fn validate_client(&self, client_id: &str, client_secret: Option<&str>) -> Result<bool> {
+        // Try to find client in database
+        if let Ok(Some(client)) = oauth2::get_client_by_id(&self.db, client_id).await {
+            if !client.enabled {
+                return Ok(false);
+            }
+
+            if let Some(secret) = client_secret {
+                // Verify secret
+                if verify_password(&client.client_secret_hash, secret)
+                    .await
+                    .unwrap_or(false)
+                {
+                    return Ok(true);
+                }
+
+                // Fallback for simple comparison
+                if client.client_secret_hash == secret {
+                    return Ok(true);
+                }
+            } else {
+                // Public client check
+                if client.client_type == "public" {
+                    return Ok(true);
+                }
+            }
+        }
+
+        Ok(false)
+    }
+}
 
 /// OAuth2 service for token persistence and management
 #[derive(Clone)]
