@@ -1,0 +1,66 @@
+[package]
+name = "authenc-crypto"
+version.workspace = true
+edition.workspace = true
+description = "Cryptographic utilities for Authenc"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace dependencies
+authenc-api = { path = "../api", version = "0.4.0" }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = { workspace = true }
+base64ct = { workspace = true }
+hex = { workspace = true }
+
+# Randomness
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+getrandom = { workspace = true }
+
+# Hashing & MAC
+sha2 = { workspace = true }
+hmac = { workspace = true }
+sha1 = { workspace = true }
+
+# Encryption
+aes-gcm = { workspace = true }
+
+# Elliptic Curves
+p256 = { workspace = true }
+p384 = { workspace = true }
+p521 = { workspace = true }
+ed25519-dalek = { workspace = true }
+ecdsa = { workspace = true }
+curve25519-dalek = { workspace = true }
+ed448-goldilocks = { workspace = true }
+
+# Key Derivation
+argon2 = { workspace = true }
+bcrypt = { workspace = true }
+hkdf = { workspace = true }
+
+# Utilities
+subtle = { workspace = true }
+zeroize = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+once_cell = { workspace = true }
+regex = { workspace = true }
+bincode = { workspace = true }
+x509-parser = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+openssl = { workspace = true }
+axum.workspace = true
+
+# Async
+tokio = { workspace = true, features = ["sync", "rt", "macros"] }
+
+# Protocol
+quick-xml = { workspace = true }

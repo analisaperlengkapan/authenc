@@ -1,0 +1,37 @@
+[package]
+name = "authenc-db"
+version.workspace = true
+edition.workspace = true
+description = "Database layer for Authenc"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+authenc-core = { path = "../core", version = "0.4.0" }
+authenc-api = { path = "../api", version = "0.4.0" }
+authenc-crypto = { path = "../crypto", version = "0.4.0" }
+
+tokio = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+base64 = { workspace = true }
+
+# Database
+tokio-postgres = { workspace = true }
+deadpool-postgres = { workspace = true }
+redis = { workspace = true }
+deadpool-redis = { workspace = true }
+
+# Vault & Helpers
+aes-gcm = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+dashmap = { workspace = true }
+reqwest = { workspace = true }

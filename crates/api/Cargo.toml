@@ -1,0 +1,34 @@
+[package]
+name = "authenc-api"
+version.workspace = true
+edition.workspace = true
+description = "API models and definitions for Authenc"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+async-trait = { workspace = true }
+url = { workspace = true }
+
+# Validation
+regex = { workspace = true }
+
+# Utilities
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# WebAuthn
+webauthn-rs = { workspace = true }
+
+# Optional Axum support
+axum = { workspace = true, optional = true }
+
+[features]
+default = []
+axum = ["dep:axum"]

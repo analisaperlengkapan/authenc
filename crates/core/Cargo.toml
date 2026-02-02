@@ -1,0 +1,67 @@
+[package]
+name = "authenc-core"
+version.workspace = true
+edition.workspace = true
+description = "Core data models, errors, and utilities for Authenc"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace dependencies
+authenc-crypto = { path = "../crypto", version = "0.4.0" }
+authenc-api = { path = "../api", version = "0.4.0" }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+once_cell = { workspace = true }
+bincode = { workspace = true }
+
+# Time & Async
+chrono = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Utilities
+tracing = { workspace = true }
+log = { workspace = true }
+url = { workspace = true }
+rand = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+regex = { workspace = true }
+temp-env = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+urlencoding = { workspace = true }
+
+# Crypto (Common)
+sha2 = { workspace = true }
+sha1 = { workspace = true }
+hmac = { workspace = true }
+subtle = { workspace = true }
+zeroize = { workspace = true }
+argon2 = { workspace = true }
+ed25519-dalek = { workspace = true }
+base64ct = { workspace = true }
+
+# Security
+jsonwebtoken = { workspace = true, optional = true }
+
+# Config
+config = { version = "0.14", default-features = false, features = ["yaml", "json", "toml", "ini"] }
+
+# Protocol
+quick-xml = { workspace = true }
+flate2 = { workspace = true }
+ldap3 = { workspace = true }
+
+# Other
+fluent-bundle = { workspace = true }
+unic-langid = { workspace = true }
+base32 = { workspace = true }
+
+[features]
+default = []
+auth = ["dep:jsonwebtoken"]

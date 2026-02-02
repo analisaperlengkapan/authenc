@@ -1,0 +1,49 @@
+[package]
+name = "authenc-services"
+version.workspace = true
+edition.workspace = true
+description = "Business logic and services for Authenc"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+authenc-core = { path = "../core", version = "0.4.0" }
+authenc-api = { path = "../api", version = "0.4.0" }
+authenc-db = { path = "../db", version = "0.4.0" }
+authenc-crypto = { path = "../crypto", version = "0.4.0" }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+base64 = { workspace = true }
+hex = { workspace = true }
+url = { workspace = true }
+regex = { workspace = true }
+dashmap = { workspace = true }
+once_cell = { workspace = true }
+
+# Authentication
+jsonwebtoken = { workspace = true }
+argon2 = { workspace = true }
+webauthn-rs = { workspace = true }
+ldap3 = { workspace = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true }
+hmac = { workspace = true }
+sha1 = { workspace = true }
+base32 = { workspace = true }
+totp-rs = { workspace = true }
+
+# HTTP (for clustering service?)
+http = { workspace = true }
+axum = { workspace = true, optional = true }
+
+[features]
+default = ["axum"]
+axum = ["dep:axum"]
