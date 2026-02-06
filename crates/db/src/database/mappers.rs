@@ -85,43 +85,43 @@ impl FromPostgresRow for Realm {
         Ok(Realm {
             id: row.try_get("id").map_err(|e| AuthencError::database(e.to_string()))?,
             name: row.try_get("name").map_err(|e| AuthencError::database(e.to_string()))?,
-            display_name: row.try_get("display_name").map_err(|e| AuthencError::database(e.to_string()))?,
+            display_name: row.try_get("display_name").ok(),
             description: row.try_get("description").ok(),
-            enabled: row.try_get("enabled").map_err(|e| AuthencError::database(e.to_string()))?,
-            registration_allowed: row.try_get("registration_allowed").map_err(|e| AuthencError::database(e.to_string()))?,
-            registration_email_as_username: row.try_get("registration_email_as_username").map_err(|e| AuthencError::database(e.to_string()))?,
-            verify_email: row.try_get("verify_email").map_err(|e| AuthencError::database(e.to_string()))?,
-            login_with_email_allowed: row.try_get("login_with_email_allowed").map_err(|e| AuthencError::database(e.to_string()))?,
-            duplicate_emails_allowed: row.try_get("duplicate_emails_allowed").map_err(|e| AuthencError::database(e.to_string()))?,
-            reset_password_allowed: row.try_get("reset_password_allowed").map_err(|e| AuthencError::database(e.to_string()))?,
-            edit_username_allowed: row.try_get("edit_username_allowed").map_err(|e| AuthencError::database(e.to_string()))?,
-            brute_force_protected: row.try_get("brute_force_protected").map_err(|e| AuthencError::database(e.to_string()))?,
-            max_failure_wait_seconds: row.try_get("max_failure_wait_seconds").map_err(|e| AuthencError::database(e.to_string()))?,
-            minimum_quick_login_wait_seconds: row.try_get("minimum_quick_login_wait_seconds").map_err(|e| AuthencError::database(e.to_string()))?,
-            wait_increment_seconds: row.try_get("wait_increment_seconds").map_err(|e| AuthencError::database(e.to_string()))?,
-            quick_login_check_milli_seconds: row.try_get("quick_login_check_milli_seconds").map_err(|e| AuthencError::database(e.to_string()))?,
-            max_delta_time_seconds: row.try_get("max_delta_time_seconds").map_err(|e| AuthencError::database(e.to_string()))?,
-            failure_factor: row.try_get("failure_factor").map_err(|e| AuthencError::database(e.to_string()))?,
-            default_signature_algorithm: row.try_get("default_signature_algorithm").map_err(|e| AuthencError::database(e.to_string()))?,
-            revoke_refresh_token: row.try_get("revoke_refresh_token").map_err(|e| AuthencError::database(e.to_string()))?,
-            refresh_token_max_reuse: row.try_get("refresh_token_max_reuse").map_err(|e| AuthencError::database(e.to_string()))?,
-            access_token_lifespan: row.try_get("access_token_lifespan").map_err(|e| AuthencError::database(e.to_string()))?,
-            access_token_lifespan_for_implicit_flow: row.try_get("access_token_lifespan_for_implicit_flow").map_err(|e| AuthencError::database(e.to_string()))?,
-            sso_session_idle_timeout: row.try_get("sso_session_idle_timeout").map_err(|e| AuthencError::database(e.to_string()))?,
-            sso_session_max_lifespan: row.try_get("sso_session_max_lifespan").map_err(|e| AuthencError::database(e.to_string()))?,
-            sso_session_idle_timeout_remember_me: row.try_get("sso_session_idle_timeout_remember_me").map_err(|e| AuthencError::database(e.to_string()))?,
-            sso_session_max_lifespan_remember_me: row.try_get("sso_session_max_lifespan_remember_me").map_err(|e| AuthencError::database(e.to_string()))?,
-            offline_session_idle_timeout: row.try_get("offline_session_idle_timeout").map_err(|e| AuthencError::database(e.to_string()))?,
-            offline_session_max_lifespan: row.try_get("offline_session_max_lifespan").map_err(|e| AuthencError::database(e.to_string()))?,
-            client_session_idle_timeout: row.try_get("client_session_idle_timeout").map_err(|e| AuthencError::database(e.to_string()))?,
-            client_session_max_lifespan: row.try_get("client_session_max_lifespan").map_err(|e| AuthencError::database(e.to_string()))?,
-            access_code_lifespan: row.try_get("access_code_lifespan").map_err(|e| AuthencError::database(e.to_string()))?,
-            access_code_lifespan_user_action: row.try_get("access_code_lifespan_user_action").map_err(|e| AuthencError::database(e.to_string()))?,
-            access_code_lifespan_login: row.try_get("access_code_lifespan_login").map_err(|e| AuthencError::database(e.to_string()))?,
-            action_token_generated_by_admin_lifespan: row.try_get("action_token_generated_by_admin_lifespan").map_err(|e| AuthencError::database(e.to_string()))?,
-            action_token_generated_by_user_lifespan: row.try_get("action_token_generated_by_user_lifespan").map_err(|e| AuthencError::database(e.to_string()))?,
-            oauth2_device_code_lifespan: row.try_get("oauth2_device_code_lifespan").map_err(|e| AuthencError::database(e.to_string()))?,
-            oauth2_device_polling_interval: row.try_get("oauth2_device_polling_interval").map_err(|e| AuthencError::database(e.to_string()))?,
+            enabled: row.try_get("enabled").unwrap_or(true),
+            registration_allowed: row.try_get("registration_allowed").unwrap_or(false),
+            registration_email_as_username: row.try_get("registration_email_as_username").unwrap_or(false),
+            verify_email: row.try_get("verify_email").unwrap_or(false),
+            login_with_email_allowed: row.try_get("login_with_email_allowed").unwrap_or(true),
+            duplicate_emails_allowed: row.try_get("duplicate_emails_allowed").unwrap_or(false),
+            reset_password_allowed: row.try_get("reset_password_allowed").unwrap_or(true),
+            edit_username_allowed: row.try_get("edit_username_allowed").unwrap_or(false),
+            brute_force_protected: row.try_get("brute_force_protected").unwrap_or(true),
+            max_failure_wait_seconds: row.try_get("max_failure_wait_seconds").unwrap_or(900),
+            minimum_quick_login_wait_seconds: row.try_get("minimum_quick_login_wait_seconds").unwrap_or(60),
+            wait_increment_seconds: row.try_get("wait_increment_seconds").unwrap_or(60),
+            quick_login_check_milli_seconds: row.try_get("quick_login_check_milli_seconds").unwrap_or(1000),
+            max_delta_time_seconds: row.try_get("max_delta_time_seconds").unwrap_or(43200),
+            failure_factor: row.try_get("failure_factor").unwrap_or(30),
+            default_signature_algorithm: row.try_get("default_signature_algorithm").unwrap_or_else(|_| "RS256".to_string()),
+            revoke_refresh_token: row.try_get("revoke_refresh_token").unwrap_or(false),
+            refresh_token_max_reuse: row.try_get("refresh_token_max_reuse").unwrap_or(0),
+            access_token_lifespan: row.try_get("access_token_lifespan").unwrap_or(300),
+            access_token_lifespan_for_implicit_flow: row.try_get("access_token_lifespan_for_implicit_flow").unwrap_or(900),
+            sso_session_idle_timeout: row.try_get("sso_session_idle_timeout").unwrap_or(1800),
+            sso_session_max_lifespan: row.try_get("sso_session_max_lifespan").unwrap_or(36000),
+            sso_session_idle_timeout_remember_me: row.try_get("sso_session_idle_timeout_remember_me").unwrap_or(0),
+            sso_session_max_lifespan_remember_me: row.try_get("sso_session_max_lifespan_remember_me").unwrap_or(0),
+            offline_session_idle_timeout: row.try_get("offline_session_idle_timeout").unwrap_or(2592000),
+            offline_session_max_lifespan: row.try_get("offline_session_max_lifespan").unwrap_or(5184000),
+            client_session_idle_timeout: row.try_get("client_session_idle_timeout").unwrap_or(0),
+            client_session_max_lifespan: row.try_get("client_session_max_lifespan").unwrap_or(0),
+            access_code_lifespan: row.try_get("access_code_lifespan").unwrap_or(60),
+            access_code_lifespan_user_action: row.try_get("access_code_lifespan_user_action").unwrap_or(300),
+            access_code_lifespan_login: row.try_get("access_code_lifespan_login").unwrap_or(1800),
+            action_token_generated_by_admin_lifespan: row.try_get("action_token_generated_by_admin_lifespan").unwrap_or(43200),
+            action_token_generated_by_user_lifespan: row.try_get("action_token_generated_by_user_lifespan").unwrap_or(300),
+            oauth2_device_code_lifespan: row.try_get("oauth2_device_code_lifespan").unwrap_or(600),
+            oauth2_device_polling_interval: row.try_get("oauth2_device_polling_interval").unwrap_or(5),
             attributes: {
                 let json_str: Option<String> = row.try_get("attributes").map_err(|e| AuthencError::database(e.to_string()))?;
                 match json_str {
@@ -180,24 +180,14 @@ impl FromPostgresRow for Resource {
 impl FromPostgresRow for ResourceServer {
     fn from_row(row: tokio_postgres::Row) -> Result<Self> {
         Ok(ResourceServer {
-            id: row.try_get("id").map_err(|e| {
-                AuthencError::database(format!("Failed to get id: {}", e))
-            })?,
-            client_id: row.try_get("client_id").map_err(|e| {
-                AuthencError::database(format!("Failed to get client_id: {}", e))
-            })?,
-            name: row.try_get("name").map_err(|e| {
-                AuthencError::database(format!("Failed to get name: {}", e))
-            })?,
+            id: row.try_get("id").map_err(|e| AuthencError::database(format!("Failed to get id: {}", e)))?,
+            client_id: row.try_get("client_id").map_err(|e| AuthencError::database(format!("Failed to get client_id: {}", e)))?,
+            name: row.try_get("name").map_err(|e| AuthencError::database(format!("Failed to get name: {}", e)))?,
             description: row.try_get("description").ok(),
             enabled: row.try_get("enabled").unwrap_or(true),
-            allow_remote_resource_management: row.try_get("allow_remote_resource_management").map_err(|e| {
-                AuthencError::database(format!("Failed to get allow_remote_resource_management: {}", e))
-            })?,
+            allow_remote_resource_management: row.try_get("allow_remote_resource_management").map_err(|e| AuthencError::database(format!("Failed to get allow_remote_resource_management: {}", e)))?,
             policy_enforcement_mode: {
-                let mode: String = row.try_get("policy_enforcement_mode").map_err(|e| {
-                    AuthencError::database(format!("Failed to get policy_enforcement_mode: {}", e))
-                })?;
+                let mode: String = row.try_get("policy_enforcement_mode").map_err(|e| AuthencError::database(format!("Failed to get policy_enforcement_mode: {}", e)))?;
                 match mode.as_str() {
                     "ENFORCING" => PolicyEnforcementMode::Enforcing,
                     "PERMISSIVE" => PolicyEnforcementMode::Permissive,
@@ -206,9 +196,7 @@ impl FromPostgresRow for ResourceServer {
                 }
             },
             decision_strategy: {
-                let strategy: String = row.try_get("decision_strategy").map_err(|e| {
-                    AuthencError::database(format!("Failed to get decision_strategy: {}", e))
-                })?;
+                let strategy: String = row.try_get("decision_strategy").map_err(|e| AuthencError::database(format!("Failed to get decision_strategy: {}", e)))?;
                 match strategy.as_str() {
                     "AFFIRMATIVE" => DecisionStrategy::Affirmative,
                     "UNANIMOUS" => DecisionStrategy::Unanimous,
@@ -216,15 +204,9 @@ impl FromPostgresRow for ResourceServer {
                     _ => DecisionStrategy::Unanimous,
                 }
             },
-            realm_id: row.try_get("realm_id").map_err(|e| {
-                AuthencError::database(format!("Failed to get realm_id: {}", e))
-            })?,
-            created_at: row.try_get("created_at").map_err(|e| {
-                AuthencError::database(format!("Failed to get created_at: {}", e))
-            })?,
-            updated_at: row.try_get("updated_at").map_err(|e| {
-                AuthencError::database(format!("Failed to get updated_at: {}", e))
-            })?,
+            realm_id: row.try_get("realm_id").map_err(|e| AuthencError::database(format!("Failed to get realm_id: {}", e)))?,
+            created_at: row.try_get("created_at").map_err(|e| AuthencError::database(format!("Failed to get created_at: {}", e)))?,
+            updated_at: row.try_get("updated_at").map_err(|e| AuthencError::database(format!("Failed to get updated_at: {}", e)))?,
         })
     }
 }
@@ -232,33 +214,14 @@ impl FromPostgresRow for ResourceServer {
 impl FromPostgresRow for Scope {
     fn from_row(row: tokio_postgres::Row) -> Result<Self> {
         Ok(Scope {
-            id: row.try_get("id").map_err(|e| {
-                AuthencError::database(format!("Failed to get id: {}", e))
-            })?,
-            name: row.try_get("name").map_err(|e| {
-                AuthencError::database(format!("Failed to get name: {}", e))
-            })?,
-            display_name: row.try_get("display_name").map_err(|e| {
-                AuthencError::database(format!("Failed to get display_name: {}", e))
-            })?,
-            icon_uri: row.try_get("icon_uri").map_err(|e| {
-                AuthencError::database(format!("Failed to get icon_uri: {}", e))
-            })?,
-            realm_id: row.try_get("realm_id").map_err(|e| {
-                AuthencError::database(format!("Failed to get realm_id: {}", e))
-            })?,
-            resource_server_id: row.try_get("resource_server_id").map_err(|e| {
-                AuthencError::database(format!(
-                    "Failed to get resource_server_id: {}",
-                    e
-                ))
-            })?,
-            created_at: row.try_get("created_at").map_err(|e| {
-                AuthencError::database(format!("Failed to get created_at: {}", e))
-            })?,
-            updated_at: row.try_get("updated_at").map_err(|e| {
-                AuthencError::database(format!("Failed to get updated_at: {}", e))
-            })?,
+            id: row.try_get("id").map_err(|e| AuthencError::database(format!("Failed to get id: {}", e)))?,
+            name: row.try_get("name").map_err(|e| AuthencError::database(format!("Failed to get name: {}", e)))?,
+            display_name: row.try_get("display_name").map_err(|e| AuthencError::database(format!("Failed to get display_name: {}", e)))?,
+            icon_uri: row.try_get("icon_uri").map_err(|e| AuthencError::database(format!("Failed to get icon_uri: {}", e)))?,
+            realm_id: row.try_get("realm_id").map_err(|e| AuthencError::database(format!("Failed to get realm_id: {}", e)))?,
+            resource_server_id: row.try_get("resource_server_id").map_err(|e| AuthencError::database(format!("Failed to get resource_server_id: {}", e)))?,
+            created_at: row.try_get("created_at").map_err(|e| AuthencError::database(format!("Failed to get created_at: {}", e)))?,
+            updated_at: row.try_get("updated_at").map_err(|e| AuthencError::database(format!("Failed to get updated_at: {}", e)))?,
         })
     }
 }
@@ -268,16 +231,16 @@ impl FromPostgresRow for IdentityProvider {
         Ok(IdentityProvider {
             id: row.try_get("id").map_err(|e| AuthencError::database(e.to_string()))?,
             alias: row.try_get("alias").map_err(|e| AuthencError::database(e.to_string()))?,
-            display_name: row.try_get("display_name").map_err(|e| AuthencError::database(e.to_string()))?,
+            display_name: row.try_get("display_name").ok(),
             provider_id: row.try_get("provider_id").map_err(|e| AuthencError::database(e.to_string()))?,
-            enabled: row.try_get("enabled").map_err(|e| AuthencError::database(e.to_string()))?,
-            trust_email: row.try_get("trust_email").map_err(|e| AuthencError::database(e.to_string()))?,
-            store_token: row.try_get("store_token").map_err(|e| AuthencError::database(e.to_string()))?,
-            add_read_token_role_on_create: row.try_get("add_read_token_role_on_create").map_err(|e| AuthencError::database(e.to_string()))?,
-            authenticate_by_default: row.try_get("authenticate_by_default").map_err(|e| AuthencError::database(e.to_string()))?,
-            link_only: row.try_get("link_only").map_err(|e| AuthencError::database(e.to_string()))?,
-            first_broker_login_flow_id: row.try_get("first_broker_login_flow_alias").map_err(|e| AuthencError::database(e.to_string()))?,
-            post_broker_login_flow_id: row.try_get("post_broker_login_flow_alias").map_err(|e| AuthencError::database(e.to_string()))?,
+            enabled: row.try_get("enabled").unwrap_or(true),
+            trust_email: row.try_get("trust_email").unwrap_or(false),
+            store_token: row.try_get("store_token").unwrap_or(false),
+            add_read_token_role_on_create: row.try_get("add_read_token_role_on_create").unwrap_or(false),
+            authenticate_by_default: row.try_get("authenticate_by_default").unwrap_or(false),
+            link_only: row.try_get("link_only").unwrap_or(false),
+            first_broker_login_flow_id: row.try_get("first_broker_login_flow_alias").ok(),
+            post_broker_login_flow_id: row.try_get("post_broker_login_flow_alias").ok(),
             config: {
                 let json_str: Option<String> = row.try_get("config").map_err(|e| AuthencError::database(e.to_string()))?;
                 match json_str {
@@ -285,7 +248,7 @@ impl FromPostgresRow for IdentityProvider {
                     None => serde_json::json!({}),
                 }
             },
-            realm_id: row.try_get("realm_id").map_err(|e| AuthencError::database(e.to_string()))?,
+            realm_id: row.try_get("realm_id").ok(),
             organization_id: row.try_get("organization_id").ok(),
             created_at: row.try_get("created_at").map_err(|e| AuthencError::database(e.to_string()))?,
             updated_at: row.try_get("updated_at").map_err(|e| AuthencError::database(e.to_string()))?,
@@ -306,7 +269,10 @@ impl FromPostgresRow for User {
             phone_verified: row.try_get("phone_verified").unwrap_or(false),
             password_hash: row.try_get("password_hash").ok(),
             totp_secret: row.try_get("totp_secret").ok(),
-            totp_backup_codes: row.try_get("totp_backup_codes").ok().flatten(),
+            totp_backup_codes: {
+                let codes: Option<Vec<String>> = row.try_get("totp_backup_codes").ok();
+                Some(codes.unwrap_or_default())
+            },
             webauthn_enabled: row.try_get("webauthn_enabled").unwrap_or(false),
             account_locked: row.try_get("account_locked").unwrap_or(false),
             account_locked_until: row.try_get("account_locked_until").ok(),
@@ -316,16 +282,14 @@ impl FromPostgresRow for User {
             password_changed_at: row.try_get("password_changed_at").ok(),
             password_expires_at: row.try_get("password_expires_at").ok(),
             require_password_change: row.try_get("require_password_change").unwrap_or(false),
-            organization_id: row.try_get("organization_id").ok(),
             realm_id: row.try_get("realm_id").ok(),
+            organization_id: row.try_get("organization_id").ok(),
             attributes: {
-                // Try as JSONB (Value) first, then fallback to String parsing if needed,
-                // but usually better to rely on driver mapping if column is JSONB.
-                // Given the ambiguity, let's look at the original code.
-                // Original: row.try_get("attributes").ok().flatten()
-                // This implies it returns Option<T>, so T matches struct field (Option<Value>)?
-                // No, struct is Option<Value>, so try_get returns Option<Value>.
-                row.try_get("attributes").ok().flatten()
+                let json_str: Option<String> = row.try_get("attributes").ok();
+                match json_str {
+                    Some(s) => serde_json::from_str(&s).ok(),
+                    None => None,
+                }
             },
             enabled: row.try_get("enabled").unwrap_or(true),
             federated: row.try_get("federated").unwrap_or(false),
@@ -352,8 +316,20 @@ impl FromPostgresRow for Device {
             browser_version: row.try_get("browser_version").ok(),
             ip_address: row.try_get("ip_address").ok(),
             user_agent: row.try_get("user_agent").ok(),
-            location_data: row.try_get("location_data").ok().flatten(),
-            security_features: row.try_get("security_features").ok().flatten(),
+            location_data: {
+                let json_str: Option<String> = row.try_get("location_data").ok();
+                match json_str {
+                    Some(s) => serde_json::from_str(&s).ok(),
+                    None => None,
+                }
+            },
+            security_features: {
+                let json_str: Option<String> = row.try_get("security_features").ok();
+                match json_str {
+                    Some(s) => serde_json::from_str(&s).ok(),
+                    None => None,
+                }
+            },
             last_seen_at: row.try_get("last_seen_at").map_err(|e| AuthencError::database(e.to_string()))?,
             first_seen_at: row.try_get("first_seen_at").map_err(|e| AuthencError::database(e.to_string()))?,
             created_at: row.try_get("created_at").map_err(|e| AuthencError::database(e.to_string()))?,
@@ -445,14 +421,14 @@ impl FromPostgresRow for SamlServiceProvider {
         Ok(SamlServiceProvider {
             id: row.try_get("id").map_err(|e| AuthencError::database(e.to_string()))?,
             entity_id: row.try_get("entity_id").map_err(|e| AuthencError::database(e.to_string()))?,
-            metadata_url: row.try_get("metadata_url").map_err(|e| AuthencError::database(e.to_string()))?,
-            metadata_xml: row.try_get("metadata_xml").map_err(|e| AuthencError::database(e.to_string()))?,
+            metadata_url: row.try_get("metadata_url").ok(),
+            metadata_xml: row.try_get("metadata_xml").ok(),
             signing_certificate: row.try_get("signing_certificate").ok(),
             encryption_certificate: row.try_get("encryption_certificate").ok(),
             assertion_consumer_service_url: row.try_get("assertion_consumer_service_url").map_err(|e| AuthencError::database(e.to_string()))?,
             single_logout_service_url: row.try_get("single_logout_service_url").ok(),
             name_id_format: row.try_get("name_id_format").unwrap_or_else(|_| "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified".to_string()),
-            enabled: row.try_get("enabled").map_err(|e| AuthencError::database(e.to_string()))?,
+            enabled: row.try_get("enabled").unwrap_or(true),
             realm_id: row.try_get("realm_id").ok(),
             created_at: row.try_get("created_at").map_err(|e| AuthencError::database(e.to_string()))?,
             updated_at: row.try_get("updated_at").map_err(|e| AuthencError::database(e.to_string()))?,

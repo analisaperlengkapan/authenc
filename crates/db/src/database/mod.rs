@@ -157,8 +157,46 @@ impl Database {
         })
     }
 
+    /// Execute a query that returns a single raw row
+    pub async fn query_one_raw(
+        &self,
+        statement: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<tokio_postgres::Row> {
+        let client = self.get_connection().await?;
+        client.query_one(statement, params).await.map_err(|e| {
+            error!("Query one failed: {}\nStatement: {}", e, statement);
+            AuthencError::database(format!("Database query failed: {}", e))
+        })
+    }
+
     /// Execute a query that returns an optional single row
-    pub async fn query_opt(
+    pub async fn query_opt<T>(
+        &self,
+        statement: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Option<T>>
+    where
+        T: Send + 'static + TryFrom<tokio_postgres::Row>,
+        <T as TryFrom<tokio_postgres::Row>>::Error: std::fmt::Debug,
+    {
+         let client = self.get_connection().await?;
+         let row_opt = client.query_opt(statement, params).await.map_err(|e| {
+            error!("Query opt failed: {}\nStatement: {}", e, statement);
+            AuthencError::database(format!("Database query failed: {}", e))
+         })?;
+
+         match row_opt {
+             Some(row) => row.try_into().map(Some).map_err(|e| {
+                error!("Failed to convert row: {:?}", e);
+                AuthencError::database("Failed to convert database row")
+             }),
+             None => Ok(None),
+         }
+    }
+
+    /// Execute a query that returns an optional single raw row
+    pub async fn query_opt_raw(
         &self,
         statement: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],

@@ -24,12 +24,9 @@ pub mod groups { use crate::database::RowExt;
         // Calculate path based on parent
         let path = if let Some(pid) = parent_id {
             // Get parent path
-            let parent_row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>("SELECT path, realm_id FROM groups WHERE id = $1", &[&pid])
-                .await
-                .map_err(|e| {
-                    error!("Failed to get parent group: {}", e);
-                    AuthencError::not_found(format!("Parent group {} not found", pid))
-                })?;
+            let parent_row: tokio_postgres::Row = db
+                .query_one_raw("SELECT path, realm_id FROM groups WHERE id = $1", &[&pid as &(dyn tokio_postgres::types::ToSql + Sync)])
+                .await?
 
             let parent_path: String = parent_row.get(0);
             let parent_realm: Uuid = parent_row.get(1);
@@ -57,29 +54,12 @@ pub mod groups { use crate::database::RowExt;
                 description, attributes, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &group_id,
-                    &realm_id,
-                    &parent_id,
-                    &name,
-                    &path,
-                    &description,
-                    &attributes,
-                    &now,
-                    &now,
-                ],
+                &[&group_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &parent_id as &(dyn tokio_postgres::types::ToSql + Sync), &name as &(dyn tokio_postgres::types::ToSql + Sync), &path as &(dyn tokio_postgres::types::ToSql + Sync), &description as &(dyn tokio_postgres::types::ToSql + Sync), &attributes as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Group creation failed: {}", e);
-                if e.to_string().contains("uq_groups_name_parent") {
-                    AuthencError::conflict("Group name already exists in this parent")
-                } else {
-                    AuthencError::database(format!("Failed to create group: {}", e))
-                }
-            })?;
+            .await?
 
         Ok(Group {
             id: row.get(0),
@@ -104,7 +84,7 @@ pub mod groups { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        match db.query_opt(query, &[&group_id]).await {
+        match db.query_opt_raw(query, &[&group_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await {
             Ok(Some(row)) => Ok(Some(Group {
                 id: row.get(0),
                 realm_id: row.get(1),
@@ -142,15 +122,11 @@ pub mod groups { use crate::database::RowExt;
         "#;
 
         let rows: Vec<tokio_postgres::Row> =
-            db.query::<tokio_postgres::Row>(query, &[&realm_id, &name]).await.map_err(|e| {
-                error!("Failed to get group by name: {}", e);
-                AuthencError::database(format!("Failed to get group by name: {}", e))
-            })?;
 
         if rows.is_empty() {
             Ok(None)
         } else {
-            let row: &tokio_postgres::Row = &rows[0];
+            let row = &rows[0];
             Ok(Some(Group {
                 id: row.get(0),
                 realm_id: row.get(1),
@@ -185,22 +161,19 @@ pub mod groups { use crate::database::RowExt;
         let limit = max.unwrap_or(100).min(1000);
         let offset = first.unwrap_or(0);
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&realm_id, &limit, &offset])
-            .await
-            .map_err(|e| {
-                error!("Failed to get groups by realm: {}", e);
-                AuthencError::database(format!("Failed to get groups: {}", e))
-            })?;
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &limit as &(dyn tokio_postgres::types::ToSql + Sync), &offset as &(dyn tokio_postgres::types::ToSql + Sync)])
+            .await?
 
         Ok(rows
             .iter()
             .map(|row: &tokio_postgres::Row| Group {
-                id: row.get::<_, Uuid>(0),
-                realm_id: row.get::<_, Uuid>(1),
-                parent_id: row.get::<_, Option<Uuid>>(2),
-                name: row.get::<_, String>(3),
-                path: row.get::<_, String>(4),
-                description: row.get::<_, Option<String>>(5),
+                id: row.get::<usize, Uuid>(0),
+                realm_id: row.get::<usize, Uuid>(1),
+                parent_id: row.get::<usize, Option<Uuid>>(2),
+                name: row.get::<usize, String>(3),
+                path: row.get::<usize, String>(4),
+                description: row.get::<usize, Option<String>>(5),
                 attributes: row.get::<_, serde_json::Value>(6),
                 created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(7),
                 updated_at: row.get::<_, chrono::DateTime<chrono::Utc>>(8),
@@ -236,20 +209,16 @@ pub mod groups { use crate::database::RowExt;
             "#
         };
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&parent_id]).await.map_err(|e| {
-            error!("Failed to get subgroups: {}", e);
-            AuthencError::database(format!("Failed to get subgroups: {}", e))
-        })?;
 
         Ok(rows
             .iter()
             .map(|row: &tokio_postgres::Row| Group {
-                id: row.get::<_, Uuid>(0),
-                realm_id: row.get::<_, Uuid>(1),
-                parent_id: row.get::<_, Option<Uuid>>(2),
-                name: row.get::<_, String>(3),
-                path: row.get::<_, String>(4),
-                description: row.get::<_, Option<String>>(5),
+                id: row.get::<usize, Uuid>(0),
+                realm_id: row.get::<usize, Uuid>(1),
+                parent_id: row.get::<usize, Option<Uuid>>(2),
+                name: row.get::<usize, String>(3),
+                path: row.get::<usize, String>(4),
+                description: row.get::<usize, Option<String>>(5),
                 attributes: row.get::<_, serde_json::Value>(6),
                 created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(7),
                 updated_at: row.get::<_, chrono::DateTime<chrono::Utc>>(8),
@@ -296,24 +265,12 @@ pub mod groups { use crate::database::RowExt;
                 description, attributes, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &group_id,
-                    &name,
-                    &has_parent,
-                    &parent_id.flatten(),
-                    &has_desc,
-                    &description.flatten(),
-                    &attributes,
-                    &now,
-                ],
+                &[&group_id as &(dyn tokio_postgres::types::ToSql + Sync), &name as &(dyn tokio_postgres::types::ToSql + Sync), &has_parent as &(dyn tokio_postgres::types::ToSql + Sync), &parent_id.flatten() as &(dyn tokio_postgres::types::ToSql + Sync), &has_desc as &(dyn tokio_postgres::types::ToSql + Sync), &description.flatten() as &(dyn tokio_postgres::types::ToSql + Sync), &attributes as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Group update failed: {}", e);
-                AuthencError::database(format!("Failed to update group: {}", e))
-            })?;
+            .await?
 
         Ok(Group {
             id: row.get(0),
@@ -332,10 +289,6 @@ pub mod groups { use crate::database::RowExt;
     pub async fn delete_group(db: &Database, group_id: Uuid) -> Result<()> {
         let query = "DELETE FROM groups WHERE id = $1";
 
-        let rows_affected = db.execute(query, &[&group_id]).await.map_err(|e| {
-            error!("Group deletion failed: {}", e);
-            AuthencError::database(format!("Failed to delete group: {}", e))
-        })?;
 
         if rows_affected == 0 {
             return Err(AuthencError::not_found("Group not found"));
@@ -366,13 +319,9 @@ pub mod groups { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[&id, &user_id, &group_id, &now, &expires_at, &attrs],
+            &[&id as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &group_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &attrs as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
-        .await
-        .map_err(|e| {
-            error!("Failed to add user to group: {}", e);
-            AuthencError::database(format!("Failed to add user to group: {}", e))
-        })?;
+        .await?
 
         Ok(())
     }
@@ -385,13 +334,9 @@ pub mod groups { use crate::database::RowExt;
     ) -> Result<()> {
         let query = "DELETE FROM user_groups WHERE user_id = $1 AND group_id = $2";
 
-        let rows_affected = db
-            .execute(query, &[&user_id, &group_id])
-            .await
-            .map_err(|e| {
-                error!("Failed to remove user from group: {}", e);
-                AuthencError::database(format!("Failed to remove user from group: {}", e))
-            })?;
+        let rows_affected: u64 = db
+            .execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &group_id as &(dyn tokio_postgres::types::ToSql + Sync)])
+            .await?
 
         if rows_affected == 0 {
             warn!(
@@ -416,20 +361,16 @@ pub mod groups { use crate::database::RowExt;
             ORDER BY g.path
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&user_id]).await.map_err(|e| {
-            error!("Failed to get user groups: {}", e);
-            AuthencError::database(format!("Failed to get user groups: {}", e))
-        })?;
 
         Ok(rows
             .iter()
             .map(|row: &tokio_postgres::Row| Group {
-                id: row.get::<_, Uuid>(0),
-                realm_id: row.get::<_, Uuid>(1),
-                parent_id: row.get::<_, Option<Uuid>>(2),
-                name: row.get::<_, String>(3),
-                path: row.get::<_, String>(4),
-                description: row.get::<_, Option<String>>(5),
+                id: row.get::<usize, Uuid>(0),
+                realm_id: row.get::<usize, Uuid>(1),
+                parent_id: row.get::<usize, Option<Uuid>>(2),
+                name: row.get::<usize, String>(3),
+                path: row.get::<usize, String>(4),
+                description: row.get::<usize, Option<String>>(5),
                 attributes: row.get::<_, serde_json::Value>(6),
                 created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(7),
                 updated_at: row.get::<_, chrono::DateTime<chrono::Utc>>(8),
@@ -456,16 +397,13 @@ pub mod groups { use crate::database::RowExt;
         let limit = max.unwrap_or(100).min(1000);
         let offset = first.unwrap_or(0);
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&group_id, &limit, &offset])
-            .await
-            .map_err(|e| {
-                error!("Failed to get group members: {}", e);
-                AuthencError::database(format!("Failed to get group members: {}", e))
-            })?;
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(query, &[&group_id as &(dyn tokio_postgres::types::ToSql + Sync), &limit as &(dyn tokio_postgres::types::ToSql + Sync), &offset as &(dyn tokio_postgres::types::ToSql + Sync)])
+            .await?
 
         Ok(rows
             .iter()
-            .map(|row: &tokio_postgres::Row| row.get::<_, Uuid>(0))
+            .map(|row: &tokio_postgres::Row| row.get::<usize, Uuid>(0))
             .collect())
     }
 
@@ -478,10 +416,6 @@ pub mod groups { use crate::database::RowExt;
               AND (expires_at IS NULL OR expires_at > NOW())
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&group_id]).await.map_err(|e| {
-            error!("Failed to count group members: {}", e);
-            AuthencError::database(format!("Failed to count group members: {}", e))
-        })?;
 
         Ok(row.get(0))
     }
@@ -494,10 +428,6 @@ pub mod groups { use crate::database::RowExt;
             WHERE parent_id = $1
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&group_id]).await.map_err(|e| {
-            error!("Failed to count subgroups: {}", e);
-            AuthencError::database(format!("Failed to count subgroups: {}", e))
-        })?;
 
         Ok(row.get(0))
     }
@@ -539,33 +469,12 @@ pub mod devices { use crate::database::RowExt;
                 first_seen_at, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &device_id,
-                    &user_id,
-                    &device_info.device_name,
-                    &device_info.fingerprint,
-                    &device_info.trust_score.unwrap_or(0.5f64),
-                    &device_info.os,
-                    &device_info.os_version,
-                    &device_info.browser,
-                    &device_info.browser_version,
-                    &device_info.ip_address,
-                    &device_info.user_agent,
-                    &device_info.security_features,
-                    &device_info.location_data,
-                    &now,
-                    &now,
-                    &now,
-                    &now,
-                ],
+                &[&device_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &device_info.device_name as &(dyn tokio_postgres::types::ToSql + Sync), &device_info.fingerprint as &(dyn tokio_postgres::types::ToSql + Sync), &device_info.trust_score.unwrap_or(0.5f64) as &(dyn tokio_postgres::types::ToSql + Sync), &device_info.os as &(dyn tokio_postgres::types::ToSql + Sync), &device_info.os_version as &(dyn tokio_postgres::types::ToSql + Sync), &device_info.browser as &(dyn tokio_postgres::types::ToSql + Sync), &device_info.browser_version as &(dyn tokio_postgres::types::ToSql + Sync), &device_info.ip_address as &(dyn tokio_postgres::types::ToSql + Sync), &device_info.user_agent as &(dyn tokio_postgres::types::ToSql + Sync), &device_info.security_features as &(dyn tokio_postgres::types::ToSql + Sync), &device_info.location_data as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Device registration query failed: {}", e);
-                AuthencError::database(format!("Database query failed: {}", e))
-            })?;
+            .await?
 
         // Convert row to Device
         row.to_model()
@@ -583,7 +492,7 @@ pub mod devices { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&device_id]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&device_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         // Convert row to Device
         Ok(Some(row.to_model()?))
     }
@@ -619,11 +528,7 @@ pub mod devices { use crate::database::RowExt;
             params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         db.execute(&query_builder, &params_refs)
-            .await
-            .map_err(|e| {
-                error!("Failed to update device details: {}", e);
-                AuthencError::database(format!("Failed to update device details: {}", e))
-            })?;
+            .await?
 
         Ok(())
     }
@@ -648,7 +553,7 @@ pub mod devices { use crate::database::RowExt;
 
         // First, get the current score for history
         let current_query = "SELECT trust_score FROM devices WHERE id = $1";
-        let current_row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(current_query, &[&device_id]).await?;
+        let current_row: tokio_postgres::Row = db.query_one_raw(current_query, &[&device_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         let current_score: f64 = current_row.get(0);
 
         // Update the device trust score and risk level
@@ -659,7 +564,7 @@ pub mod devices { use crate::database::RowExt;
         "#;
         db.execute(
             update_query,
-            &[&device_id, &new_score, &now, &risk_level],
+            &[&device_id as &(dyn tokio_postgres::types::ToSql + Sync), &new_score as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &risk_level as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -672,13 +577,7 @@ pub mod devices { use crate::database::RowExt;
         "#;
         db.execute(
             history_query,
-            &[
-                &device_id,
-                &current_score,
-                &new_score,
-                &serde_json::to_string(&factors).unwrap_or_default(),
-                &now,
-            ],
+            &[&device_id as &(dyn tokio_postgres::types::ToSql + Sync), &current_score as &(dyn tokio_postgres::types::ToSql + Sync), &new_score as &(dyn tokio_postgres::types::ToSql + Sync), &serde_json::to_string(&factors).unwrap_or_default() as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -694,7 +593,7 @@ pub mod devices { use crate::database::RowExt;
             SET last_seen_at = $2, updated_at = $2
             WHERE id = $1
         "#;
-        db.execute(query, &[&device_id, &now]).await?;
+        db.execute(query, &[&device_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -711,7 +610,7 @@ pub mod devices { use crate::database::RowExt;
             ORDER BY last_seen_at DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&user_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         // Convert rows to Vec<Device>
         rows.into_iter()
             .map(|row| row.to_model())
@@ -721,7 +620,7 @@ pub mod devices { use crate::database::RowExt;
     /// Delete device
     pub async fn delete_device(db: &Database, device_id: Uuid) -> Result<()> {
         let query = "DELETE FROM devices WHERE id = $1";
-        db.execute(query, &[&device_id]).await?;
+        db.execute(query, &[&device_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 }
@@ -757,25 +656,10 @@ pub mod oauth2 { use crate::database::RowExt;
                 enabled, created_at, updated_at, deleted_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &client_id,
-                    &client.client_id,
-                    &client.client_secret_hash,
-                    &client.client_name,
-                    &client.client_type,
-                    &client.redirect_uris,
-                    &client.scopes,
-                    &client.grant_types,
-                    &client.response_types,
-                    &client.token_endpoint_auth_method,
-                    &client.owner_id,
-                    &client.realm_id,
-                    &client.enabled,
-                    &now,
-                    &now,
-                ],
+                &[&client_id as &(dyn tokio_postgres::types::ToSql + Sync), &client.client_id as &(dyn tokio_postgres::types::ToSql + Sync), &client.client_secret_hash as &(dyn tokio_postgres::types::ToSql + Sync), &client.client_name as &(dyn tokio_postgres::types::ToSql + Sync), &client.client_type as &(dyn tokio_postgres::types::ToSql + Sync), &client.redirect_uris as &(dyn tokio_postgres::types::ToSql + Sync), &client.scopes as &(dyn tokio_postgres::types::ToSql + Sync), &client.grant_types as &(dyn tokio_postgres::types::ToSql + Sync), &client.response_types as &(dyn tokio_postgres::types::ToSql + Sync), &client.token_endpoint_auth_method as &(dyn tokio_postgres::types::ToSql + Sync), &client.owner_id as &(dyn tokio_postgres::types::ToSql + Sync), &client.realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &client.enabled as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -795,7 +679,7 @@ pub mod oauth2 { use crate::database::RowExt;
             WHERE client_id = $1 AND deleted_at IS NULL
         "#;
 
-        let row_opt = db.query_opt(query, &[&client_id]).await?;
+        let row_opt = db.query_opt_raw(query, &[&client_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         match row_opt {
             Some(row) => Ok(Some(row.to_model()?)),
@@ -822,19 +706,7 @@ pub mod oauth2 { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &code_id,
-                &code.code,
-                &code.client_id,
-                &code.user_id,
-                &code.redirect_uri,
-                &code.scopes,
-                &code.code_challenge,
-                &code.code_challenge_method,
-                &code.expires_at,
-                &false,
-                &now,
-            ],
+            &[&code_id as &(dyn tokio_postgres::types::ToSql + Sync), &code.code as &(dyn tokio_postgres::types::ToSql + Sync), &code.client_id as &(dyn tokio_postgres::types::ToSql + Sync), &code.user_id as &(dyn tokio_postgres::types::ToSql + Sync), &code.redirect_uri as &(dyn tokio_postgres::types::ToSql + Sync), &code.scopes as &(dyn tokio_postgres::types::ToSql + Sync), &code.code_challenge as &(dyn tokio_postgres::types::ToSql + Sync), &code.code_challenge_method as &(dyn tokio_postgres::types::ToSql + Sync), &code.expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &false as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -855,7 +727,7 @@ pub mod oauth2 { use crate::database::RowExt;
             WHERE code = $1 AND used = false AND expires_at > NOW()
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&code]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&code as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         // Convert row to OAuth2AuthorizationCode
         Ok(Some(row.to_model()?))
     }
@@ -863,7 +735,7 @@ pub mod oauth2 { use crate::database::RowExt;
     /// Mark authorization code as used
     pub async fn mark_code_used(db: &Database, code: &str) -> Result<()> {
         let query = "UPDATE oauth2_authorization_codes SET used = true WHERE code = $1";
-        db.execute(query, &[&code]).await?;
+        db.execute(query, &[&code as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -885,21 +757,7 @@ pub mod oauth2 { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &token.id,
-                &token.token_hash,
-                &token.refresh_token_hash,
-                &token.client_id,
-                &token.user_id,
-                &token.scopes,
-                &token.expires_at,
-                &token.refresh_expires_at,
-                &token.revoked,
-                &token.revoked_at,
-                &token.created_at,
-                &token.last_used_at,
-                &token.session_id,
-            ],
+            &[&token.id as &(dyn tokio_postgres::types::ToSql + Sync), &token.token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &token.refresh_token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &token.client_id as &(dyn tokio_postgres::types::ToSql + Sync), &token.user_id as &(dyn tokio_postgres::types::ToSql + Sync), &token.scopes as &(dyn tokio_postgres::types::ToSql + Sync), &token.expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &token.refresh_expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &token.revoked as &(dyn tokio_postgres::types::ToSql + Sync), &token.revoked_at as &(dyn tokio_postgres::types::ToSql + Sync), &token.created_at as &(dyn tokio_postgres::types::ToSql + Sync), &token.last_used_at as &(dyn tokio_postgres::types::ToSql + Sync), &token.session_id as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -920,7 +778,7 @@ pub mod oauth2 { use crate::database::RowExt;
             WHERE token_hash = $1 AND revoked = false AND expires_at > NOW()
         "#;
 
-        let row_opt = db.query_opt(query, &[&token_hash]).await?;
+        let row_opt = db.query_opt_raw(query, &[&token_hash as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         match row_opt {
             Some(row) => Ok(Some(row.to_model()?)),
@@ -942,7 +800,7 @@ pub mod oauth2 { use crate::database::RowExt;
             WHERE refresh_token_hash = $1 AND revoked = false
         "#;
 
-        let row_opt = db.query_opt(query, &[&refresh_token_hash]).await?;
+        let row_opt = db.query_opt_raw(query, &[&refresh_token_hash as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         match row_opt {
             Some(row) => Ok(Some(row.to_model()?)),
@@ -958,7 +816,7 @@ pub mod oauth2 { use crate::database::RowExt;
             SET revoked = true, revoked_at = $2
             WHERE token_hash = $1
         "#;
-        db.execute(query, &[&token_hash, &now]).await?;
+        db.execute(query, &[&token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -975,7 +833,7 @@ pub mod oauth2 { use crate::database::RowExt;
             ORDER BY created_at DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[]).await?;
         let mut clients = Vec::new();
 
         for row in rows {
@@ -994,7 +852,7 @@ pub mod oauth2 { use crate::database::RowExt;
             WHERE client_id = $1 AND deleted_at IS NULL
         "#;
 
-        let rows_affected = db.execute(query, &[&client_id, &now]).await?;
+        let rows_affected: u64 = db.execute(query, &[&client_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(rows_affected > 0)
     }
 
@@ -1006,7 +864,7 @@ pub mod oauth2 { use crate::database::RowExt;
             SET revoked = true, revoked_at = $2
             WHERE user_id = $1 AND revoked = false
         "#;
-        db.execute(query, &[&user_id, &now]).await?;
+        db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 }
@@ -1043,22 +901,10 @@ pub mod organizations { use crate::database::RowExt;
                 enabled, created_at, updated_at, deleted_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &org_id,
-                    &org.name,
-                    &org.display_name,
-                    &org.description,
-                    &org.domain,
-                    &org.logo_url,
-                    &org.website_url,
-                    &org.owner_id,
-                    &org.realm_id,
-                    &org.enabled,
-                    &now,
-                    &now,
-                ],
+                &[&org_id as &(dyn tokio_postgres::types::ToSql + Sync), &org.name as &(dyn tokio_postgres::types::ToSql + Sync), &org.display_name as &(dyn tokio_postgres::types::ToSql + Sync), &org.description as &(dyn tokio_postgres::types::ToSql + Sync), &org.domain as &(dyn tokio_postgres::types::ToSql + Sync), &org.logo_url as &(dyn tokio_postgres::types::ToSql + Sync), &org.website_url as &(dyn tokio_postgres::types::ToSql + Sync), &org.owner_id as &(dyn tokio_postgres::types::ToSql + Sync), &org.realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &org.enabled as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -1080,7 +926,7 @@ pub mod organizations { use crate::database::RowExt;
             WHERE id = $1 AND deleted_at IS NULL
         "#;
 
-        let row = db.query_one::<tokio_postgres::Row>(query, &[&org_id]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&org_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         // Convert row to Organization
         Ok(Some(row.to_model()?))
     }
@@ -1106,17 +952,7 @@ pub mod organizations { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &member_id,
-                &org_id,
-                &user_id,
-                &role,
-                &invited_by,
-                &now,
-                &now,
-                &now,
-                &now,
-            ],
+            &[&member_id as &(dyn tokio_postgres::types::ToSql + Sync), &org_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &role as &(dyn tokio_postgres::types::ToSql + Sync), &invited_by as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -1141,16 +977,7 @@ pub mod organizations { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &invitation_id,
-                &invitation.organization_id,
-                &invitation.email,
-                &invitation.role,
-                &invitation.invited_by,
-                &invitation.token_hash,
-                &invitation.expires_at,
-                &now,
-            ],
+            &[&invitation_id as &(dyn tokio_postgres::types::ToSql + Sync), &invitation.organization_id as &(dyn tokio_postgres::types::ToSql + Sync), &invitation.email as &(dyn tokio_postgres::types::ToSql + Sync), &invitation.role as &(dyn tokio_postgres::types::ToSql + Sync), &invitation.invited_by as &(dyn tokio_postgres::types::ToSql + Sync), &invitation.token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &invitation.expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -1170,7 +997,7 @@ pub mod organizations { use crate::database::RowExt;
             WHERE token_hash = $1 AND expires_at > NOW() AND accepted_at IS NULL
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&token_hash]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&token_hash as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         // Convert row to OrganizationInvitation
         Ok(Some(row.to_model()?))
     }
@@ -1190,7 +1017,7 @@ pub mod organizations { use crate::database::RowExt;
             SET accepted_at = $2, accepted_by = $3
             WHERE token_hash = $1
         "#;
-        db.execute(update_query, &[&token_hash, &now, &user_id])
+        db.execute(update_query, &[&token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
 
         // Add user as organization member
@@ -1219,10 +1046,6 @@ pub mod organizations { use crate::database::RowExt;
             WHERE domain = $1
         "#;
 
-        let row: Option<tokio_postgres::Row> = db.query_opt(query, &[&domain]).await.map_err(|e| {
-            error!("Failed to get organization by domain: {}", e);
-            AuthencError::database("Failed to get organization by domain")
-        })?;
 
         if let Some(row) = row {
             // Convert row to Organization
@@ -1261,23 +1084,9 @@ pub mod organizations { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &org.id,
-                &org.name,
-                &org.display_name,
-                &org.description,
-                &org.domain,
-                &org.logo_url,
-                &org.website_url,
-                &org.enabled,
-                &org.updated_at,
-            ],
+            &[&org.id as &(dyn tokio_postgres::types::ToSql + Sync), &org.name as &(dyn tokio_postgres::types::ToSql + Sync), &org.display_name as &(dyn tokio_postgres::types::ToSql + Sync), &org.description as &(dyn tokio_postgres::types::ToSql + Sync), &org.domain as &(dyn tokio_postgres::types::ToSql + Sync), &org.logo_url as &(dyn tokio_postgres::types::ToSql + Sync), &org.website_url as &(dyn tokio_postgres::types::ToSql + Sync), &org.enabled as &(dyn tokio_postgres::types::ToSql + Sync), &org.updated_at as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
-        .await
-        .map_err(|e| {
-            error!("Failed to update organization: {}", e);
-            AuthencError::database("Failed to update organization")
-        })?;
+        .await?
 
         Ok(())
     }
@@ -1286,10 +1095,6 @@ pub mod organizations { use crate::database::RowExt;
     pub async fn delete_organization(db: &Database, organization_id: &Uuid) -> Result<()> {
         let query = "DELETE FROM organizations WHERE id = $1";
 
-        db.execute(query, &[organization_id]).await.map_err(|e| {
-            error!("Failed to delete organization: {}", e);
-            AuthencError::database("Failed to delete organization")
-        })?;
 
         Ok(())
     }
@@ -1307,10 +1112,6 @@ pub mod organizations { use crate::database::RowExt;
         "#;
 
         let rows: Vec<tokio_postgres::Row> =
-            db.query::<tokio_postgres::Row>(query, &[organization_id]).await.map_err(|e| {
-                error!("Failed to get organization members: {}", e);
-                AuthencError::database("Failed to get organization members")
-            })?;
 
         let mut members = Vec::new();
         for row in rows {
@@ -1318,7 +1119,7 @@ pub mod organizations { use crate::database::RowExt;
                 id: row.get(0),
                 organization_id: row.get(1),
                 user_id: row.get(2),
-                role: OrganizationRole::parse(&row.get::<_, String>(3))
+                role: OrganizationRole::parse(&row.get::<usize, String>(3))
                     .unwrap_or(OrganizationRole::Member)
                     .as_str()
                     .to_string(),
@@ -1348,10 +1149,6 @@ pub mod organizations { use crate::database::RowExt;
             ORDER BY o.created_at
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[user_id]).await.map_err(|e| {
-            error!("Failed to get user organizations: {}", e);
-            AuthencError::database("Failed to get user organizations")
-        })?;
 
         let mut organizations = Vec::new();
         for row in rows {
@@ -1384,11 +1181,7 @@ pub mod organizations { use crate::database::RowExt;
         let query = "DELETE FROM organization_members WHERE organization_id = $1 AND user_id = $2";
 
         db.execute(query, &[organization_id, user_id])
-            .await
-            .map_err(|e| {
-                error!("Failed to remove organization member: {}", e);
-                AuthencError::database("Failed to remove organization member")
-            })?;
+            .await?
 
         Ok(())
     }
@@ -1406,12 +1199,8 @@ pub mod organizations { use crate::database::RowExt;
             WHERE organization_id = $1 AND user_id = $2
         "#;
 
-        db.execute(query, &[organization_id, user_id, &role.as_str()])
-            .await
-            .map_err(|e| {
-                error!("Failed to update member role: {}", e);
-                AuthencError::database("Failed to update member role")
-            })?;
+        db.execute(query, &[organization_id as &(dyn tokio_postgres::types::ToSql + Sync), user_id as &(dyn tokio_postgres::types::ToSql + Sync), &role.as_str() as &(dyn tokio_postgres::types::ToSql + Sync)])
+            .await?
 
         Ok(())
     }
@@ -1460,24 +1249,12 @@ pub mod organizations { use crate::database::RowExt;
                       verification_method, verified_at, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &domain_id,
-                    &organization_id,
-                    &domain,
-                    &false,
-                    &verification_token,
-                    &verification_method,
-                    &now,
-                    &now,
-                ],
+                &[&domain_id as &(dyn tokio_postgres::types::ToSql + Sync), &organization_id as &(dyn tokio_postgres::types::ToSql + Sync), &domain as &(dyn tokio_postgres::types::ToSql + Sync), &false as &(dyn tokio_postgres::types::ToSql + Sync), &verification_token as &(dyn tokio_postgres::types::ToSql + Sync), &verification_method as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Failed to add organization domain: {}", e);
-                AuthencError::database("Failed to add organization domain")
-            })?;
+            .await?
 
         Ok(OrganizationDomain {
             id: row.get(0),
@@ -1502,12 +1279,8 @@ pub mod organizations { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        db.execute(query, &[&domain_id, &now, &now])
-            .await
-            .map_err(|e| {
-                error!("Failed to verify domain: {}", e);
-                AuthencError::database("Failed to verify domain")
-            })?;
+        db.execute(query, &[&domain_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)])
+            .await?
 
         Ok(())
     }
@@ -1526,10 +1299,6 @@ pub mod organizations { use crate::database::RowExt;
         "#;
 
         let rows: Vec<tokio_postgres::Row> =
-            db.query::<tokio_postgres::Row>(query, &[&organization_id]).await.map_err(|e| {
-                error!("Failed to get organization domains: {}", e);
-                AuthencError::database("Failed to get organization domains")
-            })?;
 
         let mut domains = Vec::new();
         for row in rows {
@@ -1570,20 +1339,9 @@ pub mod organizations { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &id,
-                &organization_id,
-                &identity_provider_id,
-                &priority,
-                &now,
-                &now,
-            ],
+            &[&id as &(dyn tokio_postgres::types::ToSql + Sync), &organization_id as &(dyn tokio_postgres::types::ToSql + Sync), &identity_provider_id as &(dyn tokio_postgres::types::ToSql + Sync), &priority as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
-        .await
-        .map_err(|e| {
-            error!("Failed to link identity provider: {}", e);
-            AuthencError::database("Failed to link identity provider")
-        })?;
+        .await?
 
         Ok(())
     }
@@ -1599,12 +1357,8 @@ pub mod organizations { use crate::database::RowExt;
             WHERE organization_id = $1 AND identity_provider_id = $2
         "#;
 
-        db.execute(query, &[&organization_id, &identity_provider_id])
-            .await
-            .map_err(|e| {
-                error!("Failed to unlink identity provider: {}", e);
-                AuthencError::database("Failed to unlink identity provider")
-            })?;
+        db.execute(query, &[&organization_id as &(dyn tokio_postgres::types::ToSql + Sync), &identity_provider_id as &(dyn tokio_postgres::types::ToSql + Sync)])
+            .await?
 
         Ok(())
     }
@@ -1643,23 +1397,10 @@ pub mod saml { use crate::database::RowExt;
                 name_id_format, realm_id, enabled, created_at, updated_at, deleted_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &sp_id,
-                    &sp.entity_id,
-                    &sp.metadata_url,
-                    &sp.metadata_xml,
-                    &sp.signing_certificate,
-                    &sp.encryption_certificate,
-                    &sp.assertion_consumer_service_url,
-                    &sp.single_logout_service_url,
-                    &sp.name_id_format,
-                    &sp.realm_id,
-                    &sp.enabled,
-                    &now,
-                    &now,
-                ],
+                &[&sp_id as &(dyn tokio_postgres::types::ToSql + Sync), &sp.entity_id as &(dyn tokio_postgres::types::ToSql + Sync), &sp.metadata_url as &(dyn tokio_postgres::types::ToSql + Sync), &sp.metadata_xml as &(dyn tokio_postgres::types::ToSql + Sync), &sp.signing_certificate as &(dyn tokio_postgres::types::ToSql + Sync), &sp.encryption_certificate as &(dyn tokio_postgres::types::ToSql + Sync), &sp.assertion_consumer_service_url as &(dyn tokio_postgres::types::ToSql + Sync), &sp.single_logout_service_url as &(dyn tokio_postgres::types::ToSql + Sync), &sp.name_id_format as &(dyn tokio_postgres::types::ToSql + Sync), &sp.realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &sp.enabled as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -1682,7 +1423,7 @@ pub mod saml { use crate::database::RowExt;
             WHERE entity_id = $1 AND deleted_at IS NULL
         "#;
 
-        let row = db.query_one::<tokio_postgres::Row>(query, &[&entity_id]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&entity_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         // Convert row to SamlServiceProvider
         Ok(Some(row.to_model()?))
     }
@@ -1703,19 +1444,7 @@ pub mod saml { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &session_id,
-                &session.session_id,
-                &session.user_id,
-                &session.identity_provider_id,
-                &session.service_provider_id,
-                &session.name_id,
-                &session.name_id_format,
-                &session.session_index,
-                &session.authn_instant,
-                &session.expires_at,
-                &now,
-            ],
+            &[&session_id as &(dyn tokio_postgres::types::ToSql + Sync), &session.session_id as &(dyn tokio_postgres::types::ToSql + Sync), &session.user_id as &(dyn tokio_postgres::types::ToSql + Sync), &session.identity_provider_id as &(dyn tokio_postgres::types::ToSql + Sync), &session.service_provider_id as &(dyn tokio_postgres::types::ToSql + Sync), &session.name_id as &(dyn tokio_postgres::types::ToSql + Sync), &session.name_id_format as &(dyn tokio_postgres::types::ToSql + Sync), &session.session_index as &(dyn tokio_postgres::types::ToSql + Sync), &session.authn_instant as &(dyn tokio_postgres::types::ToSql + Sync), &session.expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -1733,7 +1462,7 @@ pub mod saml { use crate::database::RowExt;
             WHERE session_id = $1 AND expires_at > NOW()
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&session_id]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&session_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         // Convert row to SamlSession
         Ok(Some(row.to_model()?))
     }
@@ -1770,29 +1499,10 @@ pub mod audit { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &event_id,
-                &event.timestamp,
-                &event.event_type,
-                &event.user_id,
-                &event.session_id,
-                &event.client_id,
-                &event.resource_type,
-                &event.resource_id,
-                &event.action,
-                &event.status,
-                &event
+            &[&event_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.timestamp as &(dyn tokio_postgres::types::ToSql + Sync), &event.event_type as &(dyn tokio_postgres::types::ToSql + Sync), &event.user_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.session_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.client_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.resource_type as &(dyn tokio_postgres::types::ToSql + Sync), &event.resource_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.action as &(dyn tokio_postgres::types::ToSql + Sync), &event.status as &(dyn tokio_postgres::types::ToSql + Sync), &event
                     .details
                     .as_ref()
-                    .map(|v| serde_json::to_string(v).unwrap_or_default()),
-                &event.ip_address,
-                &event.user_agent,
-                &event.location_data,
-                &event.error_message,
-                &event.request_id,
-                &event.correlation_id,
-                &event.realm_id,
-            ],
+                    .map(|v| serde_json::to_string(v).unwrap_or_default()) as &(dyn tokio_postgres::types::ToSql + Sync), &event.ip_address as &(dyn tokio_postgres::types::ToSql + Sync), &event.user_agent as &(dyn tokio_postgres::types::ToSql + Sync), &event.location_data as &(dyn tokio_postgres::types::ToSql + Sync), &event.error_message as &(dyn tokio_postgres::types::ToSql + Sync), &event.request_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.correlation_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.realm_id as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -1823,7 +1533,8 @@ pub mod audit { use crate::database::RowExt;
             LIMIT $4 OFFSET $5
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&user_id, &event_type, &realm_id, &limit, &offset])
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &event_type as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &limit as &(dyn tokio_postgres::types::ToSql + Sync), &offset as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
         // Convert rows to Vec<AuditEvent>
         rows.into_iter()
@@ -1847,7 +1558,7 @@ pub mod audit { use crate::database::RowExt;
 
         let client = db.get_connection().await?;
         let count: i64 = client
-            .query_one(query, &[&user_id, &event_type, &realm_id])
+            .query_one_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &event_type as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?
             .try_get(0)?;
         Ok(count)
@@ -1921,40 +1632,26 @@ pub mod users { use crate::database::RowExt;
                 last_login_at, login_count
         "#;
 
-        let row: tokio_postgres::Row = client
-            .query_one(
+        let row = client
+            .query_one_raw(
                 query,
-                &[
-                    &user_id,
-                    &username,
-                    &email,
-                    &first_name,
-                    &last_name,
-                    &phone_number,
-                    &false, // phone_verified
-                    &password_hash,
-                    &None::<String>,                // totp_secret
-                    &None::<Vec<String>>,           // totp_backup_codes
-                    &false,                         // webauthn_enabled
-                    &false,                         // account_locked
-                    &None::<chrono::DateTime<Utc>>, // account_locked_until
-                    &0i32,                          // failed_login_attempts
-                    &None::<chrono::DateTime<Utc>>, // last_failed_login_at
-                    &None::<chrono::DateTime<Utc>>, // password_changed_at
-                    &None::<chrono::DateTime<Utc>>, // password_expires_at
-                    &false,                         // require_password_change
-                    &organization_id,
-                    &request.attributes,
-                    &true, // email_verified
-                    &true, // enabled
-                    &realm_id,
-                    &false, // federated (default to false for regular user creation)
-                    &now,
-                    &now,
-                    &None::<chrono::DateTime<Utc>>, // deleted_at
-                    &None::<chrono::DateTime<Utc>>, // last_login_at
-                    &0i32,                          // login_count
-                ],
+                &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &username as &(dyn tokio_postgres::types::ToSql + Sync), &email as &(dyn tokio_postgres::types::ToSql + Sync), &first_name as &(dyn tokio_postgres::types::ToSql + Sync), &last_name as &(dyn tokio_postgres::types::ToSql + Sync), &phone_number as &(dyn tokio_postgres::types::ToSql + Sync), &false as &(dyn tokio_postgres::types::ToSql + Sync), // phone_verified
+                    &password_hash as &(dyn tokio_postgres::types::ToSql + Sync), &None::<String> as &(dyn tokio_postgres::types::ToSql + Sync), // totp_secret
+                    &None::<Vec<String>> as &(dyn tokio_postgres::types::ToSql + Sync), // totp_backup_codes
+                    &false as &(dyn tokio_postgres::types::ToSql + Sync), // webauthn_enabled
+                    &false as &(dyn tokio_postgres::types::ToSql + Sync), // account_locked
+                    &None::<chrono::DateTime<Utc>> as &(dyn tokio_postgres::types::ToSql + Sync), // account_locked_until
+                    &0i32 as &(dyn tokio_postgres::types::ToSql + Sync), // failed_login_attempts
+                    &None::<chrono::DateTime<Utc>> as &(dyn tokio_postgres::types::ToSql + Sync), // last_failed_login_at
+                    &None::<chrono::DateTime<Utc>> as &(dyn tokio_postgres::types::ToSql + Sync), // password_changed_at
+                    &None::<chrono::DateTime<Utc>> as &(dyn tokio_postgres::types::ToSql + Sync), // password_expires_at
+                    &false as &(dyn tokio_postgres::types::ToSql + Sync), // require_password_change
+                    &organization_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.attributes as &(dyn tokio_postgres::types::ToSql + Sync), &true as &(dyn tokio_postgres::types::ToSql + Sync), // email_verified
+                    &true as &(dyn tokio_postgres::types::ToSql + Sync), // enabled
+                    &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &false as &(dyn tokio_postgres::types::ToSql + Sync), // federated (default to false for regular user creation)
+                    &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &None::<chrono::DateTime<Utc>> as &(dyn tokio_postgres::types::ToSql + Sync), // deleted_at
+                    &None::<chrono::DateTime<Utc>> as &(dyn tokio_postgres::types::ToSql + Sync), // last_login_at
+                    &0i32 as &(dyn tokio_postgres::types::ToSql + Sync) as &(dyn tokio_postgres::types::ToSql + Sync)], // login_count
             )
             .await?;
 
@@ -2010,7 +1707,7 @@ pub mod users { use crate::database::RowExt;
             WHERE id = $1 AND deleted_at IS NULL
         "#;
 
-        let row: Option<tokio_postgres::Row> = client.query_opt(query, &[&user_id]).await?;
+        let row = client.query_opt_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(row.map(|r| User {
             id: r.get("id"),
             username: r.get("username"),
@@ -2064,7 +1761,7 @@ pub mod users { use crate::database::RowExt;
             WHERE username = $2 AND realm_id = $1 AND deleted_at IS NULL
         "#;
 
-        let row: Option<tokio_postgres::Row> = client.query_opt(query, &[realm_id, &username]).await?;
+        let row = client.query_opt_raw(query, &[realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &username as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(row.map(|r| User {
             id: r.get("id"),
             username: r.get("username"),
@@ -2117,7 +1814,7 @@ pub mod users { use crate::database::RowExt;
             WHERE email = $2 AND realm_id = $1 AND deleted_at IS NULL
         "#;
 
-        let row: Option<tokio_postgres::Row> = db.query_opt(query, &[realm_id, &email]).await?;
+        let row: Option<tokio_postgres::Row> = db.query_opt_raw(query, &[realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &email as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(row.map(|r| row_to_user(&r)))
     }
 
@@ -2154,25 +1851,13 @@ pub mod users { use crate::database::RowExt;
                 last_login_at, login_count
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &user_id,
-                    &request.username,
-                    &request.email,
-                    &request.first_name,
-                    &request.last_name,
-                    &request.phone_number,
-                    &request.enabled,
-                    &request.email_verified,
-                    &request.phone_verified,
-                    &request.require_password_change,
-                    &request
+                &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.username as &(dyn tokio_postgres::types::ToSql + Sync), &request.email as &(dyn tokio_postgres::types::ToSql + Sync), &request.first_name as &(dyn tokio_postgres::types::ToSql + Sync), &request.last_name as &(dyn tokio_postgres::types::ToSql + Sync), &request.phone_number as &(dyn tokio_postgres::types::ToSql + Sync), &request.enabled as &(dyn tokio_postgres::types::ToSql + Sync), &request.email_verified as &(dyn tokio_postgres::types::ToSql + Sync), &request.phone_verified as &(dyn tokio_postgres::types::ToSql + Sync), &request.require_password_change as &(dyn tokio_postgres::types::ToSql + Sync), &request
                         .attributes
                         .as_ref()
-                        .map(|v| serde_json::to_string(v).unwrap_or_default()),
-                    &now,
-                ],
+                        .map(|v| serde_json::to_string(v).unwrap_or_default()) as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -2183,7 +1868,7 @@ pub mod users { use crate::database::RowExt;
     pub async fn delete_user(db: &Database, user_id: Uuid) -> Result<()> {
         let now = Utc::now();
         let query = "UPDATE users SET deleted_at = $2, updated_at = $2 WHERE id = $1";
-        db.execute(query, &[&user_id, &now]).await?;
+        db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -2200,7 +1885,7 @@ pub mod users { use crate::database::RowExt;
                 updated_at = $2
             WHERE id = $1
         "#;
-        db.execute(query, &[&user_id, &now]).await?;
+        db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -2215,7 +1900,7 @@ pub mod users { use crate::database::RowExt;
             WHERE id = $1
             RETURNING failed_login_attempts
         "#;
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&user_id, &now]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(row.get(0))
     }
 
@@ -2230,7 +1915,7 @@ pub mod users { use crate::database::RowExt;
                 updated_at = $3
             WHERE id = $1
         "#;
-        db.execute(query, &[&user_id, &password_hash, &now]).await?;
+        db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &password_hash as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -2238,7 +1923,7 @@ pub mod users { use crate::database::RowExt;
     pub async fn enable_webauthn(db: &Database, user_id: Uuid) -> Result<()> {
         let now = Utc::now();
         let query = "UPDATE users SET webauthn_enabled = true, updated_at = $2 WHERE id = $1";
-        db.execute(query, &[&user_id, &now]).await?;
+        db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -2246,7 +1931,7 @@ pub mod users { use crate::database::RowExt;
     pub async fn disable_webauthn(db: &Database, user_id: Uuid) -> Result<()> {
         let now = Utc::now();
         let query = "UPDATE users SET webauthn_enabled = false, updated_at = $2 WHERE id = $1";
-        db.execute(query, &[&user_id, &now]).await?;
+        db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -2264,7 +1949,7 @@ pub mod users { use crate::database::RowExt;
                 updated_at = $3
             WHERE id = $1
         "#;
-        db.execute(query, &[&user_id, &until, &now]).await?;
+        db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &until as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -2279,7 +1964,7 @@ pub mod users { use crate::database::RowExt;
                 updated_at = $2
             WHERE id = $1
         "#;
-        db.execute(query, &[&user_id, &now]).await?;
+        db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -2336,7 +2021,7 @@ pub mod users { use crate::database::RowExt;
             ORDER BY created_at DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = client.query(query, &[]).await?;
+        let rows = client.query_raw(query, &[]).await?;
         let mut users = Vec::new();
 
         for row in rows {
@@ -2394,7 +2079,7 @@ pub mod users { use crate::database::RowExt;
             ORDER BY created_at DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = client.query(query, &[&realm_id]).await?;
+        let rows = client.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         let mut users = Vec::new();
 
         for row in rows {
@@ -2469,9 +2154,6 @@ pub mod users { use crate::database::RowExt;
 
             // Hash password if provided
             let password_hash = if let Some(password) = &user_req.password {
-                authenc_core::utils::crypto::password::hash_password(password).await.map_err(|e| {
-                    authenc_api::error::AuthencError::database(format!("Password hashing failed: {}", e))
-                })?
             } else {
                 String::new() // Empty password hash if not provided
             };
@@ -2480,24 +2162,13 @@ pub mod users { use crate::database::RowExt;
                 serde_json::to_string(&user_req.attributes.clone().unwrap_or_default())
                     .map_err(|e| authenc_api::error::AuthencError::database(e.to_string()))?;
 
-            let row: tokio_postgres::Row = transaction
-                .query_one(
+            let row = transaction
+                .query_one_raw(
                     query,
-                    &[
-                        &user_req.username,
-                        &user_req.email,
-                        &false, // email_verified - default false
-                        &user_req.first_name,
-                        &user_req.last_name,
-                        &user_req.phone_number,
-                        &false, // phone_verified - default false
-                        &password_hash,
-                        &true, // enabled - default true
-                        &user_req.realm_id,
-                        &user_req.organization_id,
-                        &attributes_json,
-                        &false, // federated - default false
-                    ],
+                    &[&user_req.username as &(dyn tokio_postgres::types::ToSql + Sync), &user_req.email as &(dyn tokio_postgres::types::ToSql + Sync), &false as &(dyn tokio_postgres::types::ToSql + Sync), // email_verified - default false
+                        &user_req.first_name as &(dyn tokio_postgres::types::ToSql + Sync), &user_req.last_name as &(dyn tokio_postgres::types::ToSql + Sync), &user_req.phone_number as &(dyn tokio_postgres::types::ToSql + Sync), &false as &(dyn tokio_postgres::types::ToSql + Sync), // phone_verified - default false
+                        &password_hash as &(dyn tokio_postgres::types::ToSql + Sync), &true as &(dyn tokio_postgres::types::ToSql + Sync), // enabled - default true
+                        &user_req.realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_req.organization_id as &(dyn tokio_postgres::types::ToSql + Sync), &attributes_json as &(dyn tokio_postgres::types::ToSql + Sync), &false as &(dyn tokio_postgres::types::ToSql + Sync) as &(dyn tokio_postgres::types::ToSql + Sync)], // federated - default false
                 )
                 .await?;
 
@@ -2595,7 +2266,7 @@ pub mod users { use crate::database::RowExt;
             WHERE id = ANY($2) AND deleted_at IS NULL
         "#;
 
-        let count = db.execute(query, &[&now, &user_ids]).await?;
+        let count: u64 = db.execute(query, &[&now as &(dyn tokio_postgres::types::ToSql + Sync), &user_ids as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(count as usize)
     }
 
@@ -2619,7 +2290,7 @@ pub mod users { use crate::database::RowExt;
 
         let mut assigned_count = 0;
         for (user_id, role_id) in assignments {
-            let affected = transaction.execute(query, &[&user_id, &role_id]).await?;
+            let affected = transaction.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &role_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
             assigned_count += affected as usize;
         }
 
@@ -2643,7 +2314,7 @@ pub mod users { use crate::database::RowExt;
 
         let mut removed_count = 0;
         for (user_id, role_id) in removals {
-            let affected = transaction.execute(query, &[&user_id, &role_id]).await?;
+            let affected = transaction.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &role_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
             removed_count += affected as usize;
         }
 
@@ -2681,27 +2352,27 @@ pub mod users { use crate::database::RowExt;
         };
 
         let rows: Vec<tokio_postgres::Row> = if let Some(rid) = realm_id {
-            db.query::<tokio_postgres::Row>(query, &[&rid]).await?
+            db.query_raw(query, &[&rid as &(dyn tokio_postgres::types::ToSql + Sync)]).await?
         } else {
-            db.query::<tokio_postgres::Row>(query, &[]).await?
+            db.query_raw(query, &[]).await?
         };
 
         let mut users = Vec::new();
         for row in rows {
             users.push(serde_json::json!({
-                "id": row.get::<_, Uuid>("id"),
-                "username": row.get::<_, String>("username"),
-                "email": row.get::<_, String>("email"),
-                "first_name": row.get::<_, Option<String>>("first_name"),
-                "last_name": row.get::<_, Option<String>>("last_name"),
-                "phone_number": row.get::<_, Option<String>>("phone_number"),
-                "phone_verified": row.get::<_, bool>("phone_verified"),
-                "email_verified": row.get::<_, bool>("email_verified"),
-                "enabled": row.get::<_, bool>("enabled"),
-                "realm_id": row.get::<_, Uuid>("realm_id"),
-                "organization_id": row.get::<_, Option<Uuid>>("organization_id"),
-                "attributes": row.get::<_, Option<String>>("attributes"),
-                "federated": row.get::<_, bool>("federated"),
+                "id": row.get::<&str, Uuid>("id"),
+                "username": row.get::<&str, String>("username"),
+                "email": row.get::<&str, String>("email"),
+                "first_name": row.get::<&str, Option<String>>("first_name"),
+                "last_name": row.get::<&str, Option<String>>("last_name"),
+                "phone_number": row.get::<&str, Option<String>>("phone_number"),
+                "phone_verified": row.get::<&str, bool>("phone_verified"),
+                "email_verified": row.get::<&str, bool>("email_verified"),
+                "enabled": row.get::<&str, bool>("enabled"),
+                "realm_id": row.get::<&str, Uuid>("realm_id"),
+                "organization_id": row.get::<&str, Option<Uuid>>("organization_id"),
+                "attributes": row.get::<&str, Option<String>>("attributes"),
+                "federated": row.get::<&str, bool>("federated"),
                 "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
                 "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at"),
             }));
@@ -2799,7 +2470,7 @@ pub mod users { use crate::database::RowExt;
         let params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
             params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
-        let count_row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(&count_query, &params_refs).await?;
+        let count_row: tokio_postgres::Row = db.query_one_raw(&count_query, &params_refs).await?;
         let total_count: i64 = count_row.get(0);
 
         // Data query with pagination
@@ -2832,28 +2503,28 @@ pub mod users { use crate::database::RowExt;
         let data_params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
             data_params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(&data_query, &data_params_refs).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(&data_query, &data_params_refs).await?;
 
         let mut users = Vec::new();
         for row in rows {
             users.push(serde_json::json!({
-                "id": row.get::<_, Uuid>("id"),
-                "username": row.get::<_, String>("username"),
-                "email": row.get::<_, String>("email"),
-                "first_name": row.get::<_, Option<String>>("first_name"),
-                "last_name": row.get::<_, Option<String>>("last_name"),
-                "phone_number": row.get::<_, Option<String>>("phone_number"),
-                "phone_verified": row.get::<_, bool>("phone_verified"),
-                "email_verified": row.get::<_, bool>("email_verified"),
-                "enabled": row.get::<_, bool>("enabled"),
-                "realm_id": row.get::<_, Uuid>("realm_id"),
-                "organization_id": row.get::<_, Option<Uuid>>("organization_id"),
-                "attributes": row.get::<_, Option<String>>("attributes"),
-                "federated": row.get::<_, bool>("federated"),
+                "id": row.get::<&str, Uuid>("id"),
+                "username": row.get::<&str, String>("username"),
+                "email": row.get::<&str, String>("email"),
+                "first_name": row.get::<&str, Option<String>>("first_name"),
+                "last_name": row.get::<&str, Option<String>>("last_name"),
+                "phone_number": row.get::<&str, Option<String>>("phone_number"),
+                "phone_verified": row.get::<&str, bool>("phone_verified"),
+                "email_verified": row.get::<&str, bool>("email_verified"),
+                "enabled": row.get::<&str, bool>("enabled"),
+                "realm_id": row.get::<&str, Uuid>("realm_id"),
+                "organization_id": row.get::<&str, Option<Uuid>>("organization_id"),
+                "attributes": row.get::<&str, Option<String>>("attributes"),
+                "federated": row.get::<&str, bool>("federated"),
                 "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
                 "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at"),
                 "last_login_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("last_login_at"),
-                "login_count": row.get::<_, i32>("login_count"),
+                "login_count": row.get::<&str, i32>("login_count"),
             }));
         }
 
@@ -2896,29 +2567,30 @@ pub mod users { use crate::database::RowExt;
         "#;
 
         let limit_val = limit.unwrap_or(20);
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&realm_id, &search_query, &limit_val])
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &search_query as &(dyn tokio_postgres::types::ToSql + Sync), &limit_val as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
 
         let mut users = Vec::new();
         for row in rows {
             users.push(serde_json::json!({
-                "id": row.get::<_, Uuid>("id"),
-                "username": row.get::<_, String>("username"),
-                "email": row.get::<_, String>("email"),
-                "first_name": row.get::<_, Option<String>>("first_name"),
-                "last_name": row.get::<_, Option<String>>("last_name"),
-                "phone_number": row.get::<_, Option<String>>("phone_number"),
-                "phone_verified": row.get::<_, bool>("phone_verified"),
-                "email_verified": row.get::<_, bool>("email_verified"),
-                "enabled": row.get::<_, bool>("enabled"),
-                "realm_id": row.get::<_, Uuid>("realm_id"),
-                "organization_id": row.get::<_, Option<Uuid>>("organization_id"),
-                "federated": row.get::<_, bool>("federated"),
+                "id": row.get::<&str, Uuid>("id"),
+                "username": row.get::<&str, String>("username"),
+                "email": row.get::<&str, String>("email"),
+                "first_name": row.get::<&str, Option<String>>("first_name"),
+                "last_name": row.get::<&str, Option<String>>("last_name"),
+                "phone_number": row.get::<&str, Option<String>>("phone_number"),
+                "phone_verified": row.get::<&str, bool>("phone_verified"),
+                "email_verified": row.get::<&str, bool>("email_verified"),
+                "enabled": row.get::<&str, bool>("enabled"),
+                "realm_id": row.get::<&str, Uuid>("realm_id"),
+                "organization_id": row.get::<&str, Option<Uuid>>("organization_id"),
+                "federated": row.get::<&str, bool>("federated"),
                 "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
                 "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at"),
                 "last_login_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("last_login_at"),
-                "login_count": row.get::<_, i32>("login_count"),
-                "relevance_score": row.get::<_, f32>("rank"),
+                "login_count": row.get::<&str, i32>("login_count"),
+                "relevance_score": row.get::<&str, f32>("rank"),
             }));
         }
 
@@ -2948,28 +2620,29 @@ pub mod users { use crate::database::RowExt;
         "#;
 
         let limit_val = limit.unwrap_or(100);
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(
                 query,
-                &[&realm_id, &attribute_filters.to_string(), &limit_val],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &attribute_filters.to_string() as &(dyn tokio_postgres::types::ToSql + Sync), &limit_val as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
         let mut users = Vec::new();
         for row in rows {
             users.push(serde_json::json!({
-                "id": row.get::<_, Uuid>("id"),
-                "username": row.get::<_, String>("username"),
-                "email": row.get::<_, String>("email"),
-                "first_name": row.get::<_, Option<String>>("first_name"),
-                "last_name": row.get::<_, Option<String>>("last_name"),
-                "phone_number": row.get::<_, Option<String>>("phone_number"),
-                "phone_verified": row.get::<_, bool>("phone_verified"),
-                "email_verified": row.get::<_, bool>("email_verified"),
-                "enabled": row.get::<_, bool>("enabled"),
-                "realm_id": row.get::<_, Uuid>("realm_id"),
-                "organization_id": row.get::<_, Option<Uuid>>("organization_id"),
-                "attributes": row.get::<_, Option<String>>("attributes"),
-                "federated": row.get::<_, bool>("federated"),
+                "id": row.get::<&str, Uuid>("id"),
+                "username": row.get::<&str, String>("username"),
+                "email": row.get::<&str, String>("email"),
+                "first_name": row.get::<&str, Option<String>>("first_name"),
+                "last_name": row.get::<&str, Option<String>>("last_name"),
+                "phone_number": row.get::<&str, Option<String>>("phone_number"),
+                "phone_verified": row.get::<&str, bool>("phone_verified"),
+                "email_verified": row.get::<&str, bool>("email_verified"),
+                "enabled": row.get::<&str, bool>("enabled"),
+                "realm_id": row.get::<&str, Uuid>("realm_id"),
+                "organization_id": row.get::<&str, Option<Uuid>>("organization_id"),
+                "attributes": row.get::<&str, Option<String>>("attributes"),
+                "federated": row.get::<&str, bool>("federated"),
                 "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
                 "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at"),
             }));
@@ -2995,18 +2668,18 @@ pub mod users { use crate::database::RowExt;
             WHERE realm_id = $1 AND deleted_at IS NULL
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&realm_id]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(serde_json::json!({
-            "total_users": row.get::<_, i64>("total_users"),
-            "enabled_users": row.get::<_, i64>("enabled_users"),
-            "disabled_users": row.get::<_, i64>("disabled_users"),
-            "verified_emails": row.get::<_, i64>("verified_emails"),
-            "unverified_emails": row.get::<_, i64>("unverified_emails"),
-            "federated_users": row.get::<_, i64>("federated_users"),
-            "users_with_login": row.get::<_, i64>("users_with_login"),
-            "active_last_30_days": row.get::<_, i64>("active_last_30_days"),
-            "new_users_last_7_days": row.get::<_, i64>("new_users_last_7_days"),
+            "total_users": row.get::<&str, i64>("total_users"),
+            "enabled_users": row.get::<&str, i64>("enabled_users"),
+            "disabled_users": row.get::<&str, i64>("disabled_users"),
+            "verified_emails": row.get::<&str, i64>("verified_emails"),
+            "unverified_emails": row.get::<&str, i64>("unverified_emails"),
+            "federated_users": row.get::<&str, i64>("federated_users"),
+            "users_with_login": row.get::<&str, i64>("users_with_login"),
+            "active_last_30_days": row.get::<&str, i64>("active_last_30_days"),
+            "new_users_last_7_days": row.get::<&str, i64>("new_users_last_7_days"),
         }))
     }
 
@@ -3039,8 +2712,7 @@ pub mod users { use crate::database::RowExt;
             let affected = transaction
                 .execute(
                     query,
-                    &[
-                        &user_data["username"].as_str().unwrap_or(""),
+                    &[&user_data["username" as &(dyn tokio_postgres::types::ToSql + Sync)].as_str().unwrap_or(""),
                         &user_data["email"].as_str().unwrap_or(""),
                         &user_data.get("first_name").and_then(|v| v.as_str()),
                         &user_data.get("last_name").and_then(|v| v.as_str()),
@@ -3095,7 +2767,7 @@ pub mod social_accounts { use crate::database::RowExt;
             WHERE id = $1 AND deleted_at IS NULL
         "#;
 
-        let row: Option<tokio_postgres::Row> = db.query_opt(query, &[&account_id]).await?;
+        let row: Option<tokio_postgres::Row> = db.query_opt_raw(query, &[&account_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         match row {
             Some(row) => {
                 let provider_str: String = row.get(2);
@@ -3135,7 +2807,7 @@ pub mod social_accounts { use crate::database::RowExt;
             ORDER BY linked_at DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&user_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         let accounts = rows
             .into_iter()
             .map(|row: tokio_postgres::Row| {
@@ -3177,7 +2849,7 @@ pub mod social_accounts { use crate::database::RowExt;
             WHERE provider = $1 AND provider_user_id = $2 AND deleted_at IS NULL
         "#;
 
-        let row: Option<tokio_postgres::Row> = db.query_opt(query, &[&provider.as_str(), &provider_user_id])
+        let row: Option<tokio_postgres::Row> = db.query_opt_raw(query, &[&provider.as_str() as &(dyn tokio_postgres::types::ToSql + Sync), &provider_user_id as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
         match row {
             Some(row) => {
@@ -3215,7 +2887,7 @@ pub mod social_accounts { use crate::database::RowExt;
             WHERE user_id = $1 AND provider = $2 AND deleted_at IS NULL
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&user_id, &provider.as_str()]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &provider.as_str() as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         let count: i64 = row.get(0);
 
         Ok(count > 0)
@@ -3241,20 +2913,7 @@ pub mod social_accounts { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &account_id,
-                &user_id,
-                &request.provider.as_str(),
-                &request.provider_user_id,
-                &request.display_name,
-                &request.email,
-                &request.profile_picture_url,
-                &request.access_token,
-                &request.refresh_token,
-                &request.token_expires_at,
-                &now,
-                &now,
-            ],
+            &[&account_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.provider.as_str() as &(dyn tokio_postgres::types::ToSql + Sync), &request.provider_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.display_name as &(dyn tokio_postgres::types::ToSql + Sync), &request.email as &(dyn tokio_postgres::types::ToSql + Sync), &request.profile_picture_url as &(dyn tokio_postgres::types::ToSql + Sync), &request.access_token as &(dyn tokio_postgres::types::ToSql + Sync), &request.refresh_token as &(dyn tokio_postgres::types::ToSql + Sync), &request.token_expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -3292,18 +2951,7 @@ pub mod social_accounts { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &account_id,
-                &request.provider.as_str(),
-                &request.provider_user_id,
-                &request.display_name,
-                &request.email,
-                &request.profile_picture_url,
-                &request.access_token,
-                &request.refresh_token,
-                &request.token_expires_at,
-                &now,
-            ],
+            &[&account_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.provider.as_str() as &(dyn tokio_postgres::types::ToSql + Sync), &request.provider_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.display_name as &(dyn tokio_postgres::types::ToSql + Sync), &request.email as &(dyn tokio_postgres::types::ToSql + Sync), &request.profile_picture_url as &(dyn tokio_postgres::types::ToSql + Sync), &request.access_token as &(dyn tokio_postgres::types::ToSql + Sync), &request.refresh_token as &(dyn tokio_postgres::types::ToSql + Sync), &request.token_expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -3328,7 +2976,7 @@ pub mod social_accounts { use crate::database::RowExt;
         let now = Utc::now();
 
         let query = "UPDATE user_social_accounts SET deleted_at = $2 WHERE id = $1";
-        db.execute(query, &[&account_id, &now]).await?;
+        db.execute(query, &[&account_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(())
     }
@@ -3347,7 +2995,7 @@ pub mod social_accounts { use crate::database::RowExt;
             WHERE user_id = $1 AND provider = $2 AND deleted_at IS NULL
         "#;
 
-        db.execute(query, &[&user_id, &provider.as_str(), &now])
+        db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &provider.as_str() as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
 
         Ok(())
@@ -3383,29 +3031,19 @@ pub mod oauth2_providers { use crate::database::RowExt;
             RETURNING id, realm_id, provider_name, alias, enabled, created_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &realm_id,
-                    &provider_name,
-                    &alias,
-                    &display_name,
-                    &authorization_url,
-                    &token_url,
-                    &user_info_url,
-                    &client_id,
-                    &client_secret,
-                    &scopes,
-                ],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &provider_name as &(dyn tokio_postgres::types::ToSql + Sync), &alias as &(dyn tokio_postgres::types::ToSql + Sync), &display_name as &(dyn tokio_postgres::types::ToSql + Sync), &authorization_url as &(dyn tokio_postgres::types::ToSql + Sync), &token_url as &(dyn tokio_postgres::types::ToSql + Sync), &user_info_url as &(dyn tokio_postgres::types::ToSql + Sync), &client_id as &(dyn tokio_postgres::types::ToSql + Sync), &client_secret as &(dyn tokio_postgres::types::ToSql + Sync), &scopes as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
         Ok(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "realm_id": row.get::<_, Uuid>("realm_id"),
-            "provider_name": row.get::<_, String>("provider_name"),
-            "alias": row.get::<_, String>("alias"),
-            "enabled": row.get::<_, bool>("enabled"),
+            "id": row.get::<&str, Uuid>("id"),
+            "realm_id": row.get::<&str, Uuid>("realm_id"),
+            "provider_name": row.get::<&str, String>("provider_name"),
+            "alias": row.get::<&str, String>("alias"),
+            "enabled": row.get::<&str, bool>("enabled"),
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at")
         }))
     }
@@ -3425,35 +3063,35 @@ pub mod oauth2_providers { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&config_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&config_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(None);
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(Some(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "realm_id": row.get::<_, Uuid>("realm_id"),
-            "provider_name": row.get::<_, String>("provider_name"),
-            "alias": row.get::<_, String>("alias"),
-            "display_name": row.get::<_, Option<String>>("display_name"),
-            "authorization_url": row.get::<_, String>("authorization_url"),
-            "token_url": row.get::<_, String>("token_url"),
-            "user_info_url": row.get::<_, Option<String>>("user_info_url"),
-            "jwks_url": row.get::<_, Option<String>>("jwks_url"),
-            "issuer": row.get::<_, Option<String>>("issuer"),
-            "client_id": row.get::<_, String>("client_id"),
-            "client_secret": row.get::<_, String>("client_secret"),
-            "scopes": row.get::<_, String>("scopes"),
-            "response_type": row.get::<_, String>("response_type"),
-            "response_mode": row.get::<_, String>("response_mode"),
-            "pkce_enabled": row.get::<_, bool>("pkce_enabled"),
-            "pkce_method": row.get::<_, String>("pkce_method"),
-            "trust_email": row.get::<_, bool>("trust_email"),
-            "link_only": row.get::<_, bool>("link_only"),
-            "store_tokens": row.get::<_, bool>("store_tokens"),
-            "enabled": row.get::<_, bool>("enabled"),
+            "id": row.get::<&str, Uuid>("id"),
+            "realm_id": row.get::<&str, Uuid>("realm_id"),
+            "provider_name": row.get::<&str, String>("provider_name"),
+            "alias": row.get::<&str, String>("alias"),
+            "display_name": row.get::<&str, Option<String>>("display_name"),
+            "authorization_url": row.get::<&str, String>("authorization_url"),
+            "token_url": row.get::<&str, String>("token_url"),
+            "user_info_url": row.get::<&str, Option<String>>("user_info_url"),
+            "jwks_url": row.get::<&str, Option<String>>("jwks_url"),
+            "issuer": row.get::<&str, Option<String>>("issuer"),
+            "client_id": row.get::<&str, String>("client_id"),
+            "client_secret": row.get::<&str, String>("client_secret"),
+            "scopes": row.get::<&str, String>("scopes"),
+            "response_type": row.get::<&str, String>("response_type"),
+            "response_mode": row.get::<&str, String>("response_mode"),
+            "pkce_enabled": row.get::<&str, bool>("pkce_enabled"),
+            "pkce_method": row.get::<&str, String>("pkce_method"),
+            "trust_email": row.get::<&str, bool>("trust_email"),
+            "link_only": row.get::<&str, bool>("link_only"),
+            "store_tokens": row.get::<&str, bool>("store_tokens"),
+            "enabled": row.get::<&str, bool>("enabled"),
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
             "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
         })))
@@ -3483,19 +3121,19 @@ pub mod oauth2_providers { use crate::database::RowExt;
             "#
         };
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&realm_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         let mut configs = Vec::new();
         for row in rows {
             configs.push(serde_json::json!({
-                "id": row.get::<_, Uuid>("id"),
-                "realm_id": row.get::<_, Uuid>("realm_id"),
-                "provider_name": row.get::<_, String>("provider_name"),
-                "alias": row.get::<_, String>("alias"),
-                "display_name": row.get::<_, Option<String>>("display_name"),
-                "authorization_url": row.get::<_, String>("authorization_url"),
-                "scopes": row.get::<_, String>("scopes"),
-                "enabled": row.get::<_, bool>("enabled")
+                "id": row.get::<&str, Uuid>("id"),
+                "realm_id": row.get::<&str, Uuid>("realm_id"),
+                "provider_name": row.get::<&str, String>("provider_name"),
+                "alias": row.get::<&str, String>("alias"),
+                "display_name": row.get::<&str, Option<String>>("display_name"),
+                "authorization_url": row.get::<&str, String>("authorization_url"),
+                "scopes": row.get::<&str, String>("scopes"),
+                "enabled": row.get::<&str, bool>("enabled")
             }));
         }
 
@@ -3530,18 +3168,10 @@ pub mod oauth2_providers { use crate::database::RowExt;
             None
         };
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &state_token,
-                    &provider_config_id,
-                    &realm_id,
-                    &redirect_uri,
-                    &code_verifier,
-                    &code_challenge,
-                    &code_challenge_method,
-                    &expires_at,
-                ],
+                &[&state_token as &(dyn tokio_postgres::types::ToSql + Sync), &provider_config_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &redirect_uri as &(dyn tokio_postgres::types::ToSql + Sync), &code_verifier as &(dyn tokio_postgres::types::ToSql + Sync), &code_challenge as &(dyn tokio_postgres::types::ToSql + Sync), &code_challenge_method as &(dyn tokio_postgres::types::ToSql + Sync), &expires_at as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -3560,13 +3190,13 @@ pub mod oauth2_providers { use crate::database::RowExt;
             WHERE state_token = $1 AND expires_at > NOW() AND used = FALSE
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&state_token]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&state_token as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(None);
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
 
         // Mark as used
         let update_query = r#"
@@ -3575,15 +3205,15 @@ pub mod oauth2_providers { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        db.execute(update_query, &[&row.get::<_, Uuid>("id")])
+        db.execute(update_query, &[&row.get::<&str, Uuid>("id") as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
 
         Ok(Some(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "provider_config_id": row.get::<_, Uuid>("provider_config_id"),
-            "realm_id": row.get::<_, Uuid>("realm_id"),
-            "redirect_uri": row.get::<_, String>("redirect_uri"),
-            "code_verifier": row.get::<_, Option<String>>("code_verifier"),
+            "id": row.get::<&str, Uuid>("id"),
+            "provider_config_id": row.get::<&str, Uuid>("provider_config_id"),
+            "realm_id": row.get::<&str, Uuid>("realm_id"),
+            "redirect_uri": row.get::<&str, String>("redirect_uri"),
+            "code_verifier": row.get::<&str, Option<String>>("code_verifier"),
         })))
     }
 
@@ -3627,20 +3257,7 @@ pub mod oauth2_providers { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &provider_config_id,
-                &user_id,
-                &authorization_code,
-                &access_token_hash,
-                &refresh_token_hash,
-                &expires_in,
-                &scope,
-                &provider_user_id,
-                &provider_email,
-                &user_info_raw,
-                &success,
-                &error_message,
-            ],
+            &[&provider_config_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &authorization_code as &(dyn tokio_postgres::types::ToSql + Sync), &access_token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &refresh_token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &expires_in as &(dyn tokio_postgres::types::ToSql + Sync), &scope as &(dyn tokio_postgres::types::ToSql + Sync), &provider_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &provider_email as &(dyn tokio_postgres::types::ToSql + Sync), &user_info_raw as &(dyn tokio_postgres::types::ToSql + Sync), &success as &(dyn tokio_postgres::types::ToSql + Sync), &error_message as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -3650,7 +3267,7 @@ pub mod oauth2_providers { use crate::database::RowExt;
     /// Cleanup expired OAuth2 states
     pub async fn cleanup_expired_states(db: &Database) -> Result<i64> {
         let query = "DELETE FROM oauth2_states WHERE expires_at < NOW()";
-        let count = db.execute(query, &[]).await?;
+        let count: u64 = db.execute(query, &[]).await?;
         Ok(count as i64)
     }
 
@@ -3672,19 +3289,19 @@ pub mod oauth2_providers { use crate::database::RowExt;
         "#;
 
         let limit_val = limit.unwrap_or(50);
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&user_id, &limit_val]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &limit_val as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         let mut exchanges = Vec::new();
         for row in rows {
             exchanges.push(serde_json::json!({
-                "id": row.get::<_, Uuid>("id"),
-                "provider_config_id": row.get::<_, Uuid>("provider_config_id"),
-                "provider_name": row.get::<_, String>("provider_name"),
-                "provider_user_id": row.get::<_, Option<String>>("provider_user_id"),
-                "provider_email": row.get::<_, Option<String>>("provider_email"),
-                "scope": row.get::<_, Option<String>>("scope"),
-                "success": row.get::<_, bool>("success"),
-                "error_message": row.get::<_, Option<String>>("error_message"),
+                "id": row.get::<&str, Uuid>("id"),
+                "provider_config_id": row.get::<&str, Uuid>("provider_config_id"),
+                "provider_name": row.get::<&str, String>("provider_name"),
+                "provider_user_id": row.get::<&str, Option<String>>("provider_user_id"),
+                "provider_email": row.get::<&str, Option<String>>("provider_email"),
+                "scope": row.get::<&str, Option<String>>("scope"),
+                "success": row.get::<&str, bool>("success"),
+                "error_message": row.get::<&str, Option<String>>("error_message"),
                 "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at")
             }));
         }
@@ -3732,57 +3349,49 @@ pub mod realms { use crate::database::RowExt;
             RETURNING *
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &realm_id,
-                    &request.name,
-                    &request.display_name,
-                    &request.description,
-                    &request.enabled.unwrap_or(true),
-                    &"external", // ssl_required
-                    &false,      // registration_allowed
-                    &false,      // registration_email_as_username
-                    &true,       // remember_me
-                    &false,      // verify_email
-                    &true,       // login_with_email_allowed
-                    &false,      // duplicate_emails_allowed
-                    &true,       // reset_password_allowed
-                    &false,      // edit_username_allowed
-                    &true,       // brute_force_protected
-                    &900i32,     // max_failure_wait_seconds
-                    &60i32,      // minimum_quick_login_wait_seconds
-                    &60i32,      // wait_increment_seconds
-                    &1000i64,    // quick_login_check_milli_seconds
-                    &43200i32,   // max_delta_time_seconds (12 hours)
-                    &30i32,      // failure_factor
-                    &"RS256",    // default_signature_algorithm
-                    &false,      // revoke_refresh_token
-                    &0i32,       // refresh_token_max_reuse
-                    &300i32,     // access_token_lifespan (5 minutes)
-                    &900i32,     // access_token_lifespan_for_implicit_flow (15 minutes)
-                    &1800i32,    // sso_session_idle_timeout (30 minutes)
-                    &36000i32,   // sso_session_max_lifespan (10 hours)
-                    &0i32,       // sso_session_idle_timeout_remember_me
-                    &0i32,       // sso_session_max_lifespan_remember_me
-                    &2592000i32, // offline_session_idle_timeout (30 days)
-                    &5184000i32, // offline_session_max_lifespan (60 days)
-                    &0i32,       // client_session_idle_timeout
-                    &0i32,       // client_session_max_lifespan
-                    &60i32,      // access_code_lifespan (1 minute)
-                    &300i32,     // access_code_lifespan_user_action (5 minutes)
-                    &1800i32,    // access_code_lifespan_login (30 minutes)
-                    &43200i32,   // action_token_generated_by_admin_lifespan (12 hours)
-                    &300i32,     // action_token_generated_by_user_lifespan (5 minutes)
-                    &600i32,     // oauth2_device_code_lifespan (10 minutes)
-                    &5i32,       // oauth2_device_polling_interval
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.name as &(dyn tokio_postgres::types::ToSql + Sync), &request.display_name as &(dyn tokio_postgres::types::ToSql + Sync), &request.description as &(dyn tokio_postgres::types::ToSql + Sync), &request.enabled.unwrap_or(true) as &(dyn tokio_postgres::types::ToSql + Sync), &"external" as &(dyn tokio_postgres::types::ToSql + Sync), // ssl_required
+                    &false as &(dyn tokio_postgres::types::ToSql + Sync), // registration_allowed
+                    &false as &(dyn tokio_postgres::types::ToSql + Sync), // registration_email_as_username
+                    &true as &(dyn tokio_postgres::types::ToSql + Sync), // remember_me
+                    &false as &(dyn tokio_postgres::types::ToSql + Sync), // verify_email
+                    &true as &(dyn tokio_postgres::types::ToSql + Sync), // login_with_email_allowed
+                    &false as &(dyn tokio_postgres::types::ToSql + Sync), // duplicate_emails_allowed
+                    &true as &(dyn tokio_postgres::types::ToSql + Sync), // reset_password_allowed
+                    &false as &(dyn tokio_postgres::types::ToSql + Sync), // edit_username_allowed
+                    &true as &(dyn tokio_postgres::types::ToSql + Sync), // brute_force_protected
+                    &900i32 as &(dyn tokio_postgres::types::ToSql + Sync), // max_failure_wait_seconds
+                    &60i32 as &(dyn tokio_postgres::types::ToSql + Sync), // minimum_quick_login_wait_seconds
+                    &60i32 as &(dyn tokio_postgres::types::ToSql + Sync), // wait_increment_seconds
+                    &1000i64 as &(dyn tokio_postgres::types::ToSql + Sync), // quick_login_check_milli_seconds
+                    &43200i32 as &(dyn tokio_postgres::types::ToSql + Sync), // max_delta_time_seconds (12 hours)
+                    &30i32 as &(dyn tokio_postgres::types::ToSql + Sync), // failure_factor
+                    &"RS256" as &(dyn tokio_postgres::types::ToSql + Sync), // default_signature_algorithm
+                    &false as &(dyn tokio_postgres::types::ToSql + Sync), // revoke_refresh_token
+                    &0i32 as &(dyn tokio_postgres::types::ToSql + Sync), // refresh_token_max_reuse
+                    &300i32 as &(dyn tokio_postgres::types::ToSql + Sync), // access_token_lifespan (5 minutes)
+                    &900i32 as &(dyn tokio_postgres::types::ToSql + Sync), // access_token_lifespan_for_implicit_flow (15 minutes)
+                    &1800i32 as &(dyn tokio_postgres::types::ToSql + Sync), // sso_session_idle_timeout (30 minutes)
+                    &36000i32 as &(dyn tokio_postgres::types::ToSql + Sync), // sso_session_max_lifespan (10 hours)
+                    &0i32 as &(dyn tokio_postgres::types::ToSql + Sync), // sso_session_idle_timeout_remember_me
+                    &0i32 as &(dyn tokio_postgres::types::ToSql + Sync), // sso_session_max_lifespan_remember_me
+                    &2592000i32 as &(dyn tokio_postgres::types::ToSql + Sync), // offline_session_idle_timeout (30 days)
+                    &5184000i32 as &(dyn tokio_postgres::types::ToSql + Sync), // offline_session_max_lifespan (60 days)
+                    &0i32 as &(dyn tokio_postgres::types::ToSql + Sync), // client_session_idle_timeout
+                    &0i32 as &(dyn tokio_postgres::types::ToSql + Sync), // client_session_max_lifespan
+                    &60i32 as &(dyn tokio_postgres::types::ToSql + Sync), // access_code_lifespan (1 minute)
+                    &300i32 as &(dyn tokio_postgres::types::ToSql + Sync), // access_code_lifespan_user_action (5 minutes)
+                    &1800i32 as &(dyn tokio_postgres::types::ToSql + Sync), // access_code_lifespan_login (30 minutes)
+                    &43200i32 as &(dyn tokio_postgres::types::ToSql + Sync), // action_token_generated_by_admin_lifespan (12 hours)
+                    &300i32 as &(dyn tokio_postgres::types::ToSql + Sync), // action_token_generated_by_user_lifespan (5 minutes)
+                    &600i32 as &(dyn tokio_postgres::types::ToSql + Sync), // oauth2_device_code_lifespan (10 minutes)
+                    &5i32 as &(dyn tokio_postgres::types::ToSql + Sync), // oauth2_device_polling_interval
                     &request
                         .attributes
                         .as_ref()
-                        .map(|v| serde_json::to_string(v).unwrap_or_default()),
-                    &now,
-                    &now,
-                ],
+                        .map(|v| serde_json::to_string(v).unwrap_or_default()) as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -3796,7 +3405,7 @@ pub mod realms { use crate::database::RowExt;
             WHERE id = $1 AND deleted_at IS NULL
         "#;
 
-        let row = db.query_one::<tokio_postgres::Row>(query, &[&realm_id]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(Some(row_to_realm(row)))
     }
 
@@ -3807,7 +3416,7 @@ pub mod realms { use crate::database::RowExt;
             WHERE name = $1 AND deleted_at IS NULL
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&name]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&name as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(Some(row_to_realm(row)))
     }
 
@@ -3835,24 +3444,13 @@ pub mod realms { use crate::database::RowExt;
             RETURNING *
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &realm_id,
-                    &request.display_name,
-                    &request.description,
-                    &request.enabled,
-                    &request.ssl_required,
-                    &request.registration_allowed,
-                    &request.verify_email,
-                    &request.reset_password_allowed,
-                    &request.brute_force_protected,
-                    &request
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.display_name as &(dyn tokio_postgres::types::ToSql + Sync), &request.description as &(dyn tokio_postgres::types::ToSql + Sync), &request.enabled as &(dyn tokio_postgres::types::ToSql + Sync), &request.ssl_required as &(dyn tokio_postgres::types::ToSql + Sync), &request.registration_allowed as &(dyn tokio_postgres::types::ToSql + Sync), &request.verify_email as &(dyn tokio_postgres::types::ToSql + Sync), &request.reset_password_allowed as &(dyn tokio_postgres::types::ToSql + Sync), &request.brute_force_protected as &(dyn tokio_postgres::types::ToSql + Sync), &request
                         .attributes
                         .as_ref()
-                        .map(|v| serde_json::to_string(v).unwrap_or_default()),
-                    &now,
-                ],
+                        .map(|v| serde_json::to_string(v).unwrap_or_default()) as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -3863,7 +3461,7 @@ pub mod realms { use crate::database::RowExt;
     pub async fn delete_realm(db: &Database, realm_id: Uuid) -> Result<()> {
         let now = Utc::now();
         let query = "UPDATE realms SET deleted_at = $2, updated_at = $2 WHERE id = $1";
-        db.execute(query, &[&realm_id, &now]).await?;
+        db.execute(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -3875,7 +3473,7 @@ pub mod realms { use crate::database::RowExt;
             ORDER BY name
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[]).await?;
         Ok(rows.into_iter().map(row_to_realm).collect())
     }
 
@@ -3974,20 +3572,9 @@ pub mod federated_identity { use crate::database::RowExt;
             RETURNING id
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &user_id,
-                    &realm_id,
-                    &identity_provider_alias,
-                    &federated_user_id,
-                    &federated_username,
-                    &token,
-                    &token_expires_at,
-                    &refresh_token,
-                    &federated_attributes,
-                ],
+                &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &identity_provider_alias as &(dyn tokio_postgres::types::ToSql + Sync), &federated_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &federated_username as &(dyn tokio_postgres::types::ToSql + Sync), &token as &(dyn tokio_postgres::types::ToSql + Sync), &token_expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &refresh_token as &(dyn tokio_postgres::types::ToSql + Sync), &federated_attributes as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -4005,8 +3592,8 @@ pub mod federated_identity { use crate::database::RowExt;
             WHERE user_id = $1 AND identity_provider_alias = $2
         "#;
 
-        let rows_affected = db
-            .execute(query, &[&user_id, &identity_provider_alias])
+        let rows_affected: u64 = db
+            .execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &identity_provider_alias as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
         Ok(rows_affected > 0)
     }
@@ -4026,20 +3613,20 @@ pub mod federated_identity { use crate::database::RowExt;
             ORDER BY last_authenticated_at DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&user_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(rows
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "identity_provider_alias": row.get::<_, String>(1),
-                    "federated_user_id": row.get::<_, String>(2),
-                    "federated_username": row.get::<_, Option<String>>(3),
-                    "federated_attributes": row.get::<_, Option<JsonValue>>(4),
-                    "linked_at": row.get::<_, DateTime<Utc>>(5),
-                    "last_authenticated_at": row.get::<_, Option<DateTime<Utc>>>(6),
-                    "authentication_count": row.get::<_, i32>(7),
-                    "token_expires_at": row.get::<_, Option<DateTime<Utc>>>(8),
+                    "id": row.get::<usize, Uuid>(0),
+                    "identity_provider_alias": row.get::<usize, String>(1),
+                    "federated_user_id": row.get::<usize, String>(2),
+                    "federated_username": row.get::<usize, Option<String>>(3),
+                    "federated_attributes": row.get::<usize, Option<JsonValue>>(4),
+                    "linked_at": row.get::<usize, DateTime<Utc>>(5),
+                    "last_authenticated_at": row.get::<usize, Option<DateTime<Utc>>>(6),
+                    "authentication_count": row.get::<usize, i32>(7),
+                    "token_expires_at": row.get::<usize, Option<DateTime<Utc>>>(8),
                 })
             })
             .collect())
@@ -4056,7 +3643,8 @@ pub mod federated_identity { use crate::database::RowExt;
             WHERE identity_provider_alias = $1 AND federated_user_id = $2
         "#;
 
-        match db.query_opt(query, &[&identity_provider_alias, &federated_user_id])
+        match db
+            .query_opt_raw(query, &[&identity_provider_alias as &(dyn tokio_postgres::types::ToSql + Sync), &federated_user_id as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?
         {
             Some(row) => Ok(Some(row.get(0))),
@@ -4081,16 +3669,10 @@ pub mod federated_identity { use crate::database::RowExt;
             WHERE user_id = $4 AND identity_provider_alias = $5
         "#;
 
-        let rows_affected = db
+        let rows_affected: u64 = db
             .execute(
                 query,
-                &[
-                    &token,
-                    &token_expires_at,
-                    &refresh_token,
-                    &user_id,
-                    &identity_provider_alias,
-                ],
+                &[&token as &(dyn tokio_postgres::types::ToSql + Sync), &token_expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &refresh_token as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &identity_provider_alias as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -4114,17 +3696,9 @@ pub mod federated_identity { use crate::database::RowExt;
             RETURNING id
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &realm_id,
-                    &name,
-                    &identity_provider_alias,
-                    &mapper_type,
-                    &config,
-                    &sync_mode,
-                ],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &name as &(dyn tokio_postgres::types::ToSql + Sync), &identity_provider_alias as &(dyn tokio_postgres::types::ToSql + Sync), &mapper_type as &(dyn tokio_postgres::types::ToSql + Sync), &config as &(dyn tokio_postgres::types::ToSql + Sync), &sync_mode as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -4154,22 +3728,22 @@ pub mod federated_identity { use crate::database::RowExt;
         };
 
         let rows: Vec<tokio_postgres::Row> = if let Some(alias) = identity_provider_alias {
-            db.query_raw(query, &[&realm_id, &alias]).await?
+            db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &alias as &(dyn tokio_postgres::types::ToSql + Sync)]).await?
         } else {
-            db.query_raw(query, &[&realm_id]).await?
+            db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?
         };
 
         Ok(rows
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "name": row.get::<_, String>(1),
-                    "identity_provider_alias": row.get::<_, String>(2),
-                    "mapper_type": row.get::<_, String>(3),
-                    "config": row.get::<_, JsonValue>(4),
-                    "sync_mode": row.get::<_, String>(5),
-                    "created_at": row.get::<_, DateTime<Utc>>(6),
+                    "id": row.get::<usize, Uuid>(0),
+                    "name": row.get::<usize, String>(1),
+                    "identity_provider_alias": row.get::<usize, String>(2),
+                    "mapper_type": row.get::<usize, String>(3),
+                    "config": row.get::<usize, JsonValue>(4),
+                    "sync_mode": row.get::<usize, String>(5),
+                    "created_at": row.get::<usize, DateTime<Utc>>(6),
                 })
             })
             .collect())
@@ -4198,21 +3772,9 @@ pub mod federated_identity { use crate::database::RowExt;
             RETURNING id
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &realm_id,
-                    &alias,
-                    &display_name,
-                    &provider_type,
-                    &first_broker_login_flow,
-                    &post_broker_login_flow,
-                    &trust_email,
-                    &store_token,
-                    &link_only,
-                    &config,
-                ],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &alias as &(dyn tokio_postgres::types::ToSql + Sync), &display_name as &(dyn tokio_postgres::types::ToSql + Sync), &provider_type as &(dyn tokio_postgres::types::ToSql + Sync), &first_broker_login_flow as &(dyn tokio_postgres::types::ToSql + Sync), &post_broker_login_flow as &(dyn tokio_postgres::types::ToSql + Sync), &trust_email as &(dyn tokio_postgres::types::ToSql + Sync), &store_token as &(dyn tokio_postgres::types::ToSql + Sync), &link_only as &(dyn tokio_postgres::types::ToSql + Sync), &config as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -4235,22 +3797,22 @@ pub mod federated_identity { use crate::database::RowExt;
             WHERE realm_id = $1 AND alias = $2
         "#;
 
-        match db.query_opt(query, &[&realm_id, &alias]).await? {
+        match db.query_opt_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &alias as &(dyn tokio_postgres::types::ToSql + Sync)]).await? {
             Some(row) => Ok(Some(serde_json::json!({
-                "id": row.get::<_, Uuid>(0),
-                "alias": row.get::<_, String>(1),
-                "display_name": row.get::<_, Option<String>>(2),
-                "enabled": row.get::<_, bool>(3),
-                "provider_type": row.get::<_, String>(4),
-                "first_broker_login_flow": row.get::<_, Option<String>>(5),
-                "post_broker_login_flow": row.get::<_, Option<String>>(6),
-                "trust_email": row.get::<_, bool>(7),
-                "store_token": row.get::<_, bool>(8),
-                "add_read_token_role_on_create": row.get::<_, bool>(9),
-                "link_only": row.get::<_, bool>(10),
-                "config": row.get::<_, JsonValue>(11),
-                "created_at": row.get::<_, DateTime<Utc>>(12),
-                "updated_at": row.get::<_, DateTime<Utc>>(13),
+                "id": row.get::<usize, Uuid>(0),
+                "alias": row.get::<usize, String>(1),
+                "display_name": row.get::<usize, Option<String>>(2),
+                "enabled": row.get::<usize, bool>(3),
+                "provider_type": row.get::<usize, String>(4),
+                "first_broker_login_flow": row.get::<usize, Option<String>>(5),
+                "post_broker_login_flow": row.get::<usize, Option<String>>(6),
+                "trust_email": row.get::<usize, bool>(7),
+                "store_token": row.get::<usize, bool>(8),
+                "add_read_token_role_on_create": row.get::<usize, bool>(9),
+                "link_only": row.get::<usize, bool>(10),
+                "config": row.get::<usize, JsonValue>(11),
+                "created_at": row.get::<usize, DateTime<Utc>>(12),
+                "updated_at": row.get::<usize, DateTime<Utc>>(13),
             }))),
             None => Ok(None),
         }
@@ -4282,21 +3844,21 @@ pub mod federated_identity { use crate::database::RowExt;
             "#
         };
 
-        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&realm_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(rows
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "alias": row.get::<_, String>(1),
-                    "display_name": row.get::<_, Option<String>>(2),
-                    "enabled": row.get::<_, bool>(3),
-                    "provider_type": row.get::<_, String>(4),
-                    "trust_email": row.get::<_, bool>(5),
-                    "store_token": row.get::<_, bool>(6),
-                    "link_only": row.get::<_, bool>(7),
-                    "created_at": row.get::<_, DateTime<Utc>>(8),
+                    "id": row.get::<usize, Uuid>(0),
+                    "alias": row.get::<usize, String>(1),
+                    "display_name": row.get::<usize, Option<String>>(2),
+                    "enabled": row.get::<usize, bool>(3),
+                    "provider_type": row.get::<usize, String>(4),
+                    "trust_email": row.get::<usize, bool>(5),
+                    "store_token": row.get::<usize, bool>(6),
+                    "link_only": row.get::<usize, bool>(7),
+                    "created_at": row.get::<usize, DateTime<Utc>>(8),
                 })
             })
             .collect())
@@ -4328,22 +3890,9 @@ pub mod federated_identity { use crate::database::RowExt;
 
         let ip_parsed = ip_address.and_then(|ip| ip.parse::<std::net::IpAddr>().ok());
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &user_id,
-                    &realm_id,
-                    &identity_provider_alias,
-                    &federated_user_id,
-                    &success,
-                    &error_code,
-                    &error_message,
-                    &action,
-                    &ip_parsed,
-                    &user_agent,
-                    &session_id,
-                ],
+                &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &identity_provider_alias as &(dyn tokio_postgres::types::ToSql + Sync), &federated_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &success as &(dyn tokio_postgres::types::ToSql + Sync), &error_code as &(dyn tokio_postgres::types::ToSql + Sync), &error_message as &(dyn tokio_postgres::types::ToSql + Sync), &action as &(dyn tokio_postgres::types::ToSql + Sync), &ip_parsed as &(dyn tokio_postgres::types::ToSql + Sync), &user_agent as &(dyn tokio_postgres::types::ToSql + Sync), &session_id as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -4374,20 +3923,9 @@ pub mod federated_identity { use crate::database::RowExt;
             RETURNING id
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &user_id,
-                    &realm_id,
-                    &identity_provider_alias,
-                    &federated_user_id,
-                    &federated_username,
-                    &federated_email,
-                    &federated_attributes,
-                    &confirmation_token,
-                    &expires_at,
-                ],
+                &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &identity_provider_alias as &(dyn tokio_postgres::types::ToSql + Sync), &federated_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &federated_username as &(dyn tokio_postgres::types::ToSql + Sync), &federated_email as &(dyn tokio_postgres::types::ToSql + Sync), &federated_attributes as &(dyn tokio_postgres::types::ToSql + Sync), &confirmation_token as &(dyn tokio_postgres::types::ToSql + Sync), &expires_at as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -4407,7 +3945,7 @@ pub mod federated_identity { use crate::database::RowExt;
             WHERE confirmation_token = $1
         "#;
 
-        match db.query_opt(query, &[&confirmation_token]).await? {
+        match db.query_opt_raw(query, &[&confirmation_token as &(dyn tokio_postgres::types::ToSql + Sync)]).await? {
             Some(row) => {
                 let request_id: Uuid = row.get(0);
                 let user_id: Uuid = row.get(1);
@@ -4429,7 +3967,7 @@ pub mod federated_identity { use crate::database::RowExt;
                         SET status = 'EXPIRED', resolved_at = NOW(), resolved_by = $1
                         WHERE id = $2
                     "#;
-                    db.execute(update_query, &[&"SYSTEM", &request_id]).await?;
+                    db.execute(update_query, &[&"SYSTEM" as &(dyn tokio_postgres::types::ToSql + Sync), &request_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
                     return Ok(None);
                 }
 
@@ -4439,7 +3977,7 @@ pub mod federated_identity { use crate::database::RowExt;
                     SET status = 'APPROVED', resolved_at = NOW(), resolved_by = $1
                     WHERE id = $2
                 "#;
-                db.execute(update_query, &[&resolved_by, &request_id])
+                db.execute(update_query, &[&resolved_by as &(dyn tokio_postgres::types::ToSql + Sync), &request_id as &(dyn tokio_postgres::types::ToSql + Sync)])
                     .await?;
 
                 Ok(Some((
@@ -4465,8 +4003,8 @@ pub mod federated_identity { use crate::database::RowExt;
             WHERE confirmation_token = $2 AND status = 'PENDING'
         "#;
 
-        let rows_affected = db
-            .execute(query, &[&resolved_by, &confirmation_token])
+        let rows_affected: u64 = db
+            .execute(query, &[&resolved_by as &(dyn tokio_postgres::types::ToSql + Sync), &confirmation_token as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
         Ok(rows_affected > 0)
     }
@@ -4528,30 +4066,9 @@ pub mod admin_console { use crate::database::RowExt;
 
         let ip_parsed = admin_ip_address.and_then(|ip| ip.parse::<std::net::IpAddr>().ok());
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &realm_id,
-                    &admin_user_id,
-                    &admin_username,
-                    &ip_parsed,
-                    &operation_type,
-                    &resource_type,
-                    &resource_id,
-                    &resource_name,
-                    &action,
-                    &status,
-                    &error_message,
-                    &request_method,
-                    &request_path,
-                    &request_body,
-                    &response_status,
-                    &response_body,
-                    &duration_ms,
-                    &user_agent,
-                    &session_id,
-                ],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &admin_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &admin_username as &(dyn tokio_postgres::types::ToSql + Sync), &ip_parsed as &(dyn tokio_postgres::types::ToSql + Sync), &operation_type as &(dyn tokio_postgres::types::ToSql + Sync), &resource_type as &(dyn tokio_postgres::types::ToSql + Sync), &resource_id as &(dyn tokio_postgres::types::ToSql + Sync), &resource_name as &(dyn tokio_postgres::types::ToSql + Sync), &action as &(dyn tokio_postgres::types::ToSql + Sync), &status as &(dyn tokio_postgres::types::ToSql + Sync), &error_message as &(dyn tokio_postgres::types::ToSql + Sync), &request_method as &(dyn tokio_postgres::types::ToSql + Sync), &request_path as &(dyn tokio_postgres::types::ToSql + Sync), &request_body as &(dyn tokio_postgres::types::ToSql + Sync), &response_status as &(dyn tokio_postgres::types::ToSql + Sync), &response_body as &(dyn tokio_postgres::types::ToSql + Sync), &duration_ms as &(dyn tokio_postgres::types::ToSql + Sync), &user_agent as &(dyn tokio_postgres::types::ToSql + Sync), &session_id as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -4652,19 +4169,19 @@ pub mod admin_console { use crate::database::RowExt;
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "admin_user_id": row.get::<_, Option<Uuid>>(1),
-                    "admin_username": row.get::<_, String>(2),
+                    "id": row.get::<usize, Uuid>(0),
+                    "admin_user_id": row.get::<usize, Option<Uuid>>(1),
+                    "admin_username": row.get::<usize, String>(2),
                     "admin_ip_address": row.get::<_, Option<std::net::IpAddr>>(3),
-                    "operation_type": row.get::<_, String>(4),
-                    "resource_type": row.get::<_, String>(5),
-                    "resource_id": row.get::<_, Option<String>>(6),
-                    "resource_name": row.get::<_, Option<String>>(7),
-                    "action": row.get::<_, String>(8),
-                    "status": row.get::<_, String>(9),
-                    "error_message": row.get::<_, Option<String>>(10),
-                    "duration_ms": row.get::<_, Option<i32>>(11),
-                    "created_at": row.get::<_, DateTime<Utc>>(12),
+                    "operation_type": row.get::<usize, String>(4),
+                    "resource_type": row.get::<usize, String>(5),
+                    "resource_id": row.get::<usize, Option<String>>(6),
+                    "resource_name": row.get::<usize, Option<String>>(7),
+                    "action": row.get::<usize, String>(8),
+                    "status": row.get::<usize, String>(9),
+                    "error_message": row.get::<usize, Option<String>>(10),
+                    "duration_ms": row.get::<usize, Option<i32>>(11),
+                    "created_at": row.get::<usize, DateTime<Utc>>(12),
                 })
             })
             .collect())
@@ -4697,20 +4214,9 @@ pub mod admin_console { use crate::database::RowExt;
             RETURNING id
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &realm_id,
-                    &metric_type,
-                    &metric_name,
-                    &metric_value,
-                    &metric_unit,
-                    &aggregation_period,
-                    &period_start,
-                    &period_end,
-                    &metadata,
-                ],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &metric_type as &(dyn tokio_postgres::types::ToSql + Sync), &metric_name as &(dyn tokio_postgres::types::ToSql + Sync), &metric_value as &(dyn tokio_postgres::types::ToSql + Sync), &metric_unit as &(dyn tokio_postgres::types::ToSql + Sync), &aggregation_period as &(dyn tokio_postgres::types::ToSql + Sync), &period_start as &(dyn tokio_postgres::types::ToSql + Sync), &period_end as &(dyn tokio_postgres::types::ToSql + Sync), &metadata as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -4751,19 +4257,13 @@ pub mod admin_console { use crate::database::RowExt;
         let rows: Vec<tokio_postgres::Row> = if let Some(m_type) = metric_type {
             db.query_raw(
                 query,
-                &[
-                    &realm_id,
-                    &m_type,
-                    &aggregation_period,
-                    &from_date,
-                    &to_date,
-                ],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &m_type as &(dyn tokio_postgres::types::ToSql + Sync), &aggregation_period as &(dyn tokio_postgres::types::ToSql + Sync), &from_date as &(dyn tokio_postgres::types::ToSql + Sync), &to_date as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?
         } else {
             db.query_raw(
                 query,
-                &[&realm_id, &aggregation_period, &from_date, &to_date],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &aggregation_period as &(dyn tokio_postgres::types::ToSql + Sync), &from_date as &(dyn tokio_postgres::types::ToSql + Sync), &to_date as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?
         };
@@ -4772,16 +4272,16 @@ pub mod admin_console { use crate::database::RowExt;
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "metric_type": row.get::<_, String>(1),
-                    "metric_name": row.get::<_, String>(2),
-                    "metric_value": row.get::<_, f64>(3),
-                    "metric_unit": row.get::<_, Option<String>>(4),
-                    "aggregation_period": row.get::<_, String>(5),
-                    "period_start": row.get::<_, DateTime<Utc>>(6),
-                    "period_end": row.get::<_, DateTime<Utc>>(7),
-                    "metadata": row.get::<_, Option<JsonValue>>(8),
-                    "created_at": row.get::<_, DateTime<Utc>>(9),
+                    "id": row.get::<usize, Uuid>(0),
+                    "metric_type": row.get::<usize, String>(1),
+                    "metric_name": row.get::<usize, String>(2),
+                    "metric_value": row.get::<usize, f64>(3),
+                    "metric_unit": row.get::<usize, Option<String>>(4),
+                    "aggregation_period": row.get::<usize, String>(5),
+                    "period_start": row.get::<usize, DateTime<Utc>>(6),
+                    "period_end": row.get::<usize, DateTime<Utc>>(7),
+                    "metadata": row.get::<usize, Option<JsonValue>>(8),
+                    "created_at": row.get::<usize, DateTime<Utc>>(9),
                 })
             })
             .collect())
@@ -4812,20 +4312,9 @@ pub mod admin_console { use crate::database::RowExt;
 
         let ip_parsed = ip_address.and_then(|ip| ip.parse::<std::net::IpAddr>().ok());
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &realm_id,
-                    &admin_user_id,
-                    &username,
-                    &session_token,
-                    &ip_parsed,
-                    &user_agent,
-                    &login_method,
-                    &mfa_verified,
-                    &expires_at,
-                ],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &admin_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &username as &(dyn tokio_postgres::types::ToSql + Sync), &session_token as &(dyn tokio_postgres::types::ToSql + Sync), &ip_parsed as &(dyn tokio_postgres::types::ToSql + Sync), &user_agent as &(dyn tokio_postgres::types::ToSql + Sync), &login_method as &(dyn tokio_postgres::types::ToSql + Sync), &mfa_verified as &(dyn tokio_postgres::types::ToSql + Sync), &expires_at as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -4844,14 +4333,14 @@ pub mod admin_console { use crate::database::RowExt;
             RETURNING id, realm_id, admin_user_id, username, mfa_verified, expires_at
         "#;
 
-        match db.query_opt(query, &[&session_token]).await? {
+        match db.query_opt_raw(query, &[&session_token as &(dyn tokio_postgres::types::ToSql + Sync)]).await? {
             Some(row) => Ok(Some(serde_json::json!({
-                "id": row.get::<_, Uuid>(0),
-                "realm_id": row.get::<_, Uuid>(1),
-                "admin_user_id": row.get::<_, Uuid>(2),
-                "username": row.get::<_, String>(3),
-                "mfa_verified": row.get::<_, bool>(4),
-                "expires_at": row.get::<_, DateTime<Utc>>(5),
+                "id": row.get::<usize, Uuid>(0),
+                "realm_id": row.get::<usize, Uuid>(1),
+                "admin_user_id": row.get::<usize, Uuid>(2),
+                "username": row.get::<usize, String>(3),
+                "mfa_verified": row.get::<usize, bool>(4),
+                "expires_at": row.get::<usize, DateTime<Utc>>(5),
             }))),
             None => Ok(None),
         }
@@ -4869,7 +4358,7 @@ pub mod admin_console { use crate::database::RowExt;
             WHERE session_token = $2 AND is_active = TRUE
         "#;
 
-        let rows_affected = db.execute(query, &[&logout_reason, &session_token]).await?;
+        let rows_affected: u64 = db.execute(query, &[&logout_reason as &(dyn tokio_postgres::types::ToSql + Sync), &session_token as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(rows_affected > 0)
     }
 
@@ -4898,22 +4387,9 @@ pub mod admin_console { use crate::database::RowExt;
             RETURNING id
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &realm_id,
-                    &notification_type,
-                    &title,
-                    &message,
-                    &target_admin_user_id,
-                    &target_role,
-                    &action_url,
-                    &action_label,
-                    &priority,
-                    &expires_at,
-                    &metadata,
-                ],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &notification_type as &(dyn tokio_postgres::types::ToSql + Sync), &title as &(dyn tokio_postgres::types::ToSql + Sync), &message as &(dyn tokio_postgres::types::ToSql + Sync), &target_admin_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &target_role as &(dyn tokio_postgres::types::ToSql + Sync), &action_url as &(dyn tokio_postgres::types::ToSql + Sync), &action_label as &(dyn tokio_postgres::types::ToSql + Sync), &priority as &(dyn tokio_postgres::types::ToSql + Sync), &expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &metadata as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -4952,21 +4428,21 @@ pub mod admin_console { use crate::database::RowExt;
             "#
         };
 
-        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&realm_id, &admin_user_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &admin_user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(rows
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "notification_type": row.get::<_, String>(1),
-                    "title": row.get::<_, String>(2),
-                    "message": row.get::<_, String>(3),
-                    "action_url": row.get::<_, Option<String>>(4),
-                    "action_label": row.get::<_, Option<String>>(5),
-                    "priority": row.get::<_, i32>(6),
-                    "is_read": row.get::<_, bool>(7),
-                    "created_at": row.get::<_, DateTime<Utc>>(8),
+                    "id": row.get::<usize, Uuid>(0),
+                    "notification_type": row.get::<usize, String>(1),
+                    "title": row.get::<usize, String>(2),
+                    "message": row.get::<usize, String>(3),
+                    "action_url": row.get::<usize, Option<String>>(4),
+                    "action_label": row.get::<usize, Option<String>>(5),
+                    "priority": row.get::<usize, i32>(6),
+                    "is_read": row.get::<usize, bool>(7),
+                    "created_at": row.get::<usize, DateTime<Utc>>(8),
                 })
             })
             .collect())
@@ -4984,8 +4460,8 @@ pub mod admin_console { use crate::database::RowExt;
             WHERE id = $2
         "#;
 
-        let rows_affected = db
-            .execute(query, &[&admin_user_id, &notification_id])
+        let rows_affected: u64 = db
+            .execute(query, &[&admin_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &notification_id as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
         Ok(rows_affected > 0)
     }
@@ -5006,23 +4482,23 @@ pub mod admin_console { use crate::database::RowExt;
             WHERE admin_user_id = $1 AND realm_id = $2
         "#;
 
-        match db.query_opt(query, &[&admin_user_id, &realm_id]).await? {
+        match db.query_opt_raw(query, &[&admin_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await? {
             Some(row) => Ok(serde_json::json!({
-                "id": row.get::<_, Uuid>(0),
-                "theme": row.get::<_, String>(1),
-                "language": row.get::<_, String>(2),
-                "timezone": row.get::<_, String>(3),
-                "items_per_page": row.get::<_, i32>(4),
-                "compact_mode": row.get::<_, bool>(5),
-                "sidebar_collapsed": row.get::<_, bool>(6),
-                "email_notifications": row.get::<_, bool>(7),
-                "desktop_notifications": row.get::<_, bool>(8),
-                "notification_frequency": row.get::<_, String>(9),
-                "dashboard_layout": row.get::<_, Option<JsonValue>>(10),
-                "favorite_pages": row.get::<_, Option<Vec<String>>>(11),
-                "developer_mode": row.get::<_, bool>(12),
-                "show_advanced_options": row.get::<_, bool>(13),
-                "preferences": row.get::<_, Option<JsonValue>>(14),
+                "id": row.get::<usize, Uuid>(0),
+                "theme": row.get::<usize, String>(1),
+                "language": row.get::<usize, String>(2),
+                "timezone": row.get::<usize, String>(3),
+                "items_per_page": row.get::<usize, i32>(4),
+                "compact_mode": row.get::<usize, bool>(5),
+                "sidebar_collapsed": row.get::<usize, bool>(6),
+                "email_notifications": row.get::<usize, bool>(7),
+                "desktop_notifications": row.get::<usize, bool>(8),
+                "notification_frequency": row.get::<usize, String>(9),
+                "dashboard_layout": row.get::<usize, Option<JsonValue>>(10),
+                "favorite_pages": row.get::<usize, Option<Vec<String>>>(11),
+                "developer_mode": row.get::<usize, bool>(12),
+                "show_advanced_options": row.get::<usize, bool>(13),
+                "preferences": row.get::<usize, Option<JsonValue>>(14),
             })),
             None => {
                 // Create default preferences
@@ -5031,8 +4507,7 @@ pub mod admin_console { use crate::database::RowExt;
                     VALUES ($1, $2)
                     RETURNING id
                 "#;
-                let rows: Vec<tokio_postgres::Row> = db
-                    .query_raw(insert_query, &[&admin_user_id, &realm_id])
+                let rows: Vec<tokio_postgres::Row> = db.query_raw(insert_query, &[&admin_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync)])
                     .await?;
                 let id: Uuid = rows[0].get(0);
 
@@ -5085,46 +4560,29 @@ pub mod admin_console { use crate::database::RowExt;
             WHERE admin_user_id = $1 AND realm_id = $2
         "#;
 
-        let rows_affected = db
+        let rows_affected: u64 = db
             .execute(
                 query,
-                &[
-                    &admin_user_id,
-                    &realm_id,
-                    &preferences.get("theme").and_then(|v| v.as_str()),
-                    &preferences.get("language").and_then(|v| v.as_str()),
-                    &preferences.get("timezone").and_then(|v| v.as_str()),
-                    &preferences
+                &[&admin_user_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &preferences.get("theme").and_then(|v| v.as_str()) as &(dyn tokio_postgres::types::ToSql + Sync), &preferences.get("language").and_then(|v| v.as_str()) as &(dyn tokio_postgres::types::ToSql + Sync), &preferences.get("timezone").and_then(|v| v.as_str()) as &(dyn tokio_postgres::types::ToSql + Sync), &preferences
                         .get("items_per_page")
                         .and_then(|v| v.as_i64())
-                        .map(|v| v as i32),
-                    &preferences.get("compact_mode").and_then(|v| v.as_bool()),
-                    &preferences
+                        .map(|v| v as i32), &preferences.get("compact_mode").and_then(|v| v.as_bool()) as &(dyn tokio_postgres::types::ToSql + Sync), &preferences
                         .get("sidebar_collapsed")
-                        .and_then(|v| v.as_bool()),
-                    &preferences
+                        .and_then(|v| v.as_bool()) as &(dyn tokio_postgres::types::ToSql + Sync), &preferences
                         .get("email_notifications")
-                        .and_then(|v| v.as_bool()),
-                    &preferences
+                        .and_then(|v| v.as_bool()) as &(dyn tokio_postgres::types::ToSql + Sync), &preferences
                         .get("desktop_notifications")
-                        .and_then(|v| v.as_bool()),
-                    &preferences
+                        .and_then(|v| v.as_bool()) as &(dyn tokio_postgres::types::ToSql + Sync), &preferences
                         .get("notification_frequency")
-                        .and_then(|v| v.as_str()),
-                    &preferences.get("dashboard_layout"),
-                    &preferences.get("favorite_pages").and_then(|v| {
+                        .and_then(|v| v.as_str()) as &(dyn tokio_postgres::types::ToSql + Sync), &preferences.get("dashboard_layout") as &(dyn tokio_postgres::types::ToSql + Sync), &preferences.get("favorite_pages").and_then(|v| {
                         v.as_array().map(|arr| {
                             arr.iter()
                                 .filter_map(|s| s.as_str().map(|s| s.to_string()))
                                 .collect::<Vec<String>>()
                         })
-                    }),
-                    &preferences.get("developer_mode").and_then(|v| v.as_bool()),
-                    &preferences
+                    }) as &(dyn tokio_postgres::types::ToSql + Sync), &preferences.get("developer_mode").and_then(|v| v.as_bool()) as &(dyn tokio_postgres::types::ToSql + Sync), &preferences
                         .get("show_advanced_options")
-                        .and_then(|v| v.as_bool()),
-                    &preferences.get("preferences"),
-                ],
+                        .and_then(|v| v.as_bool()) as &(dyn tokio_postgres::types::ToSql + Sync), &preferences.get("preferences") as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -5162,21 +4620,9 @@ pub mod events { use crate::database::RowExt;
             RETURNING id
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &realm_id,
-                    &name,
-                    &listener_type,
-                    &enabled,
-                    &config,
-                    &event_types,
-                    &priority,
-                    &is_async,
-                    &retry_on_failure,
-                    &max_retries,
-                ],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &name as &(dyn tokio_postgres::types::ToSql + Sync), &listener_type as &(dyn tokio_postgres::types::ToSql + Sync), &enabled as &(dyn tokio_postgres::types::ToSql + Sync), &config as &(dyn tokio_postgres::types::ToSql + Sync), &event_types as &(dyn tokio_postgres::types::ToSql + Sync), &priority as &(dyn tokio_postgres::types::ToSql + Sync), &is_async as &(dyn tokio_postgres::types::ToSql + Sync), &retry_on_failure as &(dyn tokio_postgres::types::ToSql + Sync), &max_retries as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -5194,21 +4640,21 @@ pub mod events { use crate::database::RowExt;
             ORDER BY priority ASC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&realm_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(rows
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "name": row.get::<_, String>(1),
-                    "listener_type": row.get::<_, String>(2),
-                    "config": row.get::<_, Option<JsonValue>>(3),
-                    "event_types": row.get::<_, Option<Vec<String>>>(4),
-                    "priority": row.get::<_, i32>(5),
-                    "is_async": row.get::<_, bool>(6),
-                    "retry_on_failure": row.get::<_, bool>(7),
-                    "max_retries": row.get::<_, i32>(8),
+                    "id": row.get::<usize, Uuid>(0),
+                    "name": row.get::<usize, String>(1),
+                    "listener_type": row.get::<usize, String>(2),
+                    "config": row.get::<usize, Option<JsonValue>>(3),
+                    "event_types": row.get::<usize, Option<Vec<String>>>(4),
+                    "priority": row.get::<usize, i32>(5),
+                    "is_async": row.get::<usize, bool>(6),
+                    "retry_on_failure": row.get::<usize, bool>(7),
+                    "max_retries": row.get::<usize, i32>(8),
                 })
             })
             .collect())
@@ -5249,29 +4695,9 @@ pub mod events { use crate::database::RowExt;
 
         let ip_parsed = ip_address.and_then(|ip| ip.parse::<std::net::IpAddr>().ok());
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &realm_id,
-                    &event_type,
-                    &event_category,
-                    &resource_type,
-                    &resource_id,
-                    &resource_name,
-                    &user_id,
-                    &username,
-                    &event_data,
-                    &old_value,
-                    &new_value,
-                    &ip_parsed,
-                    &user_agent,
-                    &session_id,
-                    &success,
-                    &error_message,
-                    &operation_id,
-                    &correlation_id,
-                ],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &event_type as &(dyn tokio_postgres::types::ToSql + Sync), &event_category as &(dyn tokio_postgres::types::ToSql + Sync), &resource_type as &(dyn tokio_postgres::types::ToSql + Sync), &resource_id as &(dyn tokio_postgres::types::ToSql + Sync), &resource_name as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &username as &(dyn tokio_postgres::types::ToSql + Sync), &event_data as &(dyn tokio_postgres::types::ToSql + Sync), &old_value as &(dyn tokio_postgres::types::ToSql + Sync), &new_value as &(dyn tokio_postgres::types::ToSql + Sync), &ip_parsed as &(dyn tokio_postgres::types::ToSql + Sync), &user_agent as &(dyn tokio_postgres::types::ToSql + Sync), &session_id as &(dyn tokio_postgres::types::ToSql + Sync), &success as &(dyn tokio_postgres::types::ToSql + Sync), &error_message as &(dyn tokio_postgres::types::ToSql + Sync), &operation_id as &(dyn tokio_postgres::types::ToSql + Sync), &correlation_id as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -5408,17 +4834,17 @@ pub mod events { use crate::database::RowExt;
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "event_type": row.get::<_, String>(1),
-                    "event_category": row.get::<_, String>(2),
-                    "resource_type": row.get::<_, Option<String>>(3),
-                    "resource_id": row.get::<_, Option<String>>(4),
-                    "resource_name": row.get::<_, Option<String>>(5),
-                    "user_id": row.get::<_, Option<Uuid>>(6),
-                    "username": row.get::<_, Option<String>>(7),
-                    "success": row.get::<_, bool>(8),
-                    "error_message": row.get::<_, Option<String>>(9),
-                    "correlation_id": row.get::<_, Option<Uuid>>(10),
+                    "id": row.get::<usize, Uuid>(0),
+                    "event_type": row.get::<usize, String>(1),
+                    "event_category": row.get::<usize, String>(2),
+                    "resource_type": row.get::<usize, Option<String>>(3),
+                    "resource_id": row.get::<usize, Option<String>>(4),
+                    "resource_name": row.get::<usize, Option<String>>(5),
+                    "user_id": row.get::<usize, Option<Uuid>>(6),
+                    "username": row.get::<usize, Option<String>>(7),
+                    "success": row.get::<usize, bool>(8),
+                    "error_message": row.get::<usize, Option<String>>(9),
+                    "correlation_id": row.get::<usize, Option<Uuid>>(10),
                     "created_at": row.get::<_, chrono::NaiveDateTime>(11).to_string(),
                 })
             })
@@ -5444,18 +4870,9 @@ pub mod events { use crate::database::RowExt;
             RETURNING id
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &event_log_id,
-                    &listener_id,
-                    &success,
-                    &error_message,
-                    &duration_ms,
-                    &retry_count,
-                    &next_retry_at,
-                ],
+                &[&event_log_id as &(dyn tokio_postgres::types::ToSql + Sync), &listener_id as &(dyn tokio_postgres::types::ToSql + Sync), &success as &(dyn tokio_postgres::types::ToSql + Sync), &error_message as &(dyn tokio_postgres::types::ToSql + Sync), &duration_ms as &(dyn tokio_postgres::types::ToSql + Sync), &retry_count as &(dyn tokio_postgres::types::ToSql + Sync), &next_retry_at as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -5486,22 +4903,9 @@ pub mod events { use crate::database::RowExt;
             RETURNING id
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &listener_id,
-                    &realm_id,
-                    &url,
-                    &http_method,
-                    &auth_type,
-                    &auth_credentials,
-                    &custom_headers,
-                    &payload_template,
-                    &secret_key,
-                    &verify_ssl,
-                    &timeout_seconds,
-                ],
+                &[&listener_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &url as &(dyn tokio_postgres::types::ToSql + Sync), &http_method as &(dyn tokio_postgres::types::ToSql + Sync), &auth_type as &(dyn tokio_postgres::types::ToSql + Sync), &auth_credentials as &(dyn tokio_postgres::types::ToSql + Sync), &custom_headers as &(dyn tokio_postgres::types::ToSql + Sync), &payload_template as &(dyn tokio_postgres::types::ToSql + Sync), &secret_key as &(dyn tokio_postgres::types::ToSql + Sync), &verify_ssl as &(dyn tokio_postgres::types::ToSql + Sync), &timeout_seconds as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -5530,16 +4934,17 @@ pub mod events { use crate::database::RowExt;
         let from_naive = from_date.naive_utc();
         let to_naive = to_date.naive_utc();
 
-        match db.query_opt(query, &[&realm_id, &from_naive, &to_naive])
+        match db
+            .query_opt_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &from_naive as &(dyn tokio_postgres::types::ToSql + Sync), &to_naive as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?
         {
             Some(row) => Ok(serde_json::json!({
-                "total_events": row.get::<_, i64>(0),
-                "successful_events": row.get::<_, i64>(1),
-                "failed_events": row.get::<_, i64>(2),
-                "unique_event_types": row.get::<_, i64>(3),
-                "unique_users": row.get::<_, i64>(4),
-                "unique_categories": row.get::<_, i64>(5),
+                "total_events": row.get::<usize, i64>(0),
+                "successful_events": row.get::<usize, i64>(1),
+                "failed_events": row.get::<usize, i64>(2),
+                "unique_event_types": row.get::<usize, i64>(3),
+                "unique_users": row.get::<usize, i64>(4),
+                "unique_categories": row.get::<usize, i64>(5),
             })),
             None => Ok(serde_json::json!({
                 "total_events": 0,
@@ -5572,19 +4977,19 @@ pub mod events { use crate::database::RowExt;
             LIMIT 100
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&max_retry_count]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&max_retry_count as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(rows
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "execution_id": row.get::<_, Uuid>(0),
-                    "event_log_id": row.get::<_, Uuid>(1),
-                    "listener_id": row.get::<_, Uuid>(2),
-                    "retry_count": row.get::<_, i32>(3),
-                    "realm_id": row.get::<_, Uuid>(4),
-                    "event_type": row.get::<_, String>(5),
-                    "event_data": row.get::<_, Option<JsonValue>>(6),
+                    "execution_id": row.get::<usize, Uuid>(0),
+                    "event_log_id": row.get::<usize, Uuid>(1),
+                    "listener_id": row.get::<usize, Uuid>(2),
+                    "retry_count": row.get::<usize, i32>(3),
+                    "realm_id": row.get::<usize, Uuid>(4),
+                    "event_type": row.get::<usize, String>(5),
+                    "event_data": row.get::<usize, Option<JsonValue>>(6),
                 })
             })
             .collect())
@@ -5618,20 +5023,9 @@ pub mod protocol_mappers { use crate::database::RowExt;
         let mapper_id = Uuid::new_v4();
         let now = Utc::now().naive_utc();
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &mapper_id,
-                    &client_id,
-                    &realm_id,
-                    &name,
-                    &protocol,
-                    &mapper_type,
-                    &config,
-                    &now,
-                    &now,
-                ],
+                &[&mapper_id as &(dyn tokio_postgres::types::ToSql + Sync), &client_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &name as &(dyn tokio_postgres::types::ToSql + Sync), &protocol as &(dyn tokio_postgres::types::ToSql + Sync), &mapper_type as &(dyn tokio_postgres::types::ToSql + Sync), &config as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -5671,14 +5065,14 @@ pub mod protocol_mappers { use crate::database::RowExt;
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "client_id": row.get::<_, Option<Uuid>>(1),
-                    "realm_id": row.get::<_, Uuid>(2),
-                    "name": row.get::<_, String>(3),
-                    "protocol": row.get::<_, String>(4),
-                    "mapper_type": row.get::<_, String>(5),
-                    "config": row.get::<_, JsonValue>(6),
-                    "enabled": row.get::<_, bool>(7),
+                    "id": row.get::<usize, Uuid>(0),
+                    "client_id": row.get::<usize, Option<Uuid>>(1),
+                    "realm_id": row.get::<usize, Uuid>(2),
+                    "name": row.get::<usize, String>(3),
+                    "protocol": row.get::<usize, String>(4),
+                    "mapper_type": row.get::<usize, String>(5),
+                    "config": row.get::<usize, JsonValue>(6),
+                    "enabled": row.get::<usize, bool>(7),
                     "created_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
                     "updated_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
                 })
@@ -5719,14 +5113,14 @@ pub mod protocol_mappers { use crate::database::RowExt;
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "client_id": row.get::<_, Option<Uuid>>(1),
-                    "realm_id": row.get::<_, Uuid>(2),
-                    "name": row.get::<_, String>(3),
-                    "protocol": row.get::<_, String>(4),
-                    "mapper_type": row.get::<_, String>(5),
-                    "config": row.get::<_, JsonValue>(6),
-                    "enabled": row.get::<_, bool>(7),
+                    "id": row.get::<usize, Uuid>(0),
+                    "client_id": row.get::<usize, Option<Uuid>>(1),
+                    "realm_id": row.get::<usize, Uuid>(2),
+                    "name": row.get::<usize, String>(3),
+                    "protocol": row.get::<usize, String>(4),
+                    "mapper_type": row.get::<usize, String>(5),
+                    "config": row.get::<usize, JsonValue>(6),
+                    "enabled": row.get::<usize, bool>(7),
                     "created_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
                     "updated_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
                 })
@@ -5747,7 +5141,7 @@ pub mod protocol_mappers { use crate::database::RowExt;
         "#;
 
         let now = Utc::now().naive_utc();
-        db.execute(query, &[&config, &now, &mapper_id]).await?;
+        db.execute(query, &[&config as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &mapper_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(())
     }
@@ -5761,7 +5155,7 @@ pub mod protocol_mappers { use crate::database::RowExt;
         "#;
 
         let now = Utc::now().naive_utc();
-        db.execute(query, &[&enabled, &now, &mapper_id]).await?;
+        db.execute(query, &[&enabled as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &mapper_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(())
     }
@@ -5772,7 +5166,7 @@ pub mod protocol_mappers { use crate::database::RowExt;
             DELETE FROM protocol_mappers WHERE id = $1
         "#;
 
-        db.execute(query, &[&mapper_id]).await?;
+        db.execute(query, &[&mapper_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(())
     }
@@ -5785,22 +5179,22 @@ pub mod protocol_mappers { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&mapper_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&mapper_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(None);
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(Some(serde_json::json!({
-            "id": row.get::<_, Uuid>(0),
-            "client_id": row.get::<_, Option<Uuid>>(1),
-            "realm_id": row.get::<_, Uuid>(2),
-            "name": row.get::<_, String>(3),
-            "protocol": row.get::<_, String>(4),
-            "mapper_type": row.get::<_, String>(5),
-            "config": row.get::<_, JsonValue>(6),
-            "enabled": row.get::<_, bool>(7),
+            "id": row.get::<usize, Uuid>(0),
+            "client_id": row.get::<usize, Option<Uuid>>(1),
+            "realm_id": row.get::<usize, Uuid>(2),
+            "name": row.get::<usize, String>(3),
+            "protocol": row.get::<usize, String>(4),
+            "mapper_type": row.get::<usize, String>(5),
+            "config": row.get::<usize, JsonValue>(6),
+            "enabled": row.get::<usize, bool>(7),
             "created_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
             "updated_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
         })))
@@ -5820,7 +5214,7 @@ pub mod protocol_mappers { use crate::database::RowExt;
             WHERE realm_id = $1
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&realm_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(serde_json::json!({
@@ -5834,15 +5228,15 @@ pub mod protocol_mappers { use crate::database::RowExt;
             }));
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(serde_json::json!({
-            "total_mappers": row.get::<_, i64>(0) + row.get::<_, i64>(1),
-            "total_enabled": row.get::<_, i64>(0),
-            "total_disabled": row.get::<_, i64>(1),
-            "unique_protocols": row.get::<_, i64>(2),
-            "unique_types": row.get::<_, i64>(3),
-            "realm_level_mappers": row.get::<_, i64>(4),
-            "client_level_mappers": row.get::<_, i64>(5),
+            "total_mappers": row.get::<usize, i64>(0) + row.get::<usize, i64>(1),
+            "total_enabled": row.get::<usize, i64>(0),
+            "total_disabled": row.get::<usize, i64>(1),
+            "unique_protocols": row.get::<usize, i64>(2),
+            "unique_types": row.get::<usize, i64>(3),
+            "realm_level_mappers": row.get::<usize, i64>(4),
+            "client_level_mappers": row.get::<usize, i64>(5),
         }))
     }
 }
@@ -5874,20 +5268,9 @@ pub mod authenticators { use crate::database::RowExt;
         let authenticator_id = Uuid::new_v4();
         let now = Utc::now();
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &authenticator_id,
-                    &realm_id,
-                    &name,
-                    &alias,
-                    &authenticator_type,
-                    &config,
-                    &priority,
-                    &now,
-                    &now,
-                ],
+                &[&authenticator_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &name as &(dyn tokio_postgres::types::ToSql + Sync), &alias as &(dyn tokio_postgres::types::ToSql + Sync), &authenticator_type as &(dyn tokio_postgres::types::ToSql + Sync), &config as &(dyn tokio_postgres::types::ToSql + Sync), &priority as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -5914,20 +5297,20 @@ pub mod authenticators { use crate::database::RowExt;
 
         query.push_str(" ORDER BY priority ASC");
 
-        let rows: Vec<tokio_postgres::Row> = db.query_raw(&query, &[&realm_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(&query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(rows
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "realm_id": row.get::<_, Uuid>(1),
-                    "name": row.get::<_, String>(2),
-                    "alias": row.get::<_, String>(3),
-                    "authenticator_type": row.get::<_, String>(4),
-                    "config": row.get::<_, JsonValue>(5),
-                    "priority": row.get::<_, i32>(6),
-                    "enabled": row.get::<_, bool>(7),
+                    "id": row.get::<usize, Uuid>(0),
+                    "realm_id": row.get::<usize, Uuid>(1),
+                    "name": row.get::<usize, String>(2),
+                    "alias": row.get::<usize, String>(3),
+                    "authenticator_type": row.get::<usize, String>(4),
+                    "config": row.get::<usize, JsonValue>(5),
+                    "priority": row.get::<usize, i32>(6),
+                    "enabled": row.get::<usize, bool>(7),
                     "created_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
                     "updated_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
                 })
@@ -5954,20 +5337,9 @@ pub mod authenticators { use crate::database::RowExt;
         let execution_id = Uuid::new_v4();
         let now = Utc::now();
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &execution_id,
-                    &realm_id,
-                    &flow_id,
-                    &authenticator_id,
-                    &requirement,
-                    &priority,
-                    &parent_flow_id,
-                    &now,
-                    &now,
-                ],
+                &[&execution_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &flow_id as &(dyn tokio_postgres::types::ToSql + Sync), &authenticator_id as &(dyn tokio_postgres::types::ToSql + Sync), &requirement as &(dyn tokio_postgres::types::ToSql + Sync), &priority as &(dyn tokio_postgres::types::ToSql + Sync), &parent_flow_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -5987,23 +5359,23 @@ pub mod authenticators { use crate::database::RowExt;
             ORDER BY e.priority ASC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&flow_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&flow_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(rows
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0),
-                    "realm_id": row.get::<_, Uuid>(1),
-                    "flow_id": row.get::<_, Uuid>(2),
-                    "authenticator_id": row.get::<_, Option<Uuid>>(3),
-                    "requirement": row.get::<_, String>(4),
-                    "priority": row.get::<_, i32>(5),
-                    "parent_flow_id": row.get::<_, Option<Uuid>>(6),
+                    "id": row.get::<usize, Uuid>(0),
+                    "realm_id": row.get::<usize, Uuid>(1),
+                    "flow_id": row.get::<usize, Uuid>(2),
+                    "authenticator_id": row.get::<usize, Option<Uuid>>(3),
+                    "requirement": row.get::<usize, String>(4),
+                    "priority": row.get::<usize, i32>(5),
+                    "parent_flow_id": row.get::<usize, Option<Uuid>>(6),
                     "created_at": row.get::<_, chrono::DateTime<Utc>>(7).to_rfc3339(),
                     "updated_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
-                    "authenticator_name": row.get::<_, Option<String>>(9),
-                    "authenticator_type": row.get::<_, Option<String>>(10),
+                    "authenticator_name": row.get::<usize, Option<String>>(9),
+                    "authenticator_type": row.get::<usize, Option<String>>(10),
                 })
             })
             .collect())
@@ -6029,20 +5401,9 @@ pub mod authenticators { use crate::database::RowExt;
         let result_id = Uuid::new_v4();
         let now = Utc::now();
 
-        let rows: Vec<tokio_postgres::Row> = db
-            .query_raw(
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(
                 query,
-                &[
-                    &result_id,
-                    &execution_id,
-                    &session_id,
-                    &user_id,
-                    &status,
-                    &error_message,
-                    &duration_ms,
-                    &attempt_count,
-                    &now,
-                ],
+                &[&result_id as &(dyn tokio_postgres::types::ToSql + Sync), &execution_id as &(dyn tokio_postgres::types::ToSql + Sync), &session_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &status as &(dyn tokio_postgres::types::ToSql + Sync), &error_message as &(dyn tokio_postgres::types::ToSql + Sync), &duration_ms as &(dyn tokio_postgres::types::ToSql + Sync), &attempt_count as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -6062,7 +5423,7 @@ pub mod authenticators { use crate::database::RowExt;
         "#;
 
         let now = Utc::now();
-        db.execute(query, &[&config, &now, &authenticator_id])
+        db.execute(query, &[&config as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &authenticator_id as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
 
         Ok(())
@@ -6081,7 +5442,7 @@ pub mod authenticators { use crate::database::RowExt;
         "#;
 
         let now = Utc::now();
-        db.execute(query, &[&enabled, &now, &authenticator_id])
+        db.execute(query, &[&enabled as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &authenticator_id as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
 
         Ok(())
@@ -6093,7 +5454,7 @@ pub mod authenticators { use crate::database::RowExt;
             DELETE FROM authenticator_configs WHERE id = $1
         "#;
 
-        db.execute(query, &[&authenticator_id]).await?;
+        db.execute(query, &[&authenticator_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(())
     }
@@ -6111,7 +5472,7 @@ pub mod authenticators { use crate::database::RowExt;
         "#;
 
         let now = Utc::now();
-        db.execute(query, &[&requirement, &now, &execution_id])
+        db.execute(query, &[&requirement as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &execution_id as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
 
         Ok(())
@@ -6169,13 +5530,13 @@ pub mod authenticators { use crate::database::RowExt;
             }));
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(serde_json::json!({
-            "total_attempts": row.get::<_, i64>(0),
-            "successful_attempts": row.get::<_, i64>(1),
-            "failed_attempts": row.get::<_, i64>(2),
-            "unique_users": row.get::<_, Option<i64>>(3).unwrap_or(0),
-            "avg_duration_ms": row.get::<_, Option<f64>>(4).unwrap_or(0.0),
+            "total_attempts": row.get::<usize, i64>(0),
+            "successful_attempts": row.get::<usize, i64>(1),
+            "failed_attempts": row.get::<usize, i64>(2),
+            "unique_users": row.get::<usize, Option<i64>>(3).unwrap_or(0),
+            "avg_duration_ms": row.get::<usize, Option<f64>>(4).unwrap_or(0.0),
         }))
     }
 }
@@ -6207,10 +5568,10 @@ pub mod roles { use crate::database::RowExt;
                 client_id, attributes, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = client
-            .query_one(
+        let row = client
+            .query_one_raw(
                 query,
-                &[&role_id, &name, &description, &realm_id, &now, &now],
+                &[&role_id as &(dyn tokio_postgres::types::ToSql + Sync), &name as &(dyn tokio_postgres::types::ToSql + Sync), &description as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -6243,7 +5604,7 @@ pub mod roles { use crate::database::RowExt;
             WHERE id = $1 AND deleted_at IS NULL
         "#;
 
-        let row: Option<tokio_postgres::Row> = client.query_opt(query, &[&role_id]).await?;
+        let row = client.query_opt_raw(query, &[&role_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(row.map(|r| Role {
             id: r.get(0),
             name: r.get(1),
@@ -6273,7 +5634,7 @@ pub mod roles { use crate::database::RowExt;
             ORDER BY created_at DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = client.query(query, &[&realm_id]).await?;
+        let rows = client.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         let mut roles = Vec::new();
 
         for row in rows {
@@ -6308,7 +5669,7 @@ pub mod roles { use crate::database::RowExt;
             ON CONFLICT (user_id, role_id) DO NOTHING
         "#;
 
-        client.execute(query, &[&user_id, &role_id, &now]).await?;
+        client.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &role_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -6324,7 +5685,7 @@ pub mod roles { use crate::database::RowExt;
             WHERE user_id = $1 AND role_id = $2
         "#;
 
-        client.execute(query, &[&user_id, &role_id]).await?;
+        client.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &role_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
     pub async fn get_user_roles(db: &Database, user_id: &Uuid) -> Result<Vec<Role>> {
@@ -6337,7 +5698,7 @@ pub mod roles { use crate::database::RowExt;
             WHERE ur.user_id = $1 AND r.deleted_at IS NULL
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = client.query(query, &[&user_id]).await?;
+        let rows = client.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         let mut roles = Vec::new();
 
         for row in rows {
@@ -6376,7 +5737,7 @@ pub mod roles { use crate::database::RowExt;
             WHERE ur.user_id = $1 AND p.name = $2 AND p.deleted_at IS NULL
         "#;
 
-        let row: tokio_postgres::Row = client.query_one(query, &[&user_id, &permission]).await?;
+        let row = client.query_one_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &permission as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         let has_permission: bool = row.get(0);
 
         Ok(has_permission)
@@ -6394,10 +5755,10 @@ pub mod roles { use crate::database::RowExt;
             ORDER BY p.name
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = client.query(query, &[&user_id]).await?;
+        let rows = client.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         let permissions = rows
             .into_iter()
-            .map(|row| row.get::<_, String>(0))
+            .map(|row| row.get::<usize, String>(0))
             .collect();
 
         Ok(permissions)
@@ -6419,7 +5780,7 @@ pub mod roles { use crate::database::RowExt;
         "#;
 
         client
-            .execute(query, &[&role_id, &permission_id, &now])
+            .execute(query, &[&role_id as &(dyn tokio_postgres::types::ToSql + Sync), &permission_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
 
         Ok(())
@@ -6438,7 +5799,7 @@ pub mod roles { use crate::database::RowExt;
             WHERE role_id = $1 AND permission_id = $2
         "#;
 
-        client.execute(query, &[&role_id, &permission_id]).await?;
+        client.execute(query, &[&role_id as &(dyn tokio_postgres::types::ToSql + Sync), &permission_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(())
     }
@@ -6472,24 +5833,7 @@ pub mod webauthn { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &credential_id,
-                &user_id,
-                &credential.credential_id,
-                &credential.public_key,
-                &credential.public_key_algorithm,
-                &(credential.signature_counter as i64),
-                &credential.attestation_object,
-                &credential.authenticator_data,
-                &credential.user_handle,
-                &credential.credential_type,
-                &credential.transports,
-                &now,
-                &credential.last_used_at,
-                &credential.aaguid,
-                &credential.attestation_format,
-                &credential.device_id,
-            ],
+            &[&credential_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &credential.credential_id as &(dyn tokio_postgres::types::ToSql + Sync), &credential.public_key as &(dyn tokio_postgres::types::ToSql + Sync), &credential.public_key_algorithm as &(dyn tokio_postgres::types::ToSql + Sync), &(credential.signature_counter as i64), &credential.attestation_object as &(dyn tokio_postgres::types::ToSql + Sync), &credential.authenticator_data as &(dyn tokio_postgres::types::ToSql + Sync), &credential.user_handle as &(dyn tokio_postgres::types::ToSql + Sync), &credential.credential_type as &(dyn tokio_postgres::types::ToSql + Sync), &credential.transports as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &credential.last_used_at as &(dyn tokio_postgres::types::ToSql + Sync), &credential.aaguid as &(dyn tokio_postgres::types::ToSql + Sync), &credential.attestation_format as &(dyn tokio_postgres::types::ToSql + Sync), &credential.device_id as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -6511,7 +5855,7 @@ pub mod webauthn { use crate::database::RowExt;
             WHERE credential_id = $1
         "#;
 
-        let row: Option<tokio_postgres::Row> = db.query_opt(query, &[&credential_id]).await?;
+        let row: Option<tokio_postgres::Row> = db.query_opt_raw(query, &[&credential_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(row.map(|r| WebauthnCredential {
             id: r.get("id"),
@@ -6550,7 +5894,7 @@ pub mod webauthn { use crate::database::RowExt;
             ORDER BY created_at DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&user_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         let credentials = rows
             .into_iter()
             .map(|row: tokio_postgres::Row| WebauthnCredential {
@@ -6559,7 +5903,7 @@ pub mod webauthn { use crate::database::RowExt;
                 credential_id: row.get("credential_id"),
                 public_key: row.get("public_key"),
                 public_key_algorithm: row.get("public_key_algorithm"),
-                signature_counter: row.get::<_, i64>("signature_counter") as u32,
+                signature_counter: row.get::<&str, i64>("signature_counter") as u32,
                 attestation_object: row.get("attestation_object"),
                 authenticator_data: row.get("authenticator_data"),
                 user_handle: row.get("user_handle"),
@@ -6579,7 +5923,7 @@ pub mod webauthn { use crate::database::RowExt;
     /// Delete all WebAuthn credentials for a user
     pub async fn delete_user_credentials(db: &Database, user_id: Uuid) -> Result<()> {
         let query = "DELETE FROM webauthn_credentials WHERE user_id = $1";
-        db.execute(query, &[&user_id]).await?;
+        db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -6595,7 +5939,7 @@ pub mod webauthn { use crate::database::RowExt;
             SET signature_counter = $2, last_used_at = $3
             WHERE credential_id = $1
         "#;
-        db.execute(query, &[&credential_id, &new_count, &now])
+        db.execute(query, &[&credential_id as &(dyn tokio_postgres::types::ToSql + Sync), &new_count as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
         Ok(())
     }
@@ -6649,9 +5993,6 @@ pub mod identity_providers { use crate::database::RowExt;
             WHERE config->>'entity_id' = $1
         "#;
 
-        let row_opt = db.query_opt(query, &[&entity_id]).await.map_err(|e| {
-            authenc_api::error::AuthencError::database(format!("Failed to get identity provider: {}", e))
-        })?;
 
         if let Some(row) = row_opt {
             Ok(Some(IdentityProviderData {
@@ -6699,18 +6040,10 @@ pub mod identity_providers { use crate::database::RowExt;
                       config, truststore_path, keystore_path, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &name,
-                    &display_name,
-                    &provider_type,
-                    &enabled,
-                    &realm_id,
-                    &config_json,
-                    &truststore_path,
-                    &keystore_path,
-                ],
+                &[&name as &(dyn tokio_postgres::types::ToSql + Sync), &display_name as &(dyn tokio_postgres::types::ToSql + Sync), &provider_type as &(dyn tokio_postgres::types::ToSql + Sync), &enabled as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &config_json as &(dyn tokio_postgres::types::ToSql + Sync), &truststore_path as &(dyn tokio_postgres::types::ToSql + Sync), &keystore_path as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -6744,7 +6077,7 @@ pub mod identity_providers { use crate::database::RowExt;
             WHERE id = $1 AND deleted_at IS NULL
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&provider_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&provider_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         if rows.is_empty() {
             return Ok(None);
         }
@@ -6781,7 +6114,7 @@ pub mod identity_providers { use crate::database::RowExt;
             ORDER BY display_name
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&realm_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         let mut providers = Vec::new();
 
         for row in rows {
@@ -6835,18 +6168,10 @@ pub mod identity_providers { use crate::database::RowExt;
                       config, truststore_path, keystore_path, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &provider_id,
-                    &name,
-                    &display_name,
-                    &provider_type,
-                    &enabled,
-                    &config_json,
-                    &truststore_path,
-                    &keystore_path,
-                ],
+                &[&provider_id as &(dyn tokio_postgres::types::ToSql + Sync), &name as &(dyn tokio_postgres::types::ToSql + Sync), &display_name as &(dyn tokio_postgres::types::ToSql + Sync), &provider_type as &(dyn tokio_postgres::types::ToSql + Sync), &enabled as &(dyn tokio_postgres::types::ToSql + Sync), &config_json as &(dyn tokio_postgres::types::ToSql + Sync), &truststore_path as &(dyn tokio_postgres::types::ToSql + Sync), &keystore_path as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -6876,7 +6201,7 @@ pub mod identity_providers { use crate::database::RowExt;
             WHERE id = $1 AND deleted_at IS NULL
         "#;
 
-        db.execute(query, &[&provider_id]).await?;
+        db.execute(query, &[&provider_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -6892,7 +6217,7 @@ pub mod identity_providers { use crate::database::RowExt;
             )
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&provider_id]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&provider_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(row.get(0))
     }
 }
@@ -6927,16 +6252,10 @@ pub mod federated_identities { use crate::database::RowExt;
                       external_email, external_attributes, last_login_at, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &request.user_id,
-                    &request.identity_provider_id,
-                    &request.external_id,
-                    &request.external_username,
-                    &request.external_email,
-                    &external_attributes_json,
-                ],
+                &[&request.user_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.identity_provider_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.external_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.external_username as &(dyn tokio_postgres::types::ToSql + Sync), &request.external_email as &(dyn tokio_postgres::types::ToSql + Sync), &external_attributes_json as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -6969,7 +6288,8 @@ pub mod federated_identities { use crate::database::RowExt;
             WHERE identity_provider_id = $1 AND external_id = $2
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&identity_provider_id, &external_id])
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(query, &[&identity_provider_id as &(dyn tokio_postgres::types::ToSql + Sync), &external_id as &(dyn tokio_postgres::types::ToSql + Sync)])
             .await?;
         Ok(rows
             .into_iter()
@@ -7003,7 +6323,7 @@ pub mod federated_identities { use crate::database::RowExt;
             ORDER BY created_at
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&user_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         let mut identities = Vec::new();
 
         for row in rows {
@@ -7034,7 +6354,7 @@ pub mod federated_identities { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        db.execute(query, &[&federated_identity_id]).await?;
+        db.execute(query, &[&federated_identity_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -7048,7 +6368,7 @@ pub mod federated_identities { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        db.execute(query, &[&federated_identity_id]).await?;
+        db.execute(query, &[&federated_identity_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 }
@@ -7076,46 +6396,33 @@ pub mod auth_flows { use crate::database::RowExt;
                       top_level, built_in, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &flow_id,
-                    &flow
+                &[&flow_id as &(dyn tokio_postgres::types::ToSql + Sync), &flow
                         .get("realm_id")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok()),
-                    &flow.get("alias").and_then(|v| v.as_str()).unwrap_or(""),
-                    &flow.get("description").and_then(|v| v.as_str()),
-                    &flow
+                        .and_then(|s| Uuid::parse_str(s).ok()) as &(dyn tokio_postgres::types::ToSql + Sync), &flow.get("alias").and_then(|v| v.as_str()).unwrap_or("") as &(dyn tokio_postgres::types::ToSql + Sync), &flow.get("description").and_then(|v| v.as_str()) as &(dyn tokio_postgres::types::ToSql + Sync), &flow
                         .get("provider_id")
                         .and_then(|v| v.as_str())
-                        .unwrap_or(""),
-                    &flow
+                        .unwrap_or("") as &(dyn tokio_postgres::types::ToSql + Sync), &flow
                         .get("top_level")
                         .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
-                    &flow
+                        .unwrap_or(false) as &(dyn tokio_postgres::types::ToSql + Sync), &flow
                         .get("built_in")
                         .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
-                    &now,
-                    &now,
-                ],
+                        .unwrap_or(false) as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Failed to create authentication flow: {}", e);
-                AuthencError::database("Failed to create authentication flow")
-            })?;
+            .await?
 
         Ok(serde_json::json!({
-            "id": row.get::<_, Uuid>(0).to_string(),
-            "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
-            "alias": row.get::<_, String>(2),
-            "description": row.get::<_, Option<String>>(3),
-            "provider_id": row.get::<_, String>(4),
-            "top_level": row.get::<_, bool>(5),
-            "built_in": row.get::<_, bool>(6),
+            "id": row.get::<usize, Uuid>(0).to_string(),
+            "realm_id": row.get::<usize, Option<Uuid>>(1).map(|u: Uuid| u.to_string()),
+            "alias": row.get::<usize, String>(2),
+            "description": row.get::<usize, Option<String>>(3),
+            "provider_id": row.get::<usize, String>(4),
+            "top_level": row.get::<usize, bool>(5),
+            "built_in": row.get::<usize, bool>(6),
             "created_at": row.get::<_, chrono::DateTime<Utc>>(7).to_rfc3339(),
             "updated_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
         }))
@@ -7130,20 +6437,16 @@ pub mod auth_flows { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        let row_opt = db.query_opt(query, &[&flow_id]).await.map_err(|e| {
-            error!("Failed to get authentication flow: {}", e);
-            AuthencError::database("Failed to get authentication flow")
-        })?;
 
         Ok(row_opt.map(|row| {
             serde_json::json!({
-                "id": row.get::<_, Uuid>(0).to_string(),
-                "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
-                "alias": row.get::<_, String>(2),
-                "description": row.get::<_, Option<String>>(3),
-                "provider_id": row.get::<_, String>(4),
-                "top_level": row.get::<_, bool>(5),
-                "built_in": row.get::<_, bool>(6),
+                "id": row.get::<usize, Uuid>(0).to_string(),
+                "realm_id": row.get::<usize, Option<Uuid>>(1).map(|u: Uuid| u.to_string()),
+                "alias": row.get::<usize, String>(2),
+                "description": row.get::<usize, Option<String>>(3),
+                "provider_id": row.get::<usize, String>(4),
+                "top_level": row.get::<usize, bool>(5),
+                "built_in": row.get::<usize, bool>(6),
                 "created_at": row.get::<_, chrono::DateTime<Utc>>(7).to_rfc3339(),
                 "updated_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
             })
@@ -7173,26 +6476,22 @@ pub mod auth_flows { use crate::database::RowExt;
         };
 
         let rows: Vec<tokio_postgres::Row> = if let Some(realm_id) = realm_id {
-            db.query::<tokio_postgres::Row>(query, &[&realm_id]).await
+            db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await
         } else {
-            db.query::<tokio_postgres::Row>(query, &[]).await
+            db.query_raw(query, &[]).await
         }
-        .map_err(|e| {
-            error!("Failed to list authentication flows: {}", e);
-            AuthencError::database("Failed to list authentication flows")
-        })?;
 
         Ok(rows
             .into_iter()
             .map(|row| {
                 serde_json::json!({
-                    "id": row.get::<_, Uuid>(0).to_string(),
-                    "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
-                    "alias": row.get::<_, String>(2),
-                    "description": row.get::<_, Option<String>>(3),
-                    "provider_id": row.get::<_, String>(4),
-                    "top_level": row.get::<_, bool>(5),
-                    "built_in": row.get::<_, bool>(6),
+                    "id": row.get::<usize, Uuid>(0).to_string(),
+                    "realm_id": row.get::<usize, Option<Uuid>>(1).map(|u: Uuid| u.to_string()),
+                    "alias": row.get::<usize, String>(2),
+                    "description": row.get::<usize, Option<String>>(3),
+                    "provider_id": row.get::<usize, String>(4),
+                    "top_level": row.get::<usize, bool>(5),
+                    "built_in": row.get::<usize, bool>(6),
                     "created_at": row.get::<_, chrono::DateTime<Utc>>(7).to_rfc3339(),
                     "updated_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
                 })
@@ -7217,37 +6516,27 @@ pub mod auth_flows { use crate::database::RowExt;
                       top_level, built_in, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &flow_id,
-                    &flow.get("alias").and_then(|v| v.as_str()).unwrap_or(""),
-                    &flow.get("description").and_then(|v| v.as_str()),
-                    &flow
+                &[&flow_id as &(dyn tokio_postgres::types::ToSql + Sync), &flow.get("alias").and_then(|v| v.as_str()).unwrap_or("") as &(dyn tokio_postgres::types::ToSql + Sync), &flow.get("description").and_then(|v| v.as_str()) as &(dyn tokio_postgres::types::ToSql + Sync), &flow
                         .get("provider_id")
                         .and_then(|v| v.as_str())
-                        .unwrap_or(""),
-                    &flow
+                        .unwrap_or("") as &(dyn tokio_postgres::types::ToSql + Sync), &flow
                         .get("top_level")
                         .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
-                    &now,
-                ],
+                        .unwrap_or(false) as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Failed to update authentication flow: {}", e);
-                AuthencError::database("Failed to update authentication flow")
-            })?;
+            .await?
 
         Ok(serde_json::json!({
-            "id": row.get::<_, Uuid>(0).to_string(),
-            "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
-            "alias": row.get::<_, String>(2),
-            "description": row.get::<_, Option<String>>(3),
-            "provider_id": row.get::<_, String>(4),
-            "top_level": row.get::<_, bool>(5),
-            "built_in": row.get::<_, bool>(6),
+            "id": row.get::<usize, Uuid>(0).to_string(),
+            "realm_id": row.get::<usize, Option<Uuid>>(1).map(|u: Uuid| u.to_string()),
+            "alias": row.get::<usize, String>(2),
+            "description": row.get::<usize, Option<String>>(3),
+            "provider_id": row.get::<usize, String>(4),
+            "top_level": row.get::<usize, bool>(5),
+            "built_in": row.get::<usize, bool>(6),
             "created_at": row.get::<_, chrono::DateTime<Utc>>(7).to_rfc3339(),
             "updated_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
         }))
@@ -7257,10 +6546,6 @@ pub mod auth_flows { use crate::database::RowExt;
     pub async fn delete_flow(db: &Database, flow_id: Uuid) -> Result<()> {
         let query = "DELETE FROM authentication_flows WHERE id = $1";
 
-        db.execute(query, &[&flow_id]).await.map_err(|e| {
-            error!("Failed to delete authentication flow: {}", e);
-            AuthencError::database("Failed to delete authentication flow")
-        })?;
 
         Ok(())
     }
@@ -7285,54 +6570,40 @@ pub mod auth_flows { use crate::database::RowExt;
                       created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &execution_id,
-                    &execution
+                &[&execution_id as &(dyn tokio_postgres::types::ToSql + Sync), &execution
                         .get("flow_id")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok()),
-                    &execution.get("authenticator").and_then(|v| v.as_str()),
-                    &execution
+                        .and_then(|s| Uuid::parse_str(s).ok()) as &(dyn tokio_postgres::types::ToSql + Sync), &execution.get("authenticator").and_then(|v| v.as_str()) as &(dyn tokio_postgres::types::ToSql + Sync), &execution
                         .get("authenticator_config")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok()),
-                    &execution
+                        .and_then(|s| Uuid::parse_str(s).ok()) as &(dyn tokio_postgres::types::ToSql + Sync), &execution
                         .get("authenticator_flow")
                         .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
-                    &execution
+                        .unwrap_or(false) as &(dyn tokio_postgres::types::ToSql + Sync), &execution
                         .get("requirement")
                         .and_then(|v| v.as_str())
-                        .unwrap_or("DISABLED"),
-                    &(execution
+                        .unwrap_or("DISABLED") as &(dyn tokio_postgres::types::ToSql + Sync), &(execution
                         .get("priority")
                         .and_then(|v| v.as_i64())
-                        .unwrap_or(0) as i32),
-                    &execution
+                        .unwrap_or(0) as i32), &execution
                         .get("parent_flow")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok()),
-                    &now,
-                    &now,
-                ],
+                        .and_then(|s| Uuid::parse_str(s).ok()) as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Failed to create authentication execution: {}", e);
-                AuthencError::database("Failed to create authentication execution")
-            })?;
+            .await?
 
         Ok(serde_json::json!({
-            "id": row.get::<_, Uuid>(0).to_string(),
-            "flow_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
-            "authenticator": row.get::<_, Option<String>>(2),
-            "authenticator_config": row.get::<_, Option<Uuid>>(3).map(|u| u.to_string()),
-            "authenticator_flow": row.get::<_, bool>(4),
-            "requirement": row.get::<_, String>(5),
-            "priority": row.get::<_, i32>(6),
-            "parent_flow": row.get::<_, Option<Uuid>>(7).map(|u| u.to_string()),
+            "id": row.get::<usize, Uuid>(0).to_string(),
+            "flow_id": row.get::<usize, Option<Uuid>>(1).map(|u: Uuid| u.to_string()),
+            "authenticator": row.get::<usize, Option<String>>(2),
+            "authenticator_config": row.get::<usize, Option<Uuid>>(3).map(|u: Uuid| u.to_string()),
+            "authenticator_flow": row.get::<usize, bool>(4),
+            "requirement": row.get::<usize, String>(5),
+            "priority": row.get::<usize, i32>(6),
+            "parent_flow": row.get::<usize, Option<Uuid>>(7).map(|u: Uuid| u.to_string()),
             "created_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
             "updated_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
         }))
@@ -7359,65 +6630,50 @@ pub mod auth_flows { use crate::database::RowExt;
                       protocol, redirect_uri, started_at, expires_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &session_id,
-                    &session
+                &[&session_id as &(dyn tokio_postgres::types::ToSql + Sync), &session
                         .get("realm_id")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok()),
-                    &session
+                        .and_then(|s| Uuid::parse_str(s).ok()) as &(dyn tokio_postgres::types::ToSql + Sync), &session
                         .get("user_id")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok()),
-                    &session.get("client_id").and_then(|v| v.as_str()),
-                    &session
+                        .and_then(|s| Uuid::parse_str(s).ok()) as &(dyn tokio_postgres::types::ToSql + Sync), &session.get("client_id").and_then(|v| v.as_str()) as &(dyn tokio_postgres::types::ToSql + Sync), &session
                         .get("flow_id")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok()),
-                    &session
+                        .and_then(|s| Uuid::parse_str(s).ok()) as &(dyn tokio_postgres::types::ToSql + Sync), &session
                         .get("auth_state")
                         .and_then(|v| v.as_str())
-                        .unwrap_or("STARTED"),
-                    &session
+                        .unwrap_or("STARTED") as &(dyn tokio_postgres::types::ToSql + Sync), &session
                         .get("protocol")
                         .and_then(|v| v.as_str())
-                        .unwrap_or("openid-connect"),
-                    &session.get("redirect_uri").and_then(|v| v.as_str()),
-                    &session
+                        .unwrap_or("openid-connect") as &(dyn tokio_postgres::types::ToSql + Sync), &session.get("redirect_uri").and_then(|v| v.as_str()) as &(dyn tokio_postgres::types::ToSql + Sync), &session
                         .get("execution_status")
-                        .unwrap_or(&serde_json::json!({})),
-                    &session
+                        .unwrap_or(&serde_json::json!({})) as &(dyn tokio_postgres::types::ToSql + Sync), &session
                         .get("authentication_notes")
-                        .unwrap_or(&serde_json::json!({})),
-                    &session
+                        .unwrap_or(&serde_json::json!({})) as &(dyn tokio_postgres::types::ToSql + Sync), &session
                         .get("client_notes")
-                        .unwrap_or(&serde_json::json!({})),
-                    &session
+                        .unwrap_or(&serde_json::json!({})) as &(dyn tokio_postgres::types::ToSql + Sync), &session
                         .get("required_actions")
-                        .unwrap_or(&serde_json::json!([])),
+                        .unwrap_or(&serde_json::json!([]) as &(dyn tokio_postgres::types::ToSql + Sync)),
                     &now,
                     &expires_at,
                     &now,
                     &now,
                 ],
             )
-            .await
-            .map_err(|e| {
-                error!("Failed to create authentication session: {}", e);
-                AuthencError::database("Failed to create authentication session")
-            })?;
+            .await?
 
         Ok(serde_json::json!({
-            "id": row.get::<_, Uuid>(0).to_string(),
-            "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
-            "user_id": row.get::<_, Option<Uuid>>(2).map(|u| u.to_string()),
-            "client_id": row.get::<_, Option<String>>(3),
-            "flow_id": row.get::<_, Option<Uuid>>(4).map(|u| u.to_string()),
-            "auth_state": row.get::<_, String>(5),
-            "protocol": row.get::<_, String>(6),
-            "redirect_uri": row.get::<_, Option<String>>(7),
+            "id": row.get::<usize, Uuid>(0).to_string(),
+            "realm_id": row.get::<usize, Option<Uuid>>(1).map(|u: Uuid| u.to_string()),
+            "user_id": row.get::<usize, Option<Uuid>>(2).map(|u: Uuid| u.to_string()),
+            "client_id": row.get::<usize, Option<String>>(3),
+            "flow_id": row.get::<usize, Option<Uuid>>(4).map(|u: Uuid| u.to_string()),
+            "auth_state": row.get::<usize, String>(5),
+            "protocol": row.get::<usize, String>(6),
+            "redirect_uri": row.get::<usize, Option<String>>(7),
             "started_at": row.get::<_, chrono::DateTime<Utc>>(8).to_rfc3339(),
             "expires_at": row.get::<_, chrono::DateTime<Utc>>(9).to_rfc3339(),
         }))
@@ -7434,30 +6690,26 @@ pub mod auth_flows { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        let row_opt = db.query_opt(query, &[&session_id]).await.map_err(|e| {
-            error!("Failed to get authentication session: {}", e);
-            AuthencError::database("Failed to get authentication session")
-        })?;
 
         Ok(row_opt.map(|row| {
             serde_json::json!({
-                "id": row.get::<_, Uuid>(0).to_string(),
-                "realm_id": row.get::<_, Option<Uuid>>(1).map(|u| u.to_string()),
-                "user_id": row.get::<_, Option<Uuid>>(2).map(|u| u.to_string()),
-                "client_id": row.get::<_, Option<String>>(3),
-                "flow_id": row.get::<_, Option<Uuid>>(4).map(|u| u.to_string()),
-                "auth_state": row.get::<_, String>(5),
-                "protocol": row.get::<_, String>(6),
-                "redirect_uri": row.get::<_, Option<String>>(7),
+                "id": row.get::<usize, Uuid>(0).to_string(),
+                "realm_id": row.get::<usize, Option<Uuid>>(1).map(|u: Uuid| u.to_string()),
+                "user_id": row.get::<usize, Option<Uuid>>(2).map(|u: Uuid| u.to_string()),
+                "client_id": row.get::<usize, Option<String>>(3),
+                "flow_id": row.get::<usize, Option<Uuid>>(4).map(|u: Uuid| u.to_string()),
+                "auth_state": row.get::<usize, String>(5),
+                "protocol": row.get::<usize, String>(6),
+                "redirect_uri": row.get::<usize, Option<String>>(7),
                 "execution_status": row.get::<_, serde_json::Value>(8),
                 "authentication_notes": row.get::<_, serde_json::Value>(9),
                 "client_notes": row.get::<_, serde_json::Value>(10),
                 "required_actions": row.get::<_, serde_json::Value>(11),
                 "started_at": row.get::<_, chrono::DateTime<Utc>>(12).to_rfc3339(),
-                "completed_at": row.get::<_, Option<chrono::DateTime<Utc>>>(13).map(|dt| dt.to_rfc3339()),
+                "completed_at": row.get::<_, Option<chrono::DateTime<Utc>>>(13).map(|dt: chrono::DateTime<Utc>| dt.to_rfc3339()),
                 "expires_at": row.get::<_, chrono::DateTime<Utc>>(14).to_rfc3339(),
-                "success": row.get::<_, Option<bool>>(15),
-                "error_message": row.get::<_, Option<String>>(16),
+                "success": row.get::<usize, Option<bool>>(15),
+                "error_message": row.get::<usize, Option<String>>(16),
             })
         }))
     }
@@ -7479,32 +6731,22 @@ pub mod auth_flows { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &session_id,
-                &session
+            &[&session_id as &(dyn tokio_postgres::types::ToSql + Sync), &session
                     .get("auth_state")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("IN_PROGRESS"),
-                &session
+                    .unwrap_or("IN_PROGRESS") as &(dyn tokio_postgres::types::ToSql + Sync), &session
                     .get("execution_status")
-                    .unwrap_or(&serde_json::json!({})),
-                &session
+                    .unwrap_or(&serde_json::json!({})) as &(dyn tokio_postgres::types::ToSql + Sync), &session
                     .get("authentication_notes")
-                    .unwrap_or(&serde_json::json!({})),
-                &session
+                    .unwrap_or(&serde_json::json!({})) as &(dyn tokio_postgres::types::ToSql + Sync), &session
                     .get("client_notes")
-                    .unwrap_or(&serde_json::json!({})),
-                &session
+                    .unwrap_or(&serde_json::json!({})) as &(dyn tokio_postgres::types::ToSql + Sync), &session
                     .get("required_actions")
-                    .unwrap_or(&serde_json::json!([])),
+                    .unwrap_or(&serde_json::json!([]) as &(dyn tokio_postgres::types::ToSql + Sync)),
                 &now,
             ],
         )
-        .await
-        .map_err(|e| {
-            error!("Failed to update authentication session: {}", e);
-            AuthencError::database("Failed to update authentication session")
-        })?;
+        .await?
 
         Ok(())
     }
@@ -7528,20 +6770,9 @@ pub mod auth_flows { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &session_id,
-                &auth_state,
-                &now,
-                &success,
-                &error_message,
-                &now,
-            ],
+            &[&session_id as &(dyn tokio_postgres::types::ToSql + Sync), &auth_state as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &success as &(dyn tokio_postgres::types::ToSql + Sync), &error_message as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
-        .await
-        .map_err(|e| {
-            error!("Failed to complete authentication session: {}", e);
-            AuthencError::database("Failed to complete authentication session")
-        })?;
+        .await?
 
         Ok(())
     }
@@ -7550,10 +6781,6 @@ pub mod auth_flows { use crate::database::RowExt;
     pub async fn cleanup_expired_sessions(db: &Database) -> Result<i64> {
         let query = "DELETE FROM authentication_sessions WHERE expires_at < NOW()";
 
-        let rows_affected = db.execute(query, &[]).await.map_err(|e| {
-            error!("Failed to cleanup expired sessions: {}", e);
-            AuthencError::database("Failed to cleanup expired sessions")
-        })?;
 
         Ok(rows_affected as i64)
     }
@@ -7597,30 +6824,13 @@ pub mod resources { use crate::database::RowExt;
                 created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &resource_id,
-                    &request.name,
-                    &request.display_name,
-                    &uris,
-                    &request.icon_uri,
-                    &request.resource_type,
-                    &owner,
-                    &true, // enabled
-                    &realm_id,
-                    &resource_server_id,
-                    &scopes,
-                    &attributes_json,
-                    &now,
-                    &now,
-                ],
+                &[&resource_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.name as &(dyn tokio_postgres::types::ToSql + Sync), &request.display_name as &(dyn tokio_postgres::types::ToSql + Sync), &uris as &(dyn tokio_postgres::types::ToSql + Sync), &request.icon_uri as &(dyn tokio_postgres::types::ToSql + Sync), &request.resource_type as &(dyn tokio_postgres::types::ToSql + Sync), &owner as &(dyn tokio_postgres::types::ToSql + Sync), &true as &(dyn tokio_postgres::types::ToSql + Sync), // enabled
+                    &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &resource_server_id as &(dyn tokio_postgres::types::ToSql + Sync), &scopes as &(dyn tokio_postgres::types::ToSql + Sync), &attributes_json as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Failed to create resource: {}", e);
-                AuthencError::database(format!("Failed to create resource: {}", e))
-            })?;
+            .await?
 
         row.to_model()
     }
@@ -7636,7 +6846,7 @@ pub mod resources { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        match db.query_opt(query, &[&resource_id]).await {
+        match db.query_opt_raw(query, &[&resource_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await {
             Ok(Some(row)) => Ok(Some(row.to_model()?)),
             Ok(None) => Ok(None),
             Err(e) => {
@@ -7664,7 +6874,7 @@ pub mod resources { use crate::database::RowExt;
             WHERE name = $1 AND resource_server_id = $2
         "#;
 
-        match db.query_opt(query, &[&name, &resource_server_id]).await {
+        match db.query_opt_raw(query, &[&name as &(dyn tokio_postgres::types::ToSql + Sync), &resource_server_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await {
             Ok(Some(row)) => Ok(Some(row.to_model()?)),
             Ok(None) => Ok(None),
             Err(e) => {
@@ -7698,7 +6908,8 @@ pub mod resources { use crate::database::RowExt;
             LIMIT $2 OFFSET $3
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&owner, &(limit as i64), &(offset as i64)])
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(query, &[&owner as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)])
             .await?;
         rows.into_iter()
             .map(|row: tokio_postgres::Row| row.to_model())
@@ -7726,9 +6937,10 @@ pub mod resources { use crate::database::RowExt;
             LIMIT $2 OFFSET $3
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(
                 query,
-                &[&resource_server_id, &(limit as i64), &(offset as i64)],
+                &[&resource_server_id as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)],
             )
             .await?;
         rows.into_iter()
@@ -7757,7 +6969,8 @@ pub mod resources { use crate::database::RowExt;
             LIMIT $2 OFFSET $3
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&realm_id, &(limit as i64), &(offset as i64)])
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)])
             .await?;
         rows.into_iter()
             .map(|row: tokio_postgres::Row| row.to_model())
@@ -7796,25 +7009,12 @@ pub mod resources { use crate::database::RowExt;
                 created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &resource_id,
-                    &request.display_name,
-                    &request.uris,
-                    &request.icon_uri,
-                    &request.resource_type,
-                    &request.owner,
-                    &request.scopes,
-                    &attributes_json,
-                    &now,
-                ],
+                &[&resource_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.display_name as &(dyn tokio_postgres::types::ToSql + Sync), &request.uris as &(dyn tokio_postgres::types::ToSql + Sync), &request.icon_uri as &(dyn tokio_postgres::types::ToSql + Sync), &request.resource_type as &(dyn tokio_postgres::types::ToSql + Sync), &request.owner as &(dyn tokio_postgres::types::ToSql + Sync), &request.scopes as &(dyn tokio_postgres::types::ToSql + Sync), &attributes_json as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Failed to update resource: {}", e);
-                AuthencError::database(format!("Failed to update resource: {}", e))
-            })?;
+            .await?
 
         row.to_model()
     }
@@ -7823,7 +7023,7 @@ pub mod resources { use crate::database::RowExt;
     pub async fn delete_resource(db: &Database, resource_id: Uuid) -> Result<()> {
         let query = "DELETE FROM resources WHERE id = $1";
 
-        let rows_affected = db.execute(query, &[&resource_id]).await?;
+        let rows_affected: u64 = db.execute(query, &[&resource_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows_affected == 0 {
             return Err(AuthencError::resource_not_found(format!(
@@ -7858,9 +7058,10 @@ pub mod resources { use crate::database::RowExt;
             LIMIT $3 OFFSET $4
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(
                 query,
-                &[&realm_id, &pattern, &(limit as i64), &(offset as i64)],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &pattern as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)],
             )
             .await?;
         rows.into_iter()
@@ -7872,7 +7073,7 @@ pub mod resources { use crate::database::RowExt;
     pub async fn count_resources(db: &Database, resource_server_id: Uuid) -> Result<i64> {
         let query = "SELECT COUNT(*) FROM resources WHERE resource_server_id = $1";
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&resource_server_id]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&resource_server_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(row.get(0))
     }
 
@@ -7880,7 +7081,7 @@ pub mod resources { use crate::database::RowExt;
     pub async fn count_resources_by_owner(db: &Database, owner: &str) -> Result<i64> {
         let query = "SELECT COUNT(*) FROM resources WHERE owner = $1";
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&owner]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&owner as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(row.get(0))
     }
 }
@@ -7933,10 +7134,6 @@ where
 
 /// Store a user event in the database
 pub async fn store_event(db: &Database, event: &Event) -> Result<()> {
-    let details_json = serde_json::to_string(&event.details).map_err(|e| {
-        error!("Failed to serialize event details: {}", e);
-        AuthencError::validation("Failed to serialize event details")
-    })?;
 
     let query = r#"
             INSERT INTO events (
@@ -7948,26 +7145,10 @@ pub async fn store_event(db: &Database, event: &Event) -> Result<()> {
 
     db.execute(
         query,
-        &[
-            &Uuid::parse_str(&event.id)
-                .map_err(|_| AuthencError::validation("Invalid event ID"))?,
-            &event.time,
-            &event.event_type.as_str(),
-            &event.realm_id,
-            &event.realm_name,
-            &event.client_id,
-            &event.user_id,
-            &event.session_id,
-            &event.ip_address,
-            &event.error,
-            &details_json,
-        ],
+        &[&Uuid::parse_str(&event.id)
+                .map_err(|_| AuthencError::validation("Invalid event ID"))? as &(dyn tokio_postgres::types::ToSql + Sync), &event.time as &(dyn tokio_postgres::types::ToSql + Sync), &event.event_type.as_str() as &(dyn tokio_postgres::types::ToSql + Sync), &event.realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.realm_name as &(dyn tokio_postgres::types::ToSql + Sync), &event.client_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.user_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.session_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.ip_address as &(dyn tokio_postgres::types::ToSql + Sync), &event.error as &(dyn tokio_postgres::types::ToSql + Sync), &details_json as &(dyn tokio_postgres::types::ToSql + Sync)],
     )
-    .await
-    .map_err(|e| {
-        error!("Failed to store event: {}", e);
-        AuthencError::database("Failed to store event")
-    })?;
+    .await?
 
     Ok(())
 }
@@ -7987,29 +7168,11 @@ pub async fn store_admin_event(db: &Database, event: &AdminEvent) -> Result<()> 
     // Based on previous code, realm_name is Option<String>.
     db.execute(
         query,
-        &[
-            &Uuid::parse_str(&event.id)
-                .map_err(|_| AuthencError::validation("Invalid admin event ID"))?,
-            &event.time,
-            &event.realm_id,
-            &event.realm_name,
-            &Uuid::parse_str(&event.auth_details.user_id)
-                .map_err(|_| AuthencError::validation("Invalid auth user ID"))?,
-            &event.auth_details.username,
-            &event.auth_details.ip_address,
-            &event.auth_details.user_agent,
-            &event.resource_type.as_str(),
-            &event.operation_type.as_str(),
-            &event.resource_path,
-            &event.representation,
-            &event.error,
-        ],
+        &[&Uuid::parse_str(&event.id)
+                .map_err(|_| AuthencError::validation("Invalid admin event ID"))? as &(dyn tokio_postgres::types::ToSql + Sync), &event.time as &(dyn tokio_postgres::types::ToSql + Sync), &event.realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &event.realm_name as &(dyn tokio_postgres::types::ToSql + Sync), &Uuid::parse_str(&event.auth_details.user_id)
+                .map_err(|_| AuthencError::validation("Invalid auth user ID"))? as &(dyn tokio_postgres::types::ToSql + Sync), &event.auth_details.username as &(dyn tokio_postgres::types::ToSql + Sync), &event.auth_details.ip_address as &(dyn tokio_postgres::types::ToSql + Sync), &event.auth_details.user_agent as &(dyn tokio_postgres::types::ToSql + Sync), &event.resource_type.as_str() as &(dyn tokio_postgres::types::ToSql + Sync), &event.operation_type.as_str() as &(dyn tokio_postgres::types::ToSql + Sync), &event.resource_path as &(dyn tokio_postgres::types::ToSql + Sync), &event.representation as &(dyn tokio_postgres::types::ToSql + Sync), &event.error as &(dyn tokio_postgres::types::ToSql + Sync)],
     )
-    .await
-    .map_err(|e| {
-        error!("Failed to store admin event: {}", e);
-        AuthencError::database("Failed to store admin event")
-    })?;
+    .await?
 
     Ok(())
 }
@@ -8104,12 +7267,9 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
         .map(|p| &**p as &(dyn tokio_postgres::types::ToSql + Sync))
         .collect();
 
-    let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(&query_sql, param_refs.as_slice())
-        .await
-        .map_err(|e| {
-            error!("Failed to query events: {}", e);
-            AuthencError::database("Failed to query events")
-        })?;
+    let rows: Vec<tokio_postgres::Row> = db
+        .query_raw(&query_sql, param_refs.as_slice())
+        .await?
 
     let mut events = Vec::new();
     for row in rows {
@@ -8121,9 +7281,9 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
             .unwrap_or_default();
 
         events.push(Event {
-            id: row.get::<_, Uuid>(0).to_string(),
+            id: row.get::<usize, Uuid>(0).to_string(),
             time: row.get(1),
-            event_type: EventType::from_str(&row.get::<_, String>(2)).unwrap_or(EventType::Login),
+            event_type: EventType::from_str(&row.get::<usize, String>(2)).unwrap_or(EventType::Login),
             realm_id: row.get(3),
             realm_name: row.get(4),
             client_id: row.get(5),
@@ -8236,32 +7396,29 @@ pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Resul
         .map(|p| &**p as &(dyn tokio_postgres::types::ToSql + Sync))
         .collect();
 
-    let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(&query_sql, param_refs.as_slice())
-        .await
-        .map_err(|e| {
-            error!("Failed to query admin events: {}", e);
-            AuthencError::database("Failed to query admin events")
-        })?;
+    let rows: Vec<tokio_postgres::Row> = db
+        .query_raw(&query_sql, param_refs.as_slice())
+        .await?
 
     let mut events = Vec::new();
     for row in rows {
         events.push(AdminEvent {
-            id: row.get::<_, Uuid>(0).to_string(),
+            id: row.get::<usize, Uuid>(0).to_string(),
             time: row.get(1),
             realm_id: row.get(2),
             realm_name: row.get(3),
             auth_details: AuthDetails {
                 user_id: row
                     .get::<_, Option<Uuid>>(4)
-                    .map(|id| id.to_string())
+                    .map(|id: Uuid| id.to_string())
                     .unwrap_or_default(),
                 username: row.get(5),
                 ip_address: row.get(6),
                 user_agent: row.get(7),
             },
-            resource_type: ResourceType::from_str(&row.get::<_, String>(8))
+            resource_type: ResourceType::from_str(&row.get::<usize, String>(8))
                 .unwrap_or(ResourceType::User),
-            operation_type: OperationType::from_str(&row.get::<_, String>(9))
+            operation_type: OperationType::from_str(&row.get::<usize, String>(9))
                 .unwrap_or(OperationType::Create),
             resource_path: row.get(10),
             representation: row.get(11),
@@ -8276,10 +7433,6 @@ pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Resul
 pub async fn clear_old_events(db: &Database, retention_days: i32) -> Result<i64> {
     let query = "DELETE FROM events WHERE time < NOW() - INTERVAL '1 day' * $1";
 
-    let deleted: u64 = db.execute(query, &[&retention_days]).await.map_err(|e| {
-        error!("Failed to clear old events: {}", e);
-        AuthencError::database("Failed to clear old events")
-    })?;
 
     Ok(deleted as i64)
 }
@@ -8288,10 +7441,6 @@ pub async fn clear_old_events(db: &Database, retention_days: i32) -> Result<i64>
 pub async fn clear_old_admin_events(db: &Database, retention_days: i32) -> Result<i64> {
     let query = "DELETE FROM admin_events WHERE time < NOW() - INTERVAL '1 day' * $1";
 
-    let deleted: u64 = db.execute(query, &[&retention_days]).await.map_err(|e| {
-        error!("Failed to clear old admin events: {}", e);
-        AuthencError::database("Failed to clear old admin events")
-    })?;
 
     Ok(deleted as i64)
 }
@@ -8362,17 +7511,7 @@ pub mod tokens { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &id,
-                &token_hash,
-                &refresh_token_hash,
-                &client_id,
-                &user_id,
-                &scopes,
-                &expires_at,
-                &refresh_expires_at,
-                &session_id,
-            ],
+            &[&id as &(dyn tokio_postgres::types::ToSql + Sync), &token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &refresh_token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &client_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &scopes as &(dyn tokio_postgres::types::ToSql + Sync), &expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &refresh_expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &session_id as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -8391,13 +7530,13 @@ pub mod tokens { use crate::database::RowExt;
             WHERE token_hash = $1
         ";
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&token_hash]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&token_hash as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(None);
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(Some(AccessTokenData {
             id: row.get(0),
             token_hash: row.get(1),
@@ -8427,13 +7566,13 @@ pub mod tokens { use crate::database::RowExt;
             WHERE refresh_token_hash = $1
         ";
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&refresh_token_hash]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&refresh_token_hash as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(None);
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(Some(AccessTokenData {
             id: row.get(0),
             token_hash: row.get(1),
@@ -8459,7 +7598,7 @@ pub mod tokens { use crate::database::RowExt;
             WHERE token_hash = $1
         ";
 
-        db.execute(query, &[&token_hash]).await?;
+        db.execute(query, &[&token_hash as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -8471,7 +7610,7 @@ pub mod tokens { use crate::database::RowExt;
             WHERE token_hash = $1 AND revoked = false
         ";
 
-        db.execute(query, &[&token_hash]).await?;
+        db.execute(query, &[&token_hash as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -8483,7 +7622,7 @@ pub mod tokens { use crate::database::RowExt;
             WHERE user_id = $1 AND revoked = false
         ";
 
-        let rows_affected = db.execute(query, &[&user_id]).await?;
+        let rows_affected: u64 = db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(rows_affected)
     }
 
@@ -8495,7 +7634,7 @@ pub mod tokens { use crate::database::RowExt;
             WHERE client_id = $1 AND revoked = false
         ";
 
-        let rows_affected = db.execute(query, &[&client_id]).await?;
+        let rows_affected: u64 = db.execute(query, &[&client_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(rows_affected)
     }
 
@@ -8514,7 +7653,7 @@ pub mod tokens { use crate::database::RowExt;
             ORDER BY created_at DESC
         ";
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&user_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         let mut tokens = Vec::new();
         for row in rows {
@@ -8546,7 +7685,7 @@ pub mod tokens { use crate::database::RowExt;
               AND (refresh_expires_at IS NULL OR refresh_expires_at < NOW())
         ";
 
-        let rows_affected = db.execute(query, &[]).await?;
+        let rows_affected: u64 = db.execute(query, &[]).await?;
         Ok(rows_affected)
     }
 
@@ -8561,7 +7700,7 @@ pub mod tokens { use crate::database::RowExt;
             FROM oauth2_access_tokens
         ";
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[]).await?;
         if rows.is_empty() {
             return Ok(TokenStatistics {
                 active_tokens: 0,
@@ -8571,12 +7710,12 @@ pub mod tokens { use crate::database::RowExt;
             });
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(TokenStatistics {
-            active_tokens: row.get::<_, i64>(0) as u64,
-            revoked_tokens: row.get::<_, i64>(1) as u64,
-            expired_tokens: row.get::<_, i64>(2) as u64,
-            total_tokens: row.get::<_, i64>(3) as u64,
+            active_tokens: row.get::<usize, i64>(0) as u64,
+            revoked_tokens: row.get::<usize, i64>(1) as u64,
+            expired_tokens: row.get::<usize, i64>(2) as u64,
+            total_tokens: row.get::<usize, i64>(3) as u64,
         })
     }
 
@@ -8629,27 +7768,14 @@ pub mod permission_tickets { use crate::database::RowExt;
                 created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &ticket_id,
-                    &request.resource_id,
-                    &request.scope_id,
-                    &owner,
-                    &request.requester,
-                    &false,                         // granted
-                    &None::<chrono::DateTime<Utc>>, // granted_timestamp
-                    &realm_id,
-                    &resource_server_id,
-                    &now,
-                    &now,
-                ],
+                &[&ticket_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.resource_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.scope_id as &(dyn tokio_postgres::types::ToSql + Sync), &owner as &(dyn tokio_postgres::types::ToSql + Sync), &request.requester as &(dyn tokio_postgres::types::ToSql + Sync), &false as &(dyn tokio_postgres::types::ToSql + Sync), // granted
+                    &None::<chrono::DateTime<Utc>> as &(dyn tokio_postgres::types::ToSql + Sync), // granted_timestamp
+                    &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &resource_server_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Failed to create permission ticket: {}", e);
-                AuthencError::database(format!("Failed to create permission ticket: {}", e))
-            })?;
+            .await?
 
         row.to_model()
     }
@@ -8668,7 +7794,7 @@ pub mod permission_tickets { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        match db.query_opt(query, &[&id]).await {
+        match db.query_opt_raw(query, &[&id as &(dyn tokio_postgres::types::ToSql + Sync)]).await {
             Ok(Some(row)) => Ok(Some(row.to_model()?)),
             Ok(None) => Ok(None),
             Err(e) => {
@@ -8753,7 +7879,7 @@ pub mod permission_tickets { use crate::database::RowExt;
         params.push(&limit_i64);
         params.push(&offset_i64);
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(&query, &params).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(&query, &params).await?;
         rows.into_iter()
             .map(|row: tokio_postgres::Row| row.to_model())
             .collect::<Result<Vec<PermissionTicket>>>()
@@ -8793,13 +7919,13 @@ pub mod permission_tickets { use crate::database::RowExt;
 
         let rows: Vec<tokio_postgres::Row> = if name_filter.is_some() {
             let pattern = format!("%{}%", name_filter.unwrap());
-            db.query::<tokio_postgres::Row>(
+            db.query_raw(
                 query,
-                &[&user_id, &pattern, &(limit as i64), &(offset as i64)],
+                &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &pattern as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)],
             )
             .await?
         } else {
-            db.query::<tokio_postgres::Row>(query, &[&user_id, &(limit as i64), &(offset as i64)])
+            db.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)])
                 .await?
         };
 
@@ -8827,11 +7953,12 @@ pub mod permission_tickets { use crate::database::RowExt;
             LIMIT $2 OFFSET $3
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&owner, &(limit as i64), &(offset as i64)])
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(query, &[&owner as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)])
             .await?;
         Ok(rows
             .into_iter()
-            .map(|row: tokio_postgres::Row| row.get::<_, Uuid>(0))
+            .map(|row: tokio_postgres::Row| row.get::<usize, Uuid>(0))
             .collect())
     }
 
@@ -8864,9 +7991,9 @@ pub mod permission_tickets { use crate::database::RowExt;
         };
 
         let rows: Vec<tokio_postgres::Row> = if let Some(granted_filter) = granted {
-            db.query::<tokio_postgres::Row>(query, &[&resource_id, &granted_filter]).await?
+            db.query_raw(query, &[&resource_id as &(dyn tokio_postgres::types::ToSql + Sync), &granted_filter as &(dyn tokio_postgres::types::ToSql + Sync)]).await?
         } else {
-            db.query::<tokio_postgres::Row>(query, &[&resource_id]).await?
+            db.query_raw(query, &[&resource_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?
         };
 
         rows.into_iter()
@@ -8903,9 +8030,9 @@ pub mod permission_tickets { use crate::database::RowExt;
         };
 
         let rows: Vec<tokio_postgres::Row> = if let Some(granted_filter) = granted {
-            db.query::<tokio_postgres::Row>(query, &[&requester, &granted_filter]).await?
+            db.query_raw(query, &[&requester as &(dyn tokio_postgres::types::ToSql + Sync), &granted_filter as &(dyn tokio_postgres::types::ToSql + Sync)]).await?
         } else {
-            db.query::<tokio_postgres::Row>(query, &[&requester]).await?
+            db.query_raw(query, &[&requester as &(dyn tokio_postgres::types::ToSql + Sync)]).await?
         };
 
         rows.into_iter()
@@ -8927,12 +8054,8 @@ pub mod permission_tickets { use crate::database::RowExt;
                 created_at, updated_at
         "#;
 
-        let row: Option<tokio_postgres::Row> = db.query_opt(query, &[&id, &now, &now])
-            .await
-            .map_err(|e| {
-                error!("Failed to grant permission ticket: {}", e);
-                AuthencError::database(format!("Failed to grant permission ticket: {}", e))
-            })?
+        let row: tokio_postgres::Row = db.query_opt_raw(query, &[&id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)])
+            .await?
             .ok_or_else(|| {
                 AuthencError::resource_not_found(format!("Permission ticket {} not found", id))
             })?;
@@ -8954,12 +8077,8 @@ pub mod permission_tickets { use crate::database::RowExt;
                 created_at, updated_at
         "#;
 
-        let row: Option<tokio_postgres::Row> = db.query_opt(query, &[&id, &now])
-            .await
-            .map_err(|e| {
-                error!("Failed to revoke permission ticket: {}", e);
-                AuthencError::database(format!("Failed to revoke permission ticket: {}", e))
-            })?
+        let row: tokio_postgres::Row = db.query_opt_raw(query, &[&id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)])
+            .await?
             .ok_or_else(|| {
                 AuthencError::resource_not_found(format!("Permission ticket {} not found", id))
             })?;
@@ -8971,7 +8090,7 @@ pub mod permission_tickets { use crate::database::RowExt;
     pub async fn delete_permission_ticket(db: &Database, id: Uuid) -> Result<()> {
         let query = "DELETE FROM permission_tickets WHERE id = $1";
 
-        let rows_affected = db.execute(query, &[&id]).await?;
+        let rows_affected: u64 = db.execute(query, &[&id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows_affected == 0 {
             return Err(AuthencError::resource_not_found(format!(
@@ -9033,7 +8152,7 @@ pub mod permission_tickets { use crate::database::RowExt;
             where_clause
         );
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(&query, &params).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(&query, &params).await?;
         Ok(row.get(0))
     }
 }
@@ -9068,24 +8187,12 @@ pub mod scopes { use crate::database::RowExt;
                 created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &scope_id,
-                    &request.name,
-                    &request.display_name,
-                    &request.icon_uri,
-                    &realm_id,
-                    &resource_server_id,
-                    &now,
-                    &now,
-                ],
+                &[&scope_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.name as &(dyn tokio_postgres::types::ToSql + Sync), &request.display_name as &(dyn tokio_postgres::types::ToSql + Sync), &request.icon_uri as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &resource_server_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Failed to create scope: {}", e);
-                AuthencError::database(format!("Failed to create scope: {}", e))
-            })?;
+            .await?
 
         row.to_model()
     }
@@ -9100,7 +8207,7 @@ pub mod scopes { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        match db.query_opt(query, &[&id]).await {
+        match db.query_opt_raw(query, &[&id as &(dyn tokio_postgres::types::ToSql + Sync)]).await {
             Ok(Some(row)) => Ok(Some(row.to_model()?)),
             Ok(None) => Ok(None),
             Err(e) => {
@@ -9127,7 +8234,7 @@ pub mod scopes { use crate::database::RowExt;
             WHERE name = $1 AND resource_server_id = $2
         "#;
 
-        match db.query_opt(query, &[&name, &resource_server_id]).await {
+        match db.query_opt_raw(query, &[&name as &(dyn tokio_postgres::types::ToSql + Sync), &resource_server_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await {
             Ok(Some(row)) => Ok(Some(row.to_model()?)),
             Ok(None) => Ok(None),
             Err(e) => {
@@ -9160,9 +8267,10 @@ pub mod scopes { use crate::database::RowExt;
             LIMIT $2 OFFSET $3
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(
                 query,
-                &[&resource_server_id, &(limit as i64), &(offset as i64)],
+                &[&resource_server_id as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)],
             )
             .await?;
         rows.into_iter()
@@ -9190,7 +8298,8 @@ pub mod scopes { use crate::database::RowExt;
             LIMIT $2 OFFSET $3
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&realm_id, &(limit as i64), &(offset as i64)])
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)])
             .await?;
         rows.into_iter()
             .map(|row: tokio_postgres::Row| row.to_model())
@@ -9218,21 +8327,11 @@ pub mod scopes { use crate::database::RowExt;
                 created_at, updated_at
         "#;
 
-        let row: Option<tokio_postgres::Row> = db.query_opt(
+        let row: tokio_postgres::Row = db.query_opt_raw(
                 query,
-                &[
-                    &id,
-                    &request.name,
-                    &request.display_name,
-                    &request.icon_uri,
-                    &now,
-                ],
+                &[&id as &(dyn tokio_postgres::types::ToSql + Sync), &request.name as &(dyn tokio_postgres::types::ToSql + Sync), &request.display_name as &(dyn tokio_postgres::types::ToSql + Sync), &request.icon_uri as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
-            .map_err(|e| {
-                error!("Failed to update scope: {}", e);
-                AuthencError::database(format!("Failed to update scope: {}", e))
-            })?
+            .await?
             .ok_or_else(|| AuthencError::resource_not_found(format!("Scope {} not found", id)))?;
 
         row.to_model()
@@ -9242,7 +8341,7 @@ pub mod scopes { use crate::database::RowExt;
     pub async fn delete_scope(db: &Database, id: Uuid) -> Result<()> {
         let query = "DELETE FROM scopes WHERE id = $1";
 
-        let rows_affected = db.execute(query, &[&id]).await?;
+        let rows_affected: u64 = db.execute(query, &[&id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows_affected == 0 {
             return Err(AuthencError::resource_not_found(format!(
@@ -9276,9 +8375,10 @@ pub mod scopes { use crate::database::RowExt;
             LIMIT $3 OFFSET $4
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(
                 query,
-                &[&realm_id, &pattern, &(limit as i64), &(offset as i64)],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &pattern as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)],
             )
             .await?;
         rows.into_iter()
@@ -9290,7 +8390,7 @@ pub mod scopes { use crate::database::RowExt;
     pub async fn count_scopes_by_server(db: &Database, resource_server_id: Uuid) -> Result<i64> {
         let query = "SELECT COUNT(*) FROM scopes WHERE resource_server_id = $1";
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&resource_server_id]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&resource_server_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(row.get(0))
     }
 }
@@ -9328,21 +8428,12 @@ pub mod resource_servers { use crate::database::RowExt;
         let policy_mode = "enforcing"; // Default
         let decision_strat = "unanimous"; // Default
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &id,
-                    &request.client_id,
-                    &request.name,
-                    &request.description,
-                    &true, // enabled by default
-                    &realm_id,
-                    &policy_mode,
-                    &decision_strat,
-                    &false, // allow_remote_resource_management default
-                    &now,
-                    &now,
-                ],
+                &[&id as &(dyn tokio_postgres::types::ToSql + Sync), &request.client_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.name as &(dyn tokio_postgres::types::ToSql + Sync), &request.description as &(dyn tokio_postgres::types::ToSql + Sync), &true as &(dyn tokio_postgres::types::ToSql + Sync), // enabled by default
+                    &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &policy_mode as &(dyn tokio_postgres::types::ToSql + Sync), &decision_strat as &(dyn tokio_postgres::types::ToSql + Sync), &false as &(dyn tokio_postgres::types::ToSql + Sync), // allow_remote_resource_management default
+                    &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -9363,7 +8454,7 @@ pub mod resource_servers { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        match db.query_opt(query, &[&id]).await? {
+        match db.query_opt_raw(query, &[&id as &(dyn tokio_postgres::types::ToSql + Sync)]).await? {
             Some(row) => Ok(Some(row.to_model()?)),
             None => Ok(None),
         }
@@ -9384,7 +8475,7 @@ pub mod resource_servers { use crate::database::RowExt;
             WHERE client_id = $1 AND realm_id = $2
         "#;
 
-        match db.query_opt(query, &[&client_id, &realm_id]).await? {
+        match db.query_opt_raw(query, &[&client_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await? {
             Some(row) => Ok(Some(row.to_model()?)),
             None => Ok(None),
         }
@@ -9411,7 +8502,8 @@ pub mod resource_servers { use crate::database::RowExt;
             LIMIT $2 OFFSET $3
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&realm_id, &(limit as i64), &(offset as i64)])
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)])
             .await?;
         rows.into_iter()
             .map(|row: tokio_postgres::Row| row.to_model())
@@ -9445,17 +8537,10 @@ pub mod resource_servers { use crate::database::RowExt;
         let policy_mode = request.policy_enforcement_mode.as_ref().map(|m| m.as_str());
         let decision_strat = request.decision_strategy.as_ref().map(|s| s.as_str());
 
-        match db.query_opt(
+        match db
+            .query_opt_raw(
                 query,
-                &[
-                    &id,
-                    &request.name,
-                    &request.description,
-                    &policy_mode,
-                    &decision_strat,
-                    &request.allow_remote_resource_management,
-                    &now,
-                ],
+                &[&id as &(dyn tokio_postgres::types::ToSql + Sync), &request.name as &(dyn tokio_postgres::types::ToSql + Sync), &request.description as &(dyn tokio_postgres::types::ToSql + Sync), &policy_mode as &(dyn tokio_postgres::types::ToSql + Sync), &decision_strat as &(dyn tokio_postgres::types::ToSql + Sync), &request.allow_remote_resource_management as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?
         {
@@ -9471,7 +8556,7 @@ pub mod resource_servers { use crate::database::RowExt;
     pub async fn delete_resource_server(db: &Database, id: Uuid) -> Result<()> {
         let query = "DELETE FROM resource_servers WHERE id = $1";
 
-        let rows_affected = db.execute(query, &[&id]).await?;
+        let rows_affected: u64 = db.execute(query, &[&id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows_affected == 0 {
             return Err(authenc_api::error::AuthencError::resource_not_found(format!(
@@ -9506,9 +8591,10 @@ pub mod resource_servers { use crate::database::RowExt;
             LIMIT $3 OFFSET $4
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(
                 query,
-                &[&realm_id, &pattern, &(limit as i64), &(offset as i64)],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &pattern as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)],
             )
             .await?;
         rows.into_iter()
@@ -9520,7 +8606,7 @@ pub mod resource_servers { use crate::database::RowExt;
     pub async fn count_resource_servers_by_realm(db: &Database, realm_id: Uuid) -> Result<i64> {
         let query = "SELECT COUNT(*) FROM resource_servers WHERE realm_id = $1";
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&realm_id]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(row.get(0))
     }
 }
@@ -9563,17 +8649,10 @@ pub mod user_consents { use crate::database::RowExt;
             RETURNING id, user_id, client_id, scopes, granted_at, expires_at, metadata
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &consent_id,
-                    &user_id,
-                    &request.client_id,
-                    &request.scopes,
-                    &granted_at,
-                    &expires_at,
-                    &metadata,
-                ],
+                &[&consent_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.client_id as &(dyn tokio_postgres::types::ToSql + Sync), &request.scopes as &(dyn tokio_postgres::types::ToSql + Sync), &granted_at as &(dyn tokio_postgres::types::ToSql + Sync), &expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &metadata as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -9592,7 +8671,7 @@ pub mod user_consents { use crate::database::RowExt;
     pub async fn revoke_consent(db: &Database, user_id: Uuid, client_id: &str) -> Result<()> {
         let query = "DELETE FROM user_consents WHERE user_id = $1 AND client_id = $2";
 
-        let rows_affected = db.execute(query, &[&user_id, &client_id]).await?;
+        let rows_affected: u64 = db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &client_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows_affected == 0 {
             return Err(AuthencError::resource_not_found(format!(
@@ -9612,7 +8691,7 @@ pub mod user_consents { use crate::database::RowExt;
     ) -> Result<()> {
         let query = "DELETE FROM user_consents WHERE id = $1 AND user_id = $2";
 
-        let rows_affected = db.execute(query, &[&consent_id, &user_id]).await?;
+        let rows_affected: u64 = db.execute(query, &[&consent_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows_affected == 0 {
             return Err(AuthencError::resource_not_found(format!(
@@ -9634,7 +8713,7 @@ pub mod user_consents { use crate::database::RowExt;
             ORDER BY granted_at DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&user_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         rows.into_iter()
             .map(|row: tokio_postgres::Row| {
@@ -9664,7 +8743,7 @@ pub mod user_consents { use crate::database::RowExt;
             AND (expires_at IS NULL OR expires_at > NOW())
         "#;
 
-        let row: Option<tokio_postgres::Row> = db.query_opt(query, &[&user_id, &client_id]).await?;
+        let row: Option<tokio_postgres::Row> = db.query_opt_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &client_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(row.map(|row: tokio_postgres::Row| UserConsent {
             id: row.get("id"),
@@ -9691,7 +8770,7 @@ pub mod user_consents { use crate::database::RowExt;
             AND (expires_at IS NULL OR expires_at > NOW())
         "#;
 
-        let row: Option<tokio_postgres::Row> = db.query_opt(query, &[&user_id, &client_id]).await?;
+        let row: Option<tokio_postgres::Row> = db.query_opt_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &client_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         match row {
             Some(row) => {
@@ -9708,7 +8787,7 @@ pub mod user_consents { use crate::database::RowExt;
     pub async fn cleanup_expired_consents(db: &Database) -> Result<i64> {
         let query = "DELETE FROM user_consents WHERE expires_at IS NOT NULL AND expires_at < NOW()";
 
-        let rows_affected = db.execute(query, &[]).await?;
+        let rows_affected: u64 = db.execute(query, &[]).await?;
         Ok(rows_affected as i64)
     }
 
@@ -9724,13 +8803,13 @@ pub mod user_consents { use crate::database::RowExt;
             WHERE user_id = $1
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(query, &[&user_id]).await?;
+        let row: tokio_postgres::Row = db.query_one_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         Ok(serde_json::json!({
-            "total_consents": row.get::<_, i64>("total_consents"),
-            "permanent_consents": row.get::<_, i64>("permanent_consents"),
-            "temporary_consents": row.get::<_, i64>("temporary_consents"),
-            "unique_clients": row.get::<_, i64>("unique_clients")
+            "total_consents": row.get::<&str, i64>("total_consents"),
+            "permanent_consents": row.get::<&str, i64>("permanent_consents"),
+            "temporary_consents": row.get::<&str, i64>("temporary_consents"),
+            "unique_clients": row.get::<&str, i64>("unique_clients")
         }))
     }
 }
@@ -9766,18 +8845,7 @@ pub mod sessions { use crate::database::RowExt;
 
         db.execute(
             query,
-            &[
-                &session.id,
-                &session_id_str,
-                &session.user_id,
-                &session.expires_at,
-                &ip_addr,
-                &session.user_agent,
-                &session.created_at,
-                &session.last_accessed,
-                &session.revoked,
-                &session.created_at,
-            ],
+            &[&session.id as &(dyn tokio_postgres::types::ToSql + Sync), &session_id_str as &(dyn tokio_postgres::types::ToSql + Sync), &session.user_id as &(dyn tokio_postgres::types::ToSql + Sync), &session.expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &ip_addr as &(dyn tokio_postgres::types::ToSql + Sync), &session.user_agent as &(dyn tokio_postgres::types::ToSql + Sync), &session.created_at as &(dyn tokio_postgres::types::ToSql + Sync), &session.last_accessed as &(dyn tokio_postgres::types::ToSql + Sync), &session.revoked as &(dyn tokio_postgres::types::ToSql + Sync), &session.created_at as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
 
@@ -9817,19 +8885,10 @@ pub mod sessions { use crate::database::RowExt;
 
         let ip_addr: Option<std::net::IpAddr> = ip_address.and_then(|ip| ip.parse().ok());
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &session_uuid,
-                    &session_id_str,
-                    &user_id,
-                    &expires_at,
-                    &ip_addr,
-                    &user_agent,
-                    &now,
-                    &now,
-                    &now,
-                ],
+                &[&session_uuid as &(dyn tokio_postgres::types::ToSql + Sync), &session_id_str as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &ip_addr as &(dyn tokio_postgres::types::ToSql + Sync), &user_agent as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -9863,33 +8922,22 @@ pub mod sessions { use crate::database::RowExt;
 
             db.execute(
                 token_query,
-                &[
-                    &token_id,
-                    &token_hash,
-                    &refresh_token_hash,
-                    &cid,
-                    &user_id,
-                    &scopes,
-                    &expires_at,
-                    &refresh_expires_at,
-                    &now,
-                    &session_id_str,
-                ],
+                &[&token_id as &(dyn tokio_postgres::types::ToSql + Sync), &token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &refresh_token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &cid as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &scopes as &(dyn tokio_postgres::types::ToSql + Sync), &expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &refresh_expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &session_id_str as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
         }
 
         // Note: realm_id, client_id, token_hash etc are not stored in user_sessions schema
         Ok(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "session_id": row.get::<_, String>("session_id"),
-            "user_id": row.get::<_, Uuid>("user_id"),
+            "id": row.get::<&str, Uuid>("id"),
+            "session_id": row.get::<&str, String>("session_id"),
+            "user_id": row.get::<&str, Uuid>("user_id"),
             "realm_id": realm_id, // Passed through
             "client_id": client_id, // Passed through
             "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
             "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
             "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity_at"),
-            "revoked": row.get::<_, bool>("terminated"),
+            "revoked": row.get::<&str, bool>("terminated"),
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at")
         }))
     }
@@ -9908,7 +8956,7 @@ pub mod sessions { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&session_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&session_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(None);
@@ -9916,18 +8964,18 @@ pub mod sessions { use crate::database::RowExt;
 
         let row: &tokio_postgres::Row = &rows[0];
         Ok(Some(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "session_id": row.get::<_, String>("session_id"),
-            "user_id": row.get::<_, Uuid>("user_id"),
+            "id": row.get::<&str, Uuid>("id"),
+            "session_id": row.get::<&str, String>("session_id"),
+            "user_id": row.get::<&str, Uuid>("user_id"),
             "device_id": row.try_get::<_, Option<Uuid>>("device_id").ok().flatten(),
             "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
             "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
             "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity_at"),
-            "revoked": row.get::<_, bool>("terminated"),
+            "revoked": row.get::<&str, bool>("terminated"),
             "revoked_at": row.try_get::<_, Option<chrono::DateTime<chrono::Utc>>>("terminated_at").ok().flatten(),
             "revoked_reason": row.try_get::<_, Option<String>>("terminated_reason").ok().flatten(),
-            "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
-            "user_agent": row.get::<_, Option<String>>("user_agent"),
+            "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip: std::net::IpAddr| ip.to_string()),
+            "user_agent": row.get::<&str, Option<String>>("user_agent"),
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at")
         })))
     }
@@ -9941,7 +8989,7 @@ pub mod sessions { use crate::database::RowExt;
 
         // 1. Find session_id from oauth2_access_tokens
         let token_query = "SELECT session_id FROM oauth2_access_tokens WHERE token_hash = $1 AND revoked = false AND expires_at > NOW()";
-        let token_rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(token_query, &[&token_hash]).await?;
+        let token_rows: Vec<tokio_postgres::Row> = db.query_raw(token_query, &[&token_hash as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if token_rows.is_empty() {
             return Ok(None);
@@ -9972,19 +9020,19 @@ pub mod sessions { use crate::database::RowExt;
             ORDER BY last_activity_at DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&user_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         let mut sessions = Vec::new();
         for row in rows {
             sessions.push(serde_json::json!({
-                "id": row.get::<_, Uuid>("id"),
-                "session_id": row.get::<_, String>("session_id"),
-                "user_id": row.get::<_, Uuid>("user_id"),
+                "id": row.get::<&str, Uuid>("id"),
+                "session_id": row.get::<&str, String>("session_id"),
+                "user_id": row.get::<&str, Uuid>("user_id"),
                 "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
                 "expires_at": row.get::<_, chrono::DateTime<chrono::Utc>>("expires_at"),
                 "last_accessed": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity_at"),
-                "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
-                "user_agent": row.get::<_, Option<String>>("user_agent"),
+                "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip: std::net::IpAddr| ip.to_string()),
+                "user_agent": row.get::<&str, Option<String>>("user_agent"),
                 "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at")
             }));
         }
@@ -10007,23 +9055,23 @@ pub mod sessions { use crate::database::RowExt;
             ORDER BY last_activity DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&device_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&device_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         let mut sessions = Vec::new();
         for row in rows {
             sessions.push(serde_json::json!({
-                "id": row.get::<_, Uuid>("id"),
-                "device_id": row.get::<_, Uuid>("device_id"),
-                "user_id": row.get::<_, Uuid>("user_id"),
-                "user_session_id": row.get::<_, Option<Uuid>>("user_session_id"),
-                "session_identifier": row.get::<_, String>("session_identifier"),
+                "id": row.get::<&str, Uuid>("id"),
+                "device_id": row.get::<&str, Uuid>("device_id"),
+                "user_id": row.get::<&str, Uuid>("user_id"),
+                "user_session_id": row.get::<&str, Option<Uuid>>("user_session_id"),
+                "session_identifier": row.get::<&str, String>("session_identifier"),
                 "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
                 "last_activity": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity"),
-                "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
+                "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip: std::net::IpAddr| ip.to_string()),
                 "location": row.get::<_, Option<serde_json::Value>>("location"),
-                "risk_score": row.get::<_, f64>("risk_score"),
+                "risk_score": row.get::<&str, f64>("risk_score"),
                 "risk_factors": row.get::<_, Option<serde_json::Value>>("risk_factors"),
-                "is_active": row.get::<_, bool>("is_active"),
+                "is_active": row.get::<&str, bool>("is_active"),
                 "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
                 "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
             }));
@@ -10040,7 +9088,7 @@ pub mod sessions { use crate::database::RowExt;
             WHERE id = $1 AND NOT terminated
         "#;
 
-        db.execute(query, &[&session_id]).await?;
+        db.execute(query, &[&session_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -10070,9 +9118,9 @@ pub mod sessions { use crate::database::RowExt;
         "#;
 
         let session_id_str = session_id.to_string();
-        let affected = db.execute(
+        let affected: u64 = db.execute(
             query,
-            &[&new_hash, &refresh_expires, &now, &old_hash, &session_id_str]
+            &[&new_hash as &(dyn tokio_postgres::types::ToSql + Sync), &refresh_expires as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &old_hash as &(dyn tokio_postgres::types::ToSql + Sync), &session_id_str as &(dyn tokio_postgres::types::ToSql + Sync)]
         ).await?;
 
         Ok(affected > 0)
@@ -10092,7 +9140,7 @@ pub mod sessions { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        db.execute(query, &[&session_id, &reason]).await?;
+        db.execute(query, &[&session_id as &(dyn tokio_postgres::types::ToSql + Sync), &reason as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -10110,7 +9158,7 @@ pub mod sessions { use crate::database::RowExt;
             WHERE user_id = $1 AND NOT terminated
         "#;
 
-        let count = db.execute(query, &[&user_id, &reason]).await?;
+        let count: u64 = db.execute(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &reason as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(count as i64)
     }
 
@@ -10121,7 +9169,7 @@ pub mod sessions { use crate::database::RowExt;
             WHERE expires_at < NOW()
         "#;
 
-        let count = db.execute(query, &[]).await?;
+        let count: u64 = db.execute(query, &[]).await?;
         Ok(count as i64)
     }
 
@@ -10149,30 +9197,23 @@ pub mod sessions { use crate::database::RowExt;
                       scope, revoked, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &user_id,
-                    &realm_id,
-                    &client_id,
-                    &token_hash,
-                    &scope,
-                    &expires_at,
-                    &data,
-                ],
+                &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &client_id as &(dyn tokio_postgres::types::ToSql + Sync), &token_hash as &(dyn tokio_postgres::types::ToSql + Sync), &scope as &(dyn tokio_postgres::types::ToSql + Sync), &expires_at as &(dyn tokio_postgres::types::ToSql + Sync), &data as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
         Ok(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "user_id": row.get::<_, Uuid>("user_id"),
-            "realm_id": row.get::<_, Uuid>("realm_id"),
-            "client_id": row.get::<_, Uuid>("client_id"),
+            "id": row.get::<&str, Uuid>("id"),
+            "user_id": row.get::<&str, Uuid>("user_id"),
+            "realm_id": row.get::<&str, Uuid>("realm_id"),
+            "client_id": row.get::<&str, Uuid>("client_id"),
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
             "expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("expires_at"),
             "last_used_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("last_used_at"),
-            "scope": row.get::<_, Option<String>>("scope"),
-            "revoked": row.get::<_, bool>("revoked"),
+            "scope": row.get::<&str, Option<String>>("scope"),
+            "revoked": row.get::<&str, bool>("revoked"),
             "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
         }))
     }
@@ -10193,24 +9234,24 @@ pub mod sessions { use crate::database::RowExt;
             WHERE token_hash = $1
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&token_hash]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&token_hash as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(None);
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(Some(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "user_id": row.get::<_, Uuid>("user_id"),
-            "realm_id": row.get::<_, Uuid>("realm_id"),
-            "client_id": row.get::<_, Uuid>("client_id"),
+            "id": row.get::<&str, Uuid>("id"),
+            "user_id": row.get::<&str, Uuid>("user_id"),
+            "realm_id": row.get::<&str, Uuid>("realm_id"),
+            "client_id": row.get::<&str, Uuid>("client_id"),
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
             "expires_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("expires_at"),
             "last_used_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("last_used_at"),
-            "scope": row.get::<_, Option<String>>("scope"),
+            "scope": row.get::<&str, Option<String>>("scope"),
             "data": row.get::<_, Option<serde_json::Value>>("data"),
-            "revoked": row.get::<_, bool>("revoked"),
+            "revoked": row.get::<&str, bool>("revoked"),
             "revoked_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("revoked_at"),
             "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
         })))
@@ -10224,7 +9265,7 @@ pub mod sessions { use crate::database::RowExt;
             WHERE id = $1 AND NOT revoked
         "#;
 
-        db.execute(query, &[&token_id]).await?;
+        db.execute(query, &[&token_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -10236,7 +9277,7 @@ pub mod sessions { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        db.execute(query, &[&token_id]).await?;
+        db.execute(query, &[&token_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -10265,33 +9306,26 @@ pub mod sessions { use crate::database::RowExt;
                       is_active, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &device_id,
-                    &user_id,
-                    &user_session_id,
-                    &session_identifier,
-                    &ip_addr,
-                    &location,
-                    &risk_score,
-                ],
+                &[&device_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_id as &(dyn tokio_postgres::types::ToSql + Sync), &user_session_id as &(dyn tokio_postgres::types::ToSql + Sync), &session_identifier as &(dyn tokio_postgres::types::ToSql + Sync), &ip_addr as &(dyn tokio_postgres::types::ToSql + Sync), &location as &(dyn tokio_postgres::types::ToSql + Sync), &risk_score as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
         Ok(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "device_id": row.get::<_, Uuid>("device_id"),
-            "user_id": row.get::<_, Uuid>("user_id"),
-            "user_session_id": row.get::<_, Option<Uuid>>("user_session_id"),
-            "session_identifier": row.get::<_, String>("session_identifier"),
+            "id": row.get::<&str, Uuid>("id"),
+            "device_id": row.get::<&str, Uuid>("device_id"),
+            "user_id": row.get::<&str, Uuid>("user_id"),
+            "user_session_id": row.get::<&str, Option<Uuid>>("user_session_id"),
+            "session_identifier": row.get::<&str, String>("session_identifier"),
             "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
             "last_activity": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity"),
-            "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
+            "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip: std::net::IpAddr| ip.to_string()),
             "location": row.get::<_, Option<serde_json::Value>>("location"),
-            "risk_score": row.get::<_, f64>("risk_score"),
+            "risk_score": row.get::<&str, f64>("risk_score"),
             "risk_factors": row.get::<_, Option<serde_json::Value>>("risk_factors"),
-            "is_active": row.get::<_, bool>("is_active"),
+            "is_active": row.get::<&str, bool>("is_active"),
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
             "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
         }))
@@ -10322,9 +9356,9 @@ pub mod sessions { use crate::database::RowExt;
         };
 
         if let (Some(score), Some(factors)) = (risk_score, risk_factors) {
-            db.execute(query, &[&session_id, &score, &factors]).await?;
+            db.execute(query, &[&session_id as &(dyn tokio_postgres::types::ToSql + Sync), &score as &(dyn tokio_postgres::types::ToSql + Sync), &factors as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         } else {
-            db.execute(query, &[&session_id]).await?;
+            db.execute(query, &[&session_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         }
 
         Ok(())
@@ -10340,7 +9374,7 @@ pub mod sessions { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        db.execute(query, &[&session_id]).await?;
+        db.execute(query, &[&session_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -10359,23 +9393,23 @@ pub mod sessions { use crate::database::RowExt;
             ORDER BY last_activity DESC
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&user_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&user_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         let mut sessions = Vec::new();
         for row in rows {
             sessions.push(serde_json::json!({
-                "id": row.get::<_, Uuid>("id"),
-                "device_id": row.get::<_, Uuid>("device_id"),
-                "user_id": row.get::<_, Uuid>("user_id"),
-                "user_session_id": row.get::<_, Option<Uuid>>("user_session_id"),
-                "session_identifier": row.get::<_, String>("session_identifier"),
+                "id": row.get::<&str, Uuid>("id"),
+                "device_id": row.get::<&str, Uuid>("device_id"),
+                "user_id": row.get::<&str, Uuid>("user_id"),
+                "user_session_id": row.get::<&str, Option<Uuid>>("user_session_id"),
+                "session_identifier": row.get::<&str, String>("session_identifier"),
                 "started_at": row.get::<_, chrono::DateTime<chrono::Utc>>("started_at"),
                 "last_activity": row.get::<_, chrono::DateTime<chrono::Utc>>("last_activity"),
-                "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip| ip.to_string()),
+                "ip_address": row.get::<_, Option<std::net::IpAddr>>("ip_address").map(|ip: std::net::IpAddr| ip.to_string()),
                 "location": row.get::<_, Option<serde_json::Value>>("location"),
-                "risk_score": row.get::<_, f64>("risk_score"),
+                "risk_score": row.get::<&str, f64>("risk_score"),
                 "risk_factors": row.get::<_, Option<serde_json::Value>>("risk_factors"),
-                "is_active": row.get::<_, bool>("is_active"),
+                "is_active": row.get::<&str, bool>("is_active"),
                 "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
                 "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
             }));
@@ -10417,28 +9451,21 @@ pub mod themes { use crate::database::RowExt;
                       is_active, is_default, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &realm_id,
-                    &name,
-                    &theme_type,
-                    &parent_theme,
-                    &css_content,
-                    &css_variables,
-                    &description,
-                ],
+                &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &name as &(dyn tokio_postgres::types::ToSql + Sync), &theme_type as &(dyn tokio_postgres::types::ToSql + Sync), &parent_theme as &(dyn tokio_postgres::types::ToSql + Sync), &css_content as &(dyn tokio_postgres::types::ToSql + Sync), &css_variables as &(dyn tokio_postgres::types::ToSql + Sync), &description as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
         Ok(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "realm_id": row.get::<_, Uuid>("realm_id"),
-            "name": row.get::<_, String>("name"),
-            "theme_type": row.get::<_, String>("theme_type"),
-            "parent_theme": row.get::<_, Option<String>>("parent_theme"),
-            "is_active": row.get::<_, bool>("is_active"),
-            "is_default": row.get::<_, bool>("is_default"),
+            "id": row.get::<&str, Uuid>("id"),
+            "realm_id": row.get::<&str, Uuid>("realm_id"),
+            "name": row.get::<&str, String>("name"),
+            "theme_type": row.get::<&str, String>("theme_type"),
+            "parent_theme": row.get::<&str, Option<String>>("parent_theme"),
+            "is_active": row.get::<&str, bool>("is_active"),
+            "is_default": row.get::<&str, bool>("is_default"),
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
             "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
         }))
@@ -10455,29 +9482,29 @@ pub mod themes { use crate::database::RowExt;
             WHERE id = $1
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&theme_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&theme_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(None);
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(Some(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "realm_id": row.get::<_, Uuid>("realm_id"),
-            "name": row.get::<_, String>("name"),
-            "theme_type": row.get::<_, String>("theme_type"),
-            "parent_theme": row.get::<_, Option<String>>("parent_theme"),
-            "css_content": row.get::<_, Option<String>>("css_content"),
+            "id": row.get::<&str, Uuid>("id"),
+            "realm_id": row.get::<&str, Uuid>("realm_id"),
+            "name": row.get::<&str, String>("name"),
+            "theme_type": row.get::<&str, String>("theme_type"),
+            "parent_theme": row.get::<&str, Option<String>>("parent_theme"),
+            "css_content": row.get::<&str, Option<String>>("css_content"),
             "css_variables": row.get::<_, Option<serde_json::Value>>("css_variables"),
             "templates": row.get::<_, Option<serde_json::Value>>("templates"),
             "resources": row.get::<_, Option<serde_json::Value>>("resources"),
             "messages": row.get::<_, Option<serde_json::Value>>("messages"),
-            "description": row.get::<_, Option<String>>("description"),
-            "version": row.get::<_, Option<String>>("version"),
-            "author": row.get::<_, Option<String>>("author"),
-            "is_active": row.get::<_, bool>("is_active"),
-            "is_default": row.get::<_, bool>("is_default"),
+            "description": row.get::<&str, Option<String>>("description"),
+            "version": row.get::<&str, Option<String>>("version"),
+            "author": row.get::<&str, Option<String>>("author"),
+            "is_active": row.get::<&str, bool>("is_active"),
+            "is_default": row.get::<&str, bool>("is_default"),
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
             "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
         })))
@@ -10510,22 +9537,22 @@ pub mod themes { use crate::database::RowExt;
         };
 
         let rows: Vec<tokio_postgres::Row> = if let Some(ttype) = theme_type {
-            db.query::<tokio_postgres::Row>(query, &[&realm_id, &ttype]).await?
+            db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &ttype as &(dyn tokio_postgres::types::ToSql + Sync)]).await?
         } else {
-            db.query::<tokio_postgres::Row>(query, &[&realm_id]).await?
+            db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?
         };
 
         let mut themes = Vec::new();
         for row in rows {
             themes.push(serde_json::json!({
-                "id": row.get::<_, Uuid>("id"),
-                "realm_id": row.get::<_, Uuid>("realm_id"),
-                "name": row.get::<_, String>("name"),
-                "theme_type": row.get::<_, String>("theme_type"),
-                "parent_theme": row.get::<_, Option<String>>("parent_theme"),
-                "description": row.get::<_, Option<String>>("description"),
-                "is_active": row.get::<_, bool>("is_active"),
-                "is_default": row.get::<_, bool>("is_default"),
+                "id": row.get::<&str, Uuid>("id"),
+                "realm_id": row.get::<&str, Uuid>("realm_id"),
+                "name": row.get::<&str, String>("name"),
+                "theme_type": row.get::<&str, String>("theme_type"),
+                "parent_theme": row.get::<&str, Option<String>>("parent_theme"),
+                "description": row.get::<&str, Option<String>>("description"),
+                "is_active": row.get::<&str, bool>("is_active"),
+                "is_default": row.get::<&str, bool>("is_default"),
                 "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
                 "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
             }));
@@ -10608,7 +9635,7 @@ pub mod themes { use crate::database::RowExt;
                 AND id != $2
         "#;
 
-        db.execute(deactivate_query, &[&now, &theme_id]).await?;
+        db.execute(deactivate_query, &[&now as &(dyn tokio_postgres::types::ToSql + Sync), &theme_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         // Activate the selected theme
         let activate_query = r#"
@@ -10617,14 +9644,14 @@ pub mod themes { use crate::database::RowExt;
             WHERE id = $2
         "#;
 
-        db.execute(activate_query, &[&now, &theme_id]).await?;
+        db.execute(activate_query, &[&now as &(dyn tokio_postgres::types::ToSql + Sync), &theme_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
     /// Delete theme
     pub async fn delete_theme(db: &Database, theme_id: Uuid) -> Result<()> {
         let query = "DELETE FROM custom_themes WHERE id = $1";
-        db.execute(query, &[&theme_id]).await?;
+        db.execute(query, &[&theme_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -10657,17 +9684,10 @@ pub mod themes { use crate::database::RowExt;
 
         let content_size = content_data.map(|d| d.len() as i64);
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &theme_id,
-                    &resource_name,
-                    &resource_type,
-                    &mime_type,
-                    &content_url,
-                    &content_data,
-                    &content_size,
-                ],
+                &[&theme_id as &(dyn tokio_postgres::types::ToSql + Sync), &resource_name as &(dyn tokio_postgres::types::ToSql + Sync), &resource_type as &(dyn tokio_postgres::types::ToSql + Sync), &mime_type as &(dyn tokio_postgres::types::ToSql + Sync), &content_url as &(dyn tokio_postgres::types::ToSql + Sync), &content_data as &(dyn tokio_postgres::types::ToSql + Sync), &content_size as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -10688,21 +9708,21 @@ pub mod themes { use crate::database::RowExt;
             WHERE theme_id = $1 AND resource_name = $2
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&theme_id, &resource_name]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&theme_id as &(dyn tokio_postgres::types::ToSql + Sync), &resource_name as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(None);
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(Some(serde_json::json!({
-            "id": row.get::<_, Uuid>("id"),
-            "theme_id": row.get::<_, Uuid>("theme_id"),
-            "resource_name": row.get::<_, String>("resource_name"),
-            "resource_type": row.get::<_, String>("resource_type"),
-            "mime_type": row.get::<_, Option<String>>("mime_type"),
-            "content_url": row.get::<_, Option<String>>("content_url"),
-            "content_size": row.get::<_, Option<i64>>("content_size"),
+            "id": row.get::<&str, Uuid>("id"),
+            "theme_id": row.get::<&str, Uuid>("theme_id"),
+            "resource_name": row.get::<&str, String>("resource_name"),
+            "resource_type": row.get::<&str, String>("resource_type"),
+            "mime_type": row.get::<&str, Option<String>>("mime_type"),
+            "content_url": row.get::<&str, Option<String>>("content_url"),
+            "content_size": row.get::<&str, Option<i64>>("content_size"),
             "created_at": row.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
             "updated_at": row.get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
         })))
@@ -10729,9 +9749,10 @@ pub mod themes { use crate::database::RowExt;
             RETURNING id
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[&theme_id, &template_name, &template_type, &content],
+                &[&theme_id as &(dyn tokio_postgres::types::ToSql + Sync), &template_name as &(dyn tokio_postgres::types::ToSql + Sync), &template_type as &(dyn tokio_postgres::types::ToSql + Sync), &content as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
             .await?;
 
@@ -10750,7 +9771,7 @@ pub mod themes { use crate::database::RowExt;
             WHERE theme_id = $1 AND template_name = $2
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&theme_id, &template_name]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&theme_id as &(dyn tokio_postgres::types::ToSql + Sync), &template_name as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(None);
@@ -10784,7 +9805,7 @@ pub mod themes { use crate::database::RowExt;
             column_name, column_name, column_name
         );
 
-        db.execute(&query, &[&realm_id, &theme_id]).await?;
+        db.execute(&query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &theme_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
         Ok(())
     }
 
@@ -10799,18 +9820,18 @@ pub mod themes { use crate::database::RowExt;
             WHERE realm_id = $1
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&realm_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(serde_json::json!({}));
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(serde_json::json!({
-            "login_theme_id": row.get::<_, Option<Uuid>>("login_theme_id"),
-            "account_theme_id": row.get::<_, Option<Uuid>>("account_theme_id"),
-            "admin_theme_id": row.get::<_, Option<Uuid>>("admin_theme_id"),
-            "email_theme_id": row.get::<_, Option<Uuid>>("email_theme_id")
+            "login_theme_id": row.get::<&str, Option<Uuid>>("login_theme_id"),
+            "account_theme_id": row.get::<&str, Option<Uuid>>("account_theme_id"),
+            "admin_theme_id": row.get::<&str, Option<Uuid>>("admin_theme_id"),
+            "email_theme_id": row.get::<&str, Option<Uuid>>("email_theme_id")
         }))
     }
 }
@@ -10841,7 +9862,8 @@ pub mod policies { use crate::database::RowExt;
             LIMIT $2 OFFSET $3
         "#;
 
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&realm_id, &(limit as i64), &(offset as i64)])
+        let rows: Vec<tokio_postgres::Row> = db
+            .query_raw(query, &[&realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &(limit as i64), &(offset as i64)])
             .await?;
 
         let mut policies = Vec::new();
@@ -10888,22 +9910,12 @@ pub mod policies { use crate::database::RowExt;
                 enabled, realm_id, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db.query_one::<tokio_postgres::Row>(
+        let row: tokio_postgres::Row = db
+            .query_one_raw(
                 query,
-                &[
-                    &id,
-                    &name,
-                    &description,
-                    &policy_type,
-                    &logic,
-                    &config,
-                    &enabled,
-                    &realm_id,
-                    &now,
-                    &now,
-                ],
+                &[&id as &(dyn tokio_postgres::types::ToSql + Sync), &name as &(dyn tokio_postgres::types::ToSql + Sync), &description as &(dyn tokio_postgres::types::ToSql + Sync), &policy_type as &(dyn tokio_postgres::types::ToSql + Sync), &logic as &(dyn tokio_postgres::types::ToSql + Sync), &config as &(dyn tokio_postgres::types::ToSql + Sync), &enabled as &(dyn tokio_postgres::types::ToSql + Sync), &realm_id as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)],
             )
-            .await
+            .await?
             .map_err(|e| AuthencError::database(format!("Failed to create policy: {}", e)))?;
 
         Ok(Policy {
@@ -10951,12 +9963,8 @@ pub mod spi { use crate::database::RowExt;
                 updated_at = EXCLUDED.updated_at
         "#;
 
-        db.execute(query, &[&spi_name, &provider_id, &config, &enabled, &now])
-            .await
-            .map_err(|e| {
-                error!("Failed to upsert SPI provider config: {}", e);
-                AuthencError::database(format!("Failed to upsert SPI provider config: {}", e))
-            })?;
+        db.execute(query, &[&spi_name as &(dyn tokio_postgres::types::ToSql + Sync), &provider_id as &(dyn tokio_postgres::types::ToSql + Sync), &config as &(dyn tokio_postgres::types::ToSql + Sync), &enabled as &(dyn tokio_postgres::types::ToSql + Sync), &now as &(dyn tokio_postgres::types::ToSql + Sync)])
+            .await?
 
         Ok(())
     }
@@ -10968,7 +9976,7 @@ pub mod spi { use crate::database::RowExt;
     ) -> Result<std::collections::HashMap<String, (Value, bool)>> {
         let query =
             "SELECT provider_id, config, enabled FROM spi_provider_configs WHERE spi_name = $1";
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&spi_name]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&spi_name as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         let mut map = std::collections::HashMap::new();
         for row in rows {
@@ -10987,13 +9995,13 @@ pub mod spi { use crate::database::RowExt;
         provider_id: &str,
     ) -> Result<Option<(Value, bool)>> {
         let query = "SELECT config, enabled FROM spi_provider_configs WHERE spi_name = $1 AND provider_id = $2";
-        let rows: Vec<tokio_postgres::Row> = db.query::<tokio_postgres::Row>(query, &[&spi_name, &provider_id]).await?;
+        let rows: Vec<tokio_postgres::Row> = db.query_raw(query, &[&spi_name as &(dyn tokio_postgres::types::ToSql + Sync), &provider_id as &(dyn tokio_postgres::types::ToSql + Sync)]).await?;
 
         if rows.is_empty() {
             return Ok(None);
         }
 
-        let row: &tokio_postgres::Row = &rows[0];
+        let row = &rows[0];
         Ok(Some((row.get(0), row.get(1))))
     }
 }
