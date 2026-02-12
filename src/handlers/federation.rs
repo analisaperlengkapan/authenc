@@ -216,7 +216,7 @@ pub async fn process_ldap_authentication(
                         let user = response.user;
 
                         // Generate JWT
-                        if let Ok(token) = crate::utils::crypto::jwt::generate_jwt(&user.id.to_string()) {
+                        if let Ok(token) = authenc_crypto::utils::crypto::jwt::generate_jwt(&user.id.to_string()) {
                             Ok(Json(LdapAuthResponse {
                                 success: true,
                                 user_info: Some(ldap_user_info),

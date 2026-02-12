@@ -114,7 +114,7 @@ pub async fn update_account_password(
 
     // Verify current password
     let password_valid = match &user.password_hash {
-        Some(hash) => crate::utils::crypto::password::verify_password(
+        Some(hash) => authenc_crypto::utils::crypto::password::verify_password(
             hash,
             &password_request.current_password,
         )
@@ -129,7 +129,7 @@ pub async fn update_account_password(
 
     // Hash the new password
     let new_password_hash =
-        crate::utils::crypto::password::hash_password(&password_request.new_password)
+        authenc_crypto::utils::crypto::password::hash_password(&password_request.new_password)
             .await
             .map_err(|e| AuthencError::internal(format!("Failed to hash password: {}", e)))?;
 

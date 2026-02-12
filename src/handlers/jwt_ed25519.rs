@@ -1,5 +1,5 @@
 use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
-use crate::utils::crypto_monitor::CryptoMonitor;
+use authenc_core::utils::crypto_monitor::CryptoMonitor;
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::Utc;
 use ed25519_dalek::{Signature, Signer};

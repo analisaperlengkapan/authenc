@@ -5,7 +5,7 @@
 
 use crate::config::AppConfig;
 use crate::error::{AuthencError, Result};
-use crate::services::authorization::AuthorizationService;
+use authenc_services::services::authorization::AuthorizationService;
 use std::sync::Arc;
 
 /// Comprehensive application state with all services
@@ -16,83 +16,83 @@ pub struct AppState {
     /// Database connection pool
     pub database: Arc<crate::database::Database>,
     /// User data store
-    pub user_store: Arc<dyn crate::services::stores::user_store::UserStoreTrait>,
+    pub user_store: Arc<dyn authenc_services::services::stores::user_store::UserStoreTrait>,
     /// Session management store
-    pub session_store: Arc<dyn crate::services::stores::session_store::SessionStoreTrait>,
+    pub session_store: Arc<dyn authenc_services::services::stores::session_store::SessionStoreTrait>,
     /// TOTP (Time-based One-Time Password) store
-    pub totp_store: Arc<crate::services::stores::totp_store::TotpStore>,
+    pub totp_store: Arc<authenc_services::services::stores::totp_store::TotpStore>,
     /// Brute force attack protection service
-    pub brute_force_protector: Arc<crate::services::security::brute_force_protector::BruteForceProtector>,
+    pub brute_force_protector: Arc<authenc_services::services::security::brute_force_protector::BruteForceProtector>,
     /// Anomaly detection service
-    pub anomaly_detector: Arc<crate::services::security::anomaly_detector::AnomalyDetector>,
+    pub anomaly_detector: Arc<authenc_services::services::security::anomaly_detector::AnomalyDetector>,
     /// Federation provider registry
-    pub federation_registry: Arc<crate::services::federation_provider::FederationRegistry>,
+    pub federation_registry: Arc<authenc_services::services::federation_provider::FederationRegistry>,
     /// Audit log storage
-    pub audit_log_store: Arc<crate::services::stores::pg_audit_log_store::PgAuditLogStore>,
+    pub audit_log_store: Arc<authenc_services::services::stores::pg_audit_log_store::PgAuditLogStore>,
     /// User consent management store for GDPR compliance
-    pub consent_store: Arc<dyn crate::services::stores::consent_store::ConsentStoreTrait>,
+    pub consent_store: Arc<dyn authenc_services::services::stores::consent_store::ConsentStoreTrait>,
     /// Authentication flow store for pluggable authentication flows
-    pub auth_flow_store: Arc<crate::services::stores::auth_flow_store::AuthFlowStore>,
+    pub auth_flow_store: Arc<authenc_services::services::stores::auth_flow_store::AuthFlowStore>,
     /// Realm configuration store
-    pub realm_store: Arc<crate::services::stores::realm_store::RealmStore>,
+    pub realm_store: Arc<authenc_services::services::stores::realm_store::RealmStore>,
     /// Realm management service
-    pub realm_service: Arc<dyn crate::services::realm::RealmService>,
+    pub realm_service: Arc<dyn authenc_services::services::realm::RealmService>,
     /// Role management store
-    pub role_store: Arc<crate::services::stores::role_store::RoleStore>,
+    pub role_store: Arc<authenc_services::services::stores::role_store::RoleStore>,
     /// Permission management store
-    pub permission_store: Arc<crate::services::stores::permission_store::PermissionStore>,
+    pub permission_store: Arc<authenc_services::services::stores::permission_store::PermissionStore>,
     /// Resource management store
-    pub resource_store: Arc<crate::services::stores::resource_store::ResourceStore>,
+    pub resource_store: Arc<authenc_services::services::stores::resource_store::ResourceStore>,
     /// Resource server management store
-    pub resource_server_store: Arc<crate::services::stores::resource_server_store::ResourceServerStore>,
+    pub resource_server_store: Arc<authenc_services::services::stores::resource_server_store::ResourceServerStore>,
     /// Permission ticket management store
     pub permission_ticket_store:
-        Arc<crate::services::stores::permission_ticket_store::PermissionTicketStore>,
+        Arc<authenc_services::services::stores::permission_ticket_store::PermissionTicketStore>,
     /// Scope management store
-    pub scope_store: Arc<crate::services::stores::scope_store::ScopeStore>,
+    pub scope_store: Arc<authenc_services::services::stores::scope_store::ScopeStore>,
     /// OIDC client store for OAuth2/OIDC client management
-    pub oidc_client_store: Arc<crate::services::stores::oidc_client_store::OidcClientStore>,
+    pub oidc_client_store: Arc<authenc_services::services::stores::oidc_client_store::OidcClientStore>,
     /// Social account store for social login account linking
     pub social_account_store:
-        Arc<crate::services::stores::social_account_store::SocialAccountStore>,
+        Arc<authenc_services::services::stores::social_account_store::SocialAccountStore>,
     /// Identity broker registry for external authentication providers
-    pub broker_registry: Arc<crate::services::broker::IdentityBrokerRegistry>,
+    pub broker_registry: Arc<authenc_services::services::broker::IdentityBrokerRegistry>,
     /// OID4VC service for verifiable credentials
-    pub oid4vc_service: Arc<crate::services::protocols::oid4vc::EnhancedOid4VcManager>,
+    pub oid4vc_service: Arc<authenc_services::services::protocols::oid4vc::EnhancedOid4VcManager>,
     /// SSO service for unified single sign-on
-    pub sso_service: Arc<dyn crate::services::sso::SsoService>,
+    pub sso_service: Arc<dyn authenc_services::services::sso::SsoService>,
     /// SSO session manager for unified session management
-    pub sso_session_manager: Arc<dyn crate::services::sso::SsoSessionManager>,
+    pub sso_session_manager: Arc<dyn authenc_services::services::sso::SsoSessionManager>,
     /// SSO cookie manager for secure cookie operations
-    pub sso_cookie_manager: Arc<crate::services::sso::SsoCookieManager>,
+    pub sso_cookie_manager: Arc<authenc_services::services::sso::SsoCookieManager>,
     /// Event manager for handling application events
-    pub event_manager: Arc<tokio::sync::RwLock<crate::services::events::EventManager>>,
+    pub event_manager: Arc<tokio::sync::RwLock<authenc_services::services::events::EventManager>>,
     /// Event retention service for managing event lifecycle
-    pub event_retention_service: Arc<crate::services::events::event_retention::EventRetentionService>,
+    pub event_retention_service: Arc<authenc_services::services::events::event_retention::EventRetentionService>,
     /// Audit log sink for persistent audit logging
-    pub audit_log_sink: Arc<dyn crate::services::audit::audit_log_sink::AuditLogSink>,
+    pub audit_log_sink: Arc<dyn authenc_services::services::audit::audit_log_sink::AuditLogSink>,
     /// SPI manager for pluggable enterprise components
     pub spi_manager: Arc<crate::spi::SpiManager>,
     /// Cluster manager for high availability
-    pub cluster_manager: Option<Arc<crate::services::clustering::ClusterManager>>,
+    pub cluster_manager: Option<Arc<authenc_services::services::clustering::ClusterManager>>,
     /// Observability service for monitoring and metrics
-    pub observability_service: Arc<crate::services::observability::ObservabilityService>,
+    pub observability_service: Arc<authenc_services::services::observability::ObservabilityService>,
     /// Compliance mode service
-    pub compliance_mode_service: Arc<crate::services::compliance_mode::ComplianceModeService>,
+    pub compliance_mode_service: Arc<authenc_services::services::compliance_mode::ComplianceModeService>,
     /// OAuth2 service for token persistence
-    pub oauth2_service: Arc<crate::services::oauth2::OAuth2Service>,
+    pub oauth2_service: Arc<authenc_services::services::oauth2::OAuth2Service>,
     /// WebAuthn service
-    pub webauthn_service: Arc<crate::services::protocols::webauthn::WebAuthnService>,
+    pub webauthn_service: Arc<authenc_services::services::protocols::webauthn::WebAuthnService>,
     /// FIPS security provider
-    pub fips_provider: Arc<crate::services::fips::AdvancedFipsSecurityProvider>,
+    pub fips_provider: Arc<authenc_services::services::fips::AdvancedFipsSecurityProvider>,
     /// Social login manager for handling OAuth flows
-    pub social_login_manager: Arc<crate::services::social::SocialLoginManager>,
+    pub social_login_manager: Arc<authenc_services::services::social::SocialLoginManager>,
     /// Authorization manager for fine-grained permissions
-    pub authorization_manager: Arc<crate::services::authorization::AuthorizationManager>,
+    pub authorization_manager: Arc<authenc_services::services::authorization::AuthorizationManager>,
     /// JIT provisioning service for federated users
-    pub jit_provisioning_service: Arc<dyn crate::services::federation::jit_provisioning::JITProvisioningService>,
+    pub jit_provisioning_service: Arc<dyn authenc_services::services::federation::jit_provisioning::JITProvisioningService>,
     /// OAuth2 client validator
-    pub client_validator: Arc<dyn crate::services::oauth2::ClientValidator>,
+    pub client_validator: Arc<dyn authenc_services::services::oauth2::ClientValidator>,
 }
 
 // Support extraction of database for health checks
@@ -119,7 +119,7 @@ impl AppState {
 
         // Initialize audit log store
         let audit_log_store = Arc::new(
-            crate::services::stores::pg_audit_log_store::PgAuditLogStore::new(&config.database_url())
+            authenc_services::services::stores::pg_audit_log_store::PgAuditLogStore::new(&config.database_url())
                 .await
                 .map_err(|e| {
                     AuthencError::database(format!("Failed to init audit store: {}", e))
@@ -127,26 +127,26 @@ impl AppState {
         );
 
         // Initialize consent store
-        let consent_store = Arc::new(crate::services::stores::consent_store::ConsentStore::new(
+        let consent_store = Arc::new(authenc_services::services::stores::consent_store::ConsentStore::new(
             database.clone(),
         ));
 
         // Initialize authentication flow store
         let auth_flow_store = Arc::new(
-            crate::services::stores::auth_flow_store::AuthFlowStore::new(database.clone()),
+            authenc_services::services::stores::auth_flow_store::AuthFlowStore::new(database.clone()),
         );
 
         // Initialize other services
-        let user_store: Arc<dyn crate::services::stores::user_store::UserStoreTrait> = Arc::new(crate::services::stores::user_store::UserStore::new(
+        let user_store: Arc<dyn authenc_services::services::stores::user_store::UserStoreTrait> = Arc::new(authenc_services::services::stores::user_store::UserStore::new(
             database.clone(),
         ));
 
         // Initialize session store (Redis or Database)
-        let session_store: Arc<dyn crate::services::stores::session_store::SessionStoreTrait> =
+        let session_store: Arc<dyn authenc_services::services::stores::session_store::SessionStoreTrait> =
             if let Ok(redis_url) = std::env::var("REDIS_URL") {
                 #[cfg(feature = "redis-store")]
                 {
-                    match crate::services::stores::redis_session_store::RedisSessionStore::new(&redis_url, database.clone()) {
+                    match authenc_services::services::stores::redis_session_store::RedisSessionStore::new(&redis_url, database.clone()) {
                         Ok(store) => {
                             // Redact URL to avoid leaking credentials
                             tracing::info!("Using Redis session store (URL redacted)");
@@ -154,7 +154,7 @@ impl AppState {
                         },
                         Err(e) => {
                             tracing::warn!("Failed to initialize Redis session store: {}. Falling back to database.", e);
-                            Arc::new(crate::services::stores::session_store::SessionStore::new(database.clone()))
+                            Arc::new(authenc_services::services::stores::session_store::SessionStore::new(database.clone()))
                         }
                     }
                 }
@@ -163,59 +163,59 @@ impl AppState {
                     // Silence unused variable warning
                     let _ = redis_url;
                     tracing::warn!("REDIS_URL present but 'redis-store' feature not enabled. Using database session store.");
-                    Arc::new(crate::services::stores::session_store::SessionStore::new(database.clone()))
+                    Arc::new(authenc_services::services::stores::session_store::SessionStore::new(database.clone()))
                 }
             } else {
-                Arc::new(crate::services::stores::session_store::SessionStore::new(database.clone()))
+                Arc::new(authenc_services::services::stores::session_store::SessionStore::new(database.clone()))
             };
 
-        let totp_store = Arc::new(crate::services::stores::totp_store::TotpStore::new());
+        let totp_store = Arc::new(authenc_services::services::stores::totp_store::TotpStore::new());
 
         let brute_force_protector = Arc::new(
-            crate::services::security::brute_force_protector::BruteForceProtector::new(
+            authenc_services::services::security::brute_force_protector::BruteForceProtector::new(
                 config.security.brute_force_max_attempts as usize,
                 config.security.brute_force_window_seconds,
             ),
         );
 
-        let anomaly_detector = Arc::new(crate::services::security::anomaly_detector::AnomalyDetector::new());
+        let anomaly_detector = Arc::new(authenc_services::services::security::anomaly_detector::AnomalyDetector::new());
         let federation_registry =
-            Arc::new(crate::services::federation_provider::FederationRegistry::new());
-        let realm_store = Arc::new(crate::services::stores::realm_store::RealmStore::new());
-        let realm_service = Arc::new(crate::services::realm::PostgresRealmService::new(
+            Arc::new(authenc_services::services::federation_provider::FederationRegistry::new());
+        let realm_store = Arc::new(authenc_services::services::stores::realm_store::RealmStore::new());
+        let realm_service = Arc::new(authenc_services::services::realm::PostgresRealmService::new(
             database.clone(),
         ));
-        let role_store = Arc::new(crate::services::stores::role_store::RoleStore::new());
+        let role_store = Arc::new(authenc_services::services::stores::role_store::RoleStore::new());
         let permission_store =
-            Arc::new(crate::services::stores::permission_store::PermissionStore::new());
-        let resource_store = Arc::new(crate::services::stores::resource_store::ResourceStore::new(
+            Arc::new(authenc_services::services::stores::permission_store::PermissionStore::new());
+        let resource_store = Arc::new(authenc_services::services::stores::resource_store::ResourceStore::new(
             database.clone(),
         ));
         let resource_server_store = Arc::new(
-            crate::services::stores::resource_server_store::ResourceServerStore::new(database.clone()),
+            authenc_services::services::stores::resource_server_store::ResourceServerStore::new(database.clone()),
         );
         let permission_ticket_store = Arc::new(
-            crate::services::stores::permission_ticket_store::PermissionTicketStore::new(database.clone()),
+            authenc_services::services::stores::permission_ticket_store::PermissionTicketStore::new(database.clone()),
         );
-        let scope_store = Arc::new(crate::services::stores::scope_store::ScopeStore::new(
+        let scope_store = Arc::new(authenc_services::services::stores::scope_store::ScopeStore::new(
             database.clone(),
         ));
         let oidc_client_store = Arc::new(
-            crate::services::stores::oidc_client_store::OidcClientStore::with_database(database.clone()),
+            authenc_services::services::stores::oidc_client_store::OidcClientStore::with_database(database.clone()),
         );
 
         // Initialize social account store
         let social_account_store = Arc::new(
-            crate::services::stores::social_account_store::SocialAccountStore::new(
+            authenc_services::services::stores::social_account_store::SocialAccountStore::new(
                 database.clone(),
             ),
         );
 
         // Initialize identity broker registry
-        let broker_registry = Arc::new(crate::services::broker::IdentityBrokerRegistry::new());
+        let broker_registry = Arc::new(authenc_services::services::broker::IdentityBrokerRegistry::new());
 
         // Initialize OID4VC service
-        let oid4vc_service = Arc::new(crate::services::protocols::oid4vc::EnhancedOid4VcManager::new(
+        let oid4vc_service = Arc::new(authenc_services::services::protocols::oid4vc::EnhancedOid4VcManager::new(
             "https://authenc.example.com".to_string(),
         ));
 
@@ -225,7 +225,7 @@ impl AppState {
         } else {
             config.security.jwt_secret.as_bytes()
         };
-        let sso_cookie_manager = Arc::new(crate::services::sso::SsoCookieManager::new(
+        let sso_cookie_manager = Arc::new(authenc_services::services::sso::SsoCookieManager::new(
             sso_secret,
             "AUTHENC_SSO",
             None, // cookie_domain from config
@@ -233,55 +233,65 @@ impl AppState {
         ));
 
         // Initialize SSO session manager
-        let sso_session_manager: Arc<dyn crate::services::sso::SsoSessionManager> =
-            Arc::new(crate::services::sso::session::DefaultSsoSessionManager::new());
+        let sso_session_manager: Arc<dyn authenc_services::services::sso::SsoSessionManager> =
+            Arc::new(authenc_services::services::sso::session::DefaultSsoSessionManager::new());
 
         // Initialize SSO service
-        let sso_service: Arc<dyn crate::services::sso::SsoService> =
-            Arc::new(crate::services::sso::DefaultSsoService::new(
+        let sso_service: Arc<dyn authenc_services::services::sso::SsoService> =
+            Arc::new(authenc_services::services::sso::DefaultSsoService::new(
                 sso_session_manager.clone(),
                 sso_cookie_manager.clone(),
                 database.clone(),
             ));
 
         // Initialize audit log sink
-        let audit_log_sink: Arc<dyn crate::services::audit::audit_log_sink::AuditLogSink> = if let Some(
+        let audit_log_sink: Arc<dyn authenc_services::services::audit::audit_log_sink::AuditLogSink> = if let Some(
             kafka_config,
         ) =
             &config.kafka
         {
             if kafka_config.enabled {
-                match crate::services::audit::kafka_audit_log_sink::KafkaAuditLogSink::new(
-                    &kafka_config.brokers,
-                    &kafka_config.audit_topic,
-                ) {
-                    Ok(sink) => Arc::new(sink),
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to initialize Kafka audit log sink: {}. Falling back to PostgreSQL sink.",
-                            e
-                        );
-                        Arc::new(crate::services::audit::audit_log_sink::PgAuditLogSink::new(
-                            (*audit_log_store).clone(),
-                        ))
+                #[cfg(feature = "rdkafka")]
+                {
+                    match authenc_services::services::audit::kafka_audit_log_sink::KafkaAuditLogSink::new(
+                        &kafka_config.brokers,
+                        &kafka_config.audit_topic,
+                    ) {
+                        Ok(sink) => Arc::new(sink),
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to initialize Kafka audit log sink: {}. Falling back to PostgreSQL sink.",
+                                e
+                            );
+                            Arc::new(authenc_services::services::audit::audit_log_sink::PgAuditLogSink::new(
+                                (*audit_log_store).clone(),
+                            ))
+                        }
                     }
                 }
+                #[cfg(not(feature = "rdkafka"))]
+                {
+                    tracing::warn!("Kafka feature not enabled, using PostgreSQL sink");
+                    Arc::new(authenc_services::services::audit::audit_log_sink::PgAuditLogSink::new(
+                        (*audit_log_store).clone(),
+                    ))
+                }
             } else {
-                Arc::new(crate::services::audit::audit_log_sink::PgAuditLogSink::new(
+                Arc::new(authenc_services::services::audit::audit_log_sink::PgAuditLogSink::new(
                     (*audit_log_store).clone(),
                 ))
             }
         } else {
-            Arc::new(crate::services::audit::audit_log_sink::PgAuditLogSink::new(
+            Arc::new(authenc_services::services::audit::audit_log_sink::PgAuditLogSink::new(
                 (*audit_log_store).clone(),
             ))
         };
 
         // Initialize event manager
-        let event_manager = crate::services::events::create_shared_event_manager();
+        let event_manager = authenc_services::services::events::create_shared_event_manager();
 
         // Initialize event store provider
-        let event_store = Arc::new(crate::services::stores::pg_event_store::PgEventStoreProvider::new(
+        let event_store = Arc::new(authenc_services::services::stores::pg_event_store::PgEventStoreProvider::new(
             database.clone(),
         ));
         event_store.init_tables().await.map_err(|e| {
@@ -294,17 +304,19 @@ impl AppState {
             manager.set_store_provider(event_store.clone());
 
             // Register default event listeners
-            for listener in crate::services::events::event_listeners::create_default_listeners() {
+            for listener in authenc_services::services::events::event_listeners::create_default_listeners() {
                 manager.register_listener(listener);
             }
 
             // Register Kafka event listener if configured
+            #[cfg(feature = "rdkafka")]
+            {
             if let Some(kafka_config) = &config.kafka
                 && kafka_config.enabled
                     && !kafka_config.user_events_topic.is_empty()
                     && !kafka_config.admin_events_topic.is_empty()
                 {
-                    match crate::services::events::kafka_event_listener::KafkaEventListener::new(
+                    match authenc_services::services::events::kafka_event_listener::KafkaEventListener::new(
                         &kafka_config.brokers,
                         &kafka_config.user_events_topic,
                         &kafka_config.admin_events_topic,
@@ -325,11 +337,12 @@ impl AppState {
                         }
                     }
                 }
+            }
         }
 
         // Initialize event retention service
         let event_retention_service = Arc::new(
-            crate::services::events::event_retention::EventRetentionService::new(
+            authenc_services::services::events::event_retention::EventRetentionService::new(
                 config.events.clone(),
                 database.clone(),
                 event_store,
@@ -415,7 +428,7 @@ impl AppState {
                 user_store.clone(),
                 oidc_client_store.clone(),
                 role_store.clone(),
-                Arc::new(crate::services::stores::group_store::GroupStore::new()),
+                Arc::new(authenc_services::services::stores::group_store::GroupStore::new()),
             ),
         );
         spi_manager.registry_mut().register_factory(
@@ -460,7 +473,7 @@ impl AppState {
                 .clone()
                 .unwrap_or_else(|| format!("node-{}", uuid::Uuid::new_v4().simple()));
             let (manager, _broadcast_tx) =
-                crate::services::clustering::ClusterManager::new_in_memory(
+                authenc_services::services::clustering::ClusterManager::new_in_memory(
                     node_id,
                     config.clustering.cluster_name.clone(),
                 );
@@ -471,11 +484,11 @@ impl AppState {
 
         // Initialize observability service
         let mut observability_service =
-            crate::services::observability::ObservabilityService::default();
+            authenc_services::services::observability::ObservabilityService::default();
 
         // Register default health checks
         observability_service.register_health_check(Box::new(
-            crate::services::observability::DatabaseHealthCheck::new(
+            authenc_services::services::observability::DatabaseHealthCheck::new(
                 // Configured from database.max_connections
                 config.database.max_connections,
                 // Configured from observability.db_check_active_connections
@@ -485,21 +498,21 @@ impl AppState {
 
         // Register default metrics collectors
         observability_service.register_metrics_collector(Box::new(
-            crate::services::observability::PrometheusMetricsCollector::new(),
+            authenc_services::services::observability::PrometheusMetricsCollector::new(),
         ));
 
         let observability_service = Arc::new(observability_service);
 
         // Initialize compliance mode service
         let compliance_mode_service = Arc::new(
-            crate::services::compliance_mode::ComplianceModeService::new(
+            authenc_services::services::compliance_mode::ComplianceModeService::new(
                 event_manager.clone(),
                 Some(consent_store.clone()),
             ),
         );
 
         // Initialize OAuth2 service
-        let oauth2_service = Arc::new(crate::services::oauth2::OAuth2Service::new(
+        let oauth2_service = Arc::new(authenc_services::services::oauth2::OAuth2Service::new(
             database.clone(),
         ));
 
@@ -507,7 +520,7 @@ impl AppState {
         // TODO: Configure RP ID and name from config
         let rp_id = "localhost".to_string();
         let rp_name = "Authenc".to_string();
-        let webauthn_service = Arc::new(crate::services::protocols::webauthn::WebAuthnService::new(
+        let webauthn_service = Arc::new(authenc_services::services::protocols::webauthn::WebAuthnService::new(
             database.clone(),
             rp_id,
             rp_name,
@@ -516,11 +529,11 @@ impl AppState {
         ));
 
         // Initialize FIPS provider
-        let fips_provider = Arc::new(crate::services::fips::AdvancedFipsSecurityProvider::new());
+        let fips_provider = Arc::new(authenc_services::services::fips::AdvancedFipsSecurityProvider::new());
 
         // Initialize Social Login Manager with persistent store
-        let pg_store = crate::services::social::pg_store::PgSocialStateStore::new(database.clone());
-        let social_manager = crate::services::social::SocialLoginManager::with_store(Arc::new(pg_store));
+        let pg_store = authenc_services::services::social::pg_store::PgSocialStateStore::new(database.clone());
+        let social_manager = authenc_services::services::social::SocialLoginManager::with_store(Arc::new(pg_store));
 
         // Prepare list of env configs for syncing
         let mut env_configs = Vec::new();
@@ -530,7 +543,7 @@ impl AppState {
             std::env::var("GOOGLE_CLIENT_ID"),
             std::env::var("GOOGLE_CLIENT_SECRET"),
         ) {
-            let google_config = crate::services::social::OAuthConfig {
+            let google_config = authenc_services::services::social::OAuthConfig {
                 client_id,
                 client_secret,
                 redirect_uri: std::env::var("GOOGLE_REDIRECT_URI")
@@ -543,10 +556,10 @@ impl AppState {
                     "email".to_string(),
                     "profile".to_string(),
                 ],
-                provider: crate::services::social::SocialProvider::Google,
+                provider: authenc_services::services::social::SocialProvider::Google,
             };
             social_manager.register_provider(google_config.clone());
-            env_configs.push((crate::services::social::SocialProvider::Google, google_config));
+            env_configs.push((authenc_services::services::social::SocialProvider::Google, google_config));
         }
 
         // Register GitHub provider if configured
@@ -554,7 +567,7 @@ impl AppState {
             std::env::var("GITHUB_CLIENT_ID"),
             std::env::var("GITHUB_CLIENT_SECRET"),
         ) {
-            let github_config = crate::services::social::OAuthConfig {
+            let github_config = authenc_services::services::social::OAuthConfig {
                 client_id,
                 client_secret,
                 redirect_uri: std::env::var("GITHUB_REDIRECT_URI")
@@ -563,10 +576,10 @@ impl AppState {
                 token_url: "https://github.com/login/oauth/access_token".to_string(),
                 user_info_url: "https://api.github.com/user".to_string(),
                 scopes: vec!["user:email".to_string()],
-                provider: crate::services::social::SocialProvider::GitHub,
+                provider: authenc_services::services::social::SocialProvider::GitHub,
             };
             social_manager.register_provider(github_config.clone());
-            env_configs.push((crate::services::social::SocialProvider::GitHub, github_config));
+            env_configs.push((authenc_services::services::social::SocialProvider::GitHub, github_config));
         }
 
         // Register Facebook provider if configured
@@ -574,7 +587,7 @@ impl AppState {
             std::env::var("FACEBOOK_CLIENT_ID"),
             std::env::var("FACEBOOK_CLIENT_SECRET"),
         ) {
-            let facebook_config = crate::services::social::OAuthConfig {
+            let facebook_config = authenc_services::services::social::OAuthConfig {
                 client_id,
                 client_secret,
                 redirect_uri: std::env::var("FACEBOOK_REDIRECT_URI")
@@ -583,10 +596,10 @@ impl AppState {
                 token_url: "https://graph.facebook.com/v12.0/oauth/access_token".to_string(),
                 user_info_url: "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name,picture".to_string(),
                 scopes: vec!["email".to_string(), "public_profile".to_string()],
-                provider: crate::services::social::SocialProvider::Facebook,
+                provider: authenc_services::services::social::SocialProvider::Facebook,
             };
             social_manager.register_provider(facebook_config.clone());
-            env_configs.push((crate::services::social::SocialProvider::Facebook, facebook_config));
+            env_configs.push((authenc_services::services::social::SocialProvider::Facebook, facebook_config));
         }
 
         // Register Microsoft provider if configured
@@ -594,7 +607,7 @@ impl AppState {
             std::env::var("MICROSOFT_CLIENT_ID"),
             std::env::var("MICROSOFT_CLIENT_SECRET"),
         ) {
-            let microsoft_config = crate::services::social::OAuthConfig {
+            let microsoft_config = authenc_services::services::social::OAuthConfig {
                 client_id,
                 client_secret,
                 redirect_uri: std::env::var("MICROSOFT_REDIRECT_URI")
@@ -608,17 +621,17 @@ impl AppState {
                     "profile".to_string(),
                     "User.Read".to_string(),
                 ],
-                provider: crate::services::social::SocialProvider::Microsoft,
+                provider: authenc_services::services::social::SocialProvider::Microsoft,
             };
             social_manager.register_provider(microsoft_config.clone());
-            env_configs.push((crate::services::social::SocialProvider::Microsoft, microsoft_config));
+            env_configs.push((authenc_services::services::social::SocialProvider::Microsoft, microsoft_config));
         }
 
         // Sync configs to DB
         // We spawn this as a background task or run it here. Running it here might block startup slightly
         // but ensures consistency. However, `sync_env_configs_to_db` is async and we are in async context.
         if !env_configs.is_empty() {
-            if let Err(e) = crate::services::social::db_sync::sync_env_configs_to_db(&database, &env_configs).await {
+            if let Err(e) = authenc_services::services::social::db_sync::sync_env_configs_to_db(&database, &env_configs).await {
                 tracing::warn!("Failed to sync social providers to database: {}. Clustering for social login may not work correctly.", e);
             } else {
                 tracing::info!("Synced {} social providers to database.", env_configs.len());
@@ -629,24 +642,24 @@ impl AppState {
 
         // Initialize authorization manager
         let authorization_manager = Arc::new(
-            crate::services::authorization::AuthorizationManager::new(database.clone()),
+            authenc_services::services::authorization::AuthorizationManager::new(database.clone()),
         );
         // Preload policies (best effort)
         let _ = authorization_manager.reload().await;
 
         // Initialize admin service for JIT
-        let admin_service = Arc::new(crate::services::admin::AdminManager::new(database.clone()));
+        let admin_service = Arc::new(authenc_services::services::admin::AdminManager::new(database.clone()));
 
         // Initialize JIT provisioning service
         let jit_provisioning_service = Arc::new(
-            crate::services::federation::jit_provisioning::DefaultJITProvisioningService::new(
+            authenc_services::services::federation::jit_provisioning::DefaultJITProvisioningService::new(
                 database.clone(),
                 admin_service,
             ),
         );
 
         // Initialize client validator
-        let client_validator = Arc::new(crate::services::oauth2::DbClientValidator::new(database.clone()));
+        let client_validator = Arc::new(authenc_services::services::oauth2::DbClientValidator::new(database.clone()));
 
         Ok(Self {
             config,
@@ -779,8 +792,7 @@ mod tests {
 }
 
 use axum::extract::FromRef;
-impl FromRef<Arc<AppState>> for crate::database::Database {
-    fn from_ref(state: &Arc<AppState>) -> Self {
-        (*state.database).clone()
-    }
-}
+// impl FromRef<Arc<AppState>> for crate::database::Database {
+//     fn from_ref(state: &Arc<AppState>) -> Self {
+//         (*state.database).clone()
+//     }

@@ -203,7 +203,7 @@ impl AuthenticationManager for DefaultAuthenticationManager {
                 (false, Some("User is disabled".to_string()))
             } else if let Some(hash) = &u.password_hash {
                 // Validate password hash against stored hash
-                match crate::utils::crypto::password::verify_password(hash, password).await {
+                match authenc_crypto::utils::crypto::password::verify_password(hash, password).await {
                     Ok(true) => (true, None),
                     Ok(false) => (false, Some("Invalid username or password".to_string())),
                     Err(_) => (false, Some("Password verification failed".to_string())),

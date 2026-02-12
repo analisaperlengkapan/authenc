@@ -1,4 +1,4 @@
-use crate::utils::crypto::jwt::{self, Claims};
+use authenc_crypto::utils::crypto::jwt::{self, Claims};
 use axum::http::request::Parts;
 use axum::{
     extract::FromRequestParts,

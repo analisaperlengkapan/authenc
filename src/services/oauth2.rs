@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use std::sync::Arc;
 use async_trait::async_trait;
-use crate::utils::crypto::password::verify_password;
+use authenc_crypto::utils::crypto::password::verify_password;
 
 /// Trait for validating OAuth2 clients
 #[async_trait]
