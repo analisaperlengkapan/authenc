@@ -1,4 +1,5 @@
 use authenc::config::*;
+use authenc::middleware::{SecurityMiddlewareConfig, SecurityHeadersConfig};
 use serial_test::serial;
 use temp_env;
 

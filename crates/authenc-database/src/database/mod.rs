@@ -5,7 +5,7 @@ use tracing::{error, info};
 use authenc_core::{config::DatabaseConfig, error::{AuthencError, Result}};
 
 /// Mock status for testing
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Clone, Debug)]
 pub enum MockStatus {
     /// Database is healthy
@@ -21,7 +21,7 @@ pub struct Database {
     /// Prepared statement cache for improved performance
     prepared_cache: PreparedStatementCache,
     /// Mock status for testing
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     mock_status: Option<MockStatus>,
 }
 
@@ -33,7 +33,7 @@ impl std::fmt::Debug for Database {
             &format!("{} cached statements", self.prepared_cache.len()),
         );
 
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         d.field("mock_status", &self.mock_status);
 
         d.finish()
@@ -68,7 +68,7 @@ impl Database {
                 Ok(Self {
                     pool,
                     prepared_cache: PreparedStatementCache::new(1000),
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-support"))]
                     mock_status: None,
                 })
             }
@@ -194,7 +194,7 @@ impl Database {
 
     /// Check if database is healthy
     pub async fn health_check(&self) -> Result<()> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Some(status) = &self.mock_status {
             return match status {
                 MockStatus::Healthy => Ok(()),
@@ -215,7 +215,7 @@ impl Database {
     }
 
     /// Set mock status for testing
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn with_mock_status(mut self, status: MockStatus) -> Self {
         self.mock_status = Some(status);
         self
@@ -268,7 +268,7 @@ impl Database {
         Self {
             pool,
             prepared_cache: PreparedStatementCache::new(1),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             mock_status: None,
         }
     }
@@ -371,8 +371,12 @@ pub mod batch;
 /// Advanced connection pool configuration
 pub mod pool_config;
 
+/// Event persistence provider implementation
+pub mod event_persistence;
+
 // Re-export commonly used types
 pub use batch::{BatchInsertable, BatchOperations, BatchUpdateable};
+pub use event_persistence::DatabaseEventPersistence;
 pub use pool_config::{PoolConfigBuilder, PoolHealth};
 pub use prepared_cache::{CacheStats, PreparedStatementCache};
 pub use transaction::{DatabaseTransaction, IsolationLevel, TransactionManager};

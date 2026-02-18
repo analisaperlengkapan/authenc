@@ -4,7 +4,7 @@ use authenc::models::user::{CreateUserRequest, User};
 use authenc::models::realm::{CreateRealmRequest, RealmResponse};
 use authenc::services::realm::RealmService;
 use authenc::services::stores::user_store::UserStoreTrait;
-use authenc::services::session_store::SessionStoreTrait;
+use authenc::services::stores::session_store::SessionStoreTrait;
 use authenc::services::stores::consent_store::ConsentStoreTrait;
 use axum::{
     body::Body,
@@ -22,7 +22,7 @@ use mocks::session_store::MockSessionStore;
 use mocks::realm_service::MockRealmService;
 
 struct MockAuditLogSink;
-impl authenc::services::audit_log_sink::AuditLogSink for MockAuditLogSink {
+impl authenc::services::audit::audit_log_sink::AuditLogSink for MockAuditLogSink {
     fn send(&self, _log: &authenc::models::audit_log::AuditLog) {}
 }
 
@@ -40,39 +40,39 @@ async fn test_auth_flow_end_to_end() {
 
     // Helper to create other stores with mock DB
     let auth_flow_store = Arc::new(authenc::services::stores::auth_flow_store::AuthFlowStore::new(database.clone()));
-    let totp_store = Arc::new(authenc::services::totp_store::TotpStore::new());
-    let brute_force_protector = Arc::new(authenc::services::brute_force_protector::BruteForceProtector::new(10, 60));
-    let anomaly_detector = Arc::new(authenc::services::anomaly_detector::AnomalyDetector::new());
+    let totp_store = Arc::new(authenc::services::stores::totp_store::TotpStore::new());
+    let brute_force_protector = Arc::new(authenc::services::security::brute_force_protector::BruteForceProtector::new(10, 60));
+    let anomaly_detector = Arc::new(authenc::services::security::anomaly_detector::AnomalyDetector::new());
     let federation_registry = Arc::new(authenc::services::federation_provider::FederationRegistry::new());
 
     // Use with_pool to avoid connecting to real DB
-    let audit_log_store = Arc::new(authenc::services::pg_audit_log_store::PgAuditLogStore::with_pool(database.get_pool()));
+    let audit_log_store = Arc::new(authenc::services::stores::pg_audit_log_store::PgAuditLogStore::with_pool(database.get_pool()));
 
     let realm_store = Arc::new(authenc::services::stores::realm_store::RealmStore::new());
     let role_store = Arc::new(authenc::services::stores::role_store::RoleStore::new());
     let permission_store = Arc::new(authenc::services::stores::permission_store::PermissionStore::new());
-    let resource_store = Arc::new(authenc::services::resource_store::ResourceStore::new(database.clone()));
-    let resource_server_store = Arc::new(authenc::services::resource_server_store::ResourceServerStore::new(database.clone()));
-    let permission_ticket_store = Arc::new(authenc::services::permission_ticket_store::PermissionTicketStore::new(database.clone()));
-    let scope_store = Arc::new(authenc::services::scope_store::ScopeStore::new(database.clone()));
-    let oidc_client_store = Arc::new(authenc::services::oidc_client_store::OidcClientStore::with_database(database.clone()));
+    let resource_store = Arc::new(authenc::services::stores::resource_store::ResourceStore::new(database.clone()));
+    let resource_server_store = Arc::new(authenc::services::stores::resource_server_store::ResourceServerStore::new(database.clone()));
+    let permission_ticket_store = Arc::new(authenc::services::stores::permission_ticket_store::PermissionTicketStore::new(database.clone()));
+    let scope_store = Arc::new(authenc::services::stores::scope_store::ScopeStore::new(database.clone()));
+    let oidc_client_store = Arc::new(authenc::services::stores::oidc_client_store::OidcClientStore::with_database(database.clone()));
     let social_account_store = Arc::new(authenc::services::stores::social_account_store::SocialAccountStore::new(database.clone()));
     let broker_registry = Arc::new(authenc::services::broker::IdentityBrokerRegistry::new());
-    let oid4vc_service = Arc::new(authenc::services::oid4vc::EnhancedOid4VcManager::new("https://example.com".to_string()));
+    let oid4vc_service = Arc::new(authenc::services::protocols::oid4vc::EnhancedOid4VcManager::new("https://example.com".to_string()));
 
     let sso_cookie_manager = Arc::new(authenc::services::sso::SsoCookieManager::new(b"secret", "cookie", None, true));
     let sso_session_manager = Arc::new(authenc::services::sso::session::DefaultSsoSessionManager::new());
     let sso_service = Arc::new(authenc::services::sso::DefaultSsoService::new(sso_session_manager, sso_cookie_manager.clone(), database.clone()));
 
     let event_manager = authenc::services::events::create_shared_event_manager();
-    let event_store = Arc::new(authenc::services::pg_event_store::PgEventStoreProvider::new(database.clone()));
-    let event_retention_service = Arc::new(authenc::services::event_retention::EventRetentionService::new(config.events.clone(), database.clone(), event_store));
+    let event_store = Arc::new(authenc::services::stores::pg_event_store::PgEventStoreProvider::new(database.clone()));
+    let event_retention_service = Arc::new(authenc::services::events::event_retention::EventRetentionService::new(config.events.clone(), database.clone(), event_store));
 
     let spi_manager = Arc::new(authenc::spi::SpiManager::new());
     let observability_service = Arc::new(authenc::services::observability::ObservabilityService::default());
     let compliance_mode_service = Arc::new(authenc::services::compliance_mode::ComplianceModeService::new(event_manager.clone(), Some(mock_consent_store.clone())));
     let oauth2_service = Arc::new(authenc::services::oauth2::OAuth2Service::new(database.clone()));
-    let webauthn_service = Arc::new(authenc::services::webauthn::WebAuthnService::new(
+    let webauthn_service = Arc::new(authenc::services::protocols::webauthn::WebAuthnService::new(
         database.clone(),
         "localhost".to_string(),
         "Authenc Test".to_string(),
@@ -80,6 +80,21 @@ async fn test_auth_flow_end_to_end() {
         None,
     ));
     let fips_provider = Arc::new(authenc::services::fips::AdvancedFipsSecurityProvider::new());
+    let social_login_manager = Arc::new(authenc::services::social::SocialLoginManager::new());
+    let authorization_manager = Arc::new(authenc::services::authorization::AuthorizationManager::new(database.clone()));
+    let admin_service = Arc::new(authenc::services::admin::AdminManager::new(database.clone()));
+    let jit_provisioning_service: Arc<dyn authenc::services::federation::jit_provisioning::JITProvisioningService> = Arc::new(
+        authenc::services::federation::jit_provisioning::DefaultJITProvisioningService::new(
+            database.clone(),
+            admin_service,
+        ),
+    );
+    let client_validator: Arc<dyn authenc::services::oauth2::ClientValidator> = Arc::new(
+        authenc::services::oauth2::DbClientValidator::new(database.clone()),
+    );
+    let sso_session_mgr: Arc<dyn authenc::services::sso::SsoSessionManager> = Arc::new(
+        authenc::services::sso::session::DefaultSsoSessionManager::new(),
+    );
 
     let state = AppState {
         config: Arc::new(config),
@@ -106,6 +121,7 @@ async fn test_auth_flow_end_to_end() {
         broker_registry,
         oid4vc_service,
         sso_service,
+        sso_session_manager: sso_session_mgr,
         sso_cookie_manager,
         event_manager,
         event_retention_service,
@@ -117,6 +133,10 @@ async fn test_auth_flow_end_to_end() {
         oauth2_service,
         webauthn_service,
         fips_provider,
+        social_login_manager,
+        authorization_manager,
+        jit_provisioning_service,
+        client_validator,
     };
 
     // Create Realm (using mock service)

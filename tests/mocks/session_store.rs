@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use authenc::models::session::Session;
-use authenc::services::session_store::{SessionStoreTrait, CreateSessionParams, CreateOfflineTokenParams};
+use authenc::services::stores::session_store::{SessionStoreTrait, CreateSessionParams, CreateOfflineTokenParams};
 use authenc::error::{AuthencError, Result};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};

@@ -3,7 +3,7 @@ mod tests {
 
     use authenc_core::config::EventsConfig;
     use authenc_database::database::Database;
-    use crate::services::event_retention::EventRetentionService;
+    use crate::services::events::event_retention::EventRetentionService;
     use std::sync::Arc;
 
     #[tokio::test]

@@ -159,12 +159,10 @@ impl AuditLogSink for FileAuditLogSink {
 }
 
 /// Splunk audit log sink for Splunk SIEM integration
-#[cfg(feature = "reqwest")]
 pub struct SplunkAuditLogSink {
     sender: mpsc::UnboundedSender<AuditLog>,
 }
 
-#[cfg(feature = "reqwest")]
 impl SplunkAuditLogSink {
     /// Create new Splunk audit log sink
     ///
@@ -197,7 +195,6 @@ impl SplunkAuditLogSink {
     }
 }
 
-#[cfg(feature = "reqwest")]
 impl AuditLogSink for SplunkAuditLogSink {
     fn send(&self, log: &AuditLog) {
         if let Err(e) = self.sender.send(log.clone()) {

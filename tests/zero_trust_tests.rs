@@ -1,7 +1,7 @@
 use authenc::config::DatabaseConfig;
 use authenc::database::Database;
 use authenc::models::audit::*;
-use authenc::services::zero_trust::*;
+use authenc::services::security::zero_trust::*;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;

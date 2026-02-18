@@ -1,4 +1,4 @@
-use authenc::services::forever_unknown_secrets::ForeverUnknownSecretsService;
+use authenc::services::security::forever_unknown_secrets::ForeverUnknownSecretsService;
 use std::time::{Duration, SystemTime};
 
 #[cfg(test)]

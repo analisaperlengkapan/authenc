@@ -29,7 +29,7 @@ categories = ["authentication", "cryptography", "web-programming"]
 authenc-core = { path = "crates/authenc-core", features = ["axum-support"] }
 authenc-models = { path = "crates/authenc-models" }
 authenc-crypto = { path = "crates/authenc-crypto" }
-authenc-database = { path = "crates/authenc-database" }
+authenc-database = { path = "crates/authenc-database", features = ["test-support"] }
 authenc-vault = { path = "crates/authenc-vault" }
 authenc-spi = { path = "crates/authenc-spi" }
 authenc-services = { path = "crates/authenc-services", features = ["rdkafka"] }

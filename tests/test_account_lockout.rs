@@ -2,7 +2,7 @@ use authenc::app::AppState;
 use authenc::config::AppConfig;
 use authenc::models::user::{CreateUserRequest, User};
 use authenc::services::stores::user_store::UserStoreTrait;
-use authenc::services::session_store::SessionStoreTrait;
+use authenc::services::stores::session_store::SessionStoreTrait;
 use authenc::services::stores::consent_store::ConsentStoreTrait;
 use authenc::services::realm::RealmService;
 use authenc::services::oauth2::ClientValidator;
@@ -23,7 +23,7 @@ use mocks::session_store::MockSessionStore;
 use mocks::realm_service::MockRealmService;
 
 struct MockAuditLogSink;
-impl authenc::services::audit_log_sink::AuditLogSink for MockAuditLogSink {
+impl authenc::services::audit::audit_log_sink::AuditLogSink for MockAuditLogSink {
     fn send(&self, _log: &authenc::models::audit_log::AuditLog) {}
 }
 
@@ -73,33 +73,33 @@ async fn test_account_lockout_logic() {
 
     // Helper to create other stores with mock DB
     let auth_flow_store = Arc::new(authenc::services::stores::auth_flow_store::AuthFlowStore::new(database.clone()));
-    let totp_store = Arc::new(authenc::services::totp_store::TotpStore::new());
-    let brute_force_protector = Arc::new(authenc::services::brute_force_protector::BruteForceProtector::new(10, 60));
-    let anomaly_detector = Arc::new(authenc::services::anomaly_detector::AnomalyDetector::new());
+    let totp_store = Arc::new(authenc::services::stores::totp_store::TotpStore::new());
+    let brute_force_protector = Arc::new(authenc::services::security::brute_force_protector::BruteForceProtector::new(10, 60));
+    let anomaly_detector = Arc::new(authenc::services::security::anomaly_detector::AnomalyDetector::new());
     let federation_registry = Arc::new(authenc::services::federation_provider::FederationRegistry::new());
-    let audit_log_store = Arc::new(authenc::services::pg_audit_log_store::PgAuditLogStore::with_pool(database.get_pool()));
+    let audit_log_store = Arc::new(authenc::services::stores::pg_audit_log_store::PgAuditLogStore::with_pool(database.get_pool()));
     let realm_store = Arc::new(authenc::services::stores::realm_store::RealmStore::new());
     let role_store = Arc::new(authenc::services::stores::role_store::RoleStore::new());
     let permission_store = Arc::new(authenc::services::stores::permission_store::PermissionStore::new());
-    let resource_store = Arc::new(authenc::services::resource_store::ResourceStore::new(database.clone()));
-    let resource_server_store = Arc::new(authenc::services::resource_server_store::ResourceServerStore::new(database.clone()));
-    let permission_ticket_store = Arc::new(authenc::services::permission_ticket_store::PermissionTicketStore::new(database.clone()));
-    let scope_store = Arc::new(authenc::services::scope_store::ScopeStore::new(database.clone()));
-    let oidc_client_store = Arc::new(authenc::services::oidc_client_store::OidcClientStore::with_database(database.clone()));
+    let resource_store = Arc::new(authenc::services::stores::resource_store::ResourceStore::new(database.clone()));
+    let resource_server_store = Arc::new(authenc::services::stores::resource_server_store::ResourceServerStore::new(database.clone()));
+    let permission_ticket_store = Arc::new(authenc::services::stores::permission_ticket_store::PermissionTicketStore::new(database.clone()));
+    let scope_store = Arc::new(authenc::services::stores::scope_store::ScopeStore::new(database.clone()));
+    let oidc_client_store = Arc::new(authenc::services::stores::oidc_client_store::OidcClientStore::with_database(database.clone()));
     let social_account_store = Arc::new(authenc::services::stores::social_account_store::SocialAccountStore::new(database.clone()));
     let broker_registry = Arc::new(authenc::services::broker::IdentityBrokerRegistry::new());
-    let oid4vc_service = Arc::new(authenc::services::oid4vc::EnhancedOid4VcManager::new("https://example.com".to_string()));
+    let oid4vc_service = Arc::new(authenc::services::protocols::oid4vc::EnhancedOid4VcManager::new("https://example.com".to_string()));
     let sso_cookie_manager = Arc::new(authenc::services::sso::SsoCookieManager::new(b"secret", "cookie", None, true));
     let sso_session_manager = Arc::new(authenc::services::sso::session::DefaultSsoSessionManager::new());
     let sso_service = Arc::new(authenc::services::sso::DefaultSsoService::new(sso_session_manager.clone(), sso_cookie_manager.clone(), database.clone()));
     let event_manager = authenc::services::events::create_shared_event_manager();
-    let event_store = Arc::new(authenc::services::pg_event_store::PgEventStoreProvider::new(database.clone()));
-    let event_retention_service = Arc::new(authenc::services::event_retention::EventRetentionService::new(config.events.clone(), database.clone(), event_store));
+    let event_store = Arc::new(authenc::services::stores::pg_event_store::PgEventStoreProvider::new(database.clone()));
+    let event_retention_service = Arc::new(authenc::services::events::event_retention::EventRetentionService::new(config.events.clone(), database.clone(), event_store));
     let spi_manager = Arc::new(authenc::spi::SpiManager::new());
     let observability_service = Arc::new(authenc::services::observability::ObservabilityService::default());
     let compliance_mode_service = Arc::new(authenc::services::compliance_mode::ComplianceModeService::new(event_manager.clone(), Some(mock_consent_store.clone())));
     let oauth2_service = Arc::new(authenc::services::oauth2::OAuth2Service::new(database.clone()));
-    let webauthn_service = Arc::new(authenc::services::webauthn::WebAuthnService::new(
+    let webauthn_service = Arc::new(authenc::services::protocols::webauthn::WebAuthnService::new(
         database.clone(),
         "localhost".to_string(),
         "Authenc Test".to_string(),
@@ -175,7 +175,7 @@ async fn test_account_lockout_logic() {
     // We need it to succeed for "password123" at the end.
     // So we need a real hash of "password123".
     let password = "password123";
-    let password_hash = authenc::utils::crypto::password::hash_password(password).await.unwrap();
+    let password_hash = authenc_crypto::utils::crypto::password::hash_password(password).await.unwrap();
 
     let create_user_req = CreateUserRequest {
         username: "testuser".to_string(),

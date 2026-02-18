@@ -1,7 +1,7 @@
 use authenc::config::DatabaseConfig;
 use authenc::database::Database;
-use authenc::services::anomaly_detector::*;
-use authenc::services::brute_force_protector::*;
+use authenc::services::security::anomaly_detector::*;
+use authenc::services::security::brute_force_protector::*;
 use axum::{
     Router,
     extract::{Json, Path, Query, State},

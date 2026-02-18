@@ -1,4 +1,4 @@
-use authenc::services::password_policy::PasswordPolicy;
+use authenc::services::security::password_policy::PasswordPolicy;
 
 #[cfg(test)]
 mod tests {

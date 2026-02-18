@@ -1,9 +1,7 @@
 
 #[cfg(test)]
 mod tests {
-    use authenc::services::audit_log_sink::{AuditLogSink, FileAuditLogSink};
-    #[cfg(feature = "reqwest")]
-    use authenc::services::audit_log_sink::SplunkAuditLogSink;
+    use authenc::services::audit::audit_log_sink::{AuditLogSink, FileAuditLogSink, SplunkAuditLogSink};
     use authenc::models::audit_log::AuditLog;
     use chrono::Utc;
     use std::time::Duration;

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use authenc::services::oid4vc::{
+    use authenc::services::protocols::oid4vc::{
         AuthorizationDetails, BatchCredentialRequest, CredentialAuthorizationRequest,
         CredentialFormat, CredentialRequest, CredentialResponse, CredentialSubject,
         CredentialTokenRequest, CredentialTokenResponse, DeferredCredentialRequest,

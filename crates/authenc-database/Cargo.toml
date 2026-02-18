@@ -10,6 +10,7 @@ repository.workspace = true
 default = ["db"]
 db = ["dep:tokio-postgres", "dep:deadpool-postgres"]
 redis-store = ["dep:redis", "dep:deadpool-redis"]
+test-support = []
 
 [dependencies]
 authenc-core = { workspace = true }

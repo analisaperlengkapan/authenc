@@ -89,3 +89,6 @@ num_cpus = { workspace = true }
 hkdf = { workspace = true }
 bincode = { workspace = true }
 curve25519-dalek = { workspace = true }
+
+[dev-dependencies]
+temp-env = { workspace = true }

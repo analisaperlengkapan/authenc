@@ -39,7 +39,7 @@ pub struct AuditLog {
 }
 
 /// Query parameters for audit log filtering
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AuditLogFilter {
     /// Filter by event type
     pub event: Option<String>,

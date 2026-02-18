@@ -39,7 +39,7 @@ async fn test_protected_api_access_with_token() {
     // 2. Test with Valid Token
     // We need to generate a valid token using the same mechanism the middleware expects.
     // Since the middleware uses the global ED25519_KEYPAIR, we use the standard generator.
-    use authenc::utils::crypto::jwt::generate_jwt;
+    use authenc_crypto::utils::crypto::jwt::generate_jwt;
     let valid_token = generate_jwt("test-integration-user").expect("Failed to generate token");
 
     let response = server
