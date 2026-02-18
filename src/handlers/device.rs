@@ -1,5 +1,5 @@
 use crate::error::{AuthencError, Result};
-use crate::services::device::{
+use authenc_services::services::device::{
     DeviceRegistrationRequest, DeviceService, TrustEvaluationContext,
 };
 use axum::{

@@ -12,8 +12,8 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::error::AuthencError;
 use crate::middleware::auth::AuthUser;
-use crate::models::events::{Event, EventType};
-use crate::services::stores::consent_store::ConsentStoreTrait;
+use authenc_models::models::events::{Event, EventType};
+use authenc_services::services::stores::consent_store::ConsentStoreTrait;
 
 /// Query parameters for consent page
 #[derive(Debug, Deserialize, Serialize)]

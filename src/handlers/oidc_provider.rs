@@ -6,13 +6,13 @@
 //! NOTE: RSA support has been removed due to security vulnerabilities
 //! (RUSTSEC-2023-0071). All JWT signing uses Ed25519 (EdDSA).
 
-use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
+use authenc_crypto::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
 use crate::handlers::oidc_ed25519::OidcIdTokenClaims;
-use crate::models::audit_log::AuditLog;
-use crate::services::stores::oidc_client_store::OidcClientStore;
-use crate::services::stores::oidc_code_store::OidcCodeStore;
-use crate::services::stores::pg_audit_log_store::PgAuditLogStore;
-use crate::services::stores::user_store::UserStore;
+use authenc_models::models::audit_log::AuditLog;
+use authenc_services::services::stores::oidc_client_store::OidcClientStore;
+use authenc_services::services::stores::oidc_code_store::OidcCodeStore;
+use authenc_services::services::stores::pg_audit_log_store::PgAuditLogStore;
+use authenc_services::services::stores::user_store::UserStore;
 use axum::{
     Form, Router,
     extract::{Query, State},
@@ -342,7 +342,7 @@ pub async fn oidc_login_post(
     State(state): State<Arc<OidcProviderState>>,
     Form(form): Form<OidcLoginForm>,
 ) -> Response {
-    use crate::services::stores::user_store::UserStoreTrait;
+    use authenc_services::services::stores::user_store::UserStoreTrait;
     use authenc_crypto::utils::crypto::password::verify_password;
 
     // Verify user credentials
@@ -605,7 +605,7 @@ pub async fn oidc_token(
     State(state): State<Arc<OidcProviderState>>,
     Form(form): Form<OidcTokenRequest>,
 ) -> Result<Json<OidcTokenResponse>, (StatusCode, Json<ErrorResponse>)> {
-    use crate::services::stores::user_store::UserStoreTrait;
+    use authenc_services::services::stores::user_store::UserStoreTrait;
 
     // Validate client
     let client = match state.client_store.get(&form.client_id).await {
@@ -780,7 +780,7 @@ pub async fn oidc_userinfo(
         )
     })?;
 
-    use crate::services::stores::user_store::UserStoreTrait;
+    use authenc_services::services::stores::user_store::UserStoreTrait;
 
     // Get user info
     // claims.sub should be user ID (UUID)

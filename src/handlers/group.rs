@@ -1,6 +1,6 @@
-use crate::database::Database;
-use crate::database::operations::groups;
-use crate::models::group::{CreateGroupRequest, GroupResponse, UpdateGroupRequest};
+use authenc_database::database::Database;
+use authenc_database::database::operations::groups;
+use authenc_models::models::group::{CreateGroupRequest, GroupResponse, UpdateGroupRequest};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,

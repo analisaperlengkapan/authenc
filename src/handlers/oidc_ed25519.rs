@@ -1,4 +1,4 @@
-use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
+use authenc_crypto::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk};
 use crate::error::AuthencError;
 use authenc_core::utils::crypto_monitor::CryptoMonitor;
 use axum::{

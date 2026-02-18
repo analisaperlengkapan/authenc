@@ -1,5 +1,5 @@
 use crate::app::AppState;
-use crate::models::realm::{CreateRealmRequest, RealmResponse, UpdateRealmRequest};
+use authenc_models::models::realm::{CreateRealmRequest, RealmResponse, UpdateRealmRequest};
 use axum::{
     Router,
     extract::{Path, Query, State},

@@ -307,7 +307,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 mod tests {
     use super::*;
     use crate::app::AppState;
-    use crate::config::AppConfig;
+    use authenc_core::config::AppConfig;
     use axum::response::IntoResponse;
     use http_body_util::BodyExt;
     use serde_json::Value;

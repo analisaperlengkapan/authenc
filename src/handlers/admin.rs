@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::error::AuthencError;
-use crate::services::admin::{
+use authenc_services::services::admin::{
     AdminManager, AdminService, AuditLogResponse, CreateIdentityProviderRequest,
     CreatePolicyRequest, CreateRoleRequest, CreateUserRequest, IdentityProviderResponse,
     PolicyResponse, RoleResponse, SecurityEvent, SessionListResponse, SystemStats,

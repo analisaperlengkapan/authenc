@@ -1,8 +1,8 @@
 use crate::app::AppState;
 use crate::handlers::api::auth_bearer::AuthBearer;
-use crate::models::events::{OperationType, ResourceType};
-use crate::models::permission::Permission;
-use crate::services::events::AdminEventBuilder;
+use authenc_models::models::events::{OperationType, ResourceType};
+use authenc_models::models::permission::Permission;
+use authenc_services::services::events::AdminEventBuilder;
 use axum::{
     Router,
     extract::{Path, State},

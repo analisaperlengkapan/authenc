@@ -114,7 +114,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_endpoint() {
-        use crate::database::Database;
+        use authenc_database::database::Database;
         use http_body_util::BodyExt;
 
         // Setup with mock DB (required by router state)
@@ -136,7 +136,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ready_endpoint() {
-        use crate::database::{Database, MockStatus};
+        use authenc_database::database::{Database, MockStatus};
         use http_body_util::BodyExt;
 
         // Test case 1: Database is healthy
@@ -190,7 +190,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_endpoint() {
-        use crate::database::Database;
+        use authenc_database::database::Database;
         use http_body_util::BodyExt;
 
         // Setup with mock DB (required by router state)

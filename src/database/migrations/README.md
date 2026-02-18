@@ -1,2 +1,0 @@
--- Example migration file
--- Add your SQL migrations here

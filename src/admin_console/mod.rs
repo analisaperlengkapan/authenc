@@ -6,10 +6,10 @@ use axum::{Router, extract::State, http::StatusCode, response::Html};
 use std::sync::Arc;
 
 use crate::app::AppState;
-use crate::database::Database;
+use authenc_database::database::Database;
 use crate::handlers::api::auth_bearer::AuthBearer;
-use crate::services::admin::{AdminManager, AdminService};
-use crate::services::stores::user_store::UserStoreTrait;
+use authenc_services::services::admin::{AdminManager, AdminService};
+use authenc_services::services::stores::user_store::UserStoreTrait;
 
 /// Create admin console routes
 pub fn create_admin_console_routes(state: Arc<crate::app::AppState>) -> Router {

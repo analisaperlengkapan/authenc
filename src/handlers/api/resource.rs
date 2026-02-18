@@ -10,12 +10,12 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AuthencError;
-use crate::models::resource::ResourceResponse;
-use crate::models::user::UserResponse;
-use crate::services::stores::permission_ticket_store::{PermissionTicketStore, PermissionTicketStoreTrait};
-use crate::services::stores::resource_store::{ResourceStore, ResourceStoreTrait};
-use crate::services::stores::scope_store::{ScopeStore, ScopeStoreTrait};
-use crate::services::stores::user_store::UserStoreTrait;
+use authenc_models::models::resource::ResourceResponse;
+use authenc_models::models::user::UserResponse;
+use authenc_services::services::stores::permission_ticket_store::{PermissionTicketStore, PermissionTicketStoreTrait};
+use authenc_services::services::stores::resource_store::{ResourceStore, ResourceStoreTrait};
+use authenc_services::services::stores::scope_store::{ScopeStore, ScopeStoreTrait};
+use authenc_services::services::stores::user_store::UserStoreTrait;
 
 /// Create resource management routes for account console
 pub fn create_resource_routes() -> Router<(

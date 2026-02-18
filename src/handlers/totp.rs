@@ -3,7 +3,7 @@
 //! This module provides endpoints for enabling and disabling TOTP
 //! two-factor authentication for users.
 
-use crate::services::stores::totp_store::TotpStore;
+use authenc_services::services::stores::totp_store::TotpStore;
 use axum::{
     Router,
     extract::{Path, State},

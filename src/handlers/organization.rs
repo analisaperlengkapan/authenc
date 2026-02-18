@@ -1,7 +1,7 @@
-use crate::database::Database;
+use authenc_database::database::Database;
 use crate::app::AppState;
 use crate::error::{AuthencError, Result};
-use crate::services::organization::{OrganizationService, OrganizationUpdate};
+use authenc_services::services::organization::{OrganizationService, OrganizationUpdate};
 use axum::{
     extract::{Path, Query, State},
     response::Json,

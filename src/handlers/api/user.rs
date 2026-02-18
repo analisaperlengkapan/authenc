@@ -1,7 +1,7 @@
 use crate::app::AppState;
 use crate::handlers::api::auth_bearer::AuthBearer;
-use crate::models::user::{self, User};
-use crate::services::stores::user_store::UserStoreTrait;
+use authenc_models::models::user::{self, User};
+use authenc_services::services::stores::user_store::UserStoreTrait;
 use axum::{
     Router,
     extract::{Path, State},

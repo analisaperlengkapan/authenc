@@ -1,11 +1,11 @@
 use crate::app::AppState;
-use crate::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk, verify_ed25519};
-use crate::database::Database;
-use crate::database::operations::oauth2;
+use authenc_crypto::crypto::ed25519_keys::{ED25519_KEYPAIR, get_ed25519_jwk, verify_ed25519};
+use authenc_database::database::Database;
+use authenc_database::database::operations::oauth2;
 use crate::error::AuthencError;
-use crate::models::oauth2::AccessTokenClaims;
-use crate::services::stores::consent_store::ConsentStoreTrait;
-use crate::services::stores::user_store::UserStoreTrait;
+use authenc_models::models::oauth2::AccessTokenClaims;
+use authenc_services::services::stores::consent_store::ConsentStoreTrait;
+use authenc_services::services::stores::user_store::UserStoreTrait;
 use authenc_crypto::utils::crypto::password::verify_password;
 use authenc_core::utils::crypto_monitor::CryptoMonitor;
 use axum::{

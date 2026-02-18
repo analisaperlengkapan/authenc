@@ -1,9 +1,9 @@
 use crate::app::AppState;
-use crate::database::Database;
+use authenc_database::database::Database;
 use crate::error::AuthencError;
-use crate::models::user::{JITUserProvisioningRequest, JITUserProvisioningResponse};
-use crate::services::admin::AdminService;
-use crate::services::federation::jit_provisioning::{
+use authenc_models::models::user::{JITUserProvisioningRequest, JITUserProvisioningResponse};
+use authenc_services::services::admin::AdminService;
+use authenc_services::services::federation::jit_provisioning::{
     DefaultJITProvisioningService, JITProvisioningService,
 };
 use axum::{Router, extract::State, response::Json, routing::post};
@@ -81,8 +81,8 @@ impl AdminService for MockAdminService {
         request: crate::services::admin::CreateUserRequest,
     ) -> std::result::Result<crate::services::admin::UserResponse, String> {
         // Use the database operations to create user
-        use crate::database::operations::{groups, roles, users};
-        use crate::models::user::CreateUserRequest as DbCreateUserRequest;
+        use authenc_database::database::operations::{groups, roles, users};
+        use authenc_models::models::user::CreateUserRequest as DbCreateUserRequest;
 
         let db_request = DbCreateUserRequest {
             username: request.username,
