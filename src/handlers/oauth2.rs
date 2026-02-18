@@ -6,8 +6,8 @@ use crate::error::AuthencError;
 use crate::models::oauth2::AccessTokenClaims;
 use crate::services::stores::consent_store::ConsentStoreTrait;
 use crate::services::stores::user_store::UserStoreTrait;
-use crate::utils::crypto::password::verify_password;
-use crate::utils::crypto_monitor::CryptoMonitor;
+use authenc_crypto::utils::crypto::password::verify_password;
+use authenc_core::utils::crypto_monitor::CryptoMonitor;
 use axum::{
     debug_handler,
     extract::{Extension, Query, State},

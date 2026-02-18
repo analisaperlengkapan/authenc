@@ -1,4 +1,4 @@
-use authenc::services::brute_force_protector::BruteForceProtector;
+use authenc::services::security::brute_force_protector::BruteForceProtector;
 
 #[test]
 fn brute_force_detects_and_clears() {

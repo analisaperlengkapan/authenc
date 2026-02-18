@@ -671,7 +671,7 @@ async fn test_login_requires_totp_when_enabled() {
 
 //#[actix_web::test]
 //async fn test_totp_enable_verify_disable() {
-//    use authenc::services::totp_store::TotpStore;
+//    use authenc::services::stores::totp_store::TotpStore;
 //    let totp_store = Data::new(TotpStore::new());
 //    let app = test::init_service(
 //        App::new()
@@ -725,7 +725,7 @@ async fn test_login_requires_totp_when_enabled() {
 //
 //#[actix_web::test]
 //async fn test_totp_verify_without_enable_returns_400() {
-//    use authenc::services::totp_store::TotpStore;
+//    use authenc::services::stores::totp_store::TotpStore;
 //    let totp_store = Data::new(TotpStore::new());
 //    let app = test::init_service(
 //        App::new()
@@ -747,7 +747,7 @@ async fn test_login_requires_totp_when_enabled() {
 
 //#[actix_web::test]
 //async fn test_totp_valid_code_after_enable() {
-//    use authenc::services::totp_store::TotpStore;
+//    use authenc::services::stores::totp_store::TotpStore;
 //    use totp_rs::{Algorithm, TOTP};
 //    let totp_store = Data::new(TotpStore::new());
 //    let app = test::init_service(
@@ -1498,7 +1498,7 @@ async fn test_realm_scoped_users_with_authbearer() {
 
 #[tokio::test]
 async fn test_password_policy_edges() {
-    use authenc::services::password_policy::PasswordPolicy;
+    use authenc::services::security::password_policy::PasswordPolicy;
     let p = PasswordPolicy::default();
     // 11 chars -> fail
     assert!(p.validate("Abcdef123!@").is_err());
@@ -1940,7 +1940,7 @@ async fn test_role_and_permission_assign_endpoints() {
 
 // Dummy sink for audit log tests
 struct DummySink;
-impl authenc::services::audit_log_sink::AuditLogSink for DummySink {
+impl authenc::services::audit::audit_log_sink::AuditLogSink for DummySink {
     fn send(&self, _log: &authenc::models::audit_log::AuditLog) {}
 }
 

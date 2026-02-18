@@ -1,5 +1,5 @@
 use crate::error::{AuthencError, Result};
-use crate::utils::crypto_monitor::CryptoMonitor;
+use authenc_core::utils::crypto_monitor::CryptoMonitor;
 use aes_gcm::{
     Aes256Gcm, Key, Nonce,
     aead::{Aead, KeyInit},

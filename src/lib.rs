@@ -15,72 +15,87 @@
 //! - Multi-factor authentication support
 //! - Federation and identity brokering
 //! - Enterprise integrations
+//!
+//! ## Crate Structure
+//!
+//! The project is organized into multiple crates:
+//!
+//! - `authenc-core` - Error types, configuration, and utilities
+//! - `authenc-models` - Domain models and data structures
+//! - `authenc-crypto` - Cryptographic operations
+//! - `authenc-database` - Database persistence layer
+//! - `authenc-vault` - Secret management
+//! - `authenc-spi` - Service Provider Interface framework
+//! - `authenc-services` - Business logic and services
 
-// Core modules
+// ============================================================
+// Re-export sub-crates as modules for backward compatibility
+// ============================================================
+
+/// Error types and handling (from authenc-core)
+pub use authenc_core::error;
+
+/// Configuration management (from authenc-core)
+pub use authenc_core::config;
+
+/// Utility functions and helpers (from authenc-core)
+pub use authenc_core::utils;
+
+/// Data models and structures (from authenc-models)
+pub use authenc_models::models;
+
+/// Cryptographic operations and utilities (from authenc-crypto)
+pub use authenc_crypto::crypto;
+
+/// Database operations and connection management (from authenc-database)
+pub use authenc_database::database;
+
+/// Secret management and vault operations (from authenc-vault)
+pub use authenc_vault::vault;
+
+/// Service Provider Interface framework (from authenc-spi)
+pub use authenc_spi::spi;
+
+/// Protocol mapper extensions (from authenc-spi)
+pub use authenc_spi::protocol;
+
+/// Custom authenticator support (from authenc-spi)
+pub use authenc_spi::authenticator;
+
+/// Core business services and logic (from authenc-services)
+pub use authenc_services::services;
+
+/// Event-driven architecture (from authenc-services)
+pub use authenc_services::events;
+
+// ============================================================
+// Modules that remain in the root crate
+// ============================================================
+
 /// Application state and initialization
 pub mod app;
-/// Configuration management
-pub mod config;
-/// Cryptographic operations and utilities
-pub mod crypto;
-/// Error types and handling
-pub mod error;
-/// Data models and structures
-pub mod models;
-/// Utility functions and helpers
-pub mod utils;
 
-// Framework integrations
+/// HTTP request handlers
+pub mod handlers;
+
+/// HTTP middleware components
+pub mod middleware;
+
 /// Axum web framework integration
 #[cfg(feature = "axum")]
 #[cfg_attr(docsrs, doc(cfg(feature = "axum")))]
 pub mod axum_app;
 
-// Database layer
-/// Database operations and connection management
-#[cfg(feature = "db")]
-#[cfg_attr(docsrs, doc(cfg(feature = "db")))]
-pub mod database;
-
-// HTTP layer
-/// HTTP request handlers
-pub mod handlers;
-/// HTTP middleware components
-pub mod middleware;
-
-// Business logic
-/// Core business services and logic
-pub mod services;
-
-// Security vault
-/// Secret management and vault operations
-pub mod vault;
-
-// Event system
-/// Event-driven architecture for audit logging and integrations
-pub mod events;
-
-// Protocol extensions
-/// Protocol mapper extensions for OIDC and SAML claim/attribute mapping
-pub mod protocol;
-
-// Custom authenticators
-/// Custom authenticator support for extensible authentication flows
-pub mod authenticator;
-
-// SPI architecture
-/// Service Provider Interface framework for extensibility
-pub mod spi;
-
-// Admin Console UI
-/// Web-based admin interface using Leptos
+/// Web-based admin interface
 #[cfg(feature = "admin_console")]
 #[cfg_attr(docsrs, doc(cfg(feature = "admin_console")))]
 pub mod admin_console;
 
+// ============================================================
 // Re-export commonly used items
-pub use config::AppConfig;
-pub use error::{AuthencError, Result};
+// ============================================================
+
+pub use authenc_core::{AppConfig, AuthencError, Result};
 
 // Re-export async_trait for handler traits
 pub use async_trait::async_trait;
@@ -89,7 +104,8 @@ pub use async_trait::async_trait;
 pub use serde::{Deserialize, Serialize};
 
 // Re-export tracing for logging
-pub use tracing::{debug, error, info, warn};
+pub use tracing::{debug, info, warn};
+pub use tracing::error as trace_error;
 
 // Framework-specific re-exports
 #[cfg(feature = "axum")]

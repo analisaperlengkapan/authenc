@@ -1,18 +1,13 @@
-use axum::{
-    Json,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
 use serde_json::json;
 use thiserror::Error;
 
-/// Type alias for Results in this crate  
+/// Type alias for Results in this crate
 pub type Result<T> = std::result::Result<T, AuthencError>;
 
 /// Legacy alias for backward compatibility
-pub type AuthenceResult<T> = Result<T>; // backward compat
+pub type AuthenceResult<T> = Result<T>;
 
-/// Comprehensive error types for the Authence application
+/// Comprehensive error types for the Authenc application
 #[derive(Error, Debug)]
 pub enum AuthencError {
     // Authentication and authorization errors
@@ -195,48 +190,14 @@ impl AuthencError {
         }
     }
 
-    /// Create an unauthorized error for authentication failures
-    ///
-    /// This constructor creates an `AuthencError::Unauthorized` variant to indicate
-    /// that the request lacks valid authentication credentials or the provided
-    /// credentials are invalid/expired.
-    ///
-    /// # Arguments
-    /// * `message` - A descriptive message explaining the authentication failure
-    ///
-    /// # Returns
-    /// An `AuthencError::Unauthorized` instance with the provided message
-    ///
-    /// # Example
-    /// ```rust
-    /// use authenc::error::AuthencError;
-    ///
-    /// let error = AuthencError::unauthorized("Invalid or expired authentication token");
-    /// ```
+    /// Create an unauthorized error
     pub fn unauthorized<T: Into<String>>(message: T) -> Self {
         Self::Unauthorized {
             message: message.into(),
         }
     }
 
-    /// Create a forbidden error for access denied scenarios
-    ///
-    /// This constructor creates an `AuthencError::Forbidden` variant to indicate
-    /// that the authenticated user does not have sufficient permissions to access
-    /// the requested resource, even though they are authenticated.
-    ///
-    /// # Arguments
-    /// * `message` - A descriptive message explaining why access was denied
-    ///
-    /// # Returns
-    /// An `AuthencError::Forbidden` instance with the provided message
-    ///
-    /// # Example
-    /// ```rust
-    /// use authenc::error::AuthencError;
-    ///
-    /// let error = AuthencError::forbidden("User lacks required role for this operation");
-    /// ```
+    /// Create a forbidden error
     pub fn forbidden<T: Into<String>>(message: T) -> Self {
         Self::Forbidden {
             message: message.into(),
@@ -308,86 +269,63 @@ impl AuthencError {
             AuthencError::NetworkError { .. } => "NETWORK_ERROR",
         }
     }
-}
 
-impl IntoResponse for AuthencError {
-    fn into_response(self) -> Response {
-        let status = self.status_code();
-
-        // For internal errors, don't expose sensitive information
-        let error_message = match &self {
-            AuthencError::DatabaseError { .. }
-            | AuthencError::ConfigurationError { .. }
-            | AuthencError::InternalError { .. }
-            | AuthencError::CryptographicError
-            | AuthencError::SerializationError { .. }
-            | AuthencError::NetworkError { .. } => {
-                tracing::error!("Internal error occurred: {}", self);
-                "An internal error occurred. Please try again later.".to_string()
-            }
-            _ => self.to_string(),
-        };
-
-        let response_body = json!({
-            "error": {
-                "code": self.error_code(),
-                "message": error_message,
-                "status": status.as_u16()
-            }
-        });
-
-        (status, Json(response_body)).into_response()
-    }
-}
-
-impl AuthencError {
-    /// Get the HTTP status code for this error
-    pub fn status_code(&self) -> StatusCode {
+    /// Get the HTTP status code as u16 for this error
+    pub fn status_code_u16(&self) -> u16 {
         match self {
-            // 400 Bad Request
             AuthencError::ValidationError { .. }
             | AuthencError::MissingField { .. }
             | AuthencError::InvalidFormat { .. }
-            | AuthencError::InvalidCredentials => StatusCode::BAD_REQUEST,
+            | AuthencError::InvalidCredentials => 400,
 
-            // 401 Unauthorized
             AuthencError::AuthenticationFailed
             | AuthencError::TokenExpired
-            | AuthencError::InvalidToken => StatusCode::UNAUTHORIZED,
+            | AuthencError::InvalidToken
+            | AuthencError::Unauthorized { .. } => 401,
 
-            // 403 Forbidden
             AuthencError::AccessDenied
             | AuthencError::AccountLocked
-            | AuthencError::Forbidden { .. } => StatusCode::FORBIDDEN,
+            | AuthencError::Forbidden { .. } => 403,
 
-            // 401 Unauthorized (additional)
-            AuthencError::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
+            AuthencError::UserNotFound | AuthencError::ResourceNotFound { .. } => 404,
 
-            // 404 Not Found
-            AuthencError::UserNotFound | AuthencError::ResourceNotFound { .. } => {
-                StatusCode::NOT_FOUND
-            }
+            AuthencError::ResourceExists { .. } | AuthencError::ResourceConflict { .. } => 409,
 
-            // 409 Conflict
-            AuthencError::ResourceExists { .. } | AuthencError::ResourceConflict { .. } => {
-                StatusCode::CONFLICT
-            }
+            AuthencError::RateLimitExceeded => 429,
 
-            // 429 Too Many Requests
-            AuthencError::RateLimitExceeded => StatusCode::TOO_MANY_REQUESTS,
+            AuthencError::ServiceUnavailable => 503,
 
-            // 503 Service Unavailable
-            AuthencError::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
-
-            // 500 Internal Server Error
             AuthencError::DatabaseError { .. }
             | AuthencError::ConfigurationError { .. }
             | AuthencError::ExternalServiceError { .. }
             | AuthencError::InternalError { .. }
             | AuthencError::CryptographicError
             | AuthencError::SerializationError { .. }
-            | AuthencError::NetworkError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            | AuthencError::NetworkError { .. } => 500,
         }
+    }
+
+    /// Get the JSON error response body
+    pub fn error_json(&self) -> serde_json::Value {
+        let error_message = match self {
+            AuthencError::DatabaseError { .. }
+            | AuthencError::ConfigurationError { .. }
+            | AuthencError::InternalError { .. }
+            | AuthencError::CryptographicError
+            | AuthencError::SerializationError { .. }
+            | AuthencError::NetworkError { .. } => {
+                "An internal error occurred. Please try again later.".to_string()
+            }
+            _ => self.to_string(),
+        };
+
+        json!({
+            "error": {
+                "code": self.error_code(),
+                "message": error_message,
+                "status": self.status_code_u16()
+            }
+        })
     }
 }
 
@@ -403,24 +341,6 @@ impl From<serde_json::Error> for AuthencError {
         AuthencError::SerializationError {
             message: err.to_string(),
         }
-    }
-}
-
-impl From<tokio_postgres::Error> for AuthencError {
-    fn from(err: tokio_postgres::Error) -> Self {
-        AuthencError::database(err.to_string())
-    }
-}
-
-impl From<deadpool_postgres::PoolError> for AuthencError {
-    fn from(err: deadpool_postgres::PoolError) -> Self {
-        AuthencError::database(err.to_string())
-    }
-}
-
-impl From<argon2::password_hash::Error> for AuthencError {
-    fn from(_err: argon2::password_hash::Error) -> Self {
-        AuthencError::CryptographicError
     }
 }
 
@@ -452,6 +372,117 @@ impl From<uuid::Error> for AuthencError {
     fn from(err: uuid::Error) -> Self {
         AuthencError::ValidationError {
             message: format!("Invalid UUID: {}", err),
+        }
+    }
+}
+
+#[cfg(feature = "db")]
+impl From<tokio_postgres::Error> for AuthencError {
+    fn from(err: tokio_postgres::Error) -> Self {
+        AuthencError::DatabaseError {
+            message: err.to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "db")]
+impl From<deadpool_postgres::PoolError> for AuthencError {
+    fn from(err: deadpool_postgres::PoolError) -> Self {
+        AuthencError::DatabaseError {
+            message: format!("Connection pool error: {}", err),
+        }
+    }
+}
+
+// Axum response support (optional)
+#[cfg(feature = "axum-support")]
+mod axum_support {
+    use super::AuthencError;
+    use axum::{
+        Json,
+        http::StatusCode,
+        response::{IntoResponse, Response},
+    };
+    use serde_json::json;
+
+    impl IntoResponse for AuthencError {
+        fn into_response(self) -> Response {
+            let status = self.status_code();
+
+            // For internal errors, don't expose sensitive information
+            let error_message = match &self {
+                AuthencError::DatabaseError { .. }
+                | AuthencError::ConfigurationError { .. }
+                | AuthencError::InternalError { .. }
+                | AuthencError::CryptographicError
+                | AuthencError::SerializationError { .. }
+                | AuthencError::NetworkError { .. } => {
+                    tracing::error!("Internal error occurred: {}", self);
+                    "An internal error occurred. Please try again later.".to_string()
+                }
+                _ => self.to_string(),
+            };
+
+            let response_body = json!({
+                "error": {
+                    "code": self.error_code(),
+                    "message": error_message,
+                    "status": status.as_u16()
+                }
+            });
+
+            (status, Json(response_body)).into_response()
+        }
+    }
+
+    impl AuthencError {
+        /// Get the HTTP status code for this error
+        pub fn status_code(&self) -> StatusCode {
+            match self {
+                // 400 Bad Request
+                AuthencError::ValidationError { .. }
+                | AuthencError::MissingField { .. }
+                | AuthencError::InvalidFormat { .. }
+                | AuthencError::InvalidCredentials => StatusCode::BAD_REQUEST,
+
+                // 401 Unauthorized
+                AuthencError::AuthenticationFailed
+                | AuthencError::TokenExpired
+                | AuthencError::InvalidToken => StatusCode::UNAUTHORIZED,
+
+                // 403 Forbidden
+                AuthencError::AccessDenied
+                | AuthencError::AccountLocked
+                | AuthencError::Forbidden { .. } => StatusCode::FORBIDDEN,
+
+                // 401 Unauthorized (additional)
+                AuthencError::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
+
+                // 404 Not Found
+                AuthencError::UserNotFound | AuthencError::ResourceNotFound { .. } => {
+                    StatusCode::NOT_FOUND
+                }
+
+                // 409 Conflict
+                AuthencError::ResourceExists { .. } | AuthencError::ResourceConflict { .. } => {
+                    StatusCode::CONFLICT
+                }
+
+                // 429 Too Many Requests
+                AuthencError::RateLimitExceeded => StatusCode::TOO_MANY_REQUESTS,
+
+                // 503 Service Unavailable
+                AuthencError::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+
+                // 500 Internal Server Error
+                AuthencError::DatabaseError { .. }
+                | AuthencError::ConfigurationError { .. }
+                | AuthencError::ExternalServiceError { .. }
+                | AuthencError::InternalError { .. }
+                | AuthencError::CryptographicError
+                | AuthencError::SerializationError { .. }
+                | AuthencError::NetworkError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            }
         }
     }
 }

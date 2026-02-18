@@ -1,0 +1,94 @@
+[package]
+name = "authenc-services"
+version.workspace = true
+edition.workspace = true
+description = "Business logic and services for Authenc IAM"
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+metrics = ["dep:metrics", "dep:metrics-exporter-prometheus"]
+rdkafka = ["dep:rdkafka"]
+redis-store = ["dep:redis", "dep:deadpool-redis"]
+
+[dependencies]
+authenc-core = { workspace = true }
+authenc-models = { workspace = true }
+authenc-crypto = { workspace = true }
+authenc-database = { workspace = true }
+authenc-vault = { workspace = true }
+authenc-spi = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }
+dashmap = { workspace = true }
+reqwest = { workspace = true }
+thiserror = { workspace = true }
+
+# Database
+tokio-postgres = { workspace = true }
+deadpool-postgres = { workspace = true }
+
+# Optional
+rdkafka = { workspace = true, optional = true }
+redis = { workspace = true, optional = true }
+deadpool-redis = { workspace = true, optional = true }
+metrics = { workspace = true, optional = true }
+metrics-exporter-prometheus = { workspace = true, optional = true }
+
+# Federation
+ldap3 = { workspace = true }
+
+# Protocols
+webauthn-rs = { workspace = true }
+quick-xml = { workspace = true }
+flate2 = { workspace = true }
+
+# Kubernetes
+kube = { workspace = true }
+k8s-openapi = { workspace = true }
+schemars = { workspace = true }
+tokio-stream = { workspace = true }
+
+# TOTP
+totp-rs = { workspace = true }
+base32 = { workspace = true }
+
+# Misc
+regex = { workspace = true }
+url = { workspace = true }
+urlencoding = { workspace = true }
+argon2 = { workspace = true }
+jsonwebtoken = { workspace = true }
+ed25519-dalek = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+sha2 = { workspace = true }
+sha1 = { workspace = true }
+hmac = { workspace = true }
+subtle = { workspace = true }
+base64 = { workspace = true }
+base64ct = { workspace = true }
+hex = { workspace = true }
+ring = { workspace = true }
+openssl = { workspace = true }
+x509-parser = { workspace = true }
+axum = { workspace = true }
+futures-util = { workspace = true }
+zeroize = { workspace = true }
+once_cell = { workspace = true }
+num_cpus = { workspace = true }
+hkdf = { workspace = true }
+bincode = { workspace = true }
+curve25519-dalek = { workspace = true }
+
+[dev-dependencies]
+temp-env = { workspace = true }

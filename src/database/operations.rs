@@ -1887,7 +1887,7 @@ pub mod users {
         let last_name = request.last_name.clone();
         let phone_number = request.phone_number.clone();
         let password_hash = if let Some(p) = &request.password {
-            Some(crate::utils::crypto::password::hash_password(p).await.unwrap_or_default())
+            Some(authenc_crypto::utils::crypto::password::hash_password(p).await.unwrap_or_default())
         } else {
             None
         };
@@ -2478,7 +2478,7 @@ pub mod users {
 
             // Hash password if provided
             let password_hash = if let Some(password) = &user_req.password {
-                crate::utils::crypto::password::hash_password(password).await.map_err(|e| {
+                authenc_crypto::utils::crypto::password::hash_password(password).await.map_err(|e| {
                     crate::error::AuthencError::database(format!("Password hashing failed: {}", e))
                 })?
             } else {

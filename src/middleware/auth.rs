@@ -70,7 +70,7 @@ pub async fn auth_middleware(
 fn validate_token(token: &str, _secret: &str) -> Result<AuthUser, AuthencError> {
     // Use Ed25519 JWT verification
     // Note: verify_jwt uses the global ED25519_KEYPAIR, ignoring the passed _secret
-    let claims = crate::utils::crypto::jwt::verify_jwt(token).map_err(|e| {
+    let claims = authenc_crypto::utils::crypto::jwt::verify_jwt(token).map_err(|e| {
         error!("JWT validation failed: {}", e);
         AuthencError::unauthorized("Invalid token")
     })?;
@@ -156,7 +156,7 @@ mod tests {
 
     // Helper function to create tokens with custom claims for testing
     // This allows creating expired tokens or tokens with specific claims that generate_jwt doesn't support directly
-    fn create_test_token(claims: &crate::utils::crypto::jwt::Claims) -> String {
+    fn create_test_token(claims: &authenc_crypto::utils::crypto::jwt::Claims) -> String {
         use crate::crypto::ed25519_keys::sign_ed25519;
         use base64ct::{Base64UrlUnpadded, Encoding};
 
@@ -212,7 +212,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
         // 3. Test valid token
-        use crate::utils::crypto::jwt::generate_jwt;
+        use authenc_crypto::utils::crypto::jwt::generate_jwt;
         // generate_jwt uses the same global ED25519_KEYPAIR as verify_jwt
         let token = generate_jwt("test-user-id").expect("Failed to generate token");
 
@@ -333,7 +333,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_auth_user_extension() {
-        use crate::utils::crypto::jwt::generate_jwt;
+        use authenc_crypto::utils::crypto::jwt::generate_jwt;
 
         let state = Arc::new(AuthState {
             jwt_secret: "unused-secret".to_string(),
@@ -380,7 +380,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_require_auth_extension() {
-        use crate::utils::crypto::jwt::generate_jwt;
+        use authenc_crypto::utils::crypto::jwt::generate_jwt;
 
         let state = Arc::new(AuthState {
             jwt_secret: "unused-secret".to_string(),
@@ -503,7 +503,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_expired_token() {
-        use crate::utils::crypto::jwt::Claims;
+        use authenc_crypto::utils::crypto::jwt::Claims;
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let state = Arc::new(AuthState {

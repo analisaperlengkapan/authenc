@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use crate::error::{AuthencError as Error, Result};
 use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
-use crate::utils::crypto::password::{hash_password, verify_password};
+use authenc_crypto::utils::crypto::password::{hash_password, verify_password};
 
 pub mod otp;
 pub mod webauthn;

@@ -1,0 +1,55 @@
+[package]
+name = "authenc-core"
+version.workspace = true
+edition.workspace = true
+description = "Core types, error handling, and configuration for Authenc IAM"
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["db"]
+axum-support = ["axum"]
+db = ["dep:tokio-postgres", "dep:deadpool-postgres"]
+
+[dependencies]
+# Optional web framework support
+axum = { workspace = true, optional = true }
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Data types
+chrono = { workspace = true }
+uuid = { workspace = true }
+once_cell = { workspace = true }
+url = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Crypto monitor
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+
+# i18n
+fluent-bundle = { workspace = true }
+unic-langid = { workspace = true }
+
+# Database (optional - for error conversion)
+tokio-postgres = { workspace = true, optional = true }
+deadpool-postgres = { workspace = true, optional = true }
+
+[dev-dependencies]
+temp-env = { workspace = true }
+serial_test = { workspace = true }
+
+

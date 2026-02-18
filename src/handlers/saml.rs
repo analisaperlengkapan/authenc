@@ -247,7 +247,7 @@ impl AdminService for SamlAdminService {
 }
 
 /// Create SAML routes
-pub fn create_saml_routes() -> Router<Arc<AppState>> {
+pub fn create_saml_routes() -> Router<Database> {
     Router::new()
         .route("/sp/metadata", get(sp_metadata))
         .route("/idp/metadata", get(idp_metadata))

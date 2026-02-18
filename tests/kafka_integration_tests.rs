@@ -1,7 +1,7 @@
 use authenc::config::DatabaseConfig;
 use authenc::database::Database;
 use authenc::models::audit_log::AuditLog;
-use authenc::services::kafka_audit_log_sink::KafkaAuditLogSink;
+use authenc::services::audit::kafka_audit_log_sink::KafkaAuditLogSink;
 use std::sync::Arc;
 
 #[cfg(test)]

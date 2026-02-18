@@ -343,7 +343,7 @@ pub async fn oidc_login_post(
     Form(form): Form<OidcLoginForm>,
 ) -> Response {
     use crate::services::stores::user_store::UserStoreTrait;
-    use crate::utils::crypto::password::verify_password;
+    use authenc_crypto::utils::crypto::password::verify_password;
 
     // Verify user credentials
     // Note: OIDC provider in this implementation seems to lack realm context in the form.

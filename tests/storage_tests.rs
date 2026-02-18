@@ -3,8 +3,8 @@ use uuid::Uuid;
 
 use authenc::error::AuthencError;
 use authenc::models::user::{CreateUserRequest, User};
-use authenc::services::group_store::GroupStore;
-use authenc::services::oidc_client_store::OidcClientStore;
+use authenc::services::stores::group_store::GroupStore;
+use authenc::services::stores::oidc_client_store::OidcClientStore;
 use authenc::services::stores::role_store::RoleStore;
 use authenc::services::stores::user_store::UserStoreTrait;
 use authenc::spi::storage::{
@@ -52,7 +52,7 @@ impl UserStoreTrait for MockUserStore {
 
     async fn add_user(&self, request: CreateUserRequest) -> Result<User, AuthencError> {
         let password_hash = if let Some(p) = request.password {
-            Some(authenc::utils::crypto::password::hash_password(&p).await.unwrap())
+            Some(authenc_crypto::utils::crypto::password::hash_password(&p).await.unwrap())
         } else {
             None
         };
@@ -140,6 +140,54 @@ impl UserStoreTrait for MockUserStore {
         if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
             user.password_hash = Some(password_hash);
             user.password_changed_at = Some(chrono::Utc::now());
+            Ok(())
+        } else {
+            Err(AuthencError::resource_not_found("User not found"))
+        }
+    }
+
+    async fn record_login(&self, user_id: Uuid) -> Result<(), AuthencError> {
+        let mut users = self.users.lock().unwrap();
+        if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
+            user.login_count += 1;
+            user.last_login_at = Some(chrono::Utc::now());
+            Ok(())
+        } else {
+            Err(AuthencError::resource_not_found("User not found"))
+        }
+    }
+
+    async fn record_failed_login(&self, user_id: Uuid) -> Result<i32, AuthencError> {
+        let mut users = self.users.lock().unwrap();
+        if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
+            user.failed_login_attempts += 1;
+            Ok(user.failed_login_attempts)
+        } else {
+            Err(AuthencError::resource_not_found("User not found"))
+        }
+    }
+
+    async fn lock_account(
+        &self,
+        user_id: Uuid,
+        until: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<(), AuthencError> {
+        let mut users = self.users.lock().unwrap();
+        if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
+            user.account_locked = true;
+            user.account_locked_until = until;
+            Ok(())
+        } else {
+            Err(AuthencError::resource_not_found("User not found"))
+        }
+    }
+
+    async fn unlock_account(&self, user_id: Uuid) -> Result<(), AuthencError> {
+        let mut users = self.users.lock().unwrap();
+        if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
+            user.account_locked = false;
+            user.account_locked_until = None;
+            user.failed_login_attempts = 0;
             Ok(())
         } else {
             Err(AuthencError::resource_not_found("User not found"))

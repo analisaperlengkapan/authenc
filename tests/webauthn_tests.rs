@@ -1,7 +1,7 @@
 use authenc::config::DatabaseConfig;
 use authenc::database::Database;
 use authenc::models::webauthn::*;
-use authenc::services::webauthn::*;
+use authenc::services::protocols::webauthn::*;
 use base64ct::{Base64UrlUnpadded, Encoding};
 use std::sync::Arc;
 use uuid::Uuid;

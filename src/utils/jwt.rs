@@ -1,1 +1,1 @@
-pub use crate::utils::crypto::jwt::*;
+pub use authenc_crypto::utils::crypto::jwt::*;

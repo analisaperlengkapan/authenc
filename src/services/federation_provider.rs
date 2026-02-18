@@ -1,5 +1,5 @@
 use crate::models::user::User;
-use crate::utils::crypto::password::verify_password;
+use authenc_crypto::utils::crypto::password::verify_password;
 use subtle::{Choice, ConstantTimeEq};
 
 impl Default for FederationRegistry {

@@ -4,7 +4,7 @@
 //! and handling logout operations.
 
 use crate::services::stores::session_store::SessionStoreTrait;
-use crate::utils::crypto::jwt::Claims;
+use authenc_crypto::utils::crypto::jwt::Claims;
 use axum::{
     Router,
     extract::State,
