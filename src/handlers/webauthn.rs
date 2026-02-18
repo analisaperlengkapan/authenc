@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::error::{AuthencError, Result};
-use crate::services::webauthn::WebAuthnService;
+use authenc_services::services::webauthn::WebAuthnService;
 use axum::{
     extract::{Extension, Query, State},
     response::Json,
@@ -65,7 +65,7 @@ pub async fn register_verify(
             if let Ok(session_id) = uuid::Uuid::parse_str(sid_str) {
                 // Lookup session to get device_id
                 // We access the database directly here via operations
-                use crate::database::operations::sessions;
+                use authenc_database::database::operations::sessions;
                 if let Ok(Some(session_json)) = sessions::get_user_session(&state.database, session_id).await {
                     if let Some(did_str) = session_json.get("device_id").and_then(|v| v.as_str()) {
                          if let Ok(did) = uuid::Uuid::parse_str(did_str) {

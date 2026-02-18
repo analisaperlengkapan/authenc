@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::app::AppState;
-use crate::services::sso::service::SsoLogoutRequest;
-use crate::services::sso::{SsoCallbackRequest, SsoInitiateRequest, SsoProvider};
+use authenc_services::services::sso::service::SsoLogoutRequest;
+use authenc_services::services::sso::{SsoCallbackRequest, SsoInitiateRequest, SsoProvider};
 
 /// SSO login initiation query parameters
 #[derive(Debug, Deserialize)]

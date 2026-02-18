@@ -3,11 +3,11 @@
 //! This module provides endpoints for querying and exporting audit logs
 //! with filtering and pagination support.
 
-use crate::database::operations;
+use authenc_database::database::operations;
 use crate::middleware::auth::AuthUser;
-use crate::models::audit_log::{AuditLog, AuditLogFilter};
-use crate::services::stores::pg_audit_log_store::PgAuditLogStore;
-use crate::services::stores::user_store::UserStore;
+use authenc_models::models::audit_log::{AuditLog, AuditLogFilter};
+use authenc_services::services::stores::pg_audit_log_store::PgAuditLogStore;
+use authenc_services::services::stores::user_store::UserStore;
 use axum::{
     extract::{Query, State},
     http::StatusCode,

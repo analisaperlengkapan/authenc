@@ -7,7 +7,7 @@ use axum::{
 use std::sync::Arc;
 use serde::Serialize;
 use crate::app::AppState;
-use crate::services::fips::{
+use authenc_services::services::fips::{
     FipsSecurityProfileProvider, FipsSecurityProvider, SecurityProfile, FipsLevel, FipsComplianceCheck
 };
 use crate::error::AuthencError;

@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::error::AuthencError;
-use crate::services::security::anomaly_detector::AnomalyDetectorTrait;
-use crate::services::security::zero_trust::{
+use authenc_services::services::security::anomaly_detector::AnomalyDetectorTrait;
+use authenc_services::services::security::zero_trust::{
     AdaptiveControls, AuthContext, ComplianceStatus, DeviceTrust, RiskAssessment, RiskLevel,
     TrustLevel,
 };

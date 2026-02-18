@@ -13,19 +13,19 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::error::AuthencError;
-use crate::models::session::SessionResponse;
-use crate::models::social_account::SocialAccountResponse;
-use crate::models::user::{UpdateUserRequest, UserResponse};
-use crate::services::stores::oidc_client_store::OidcClientStore;
-use crate::services::stores::pg_audit_log_store::PgAuditLogStore;
-use crate::services::stores::session_store::SessionStoreTrait;
-use crate::services::social::SocialProvider;
-use crate::services::stores::consent_store::ConsentStoreTrait;
-use crate::services::stores::social_account_store::{SocialAccountStore, SocialAccountStoreTrait};
-use crate::services::stores::user_store::UserStoreTrait;
-use crate::services::stores::totp_store::TotpStore;
-use crate::services::oauth2::OAuth2Service;
-use crate::services::protocols::webauthn::WebAuthnService;
+use authenc_models::models::session::SessionResponse;
+use authenc_models::models::social_account::SocialAccountResponse;
+use authenc_models::models::user::{UpdateUserRequest, UserResponse};
+use authenc_services::services::stores::oidc_client_store::OidcClientStore;
+use authenc_services::services::stores::pg_audit_log_store::PgAuditLogStore;
+use authenc_services::services::stores::session_store::SessionStoreTrait;
+use authenc_services::services::social::SocialProvider;
+use authenc_services::services::stores::consent_store::ConsentStoreTrait;
+use authenc_services::services::stores::social_account_store::{SocialAccountStore, SocialAccountStoreTrait};
+use authenc_services::services::stores::user_store::UserStoreTrait;
+use authenc_services::services::stores::totp_store::TotpStore;
+use authenc_services::services::oauth2::OAuth2Service;
+use authenc_services::services::protocols::webauthn::WebAuthnService;
 
 /// Request to setup TOTP
 #[derive(Debug, Deserialize, Serialize)]

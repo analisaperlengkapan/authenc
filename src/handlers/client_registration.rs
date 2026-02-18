@@ -9,11 +9,11 @@ use std::sync::Arc;
 
 use crate::app::AppState;
 use crate::error::AuthencError;
-use crate::models::client_registration::{
+use authenc_models::models::client_registration::{
     ClientRegistrationError, ClientRegistrationRequest, ClientRegistrationResponse,
     ClientUpdateRequest, SoftwareStatement,
 };
-use crate::services::client_registration::{
+use authenc_services::services::client_registration::{
     ClientRegistrationService, DefaultClientRegistrationService,
 };
 use jsonwebtoken::dangerous::insecure_decode;

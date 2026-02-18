@@ -157,7 +157,7 @@ mod tests {
     // Helper function to create tokens with custom claims for testing
     // This allows creating expired tokens or tokens with specific claims that generate_jwt doesn't support directly
     fn create_test_token(claims: &authenc_crypto::utils::crypto::jwt::Claims) -> String {
-        use crate::crypto::ed25519_keys::sign_ed25519;
+        use authenc_crypto::crypto::ed25519_keys::sign_ed25519;
         use base64ct::{Base64UrlUnpadded, Encoding};
 
         let header = r#"{"alg":"EdDSA","typ":"JWT"}"#;

@@ -1,14 +1,14 @@
 use crate::app::AppState;
-use crate::database::Database;
-use crate::database::operations::identity_providers::get_identity_provider_by_entity_id;
+use authenc_database::database::Database;
+use authenc_database::database::operations::identity_providers::get_identity_provider_by_entity_id;
 use crate::error::AuthencError;
 use crate::handlers::federated_auth::MockAdminService;
-use crate::models::user::JITUserProvisioningRequest;
-use crate::services::admin::AdminService;
-use crate::services::federation::jit_provisioning::{
+use authenc_models::models::user::JITUserProvisioningRequest;
+use authenc_services::services::admin::AdminService;
+use authenc_services::services::federation::jit_provisioning::{
     DefaultJITProvisioningService, JITProvisioningService,
 };
-use crate::services::protocols::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
+use authenc_services::services::protocols::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
 use async_trait::async_trait;
 use axum::{
     Router,
@@ -54,8 +54,8 @@ impl AdminService for SamlAdminService {
         request: crate::services::admin::CreateUserRequest,
     ) -> Result<crate::services::admin::UserResponse, String> {
         // Use the database operations to create user
-        use crate::database::operations::{groups, roles, users};
-        use crate::models::user::CreateUserRequest as DbCreateUserRequest;
+        use authenc_database::database::operations::{groups, roles, users};
+        use authenc_models::models::user::CreateUserRequest as DbCreateUserRequest;
 
         let db_request = DbCreateUserRequest {
             username: request.username.clone(),

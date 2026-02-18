@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::app::AppState;
-use crate::services::protocols::oid4vc::{
+use authenc_services::services::protocols::oid4vc::{
     CredentialAuthorizationRequest, CredentialRequest, CredentialTokenRequest, Oid4VcService,
 };
 

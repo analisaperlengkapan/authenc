@@ -4,8 +4,8 @@
 //! It includes handlers for LDAP federation and social provider authentication.
 
 use crate::app::AppState;
-use crate::spi::ldap_federation::LdapFederationProvider;
-use crate::spi::social::SocialProvider;
+use authenc_spi::spi::ldap_federation::LdapFederationProvider;
+use authenc_spi::spi::social::SocialProvider;
 use axum::{
     Router,
     extract::{Query, State},
@@ -496,7 +496,7 @@ pub async fn social_callback(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::User;
+    use authenc_models::models::User;
     use serde_json::json;
     use uuid::Uuid;
 
@@ -587,7 +587,7 @@ mod tests {
 
     #[test]
     fn test_social_callback_redirect_uri_construction() {
-        use crate::config::AppConfig;
+        use authenc_core::config::AppConfig;
 
         let mut config = AppConfig::default();
         config.server.base_url = "https://auth.example.com".to_string();
@@ -602,7 +602,7 @@ mod tests {
 
     #[test]
     fn test_social_callback_redirect_uri_construction_trailing_slashes() {
-        use crate::config::AppConfig;
+        use authenc_core::config::AppConfig;
 
         let mut config = AppConfig::default();
         config.server.base_url = "https://auth.example.com/".to_string();

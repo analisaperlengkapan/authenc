@@ -3,7 +3,7 @@
 //! This module provides the core application state management and
 //! initialization logic for the Authenc authentication service.
 
-use crate::config::AppConfig;
+use authenc_core::config::AppConfig;
 use crate::error::{AuthencError, Result};
 use authenc_services::services::authorization::AuthorizationService;
 use std::sync::Arc;

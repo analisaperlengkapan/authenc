@@ -7,7 +7,7 @@ use axum::{
 };
 use std::sync::Arc;
 use crate::app::AppState;
-use crate::services::authorization::{AuthorizationContext, AuthorizationService, Decision};
+use authenc_services::services::authorization::{AuthorizationContext, AuthorizationService, Decision};
 use crate::error::AuthencError;
 
 /// Create authorization routes

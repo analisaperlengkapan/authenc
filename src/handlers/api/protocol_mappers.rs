@@ -14,11 +14,9 @@ use serde_json::{Value as JsonValue, json};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::{
-    app::AppState,
-    database::operations::protocol_mappers as mapper_ops,
-    error::{AuthencError, Result},
-};
+use crate::app::AppState;
+use authenc_database::database::operations::protocol_mappers as mapper_ops;
+use authenc_core::{AuthencError, Result};
 
 /// Create protocol mapper request
 #[derive(Debug, Deserialize)]

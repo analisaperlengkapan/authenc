@@ -1,5 +1,5 @@
 use crate::app::AppState;
-use crate::database;
+use authenc_database::database;
 use crate::handlers::api::auth_bearer::AuthBearer;
 use axum::{
     Router,

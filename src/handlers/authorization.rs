@@ -1,5 +1,5 @@
-use crate::database::Database;
-use crate::services::authorization::{
+use authenc_database::database::Database;
+use authenc_services::services::authorization::{
     AuthorizationContext, AuthorizationResource, AuthorizationSubject, Decision, LogicType, Policy,
     PolicyConfig, PolicyType,
 };

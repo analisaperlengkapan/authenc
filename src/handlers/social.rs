@@ -1,5 +1,5 @@
 use crate::app::AppState;
-use crate::services::social::{
+use authenc_services::services::social::{
     SocialLoginService, SocialProvider,
 };
 use axum::{
@@ -11,11 +11,11 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::models::social_account::CreateSocialAccountRequest;
-use crate::models::user::CreateUserRequest;
-use crate::services::sso::SsoSessionManager;
-use crate::services::stores::social_account_store::SocialAccountStoreTrait;
-use crate::services::stores::user_store::UserStoreTrait;
+use authenc_models::models::social_account::CreateSocialAccountRequest;
+use authenc_models::models::user::CreateUserRequest;
+use authenc_services::services::sso::SsoSessionManager;
+use authenc_services::services::stores::social_account_store::SocialAccountStoreTrait;
+use authenc_services::services::stores::user_store::UserStoreTrait;
 use uuid::Uuid;
 use url::Url;
 

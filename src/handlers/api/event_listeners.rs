@@ -117,7 +117,7 @@ pub async fn query_event_log(
         None
     };
 
-    use crate::database::operations::events::QueryEventLogParams;
+    use authenc_database::database::operations::events::QueryEventLogParams;
 
     let query_params = QueryEventLogParams {
         realm_id,

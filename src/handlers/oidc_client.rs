@@ -3,8 +3,8 @@
 //! This module provides endpoints for managing OIDC clients
 //! including listing, creating, and deleting clients.
 
-use crate::models::oidc_client::OidcClient;
-use crate::services::stores::oidc_client_store::OidcClientStore;
+use authenc_models::models::oidc_client::OidcClient;
+use authenc_services::services::stores::oidc_client_store::OidcClientStore;
 use axum::{
     Router,
     extract::{Path, State},

@@ -1,6 +1,6 @@
 use crate::app::AppState;
-use crate::models::user::JITUserProvisioningResponse;
-use crate::services::broker::{ExternalUser, IdentityBrokerRegistry, IdentityProviderType};
+use authenc_models::models::user::JITUserProvisioningResponse;
+use authenc_services::services::broker::{ExternalUser, IdentityBrokerRegistry, IdentityProviderType};
 use axum::{
     Router,
     extract::{Path, Query, State},
