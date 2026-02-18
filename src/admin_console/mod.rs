@@ -7,9 +7,19 @@ use std::sync::Arc;
 
 use crate::app::AppState;
 use crate::database::Database;
-use crate::handlers::api::auth_bearer::AuthBearer;
+use crate::handlers::api::admin_auth::AdminAuth;
 use crate::services::admin::{AdminManager, AdminService};
 use crate::services::stores::user_store::UserStoreTrait;
+
+pub mod login;
+
+fn escape_html(s: &str) -> String {
+    s.replace("&", "&amp;")
+     .replace("<", "&lt;")
+     .replace(">", "&gt;")
+     .replace("\"", "&quot;")
+     .replace("'", "&#39;")
+}
 
 /// Create admin console routes
 pub fn create_admin_console_routes(state: Arc<crate::app::AppState>) -> Router {
@@ -19,13 +29,14 @@ pub fn create_admin_console_routes(state: Arc<crate::app::AppState>) -> Router {
         .route("/roles", axum::routing::get(roles_page))
         .route("/realms", axum::routing::get(realms_page))
         .route("/clients", axum::routing::get(clients_page))
+        .route("/login", axum::routing::get(login::login_page).post(login::login_handler))
         .with_state(state)
 }
 
 /// Dashboard handler
 async fn dashboard(
     State(state): State<Arc<AppState>>,
-    _auth: AuthBearer,
+    _auth: AdminAuth,
 ) -> Result<Html<String>, StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
 
@@ -104,7 +115,7 @@ async fn dashboard(
 /// Users page handler
 async fn users_page(
     State(state): State<Arc<AppState>>,
-    _auth: AuthBearer,
+    auth: AdminAuth,
 ) -> Result<Html<String>, StatusCode> {
     // Fetch users from user store
     let users = match state.user_store.get_all().await {
@@ -112,23 +123,35 @@ async fn users_page(
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
 
+    // Fetch realms for dropdown
+    let realms = state.realm_store.get_all();
+    let mut realm_options = String::new();
+    for realm in realms.iter() {
+        realm_options.push_str(&format!(r#"<option value="{}">{}</option>"#, realm.id, escape_html(&realm.name)));
+    }
+
     let mut users_html = String::new();
     for user in users {
+        let realm_id = user.realm_id.map(|id| id.to_string()).unwrap_or_default();
+        let realm_name = realms.iter().find(|r| Some(r.id) == user.realm_id).map(|r| r.name.clone()).unwrap_or_else(|| "Unknown".to_string());
+
         users_html.push_str(&format!(r#"
         <tr>
             <td>{}</td>
             <td>{}</td>
             <td>{}</td>
             <td>{}</td>
+            <td>{}</td>
             <td>
                 <button onclick="editUser('{}')">Edit</button>
-                <button onclick="deleteUser('{}')" style="background: #dc3545; color: white;">Delete</button>
+                <button onclick="deleteUser('{}')" data-realm-id="{}" style="background: #dc3545; color: white;">Delete</button>
             </td>
         </tr>
-        "#, user.username, user.email,
-           user.first_name.unwrap_or_else(|| "N/A".to_string()),
+        "#, escape_html(&user.username), escape_html(&user.email),
+           escape_html(&user.first_name.clone().unwrap_or_else(|| "N/A".to_string())),
            if user.enabled { "Enabled" } else { "Disabled" },
-           user.id, user.id));
+           escape_html(&realm_name),
+           user.id, user.id, realm_id));
     }
 
     let html = format!(
@@ -153,6 +176,14 @@ async fn users_page(
             th {{ background: #f8f9fa; font-weight: bold; }}
             button {{ padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; }}
             button:hover {{ opacity: 0.8; }}
+
+            /* Modal Styles */
+            dialog {{ border: none; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 20px; min-width: 300px; }}
+            dialog::backdrop {{ background: rgba(0,0,0,0.5); }}
+            .form-group {{ margin-bottom: 15px; }}
+            .form-group label {{ display: block; margin-bottom: 5px; font-weight: bold; }}
+            .form-group input, .form-group select {{ width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }}
+            .modal-actions {{ display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }}
         </style>
     </head>
     <body>
@@ -170,7 +201,7 @@ async fn users_page(
         </nav>
         <div class="content">
             <h2>Users Management</h2>
-            <button onclick="createUser()" style="background: #28a745; color: white; margin-bottom: 20px;">Create New User</button>
+            <button onclick="document.getElementById('createUserModal').showModal()" style="background: #28a745; color: white; margin-bottom: 20px;">Create New User</button>
             <table>
                 <thead>
                     <tr>
@@ -178,6 +209,7 @@ async fn users_page(
                         <th>Email</th>
                         <th>Name</th>
                         <th>Status</th>
+                        <th>Realm</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -186,23 +218,117 @@ async fn users_page(
                 </tbody>
             </table>
         </div>
+
+        <dialog id="createUserModal">
+            <h3>Create New User</h3>
+            <form id="createUserForm" method="dialog">
+                <div class="form-group">
+                    <label>Realm</label>
+                    <select id="newRealm" required>
+                        {}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="newUsername" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="newEmail" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="newPassword" required>
+                </div>
+                <div class="form-group">
+                    <label>First Name</label>
+                    <input type="text" id="newFirstName">
+                </div>
+                <div class="form-group">
+                    <label>Last Name</label>
+                    <input type="text" id="newLastName">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" onclick="document.getElementById('createUserModal').close()" style="background: #6c757d; color: white;">Cancel</button>
+                    <button type="button" onclick="submitCreateUser()" style="background: #007bff; color: white;">Create</button>
+                </div>
+            </form>
+        </dialog>
+
         <script>
-            function createUser() {{
-                alert('Create user functionality not implemented yet');
+            window.ADMIN_TOKEN = "{}";
+
+            async function submitCreateUser() {{
+                const realmId = document.getElementById('newRealm').value;
+                const data = {{
+                    username: document.getElementById('newUsername').value,
+                    email: document.getElementById('newEmail').value,
+                    password: document.getElementById('newPassword').value,
+                    realm_id: realmId,
+                    first_name: document.getElementById('newFirstName').value || null,
+                    last_name: document.getElementById('newLastName').value || null,
+                    enabled: true,
+                    require_password_change: true
+                }};
+
+                try {{
+                    const response = await fetch('/realms/' + realmId + '/users', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + window.ADMIN_TOKEN
+                        }},
+                        body: JSON.stringify(data)
+                    }});
+
+                    if (response.ok) {{
+                        alert('User created successfully');
+                        window.location.reload();
+                    }} else {{
+                        alert('Failed to create user: ' + response.statusText);
+                    }}
+                }} catch (e) {{
+                    alert('Error: ' + e);
+                }}
             }}
+
             function editUser(id) {{
                 alert('Edit user ' + id + ' not implemented yet');
             }}
-            function deleteUser(id) {{
+
+            async function deleteUser(id) {{
+                const btn = document.querySelector(`button[onclick="deleteUser('${{id}}')"]`);
+                const realmId = btn.dataset.realmId;
+
+                if (!realmId) {{
+                    alert('Error: Realm ID not found for user');
+                    return;
+                }}
+
                 if (confirm('Are you sure you want to delete this user?')) {{
-                    alert('Delete user ' + id + ' not implemented yet');
+                    try {{
+                        const response = await fetch('/realms/' + realmId + '/users/' + id, {{
+                            method: 'DELETE',
+                            headers: {{
+                                'Authorization': 'Bearer ' + window.ADMIN_TOKEN
+                            }}
+                        }});
+
+                        if (response.ok) {{
+                            window.location.reload();
+                        }} else {{
+                            alert('Failed to delete user: ' + response.statusText);
+                        }}
+                    }} catch (e) {{
+                        alert('Error: ' + e);
+                    }}
                 }}
             }}
         </script>
     </body>
     </html>
     "#,
-        users_html
+        users_html, realm_options, auth.token
     );
 
     Ok(Html(html))
@@ -211,10 +337,10 @@ async fn users_page(
 /// Roles page handler
 async fn roles_page(
     State(state): State<Arc<AppState>>,
-    _auth: AuthBearer,
+    _auth: AdminAuth,
 ) -> Result<Html<String>, StatusCode> {
     // Fetch roles from role store
-    let roles = state.role_store.get_roles();
+    let roles = state.role_store.get_all();
 
     let mut roles_html = String::new();
     for role in roles.iter() {
@@ -228,7 +354,7 @@ async fn roles_page(
                 <button onclick="deleteRole('{}')" style="background: #dc3545; color: white;">Delete</button>
             </td>
         </tr>
-        "#, role.name, role.description.unwrap_or_else(|| "N/A".to_string()),
+        "#, escape_html(&role.name), escape_html(&role.description.as_deref().unwrap_or("N/A")),
            role.realm_id.map(|id| id.to_string()).unwrap_or_else(|| "Global".to_string()),
            role.id, role.id));
     }
@@ -312,10 +438,10 @@ async fn roles_page(
 /// Realms page handler
 async fn realms_page(
     State(state): State<Arc<AppState>>,
-    _auth: AuthBearer,
+    _auth: AdminAuth,
 ) -> Result<Html<String>, StatusCode> {
     // Fetch realms from realm store
-    let realms = state.realm_store.get_realms();
+    let realms = state.realm_store.get_all();
 
     let mut realms_html = String::new();
     for realm in realms.iter() {
@@ -329,7 +455,7 @@ async fn realms_page(
                 <button onclick="deleteRealm('{}')" style="background: #dc3545; color: white;">Delete</button>
             </td>
         </tr>
-        "#, realm.name, realm.display_name.as_deref().unwrap_or("N/A"),
+        "#, escape_html(&realm.name), escape_html(realm.display_name.as_deref().unwrap_or("N/A")),
            if realm.enabled { "Enabled" } else { "Disabled" },
            realm.id, realm.id));
     }
@@ -413,7 +539,7 @@ async fn realms_page(
 /// Clients page handler
 async fn clients_page(
     State(state): State<Arc<AppState>>,
-    _auth: AuthBearer,
+    _auth: AdminAuth,
 ) -> Result<Html<String>, StatusCode> {
     // Fetch clients from OIDC client store
     let clients = match state.oidc_client_store.all().await {
@@ -433,7 +559,7 @@ async fn clients_page(
                 <button onclick="deleteClient('{}')" style="background: #dc3545; color: white;">Delete</button>
             </td>
         </tr>
-        "#, client.client_id, client.name, if client.enabled { "Enabled" } else { "Disabled" },
+        "#, escape_html(&client.client_id), escape_html(&client.name), if client.enabled { "Enabled" } else { "Disabled" },
            client.id, client.id));
     }
 
