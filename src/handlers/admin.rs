@@ -93,21 +93,38 @@ pub struct ListPoliciesQuery {
 
 /// Get system statistics
 pub async fn get_system_stats(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<SystemStats>, StatusCode> {
-    // Mock response - in real implementation would use actual service
+    // Fetch real data where possible, fall back to mocks for unimplemented services
+    use authenc_database::database::operations;
+
+    // Users
+    let users = operations::users::get_all_users(&state.database)
+        .await
+        .unwrap_or_default();
+    let total_users = users.len() as u64;
+    let active_users = users.iter().filter(|u| u.enabled).count() as u64;
+
+    // Realms
+    let realms = state.realm_store.get_all();
+    let total_realms = realms.len() as u64;
+
+    // Sessions (mock for now as we don't have a count_all in store trait easily accessible without casting)
+    let total_sessions = 50;
+    let active_sessions = 30;
+
     let stats = SystemStats {
-        total_users: 100,
-        active_users: 25,
-        total_sessions: 50,
-        active_sessions: 30,
-        total_realms: 5,
-        total_policies: 20,
-        security_events_today: 3,
-        failed_login_attempts: 12,
-        uptime_seconds: 86400,
-        memory_usage_mb: 256,
-        cpu_usage_percent: 15.5,
+        total_users,
+        active_users,
+        total_sessions,
+        active_sessions,
+        total_realms,
+        total_policies: 20, // Mock
+        security_events_today: 3, // Mock
+        failed_login_attempts: users.iter().map(|u| u.failed_login_attempts as u64).sum(),
+        uptime_seconds: 86400, // Mock
+        memory_usage_mb: 256, // Mock
+        cpu_usage_percent: 15.5, // Mock
     };
     Ok(Json(stats))
 }
