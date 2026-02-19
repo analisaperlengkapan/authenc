@@ -1,7 +1,7 @@
 use leptos::*;
 use leptos_router::*;
 use crate::components::layout::Layout;
-use crate::pages::{home::Home, users::Users, realms::Realms};
+use crate::pages::{home::Home, users::Users, realms::Realms, clients::Clients, roles::Roles};
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -12,6 +12,8 @@ pub fn App() -> impl IntoView {
                     <Route path="" view=Home/>
                     <Route path="users" view=Users/>
                     <Route path="realms" view=Realms/>
+                    <Route path="clients" view=Clients/>
+                    <Route path="roles" view=Roles/>
                 </Route>
                 // Redirect root to admin console for now if accessed directly via SPA router
                 <Route path="/" view=|| view! { <Redirect path="/admin/console"/> }/>
