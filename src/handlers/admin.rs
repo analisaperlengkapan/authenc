@@ -101,7 +101,7 @@ pub async fn get_system_stats(
     // Users
     let users = operations::users::get_all_users(&state.database)
         .await
-        .unwrap_or_default();
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let total_users = users.len() as u64;
     let active_users = users.iter().filter(|u| u.enabled).count() as u64;
 
