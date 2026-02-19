@@ -95,38 +95,16 @@ pub struct ListPoliciesQuery {
 pub async fn get_system_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<SystemStats>, StatusCode> {
-    // Fetch real data where possible, fall back to mocks for unimplemented services
-    use authenc_database::database::operations;
+    // Use AdminManager which has optimized aggregate queries
+    let admin_manager = AdminManager::new(state.database.clone());
 
-    // Users
-    let users = operations::users::get_all_users(&state.database)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let total_users = users.len() as u64;
-    let active_users = users.iter().filter(|u| u.enabled).count() as u64;
-
-    // Realms
-    let realms = state.realm_store.get_all();
-    let total_realms = realms.len() as u64;
-
-    // Sessions (mock for now as we don't have a count_all in store trait easily accessible without casting)
-    let total_sessions = 50;
-    let active_sessions = 30;
-
-    let stats = SystemStats {
-        total_users,
-        active_users,
-        total_sessions,
-        active_sessions,
-        total_realms,
-        total_policies: 20, // Mock
-        security_events_today: 3, // Mock
-        failed_login_attempts: users.iter().map(|u| u.failed_login_attempts as u64).sum(),
-        uptime_seconds: 86400, // Mock
-        memory_usage_mb: 256, // Mock
-        cpu_usage_percent: 15.5, // Mock
-    };
-    Ok(Json(stats))
+    match admin_manager.get_system_stats().await {
+        Ok(stats) => Ok(Json(stats)),
+        Err(e) => {
+            eprintln!("Failed to get system stats: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Get dashboard data
