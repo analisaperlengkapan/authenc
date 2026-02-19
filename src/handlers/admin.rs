@@ -129,7 +129,21 @@ pub async fn list_users(
     Query(query): Query<ListUsersQuery>,
 ) -> Result<Json<UserListResponse>, StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
-    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+
+    // Require realm_id or use master realm from config/store if implemented.
+    // For now, returning 400 Bad Request if realm_id is missing is safer than Uuid::new_v4()
+    let realm_id = match query.realm_id {
+        Some(id) => id,
+        None => {
+            // Attempt to get "Master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("Master") {
+                master.id
+            } else {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
+    };
+
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
 
@@ -245,7 +259,17 @@ pub async fn list_roles(
     Query(query): Query<ListRolesQuery>,
 ) -> Result<Json<Vec<RoleResponse>>, StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
-    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+    let realm_id = match query.realm_id {
+        Some(id) => id,
+        None => {
+            // Attempt to get "Master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("Master") {
+                master.id
+            } else {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
+    };
 
     match admin_manager.get_roles(&realm_id).await {
         Ok(roles) => Ok(Json(roles)),
@@ -306,7 +330,17 @@ pub async fn list_policies(
     Query(query): Query<ListPoliciesQuery>,
 ) -> Result<Json<Vec<PolicyResponse>>, StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
-    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+    let realm_id = match query.realm_id {
+        Some(id) => id,
+        None => {
+            // Attempt to get "Master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("Master") {
+                master.id
+            } else {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
+    };
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
 
@@ -366,7 +400,17 @@ pub async fn list_identity_providers(
     Query(query): Query<ListIdentityProvidersQuery>,
 ) -> Result<Json<Vec<IdentityProviderResponse>>, StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
-    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+    let realm_id = match query.realm_id {
+        Some(id) => id,
+        None => {
+            // Attempt to get "Master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("Master") {
+                master.id
+            } else {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
+    };
 
     match admin_manager.get_identity_providers(&realm_id).await {
         Ok(providers) => Ok(Json(providers)),

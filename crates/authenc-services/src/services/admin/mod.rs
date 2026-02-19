@@ -632,7 +632,8 @@ impl AdminManager {
             .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
             .unwrap_or(0) as u64;
 
-        // Query 8: Failed login attempts today
+        // Query 8: Failed login attempts today (historical total from audit logs)
+        // Corrects Bug 2 where User.failed_login_attempts only tracks current consecutive failures
         let failed_login_attempts = self.db.query_raw(
             "SELECT COUNT(*) FROM audit_logs WHERE timestamp >= CURRENT_DATE AND event_type = 'login' AND status != 'SUCCESS'",
             &[]

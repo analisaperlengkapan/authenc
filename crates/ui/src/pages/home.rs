@@ -18,7 +18,22 @@ pub struct SystemStats {
 }
 
 async fn fetch_stats() -> Result<SystemStats, String> {
-    let resp = Request::get("/api/v1/admin/stats")
+    // TODO: Retrieve actual token from AuthProvider/LocalStorage when login flow is implemented
+    let token = gloo_utils::window()
+        .local_storage()
+        .ok()
+        .flatten()
+        .and_then(|s: web_sys::Storage| s.get_item("authenc_admin_token").ok())
+        .flatten()
+        .unwrap_or_default();
+
+    let mut req = Request::get("/api/v1/admin/stats");
+
+    if !token.is_empty() {
+        req = req.header("Authorization", &format!("Bearer {}", token));
+    }
+
+    let resp = req
         .send()
         .await
         .map_err(|e| e.to_string())?;

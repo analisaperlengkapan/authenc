@@ -256,7 +256,17 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/admin/spi",
             spi::create_spi_routes().with_state(state.clone()),
         )
-        .nest("/api/v1/admin", admin::create_admin_routes())
+        .nest(
+            "/api/v1/admin",
+            admin::create_admin_routes()
+                .layer(axum::middleware::from_fn_with_state(
+                    Arc::new(crate::middleware::auth::AuthState {
+                        jwt_secret: state.config.security.jwt_secret.clone(),
+                    }),
+                    crate::middleware::auth::auth_middleware,
+                ))
+                .with_state(state.clone()),
+        )
         .nest(
             "/api/v1",
             api::events::create_event_routes().with_state(state.clone()),
