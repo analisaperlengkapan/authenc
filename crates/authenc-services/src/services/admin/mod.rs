@@ -567,79 +567,66 @@ impl AdminManager {
     /// Generate system statistics with real database queries
     async fn generate_system_stats(&self) -> SystemStats {
         // Integration 17: Admin Console Statistics with database verification
+        // Using concurrent queries to improve performance (addressing sequential query latency)
 
-        // Query 1: Total users count
-        let total_users = self
-            .db
-            .query_raw("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL", &[])
-            .await
-            .ok()
-            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
-            .unwrap_or(0) as u64;
-
-        // Query 2: Active users (logged in within last 30 days)
-        let active_users = self.db.query_raw(
+        // Define queries
+        let total_users_query = self.db.query_raw("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL", &[]);
+        let active_users_query = self.db.query_raw(
             "SELECT COUNT(DISTINCT user_id) FROM user_sessions WHERE last_activity > NOW() - INTERVAL '30 days'",
             &[]
-        ).await.ok()
-            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
-            .unwrap_or(0) as u64;
-
-        // Query 3: Total sessions count
-        let total_sessions = self
-            .db
-            .query_raw("SELECT COUNT(*) FROM user_sessions", &[])
-            .await
-            .ok()
-            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
-            .unwrap_or(0) as u64;
-
-        // Query 4: Active sessions (not expired and not revoked)
-        let active_sessions = self
-            .db
-            .query_raw(
-                "SELECT COUNT(*) FROM user_sessions WHERE expires_at > NOW() AND revoked = false",
-                &[],
-            )
-            .await
-            .ok()
-            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
-            .unwrap_or(0) as u64;
-
-        // Query 5: Total realms
-        let total_realms = self
-            .db
-            .query_raw("SELECT COUNT(*) FROM realms WHERE enabled = true", &[])
-            .await
-            .ok()
-            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
-            .unwrap_or(0) as u64;
-
-        // Query 6: Total policies (from authorization_policies or similar)
-        let total_policies = self
-            .db
-            .query_raw("SELECT COUNT(*) FROM policies", &[])
-            .await
-            .ok()
-            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
-            .unwrap_or(0) as u64;
-
-        // Query 7: Security events today (from audit_logs)
-        let security_events_today = self.db.query_raw(
+        );
+        let total_sessions_query = self.db.query_raw("SELECT COUNT(*) FROM user_sessions", &[]);
+        let active_sessions_query = self.db.query_raw(
+            "SELECT COUNT(*) FROM user_sessions WHERE expires_at > NOW() AND revoked = false",
+            &[],
+        );
+        let total_realms_query = self.db.query_raw("SELECT COUNT(*) FROM realms WHERE enabled = true", &[]);
+        let total_policies_query = self.db.query_raw("SELECT COUNT(*) FROM policies", &[]);
+        let security_events_query = self.db.query_raw(
             "SELECT COUNT(*) FROM audit_logs WHERE timestamp >= CURRENT_DATE AND event_type IN ('login', 'logout', 'access_denied', 'permission_check')",
             &[]
-        ).await.ok()
-            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
-            .unwrap_or(0) as u64;
-
-        // Query 8: Failed login attempts today (historical total from audit logs)
-        // Corrects Bug 2 where User.failed_login_attempts only tracks current consecutive failures
-        let failed_login_attempts = self.db.query_raw(
+        );
+        let failed_logins_query = self.db.query_raw(
             "SELECT COUNT(*) FROM audit_logs WHERE timestamp >= CURRENT_DATE AND event_type = 'login' AND status != 'SUCCESS'",
             &[]
-        ).await.ok()
-            .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
-            .unwrap_or(0) as u64;
+        );
+
+        // Execute all queries concurrently
+        let (
+            total_users_res,
+            active_users_res,
+            total_sessions_res,
+            active_sessions_res,
+            total_realms_res,
+            total_policies_res,
+            security_events_res,
+            failed_logins_res
+        ) = tokio::join!(
+            total_users_query,
+            active_users_query,
+            total_sessions_query,
+            active_sessions_query,
+            total_realms_query,
+            total_policies_query,
+            security_events_query,
+            failed_logins_query
+        );
+
+        // Helper to extract count
+        fn extract_count(res: Result<Vec<tokio_postgres::Row>, authenc_core::error::AuthencError>) -> u64 {
+            res.ok()
+                .and_then(|rows| rows.first().map(|row| row.get::<_, i64>(0)))
+                .unwrap_or(0) as u64
+        }
+
+        let total_users = extract_count(total_users_res);
+        let active_users = extract_count(active_users_res);
+        let total_sessions = extract_count(total_sessions_res);
+        let active_sessions = extract_count(active_sessions_res);
+        let total_realms = extract_count(total_realms_res);
+        let total_policies = extract_count(total_policies_res);
+        let security_events_today = extract_count(security_events_res);
+        let failed_login_attempts = extract_count(failed_logins_res);
 
         // System metrics (would come from system monitoring in production)
         let uptime_seconds = 86400; // Placeholder: 24 hours
@@ -896,7 +883,7 @@ impl AdminService for AdminManager {
     ) -> Result<UserListResponse, String> {
         // Integration 19: User Listing with Pagination and Realm Filtering
 
-        let offset = page * limit;
+        let offset = (page.saturating_sub(1)) * limit;
 
         // Query total count first
         let total_count_query =

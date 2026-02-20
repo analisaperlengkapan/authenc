@@ -247,14 +247,28 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // FIPS management routes
         .nest(
             "/api/v1/admin/fips",
-            fips::create_fips_routes().with_state(state.clone()),
+            fips::create_fips_routes()
+                .layer(axum::middleware::from_fn_with_state(
+                    Arc::new(crate::middleware::auth::AuthState {
+                        jwt_secret: state.config.security.jwt_secret.clone(),
+                    }),
+                    crate::middleware::auth::auth_middleware,
+                ))
+                .with_state(state.clone()),
         )
         // SSO (Single Sign-On) routes
         .merge(sso::create_sso_router().with_state(state.clone()))
         // SPI management routes for enterprise features
         .nest(
             "/api/v1/admin/spi",
-            spi::create_spi_routes().with_state(state.clone()),
+            spi::create_spi_routes()
+                .layer(axum::middleware::from_fn_with_state(
+                    Arc::new(crate::middleware::auth::AuthState {
+                        jwt_secret: state.config.security.jwt_secret.clone(),
+                    }),
+                    crate::middleware::auth::auth_middleware,
+                ))
+                .with_state(state.clone()),
         )
         .nest(
             "/api/v1/admin",
