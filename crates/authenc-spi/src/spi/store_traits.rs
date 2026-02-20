@@ -91,6 +91,13 @@ pub trait UserStoreTrait: Send + Sync {
 
     /// Get user by password reset token
     async fn get_user_by_reset_token(&self, token: &str) -> Result<Option<User>, AuthencError>;
+
+    /// Reset password and clear reset token atomically
+    async fn reset_password_transaction(
+        &self,
+        user_id: Uuid,
+        password_hash: String,
+    ) -> Result<(), AuthencError>;
 }
 
 // ============================================================

@@ -2343,6 +2343,27 @@ pub mod users {
         Ok(row_opt.map(|r| row_to_user(&r)))
     }
 
+    /// Reset password and clear reset token atomically
+    pub async fn reset_password_transaction(
+        db: &Database,
+        user_id: Uuid,
+        password_hash: &str,
+    ) -> Result<()> {
+        let now = Utc::now();
+        let query = r#"
+            UPDATE users SET
+                password_hash = $2,
+                password_changed_at = $3,
+                require_password_change = false,
+                reset_token = NULL,
+                reset_token_expires_at = NULL,
+                updated_at = $3
+            WHERE id = $1
+        "#;
+        db.execute(query, &[&user_id, &password_hash, &now]).await?;
+        Ok(())
+    }
+
     /// Helper function to convert database row to User
     fn row_to_user(row: &tokio_postgres::Row) -> User {
         User {

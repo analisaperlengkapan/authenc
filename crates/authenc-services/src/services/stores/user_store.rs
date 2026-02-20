@@ -114,4 +114,12 @@ impl UserStoreTrait for UserStore {
     async fn get_user_by_reset_token(&self, token: &str) -> Result<Option<User>, AuthencError> {
         operations::users::get_user_by_reset_token(&self.database, token).await
     }
+
+    async fn reset_password_transaction(
+        &self,
+        user_id: Uuid,
+        password_hash: String,
+    ) -> Result<(), AuthencError> {
+        operations::users::reset_password_transaction(&self.database, user_id, &password_hash).await
+    }
 }
