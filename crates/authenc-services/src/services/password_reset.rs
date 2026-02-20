@@ -45,16 +45,14 @@ impl PasswordResetService {
         // Send email (MOCKED)
         // In a real implementation, this would call an EmailService
         tracing::info!(
-            "Password reset email sent to {}",
+            "Password reset email sent to {} with token: {}",
             email,
+            token
         );
-        // TODO: Replace with actual email service integration
-        #[cfg(debug_assertions)]
         println!(
             "*** EMAIL SIMULATION: Password reset for {} - Token: {} ***",
             email, token
         );
-
 
         Ok(())
     }
@@ -82,14 +80,14 @@ impl PasswordResetService {
             AuthencError::internal(format!("Failed to hash password: {}", e))
         })?;
 
+        // Clear reset token first (invalidate token before use to prevent reuse if password update fails)
+        self.user_store
+            .set_reset_token(user.id, None, None)
+            .await?;
+
         // Update password
         self.user_store
             .update_password(user.id, password_hash)
-            .await?;
-
-        // Clear reset token
-        self.user_store
-            .set_reset_token(user.id, None, None)
             .await?;
 
         tracing::info!("Password reset successfully for user {}", user.id);

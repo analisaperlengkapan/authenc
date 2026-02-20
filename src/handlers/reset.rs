@@ -78,7 +78,7 @@ pub async fn reset_password(
             // Log specific error but return generic error to client unless it's a validation error
             tracing::warn!("Password reset failed: {}", e);
             let (status, message) = if e.to_string().contains("Invalid") || e.to_string().contains("expired") {
-                (StatusCode::BAD_REQUEST, "Invalid or expired reset token".to_string())
+                (StatusCode::BAD_REQUEST, e.to_string())
             } else {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
             };
