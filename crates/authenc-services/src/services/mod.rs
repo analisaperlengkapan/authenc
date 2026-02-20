@@ -66,6 +66,8 @@ pub mod sso;
 pub mod token;
 /// Secret management and vault integration
 pub mod vault;
+/// Password reset service
+pub mod password_reset;
 
 // Re-exports for convenience
 pub use auth_flow::AuthenticationManager;

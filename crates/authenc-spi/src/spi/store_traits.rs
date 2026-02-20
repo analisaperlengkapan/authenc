@@ -80,6 +80,17 @@ pub trait UserStoreTrait: Send + Sync {
 
     /// Unlock user account
     async fn unlock_account(&self, user_id: Uuid) -> Result<(), AuthencError>;
+
+    /// Set password reset token for a user
+    async fn set_reset_token(
+        &self,
+        user_id: Uuid,
+        token: Option<String>,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<(), AuthencError>;
+
+    /// Get user by password reset token
+    async fn get_user_by_reset_token(&self, token: &str) -> Result<Option<User>, AuthencError>;
 }
 
 // ============================================================

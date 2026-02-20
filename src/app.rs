@@ -93,6 +93,8 @@ pub struct AppState {
     pub jit_provisioning_service: Arc<dyn authenc_services::services::federation::jit_provisioning::JITProvisioningService>,
     /// OAuth2 client validator
     pub client_validator: Arc<dyn authenc_services::services::oauth2::ClientValidator>,
+    /// Password reset service
+    pub password_reset_service: Arc<authenc_services::services::password_reset::PasswordResetService>,
 }
 
 // Support extraction of database for health checks
@@ -660,6 +662,9 @@ impl AppState {
 
         // Initialize client validator
         let client_validator = Arc::new(authenc_services::services::oauth2::DbClientValidator::new(database.clone()));
+
+        // Initialize password reset service
+        let password_reset_service = Arc::new(authenc_services::services::password_reset::PasswordResetService::new(user_store.clone()));
 
         Ok(Self {
             config,

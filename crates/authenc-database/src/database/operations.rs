@@ -2002,6 +2002,8 @@ pub mod users {
             deleted_at: row.get("deleted_at"),
             last_login_at: row.get("last_login_at"),
             login_count: row.get("login_count"),
+            reset_token: None,
+            reset_token_expires_at: None,
         };
 
         Ok(user)
@@ -2054,6 +2056,8 @@ pub mod users {
             deleted_at: r.get("deleted_at"),
             last_login_at: r.get("last_login_at"),
             login_count: r.get("login_count"),
+            reset_token: None,
+            reset_token_expires_at: None,
         }))
     }
 
@@ -2108,6 +2112,8 @@ pub mod users {
             deleted_at: r.get("deleted_at"),
             last_login_at: r.get("last_login_at"),
             login_count: r.get("login_count"),
+            reset_token: None,
+            reset_token_expires_at: None,
         }))
     }
 
@@ -2297,38 +2303,80 @@ pub mod users {
         Ok(())
     }
 
+    /// Set password reset token for a user
+    pub async fn set_reset_token(
+        db: &Database,
+        user_id: Uuid,
+        token: Option<String>,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<()> {
+        let now = Utc::now();
+        let query = r#"
+            UPDATE users SET
+                reset_token = $2,
+                reset_token_expires_at = $3,
+                updated_at = $4
+            WHERE id = $1
+        "#;
+        db.execute(query, &[&user_id, &token, &expires_at, &now])
+            .await?;
+        Ok(())
+    }
+
+    /// Get user by password reset token
+    pub async fn get_user_by_reset_token(db: &Database, token: &str) -> Result<Option<User>> {
+        let query = r#"
+            SELECT
+                id, username, email, email_verified, first_name, last_name,
+                phone_number, phone_verified, password_hash, totp_secret,
+                totp_backup_codes, webauthn_enabled, account_locked,
+                account_locked_until, failed_login_attempts, last_login_at,
+                last_failed_login_at, password_changed_at, password_expires_at,
+                require_password_change, realm_id, organization_id, attributes,
+                enabled, federated, created_at, updated_at, deleted_at, login_count,
+                reset_token, reset_token_expires_at
+            FROM users
+            WHERE reset_token = $1 AND deleted_at IS NULL
+        "#;
+
+        let row_opt = db.query_opt(query, &[&token]).await?;
+        Ok(row_opt.map(|r| row_to_user(&r)))
+    }
+
     /// Helper function to convert database row to User
     fn row_to_user(row: &tokio_postgres::Row) -> User {
         User {
-            id: row.get(0),
-            username: row.get(1),
-            email: row.get(2),
-            email_verified: row.get(3),
-            first_name: row.get(4),
-            last_name: row.get(5),
-            phone_number: row.get(6),
-            phone_verified: row.get(7),
-            password_hash: row.get(8),
-            totp_secret: row.get(9),
-            totp_backup_codes: row.get(10),
-            webauthn_enabled: row.get(11),
-            account_locked: row.get(12),
-            account_locked_until: row.get(13),
-            failed_login_attempts: row.get(14),
-            last_failed_login_at: row.get(15),
-            password_changed_at: row.get(16),
-            password_expires_at: row.get(17),
-            require_password_change: row.get(18),
-            realm_id: row.get(19),
-            organization_id: row.get(20),
-            attributes: row.get(21),
-            enabled: row.get(22),
-            federated: row.get(23),
-            created_at: row.get(24),
-            updated_at: row.get(25),
-            deleted_at: row.get(26),
-            last_login_at: row.get(27),
-            login_count: row.get(28),
+            id: row.get("id"),
+            username: row.get("username"),
+            email: row.get("email"),
+            email_verified: row.get("email_verified"),
+            first_name: row.get("first_name"),
+            last_name: row.get("last_name"),
+            phone_number: row.get("phone_number"),
+            phone_verified: row.get("phone_verified"),
+            password_hash: row.get("password_hash"),
+            totp_secret: row.get("totp_secret"),
+            totp_backup_codes: row.get("totp_backup_codes"),
+            webauthn_enabled: row.get("webauthn_enabled"),
+            account_locked: row.get("account_locked"),
+            account_locked_until: row.get("account_locked_until"),
+            failed_login_attempts: row.get("failed_login_attempts"),
+            last_failed_login_at: row.get("last_failed_login_at"),
+            password_changed_at: row.get("password_changed_at"),
+            password_expires_at: row.get("password_expires_at"),
+            require_password_change: row.get("require_password_change"),
+            realm_id: row.get("realm_id"),
+            organization_id: row.get("organization_id"),
+            attributes: row.get("attributes"),
+            enabled: row.get("enabled"),
+            federated: row.get("federated"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+            deleted_at: row.get("deleted_at"),
+            last_login_at: row.get("last_login_at"),
+            login_count: row.get("login_count"),
+            reset_token: row.try_get("reset_token").ok().flatten(),
+            reset_token_expires_at: row.try_get("reset_token_expires_at").ok().flatten(),
         }
     }
 
@@ -2384,6 +2432,8 @@ pub mod users {
                 deleted_at: row.get("deleted_at"),
                 last_login_at: row.get("last_login_at"),
                 login_count: row.get("login_count"),
+                reset_token: None,
+                reset_token_expires_at: None,
             });
         }
 
@@ -2442,6 +2492,8 @@ pub mod users {
                 deleted_at: row.get("deleted_at"),
                 last_login_at: row.get("last_login_at"),
                 login_count: row.get("login_count"),
+                reset_token: None,
+                reset_token_expires_at: None,
             });
         }
 

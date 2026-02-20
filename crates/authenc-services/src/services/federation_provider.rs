@@ -97,6 +97,8 @@ impl FederationProvider for DummyFederationProvider {
                 updated_at: chrono::Utc::now(),
                 deleted_at: None,
                 login_count: 0,
+                reset_token: None,
+                reset_token_expires_at: None,
             })
         } else {
             None
