@@ -93,23 +93,18 @@ pub struct ListPoliciesQuery {
 
 /// Get system statistics
 pub async fn get_system_stats(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<SystemStats>, StatusCode> {
-    // Mock response - in real implementation would use actual service
-    let stats = SystemStats {
-        total_users: 100,
-        active_users: 25,
-        total_sessions: 50,
-        active_sessions: 30,
-        total_realms: 5,
-        total_policies: 20,
-        security_events_today: 3,
-        failed_login_attempts: 12,
-        uptime_seconds: 86400,
-        memory_usage_mb: 256,
-        cpu_usage_percent: 15.5,
-    };
-    Ok(Json(stats))
+    // Use AdminManager which has optimized aggregate queries
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.get_system_stats().await {
+        Ok(stats) => Ok(Json(stats)),
+        Err(e) => {
+            eprintln!("Failed to get system stats: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Get dashboard data
@@ -134,7 +129,21 @@ pub async fn list_users(
     Query(query): Query<ListUsersQuery>,
 ) -> Result<Json<UserListResponse>, StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
-    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+
+    // Require realm_id or use master realm from config/store if implemented.
+    // For now, returning 400 Bad Request if realm_id is missing is safer than Uuid::new_v4()
+    let realm_id = match query.realm_id {
+        Some(id) => id,
+        None => {
+            // Attempt to get "master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("master") {
+                master.id
+            } else {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
+    };
+
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
 
@@ -250,7 +259,17 @@ pub async fn list_roles(
     Query(query): Query<ListRolesQuery>,
 ) -> Result<Json<Vec<RoleResponse>>, StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
-    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+    let realm_id = match query.realm_id {
+        Some(id) => id,
+        None => {
+            // Attempt to get "master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("master") {
+                master.id
+            } else {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
+    };
 
     match admin_manager.get_roles(&realm_id).await {
         Ok(roles) => Ok(Json(roles)),
@@ -311,7 +330,17 @@ pub async fn list_policies(
     Query(query): Query<ListPoliciesQuery>,
 ) -> Result<Json<Vec<PolicyResponse>>, StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
-    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+    let realm_id = match query.realm_id {
+        Some(id) => id,
+        None => {
+            // Attempt to get "master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("master") {
+                master.id
+            } else {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
+    };
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
 
@@ -371,7 +400,17 @@ pub async fn list_identity_providers(
     Query(query): Query<ListIdentityProvidersQuery>,
 ) -> Result<Json<Vec<IdentityProviderResponse>>, StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
-    let realm_id = query.realm_id.unwrap_or_else(Uuid::new_v4); // Default realm if not specified
+    let realm_id = match query.realm_id {
+        Some(id) => id,
+        None => {
+            // Attempt to get "master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("master") {
+                master.id
+            } else {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
+    };
 
     match admin_manager.get_identity_providers(&realm_id).await {
         Ok(providers) => Ok(Json(providers)),

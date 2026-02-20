@@ -86,11 +86,6 @@ pub mod middleware;
 #[cfg_attr(docsrs, doc(cfg(feature = "axum")))]
 pub mod axum_app;
 
-/// Web-based admin interface
-#[cfg(feature = "admin_console")]
-#[cfg_attr(docsrs, doc(cfg(feature = "admin_console")))]
-pub mod admin_console;
-
 // ============================================================
 // Re-export commonly used items
 // ============================================================

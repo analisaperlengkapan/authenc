@@ -9,6 +9,7 @@ members = [
     "crates/authenc-vault",
     "crates/authenc-spi",
     "crates/authenc-services",
+    "crates/ui",
 ]
 
 [workspace.package]
@@ -226,7 +227,6 @@ dev = [
     "rdkafka",
     "totp-rs",
     "flate2",
-    "admin_console",
     "quantum"
 ]
 
@@ -235,7 +235,6 @@ rbac = []
 flate2 = ["dep:flate2"]
 reqwest = ["dep:reqwest"]
 test = ["reqwest"]
-admin_console = []
 
 # Quantum-resistant cryptography features
 quantum = ["dep:pqcrypto-mldsa", "dep:pqcrypto-mlkem", "dep:pqcrypto-falcon"]

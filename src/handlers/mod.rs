@@ -247,16 +247,40 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // FIPS management routes
         .nest(
             "/api/v1/admin/fips",
-            fips::create_fips_routes().with_state(state.clone()),
+            fips::create_fips_routes()
+                .layer(axum::middleware::from_fn_with_state(
+                    Arc::new(crate::middleware::auth::AuthState {
+                        jwt_secret: state.config.security.jwt_secret.clone(),
+                    }),
+                    crate::middleware::auth::auth_middleware,
+                ))
+                .with_state(state.clone()),
         )
         // SSO (Single Sign-On) routes
         .merge(sso::create_sso_router().with_state(state.clone()))
         // SPI management routes for enterprise features
         .nest(
             "/api/v1/admin/spi",
-            spi::create_spi_routes().with_state(state.clone()),
+            spi::create_spi_routes()
+                .layer(axum::middleware::from_fn_with_state(
+                    Arc::new(crate::middleware::auth::AuthState {
+                        jwt_secret: state.config.security.jwt_secret.clone(),
+                    }),
+                    crate::middleware::auth::auth_middleware,
+                ))
+                .with_state(state.clone()),
         )
-        .nest("/api/v1/admin", admin::create_admin_routes())
+        .nest(
+            "/api/v1/admin",
+            admin::create_admin_routes()
+                .layer(axum::middleware::from_fn_with_state(
+                    Arc::new(crate::middleware::auth::AuthState {
+                        jwt_secret: state.config.security.jwt_secret.clone(),
+                    }),
+                    crate::middleware::auth::auth_middleware,
+                ))
+                .with_state(state.clone()),
+        )
         .nest(
             "/api/v1",
             api::events::create_event_routes().with_state(state.clone()),
@@ -290,15 +314,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             oid4vc::create_oid4vc_router().with_state(state.clone()),
         )
         .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()));
-
-    // Admin Console UI routes (backend API only - no static frontend)
-    #[cfg(feature = "admin_console")]
-    {
-        router = router.nest(
-            "/admin/console",
-            crate::admin_console::create_admin_console_routes(state.clone()),
-        );
-    }
 
     router.with_state(state)
 }
