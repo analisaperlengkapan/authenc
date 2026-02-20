@@ -135,8 +135,8 @@ pub async fn list_users(
     let realm_id = match query.realm_id {
         Some(id) => id,
         None => {
-            // Attempt to get "Master" realm, otherwise fail
-            if let Some(master) = state.realm_store.get_by_name("Master") {
+            // Attempt to get "master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("master") {
                 master.id
             } else {
                 return Err(StatusCode::BAD_REQUEST);
@@ -262,8 +262,8 @@ pub async fn list_roles(
     let realm_id = match query.realm_id {
         Some(id) => id,
         None => {
-            // Attempt to get "Master" realm, otherwise fail
-            if let Some(master) = state.realm_store.get_by_name("Master") {
+            // Attempt to get "master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("master") {
                 master.id
             } else {
                 return Err(StatusCode::BAD_REQUEST);
@@ -333,8 +333,8 @@ pub async fn list_policies(
     let realm_id = match query.realm_id {
         Some(id) => id,
         None => {
-            // Attempt to get "Master" realm, otherwise fail
-            if let Some(master) = state.realm_store.get_by_name("Master") {
+            // Attempt to get "master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("master") {
                 master.id
             } else {
                 return Err(StatusCode::BAD_REQUEST);
@@ -403,8 +403,8 @@ pub async fn list_identity_providers(
     let realm_id = match query.realm_id {
         Some(id) => id,
         None => {
-            // Attempt to get "Master" realm, otherwise fail
-            if let Some(master) = state.realm_store.get_by_name("Master") {
+            // Attempt to get "master" realm, otherwise fail
+            if let Some(master) = state.realm_store.get_by_name("master") {
                 master.id
             } else {
                 return Err(StatusCode::BAD_REQUEST);
