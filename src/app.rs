@@ -707,6 +707,7 @@ impl AppState {
             authorization_manager,
             jit_provisioning_service,
             client_validator,
+            password_reset_service,
         })
     }
 
