@@ -85,12 +85,12 @@ pub trait UserStoreTrait: Send + Sync {
     async fn set_reset_token(
         &self,
         user_id: Uuid,
-        token: Option<String>,
+        token_hash: Option<String>,
         expires_at: Option<DateTime<Utc>>,
     ) -> Result<(), AuthencError>;
 
     /// Get user by password reset token
-    async fn get_user_by_reset_token(&self, token: &str) -> Result<Option<User>, AuthencError>;
+    async fn get_user_by_reset_token(&self, token_hash: &str) -> Result<Option<User>, AuthencError>;
 
     /// Reset password and clear reset token atomically
     async fn reset_password_transaction(

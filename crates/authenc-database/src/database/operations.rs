@@ -2002,7 +2002,7 @@ pub mod users {
             deleted_at: row.get("deleted_at"),
             last_login_at: row.get("last_login_at"),
             login_count: row.get("login_count"),
-            reset_token: None,
+            reset_token_hash: None,
             reset_token_expires_at: None,
         };
 
@@ -2056,7 +2056,7 @@ pub mod users {
             deleted_at: r.get("deleted_at"),
             last_login_at: r.get("last_login_at"),
             login_count: r.get("login_count"),
-            reset_token: None,
+            reset_token_hash: None,
             reset_token_expires_at: None,
         }))
     }
@@ -2112,7 +2112,7 @@ pub mod users {
             deleted_at: r.get("deleted_at"),
             last_login_at: r.get("last_login_at"),
             login_count: r.get("login_count"),
-            reset_token: None,
+            reset_token_hash: None,
             reset_token_expires_at: None,
         }))
     }
@@ -2307,24 +2307,24 @@ pub mod users {
     pub async fn set_reset_token(
         db: &Database,
         user_id: Uuid,
-        token: Option<String>,
+        token_hash: Option<String>,
         expires_at: Option<DateTime<Utc>>,
     ) -> Result<()> {
         let now = Utc::now();
         let query = r#"
             UPDATE users SET
-                reset_token = $2,
+                reset_token_hash = $2,
                 reset_token_expires_at = $3,
                 updated_at = $4
             WHERE id = $1
         "#;
-        db.execute(query, &[&user_id, &token, &expires_at, &now])
+        db.execute(query, &[&user_id, &token_hash, &expires_at, &now])
             .await?;
         Ok(())
     }
 
     /// Get user by password reset token
-    pub async fn get_user_by_reset_token(db: &Database, token: &str) -> Result<Option<User>> {
+    pub async fn get_user_by_reset_token(db: &Database, token_hash: &str) -> Result<Option<User>> {
         let query = r#"
             SELECT
                 id, username, email, email_verified, first_name, last_name,
@@ -2334,12 +2334,12 @@ pub mod users {
                 last_failed_login_at, password_changed_at, password_expires_at,
                 require_password_change, realm_id, organization_id, attributes,
                 enabled, federated, created_at, updated_at, deleted_at, login_count,
-                reset_token, reset_token_expires_at
+                reset_token_hash, reset_token_expires_at
             FROM users
-            WHERE reset_token = $1 AND deleted_at IS NULL
+            WHERE reset_token_hash = $1 AND deleted_at IS NULL
         "#;
 
-        let row_opt = db.query_opt(query, &[&token]).await?;
+        let row_opt = db.query_opt(query, &[&token_hash]).await?;
         Ok(row_opt.map(|r| row_to_user(&r)))
     }
 
@@ -2355,7 +2355,7 @@ pub mod users {
                 password_hash = $2,
                 password_changed_at = $3,
                 require_password_change = false,
-                reset_token = NULL,
+                reset_token_hash = NULL,
                 reset_token_expires_at = NULL,
                 updated_at = $3
             WHERE id = $1
@@ -2396,7 +2396,7 @@ pub mod users {
             deleted_at: row.get("deleted_at"),
             last_login_at: row.get("last_login_at"),
             login_count: row.get("login_count"),
-            reset_token: row.try_get("reset_token").ok().flatten(),
+            reset_token_hash: row.try_get("reset_token_hash").ok().flatten(),
             reset_token_expires_at: row.try_get("reset_token_expires_at").ok().flatten(),
         }
     }
@@ -2453,7 +2453,7 @@ pub mod users {
                 deleted_at: row.get("deleted_at"),
                 last_login_at: row.get("last_login_at"),
                 login_count: row.get("login_count"),
-                reset_token: None,
+            reset_token_hash: None,
                 reset_token_expires_at: None,
             });
         }
@@ -2513,7 +2513,7 @@ pub mod users {
                 deleted_at: row.get("deleted_at"),
                 last_login_at: row.get("last_login_at"),
                 login_count: row.get("login_count"),
-                reset_token: None,
+            reset_token_hash: None,
                 reset_token_expires_at: None,
             });
         }

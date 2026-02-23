@@ -2,6 +2,7 @@ use authenc_core::error::{AuthencError, Result};
 use authenc_crypto::utils::crypto::password::hash_password;
 use authenc_spi::spi::store_traits::UserStoreTrait;
 use chrono::{Duration, Utc};
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -35,36 +36,47 @@ impl PasswordResetService {
         // Generate secure token (using UUID for simplicity in this implementation)
         // In production, consider cryptographically secure random strings
         let token = Uuid::new_v4().to_string();
+
+        // Hash token for storage
+        let mut hasher = Sha256::new();
+        hasher.update(token.as_bytes());
+        let token_hash = hex::encode(hasher.finalize());
+
         let expires_at = Utc::now() + Duration::minutes(self.token_validity_minutes);
 
-        // Store token in database
+        // Store token hash in database
         self.user_store
-            .set_reset_token(user.id, Some(token.clone()), Some(expires_at))
+            .set_reset_token(user.id, Some(token_hash), Some(expires_at))
             .await?;
 
         // Send email (MOCKED)
         // In a real implementation, this would call an EmailService
-        // Send email (MOCKED)
-        // In a real implementation, this would call an EmailService
         tracing::info!(
             "Password reset email sent to {}",
-            email,
+            email
         );
-        tracing::debug!(
-            "*** EMAIL SIMULATION: Password reset for {} - Token: [REDACTED] ***",
-            email,
-        );
+        // In a real implementation, the token would be sent via email here.
+        // For development/testing, you might need a way to retrieve it (e.g., implementation-specific logging)
+        // but never in production logs.
 
+        // For local dev convenience ONLY (remove in prod)
+        #[cfg(debug_assertions)]
+        println!("*** EMAIL SIMULATION: Password reset for {} - Token: {} ***", email, token);
 
         Ok(())
     }
 
     /// Reset password using a token
     pub async fn reset_password(&self, token: &str, new_password: &str) -> Result<()> {
-        // Find user by token
+        // Hash token for lookup
+        let mut hasher = Sha256::new();
+        hasher.update(token.as_bytes());
+        let token_hash = hex::encode(hasher.finalize());
+
+        // Find user by token hash
         let user = self
             .user_store
-            .get_user_by_reset_token(token)
+            .get_user_by_reset_token(&token_hash)
             .await?
             .ok_or_else(|| AuthencError::not_found("Invalid or expired reset token"))?;
 

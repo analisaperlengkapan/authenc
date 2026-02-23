@@ -85,9 +85,11 @@ pub struct User {
     pub deleted_at: Option<DateTime<Utc>>,
     /// Number of successful logins for this user
     pub login_count: i32,
-    /// Token for password reset
-    pub reset_token: Option<String>,
+    /// Hashed token for password reset
+    #[serde(skip_serializing)]
+    pub reset_token_hash: Option<String>,
     /// Expiration timestamp for the reset token
+    #[serde(skip_serializing)]
     pub reset_token_expires_at: Option<DateTime<Utc>>,
 }
 
@@ -657,7 +659,7 @@ impl User {
             updated_at: now,
             deleted_at: None,
             login_count: 0,
-            reset_token: None,
+            reset_token_hash: None,
             reset_token_expires_at: None,
         }
     }
@@ -839,7 +841,7 @@ impl TryFrom<tokio_postgres::Row> for User {
             updated_at: row.try_get("updated_at")?,
             deleted_at: row.try_get("deleted_at")?,
             login_count: row.try_get("login_count")?,
-            reset_token: row.try_get("reset_token").ok().flatten(),
+            reset_token_hash: row.try_get("reset_token_hash").ok().flatten(),
             reset_token_expires_at: row.try_get("reset_token_expires_at").ok().flatten(),
         })
     }

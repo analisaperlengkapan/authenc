@@ -105,14 +105,14 @@ impl UserStoreTrait for UserStore {
     async fn set_reset_token(
         &self,
         user_id: Uuid,
-        token: Option<String>,
+        token_hash: Option<String>,
         expires_at: Option<DateTime<Utc>>,
     ) -> Result<(), AuthencError> {
-        operations::users::set_reset_token(&self.database, user_id, token, expires_at).await
+        operations::users::set_reset_token(&self.database, user_id, token_hash, expires_at).await
     }
 
-    async fn get_user_by_reset_token(&self, token: &str) -> Result<Option<User>, AuthencError> {
-        operations::users::get_user_by_reset_token(&self.database, token).await
+    async fn get_user_by_reset_token(&self, token_hash: &str) -> Result<Option<User>, AuthencError> {
+        operations::users::get_user_by_reset_token(&self.database, token_hash).await
     }
 
     async fn reset_password_transaction(
