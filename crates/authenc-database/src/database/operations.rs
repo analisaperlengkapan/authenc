@@ -2358,9 +2358,14 @@ pub mod users {
                 reset_token_hash = NULL,
                 reset_token_expires_at = NULL,
                 updated_at = $3
-            WHERE id = $1
+            WHERE id = $1 AND reset_token_hash IS NOT NULL
         "#;
-        db.execute(query, &[&user_id, &password_hash, &now]).await?;
+        let rows_affected = db.execute(query, &[&user_id, &password_hash, &now]).await?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::validation("Reset token already used or expired"));
+        }
+
         Ok(())
     }
 
