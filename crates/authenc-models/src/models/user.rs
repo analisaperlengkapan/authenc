@@ -86,10 +86,8 @@ pub struct User {
     /// Number of successful logins for this user
     pub login_count: i32,
     /// Token for password reset
-    #[serde(skip_serializing)]
     pub reset_token: Option<String>,
     /// Expiration timestamp for the reset token
-    #[serde(skip_serializing)]
     pub reset_token_expires_at: Option<DateTime<Utc>>,
 }
 
