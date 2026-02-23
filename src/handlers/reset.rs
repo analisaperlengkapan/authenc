@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -14,14 +14,18 @@ use crate::app::AppState;
 /// Request payload for password reset
 #[derive(Debug, Deserialize)]
 pub struct ForgotPasswordRequest {
+    /// The email address of the user requesting a password reset
     pub email: String,
+    /// The ID of the realm the user belongs to (optional, defaults to master)
     pub realm_id: Option<Uuid>,
 }
 
 /// Request payload for completing password reset
 #[derive(Debug, Deserialize)]
 pub struct ResetPasswordRequest {
+    /// The password reset token received via email
     pub token: String,
+    /// The new password to set for the user
     pub new_password: String,
 }
 

@@ -1875,7 +1875,7 @@ pub mod audit {
 
 /// Database operations for users
 pub mod users {
-    use authenc_core::error::Result;
+    use authenc_core::error::{AuthencError, Result};
 
     use authenc_models::models::{User, user::CreateUserRequest, user::UpdateUserRequest};
 
