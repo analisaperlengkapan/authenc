@@ -28,7 +28,7 @@ impl PasswordResetService {
             Some(u) => u,
             None => {
                 // Return OK to prevent email enumeration attacks
-                tracing::info!("Password reset requested for non-existent email: {}", email);
+                tracing::debug!("Password reset requested for unknown email");
                 return Ok(());
             }
         };
