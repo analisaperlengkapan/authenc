@@ -44,15 +44,17 @@ impl PasswordResetService {
 
         // Send email (MOCKED)
         // In a real implementation, this would call an EmailService
+        // Send email (MOCKED)
+        // In a real implementation, this would call an EmailService
         tracing::info!(
-            "Password reset email sent to {} with token: {}",
+            "Password reset email sent to {}",
             email,
-            token
         );
-        println!(
-            "*** EMAIL SIMULATION: Password reset for {} - Token: {} ***",
-            email, token
+        tracing::debug!(
+            "*** EMAIL SIMULATION: Password reset for {} - Token: [REDACTED] ***",
+            email,
         );
+
 
         Ok(())
     }
