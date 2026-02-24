@@ -1,4 +1,5 @@
 use crate::app::AppState;
+use crate::handlers::api::auth_bearer::AuthBearer;
 use authenc_database::database::operations::groups;
 use authenc_models::models::group::{CreateGroupRequest, GroupResponse, UpdateGroupRequest};
 use axum::{
@@ -27,6 +28,7 @@ pub struct GroupListQuery {
 /// Create a new group
 pub async fn create_group(
     State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
     Path(realm_id): Path<Uuid>,
     Json(req): Json<CreateGroupRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -67,6 +69,7 @@ pub async fn create_group(
 /// Get all groups in a realm
 pub async fn get_groups(
     State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
     Path(realm_id): Path<Uuid>,
     Query(query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -98,6 +101,7 @@ pub async fn get_groups(
 /// Get a specific group by ID
 pub async fn get_group_by_id(
     State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
     Path(group_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let group = groups::get_group_by_id(&state.database, group_id)
@@ -125,6 +129,7 @@ pub async fn get_group_by_id(
 /// Update a group
 pub async fn update_group(
     State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
     Path(group_id): Path<Uuid>,
     Json(req): Json<UpdateGroupRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -159,6 +164,7 @@ pub async fn update_group(
 /// Delete a group
 pub async fn delete_group(
     State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
     Path(group_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::delete_group(&state.database, group_id).await.map_err(|e| {
@@ -172,6 +178,7 @@ pub async fn delete_group(
 /// Get subgroups of a group
 pub async fn get_subgroups(
     State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
     Path(group_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Pagination is not supported by the DB layer yet, so we don't expose query params
@@ -204,6 +211,7 @@ pub async fn get_subgroups(
 /// Add user to group
 pub async fn add_group_member(
     State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
     Path((group_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::add_user_to_group(&state.database, user_id, group_id, None, None)
@@ -219,6 +227,7 @@ pub async fn add_group_member(
 /// Remove user from group
 pub async fn remove_group_member(
     State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
     Path((group_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::remove_user_from_group(&state.database, user_id, group_id)
@@ -234,6 +243,7 @@ pub async fn remove_group_member(
 /// Get members of a group
 pub async fn get_group_members(
     State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
     Path(group_id): Path<Uuid>,
     Query(query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -250,6 +260,7 @@ pub async fn get_group_members(
 /// Get user's groups
 pub async fn get_user_groups(
     State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
     Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let user_groups = groups::get_user_groups(&state.database, user_id).await.map_err(|e| {
