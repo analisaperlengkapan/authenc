@@ -102,7 +102,7 @@ pub async fn get_groups(
 pub async fn get_group_by_id(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path(group_id): Path<Uuid>,
+    Path((_realm_id, group_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let group = groups::get_group_by_id(&state.database, group_id)
         .await
@@ -111,6 +111,8 @@ pub async fn get_group_by_id(
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Group not found".to_string()))?;
+
+    // Optional: Validate group.realm_id == realm_id
 
     let member_count = groups::count_group_members(&state.database, group.id)
         .await
@@ -130,7 +132,7 @@ pub async fn get_group_by_id(
 pub async fn update_group(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path(group_id): Path<Uuid>,
+    Path((_realm_id, group_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<UpdateGroupRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let group = groups::update_group(
@@ -165,7 +167,7 @@ pub async fn update_group(
 pub async fn delete_group(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path(group_id): Path<Uuid>,
+    Path((_realm_id, group_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::delete_group(&state.database, group_id).await.map_err(|e| {
         error!("Failed to delete group: {}", e);
@@ -179,7 +181,7 @@ pub async fn delete_group(
 pub async fn get_subgroups(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path(group_id): Path<Uuid>,
+    Path((_realm_id, group_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Pagination is not supported by the DB layer yet, so we don't expose query params
     // direct_only is hardcoded to true for now as per previous logic
@@ -212,7 +214,7 @@ pub async fn get_subgroups(
 pub async fn add_group_member(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path((group_id, user_id)): Path<(Uuid, Uuid)>,
+    Path((_realm_id, group_id, user_id)): Path<(Uuid, Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::add_user_to_group(&state.database, user_id, group_id, None, None)
         .await
@@ -228,7 +230,7 @@ pub async fn add_group_member(
 pub async fn remove_group_member(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path((group_id, user_id)): Path<(Uuid, Uuid)>,
+    Path((_realm_id, group_id, user_id)): Path<(Uuid, Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     groups::remove_user_from_group(&state.database, user_id, group_id)
         .await
@@ -244,7 +246,7 @@ pub async fn remove_group_member(
 pub async fn get_group_members(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path(group_id): Path<Uuid>,
+    Path((_realm_id, group_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let member_ids = groups::get_group_members(&state.database, group_id, query.first, query.max)
@@ -261,7 +263,7 @@ pub async fn get_group_members(
 pub async fn get_user_groups(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path(user_id): Path<Uuid>,
+    Path((_realm_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let user_groups = groups::get_user_groups(&state.database, user_id).await.map_err(|e| {
         error!("Failed to get user groups: {}", e);
@@ -290,9 +292,9 @@ pub async fn get_user_groups(
 pub fn create_group_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/realms/:realm_id/groups", post(create_group).get(get_groups))
-        .route("/groups/:group_id", get(get_group_by_id).put(update_group).delete(delete_group))
-        .route("/groups/:group_id/subgroups", get(get_subgroups))
-        .route("/groups/:group_id/members/:user_id", post(add_group_member).delete(remove_group_member))
-        .route("/groups/:group_id/members", get(get_group_members))
-        .route("/users/:user_id/groups", get(get_user_groups))
+        .route("/realms/:realm_id/groups/:group_id", get(get_group_by_id).put(update_group).delete(delete_group))
+        .route("/realms/:realm_id/groups/:group_id/subgroups", get(get_subgroups))
+        .route("/realms/:realm_id/groups/:group_id/members/:user_id", post(add_group_member).delete(remove_group_member))
+        .route("/realms/:realm_id/groups/:group_id/members", get(get_group_members))
+        .route("/realms/:realm_id/users/:user_id/groups", get(get_user_groups))
 }
