@@ -28,7 +28,7 @@ impl PasswordResetService {
             Some(u) if u.enabled => u,
             _ => {
                 // Return OK to prevent email enumeration attacks (and hide disabled status)
-                tracing::info!("Password reset requested for non-existent or disabled email: {}", email);
+                tracing::debug!("Password reset requested for non-existent or disabled email: {}", email);
                 // Perform dummy work to mitigate timing attacks
                 let dummy_token = Uuid::new_v4().to_string();
                 let mut hasher = Sha256::new();
