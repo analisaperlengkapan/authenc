@@ -29,6 +29,11 @@ impl PasswordResetService {
             None => {
                 // Return OK to prevent email enumeration attacks
                 tracing::info!("Password reset requested for non-existent email: {}", email);
+                // Perform dummy work to mitigate timing attacks
+                let dummy_token = Uuid::new_v4().to_string();
+                let mut hasher = Sha256::new();
+                hasher.update(dummy_token.as_bytes());
+                let _ = hex::encode(hasher.finalize());
                 return Ok(());
             }
         };

@@ -2336,7 +2336,7 @@ pub mod users {
                 enabled, federated, created_at, updated_at, deleted_at, login_count,
                 reset_token_hash, reset_token_expires_at
             FROM users
-            WHERE reset_token_hash = $1 AND deleted_at IS NULL
+            WHERE reset_token_hash = $1 AND deleted_at IS NULL AND enabled = true
         "#;
 
         let row_opt = db.query_opt(query, &[&token_hash]).await?;

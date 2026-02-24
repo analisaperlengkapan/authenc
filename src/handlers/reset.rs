@@ -51,7 +51,10 @@ pub async fn request_password_reset(
         }
         Err(e) => {
             tracing::error!("Rate limiter error: {}", e);
-            // Continue securely on error, or fail closed? Failing closed is safer for denial of service prevention on backend resources
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Internal server error" })),
+            );
         }
         _ => {}
     }
@@ -111,6 +114,10 @@ pub async fn reset_password(
         }
         Err(e) => {
             tracing::error!("Rate limiter error: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Internal server error" })),
+            );
         }
         _ => {}
     }
@@ -133,10 +140,11 @@ pub async fn reset_password(
             Json(json!({ "message": "Password reset successfully" })),
         ),
         Err(e) => {
-            // Log specific error but return generic error to client unless it's a validation error
+            // Log specific error but return generic error to client to prevent information leakage
             tracing::warn!("Password reset failed: {}", e);
             let (status, message) = if e.to_string().contains("Invalid") || e.to_string().contains("expired") {
-                (StatusCode::BAD_REQUEST, e.to_string())
+                // Return generic message for validation errors to hide whether token was valid-but-expired vs invalid
+                (StatusCode::BAD_REQUEST, "Invalid or expired reset token".to_string())
             } else {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
             };
