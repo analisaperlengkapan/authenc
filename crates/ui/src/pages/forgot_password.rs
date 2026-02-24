@@ -5,6 +5,7 @@ use gloo_net::http::Request;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct ForgotPasswordRequest {
     email: String,
+    realm_id: Option<String>,
 }
 
 #[component]
@@ -16,7 +17,10 @@ pub fn ForgotPassword() -> impl IntoView {
         ev.prevent_default();
         let email_val = email.get();
         spawn_local(async move {
-            let req_body = ForgotPasswordRequest { email: email_val };
+            let req_body = ForgotPasswordRequest {
+                email: email_val,
+                realm_id: None
+            };
             let res = Request::post("/auth/forgot-password")
                 .json(&req_body)
                 .unwrap()
