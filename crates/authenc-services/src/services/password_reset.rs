@@ -25,10 +25,10 @@ impl PasswordResetService {
     pub async fn request_reset(&self, email: &str, realm_id: &Uuid) -> Result<()> {
         // Find user by email
         let user = match self.user_store.get_user_by_email(realm_id, email).await? {
-            Some(u) => u,
-            None => {
-                // Return OK to prevent email enumeration attacks
-                tracing::info!("Password reset requested for non-existent email: {}", email);
+            Some(u) if u.enabled => u,
+            _ => {
+                // Return OK to prevent email enumeration attacks (and hide disabled status)
+                tracing::info!("Password reset requested for non-existent or disabled email: {}", email);
                 // Perform dummy work to mitigate timing attacks
                 let dummy_token = Uuid::new_v4().to_string();
                 let mut hasher = Sha256::new();
