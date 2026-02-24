@@ -95,10 +95,10 @@ pub fn Groups() -> impl IntoView {
             return;
         }
 
+        spawn_local(async move {
             let req = UpdateGroupRequest {
                 name: Some(name),
-                description: if description.is_empty() { None } else { Some(description) },
-            };
+                description: Some(description),
             };
 
             let url = format!("/api/v1/auth/realms/{}/groups/{}", realm_id, group.id);
