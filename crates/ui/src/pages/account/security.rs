@@ -4,7 +4,10 @@ use crate::models::{TotpStatusResponse, TotpSetupResponse, TotpSetupRequest};
 use qrcodegen::{QrCode, QrCodeEcc};
 
 fn render_qr_svg(text: &str) -> String {
-    let qr = QrCode::encode_text(text, QrCodeEcc::Medium).unwrap();
+    let qr = match QrCode::encode_text(text, QrCodeEcc::Medium) {
+        Ok(qr) => qr,
+        Err(_) => return r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" fill="red">QR generation failed</text></svg>"#.to_string(),
+    };
     let size = qr.size();
     let mut path = String::new();
     for y in 0..size {
