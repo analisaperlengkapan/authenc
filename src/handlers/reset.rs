@@ -41,7 +41,7 @@ pub async fn request_password_reset(
     let rate_limit_key = format!("pwd_reset_req:{}", ip);
 
     // Check if blocked
-    match state.brute_force_protector.register_attempt(&rate_limit_key) {
+    match state.password_reset_protector.register_attempt(&rate_limit_key) {
         Ok(true) => {
             tracing::warn!("Rate limit exceeded for password reset request from IP: {}", ip);
             return (
@@ -104,7 +104,7 @@ pub async fn reset_password(
     let ip = addr.ip().to_string();
     let rate_limit_key = format!("pwd_reset_sub:{}", ip);
 
-    match state.brute_force_protector.register_attempt(&rate_limit_key) {
+    match state.password_reset_protector.register_attempt(&rate_limit_key) {
         Ok(true) => {
             tracing::warn!("Rate limit exceeded for password reset submission from IP: {}", ip);
             return (

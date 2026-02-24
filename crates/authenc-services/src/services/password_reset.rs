@@ -75,6 +75,10 @@ impl PasswordResetService {
         #[cfg(debug_assertions)]
         println!("*** EMAIL SIMULATION: Password reset for {} - Token: {} ***", email, token);
 
+        // Warning for release builds as requested
+        #[cfg(not(debug_assertions))]
+        tracing::warn!("Password reset token generated but not sent (email sending is mocked). Token delivery failed for {}", email);
+
         Ok(())
     }
 

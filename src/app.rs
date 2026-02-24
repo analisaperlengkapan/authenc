@@ -23,6 +23,8 @@ pub struct AppState {
     pub totp_store: Arc<authenc_services::services::stores::totp_store::TotpStore>,
     /// Brute force attack protection service
     pub brute_force_protector: Arc<authenc_services::services::security::brute_force_protector::BruteForceProtector>,
+    /// Password reset rate limiter (separate from login brute force protection)
+    pub password_reset_protector: Arc<authenc_services::services::security::brute_force_protector::BruteForceProtector>,
     /// Anomaly detection service
     pub anomaly_detector: Arc<authenc_services::services::security::anomaly_detector::AnomalyDetector>,
     /// Federation provider registry
@@ -174,6 +176,14 @@ impl AppState {
         let totp_store = Arc::new(authenc_services::services::stores::totp_store::TotpStore::new());
 
         let brute_force_protector = Arc::new(
+            authenc_services::services::security::brute_force_protector::BruteForceProtector::new(
+                config.security.brute_force_max_attempts as usize,
+                config.security.brute_force_window_seconds,
+            ),
+        );
+
+        // Use same configuration as login protection for now, but separate instance
+        let password_reset_protector = Arc::new(
             authenc_services::services::security::brute_force_protector::BruteForceProtector::new(
                 config.security.brute_force_max_attempts as usize,
                 config.security.brute_force_window_seconds,
@@ -673,6 +683,7 @@ impl AppState {
             session_store,
             totp_store,
             brute_force_protector,
+            password_reset_protector,
             anomaly_detector,
             federation_registry,
             audit_log_store,
