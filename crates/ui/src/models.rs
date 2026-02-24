@@ -36,14 +36,14 @@ pub struct UpdateUserRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TotpSetupRequest {
-    pub device_name: Option<String>,
+    pub user_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TotpSetupResponse {
     pub secret: String,
-    pub qr_code_url: String,
-    pub backup_codes: Vec<String>,
+    pub qr_code_uri: String,
+    pub user_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

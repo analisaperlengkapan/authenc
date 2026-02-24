@@ -44,8 +44,8 @@ pub fn Security() -> impl IntoView {
     let setup_action = create_action(move |_: &()| async move {
         set_error_msg.set(None);
         set_success_msg.set(None);
-        let req = TotpSetupRequest { device_name: Some("Browser".to_string()) };
-        let resp = authenticated_request("POST", "/api/v1/auth/account/totp/setup", Some(&req)).await;
+        let req = TotpSetupRequest { user_label: Some("Browser".to_string()) };
+        let resp = authenticated_request("POST", "/api/v1/auth/account/credentials/totp/setup", Some(&req)).await;
         match resp {
             Ok(response) => {
                 if response.ok() {
@@ -69,7 +69,7 @@ pub fn Security() -> impl IntoView {
         }
 
         let req = VerifyTotpSetupRequest { code };
-        // Use the account_credentials endpoint for verification as it supports checking secrets
+        // Use the account_credentials endpoint for verification
         let resp = authenticated_request("POST", "/api/v1/auth/account/credentials/totp/verify", Some(&req)).await;
         match resp {
             Ok(response) => {
@@ -166,20 +166,14 @@ pub fn Security() -> impl IntoView {
                 </Suspense>
 
                 {move || setup_data.get().map(|data| {
-                    let qr_svg = render_qr_svg(&data.qr_code_url);
+                    let qr_svg = render_qr_svg(&data.qr_code_uri);
                     view! {
                         <div class="setup-area" style="margin-top: 20px; border-top: 1px solid #dee2e6; padding-top: 20px;">
                             <h4>"Step 1: Scan QR Code"</h4>
                             <div inner_html=qr_svg style="width: 200px; height: 200px; margin-bottom: 15px;"></div>
                             <p>"Secret: " <code>{data.secret}</code></p>
 
-                            <div class="backup-codes" style="margin-bottom: 20px;">
-                                <h5>"Backup Codes"</h5>
-                                <p>"Save these codes in a secure place. They can be used to recover access to your account."</p>
-                                <ul style="column-count: 2; font-family: monospace;">
-                                    {data.backup_codes.into_iter().map(|code| view! { <li>{code}</li> }).collect_view()}
-                                </ul>
-                            </div>
+                            // Backup codes removed as they are not provided by this endpoint
 
                             <div class="verify-area" style="border-top: 1px solid #eee; padding-top: 15px;">
                                 <h4>"Step 2: Verify Code"</h4>
