@@ -33,7 +33,14 @@ impl PasswordResetService {
                 let dummy_token = Uuid::new_v4().to_string();
                 let mut hasher = Sha256::new();
                 hasher.update(dummy_token.as_bytes());
-                let _ = hex::encode(hasher.finalize());
+                let token_hash = hex::encode(hasher.finalize());
+                let expires_at = Utc::now() + Duration::minutes(self.token_validity_minutes);
+
+                // Execute a DB write with a random UUID to match timing of the success path
+                let _ = self.user_store
+                    .set_reset_token(Uuid::new_v4(), Some(token_hash), Some(expires_at))
+                    .await;
+
                 return Ok(());
             }
         };
