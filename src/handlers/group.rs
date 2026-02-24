@@ -1,13 +1,16 @@
-use authenc_database::database::Database;
+use crate::app::AppState;
+use crate::handlers::api::auth_bearer::AuthBearer;
 use authenc_database::database::operations::groups;
 use authenc_models::models::group::{CreateGroupRequest, GroupResponse, UpdateGroupRequest};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
+    routing::{delete, get, post, put},
+    Router,
 };
 use serde::Deserialize;
-
+use std::sync::Arc;
 use tracing::error;
 use uuid::Uuid;
 
@@ -24,12 +27,19 @@ pub struct GroupListQuery {
 
 /// Create a new group
 pub async fn create_group(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
+    Path(realm_id): Path<Uuid>,
     Json(req): Json<CreateGroupRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // Validate realm_id matches body or just use path
+    if req.realm_id != realm_id {
+        return Err((StatusCode::BAD_REQUEST, "Realm ID in path does not match body".to_string()));
+    }
+
     let group = groups::create_group(
-        &db,
-        req.realm_id,
+        &state.database,
+        realm_id,
         &req.name,
         None, // parent_id - not in CreateGroupRequest, use None for top-level
         req.description.as_deref(),
@@ -42,10 +52,12 @@ pub async fn create_group(
     })?;
 
     // Get member and subgroup counts
-    let member_count = groups::count_group_members(&db, group.id)
+    let member_count = groups::count_group_members(&state.database, group.id)
         .await
         .unwrap_or(0);
-    let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
+    let subgroup_count = groups::count_subgroups(&state.database, group.id)
+        .await
+        .unwrap_or(0);
 
     let mut response = GroupResponse::from(group);
     response.member_count = member_count;
@@ -56,11 +68,12 @@ pub async fn create_group(
 
 /// Get all groups in a realm
 pub async fn get_groups(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
     Path(realm_id): Path<Uuid>,
     Query(query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let groups = groups::get_groups_by_realm(&db, realm_id, query.first, query.max)
+    let groups = groups::get_groups_by_realm(&state.database, realm_id, query.first, query.max)
         .await
         .map_err(|e| {
             error!("Failed to get groups: {}", e);
@@ -69,10 +82,12 @@ pub async fn get_groups(
 
     let mut responses = Vec::new();
     for group in groups {
-        let member_count = groups::count_group_members(&db, group.id)
+        let member_count = groups::count_group_members(&state.database, group.id)
             .await
             .unwrap_or(0);
-        let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
+        let subgroup_count = groups::count_subgroups(&state.database, group.id)
+            .await
+            .unwrap_or(0);
 
         let mut response = GroupResponse::from(group);
         response.member_count = member_count;
@@ -85,10 +100,11 @@ pub async fn get_groups(
 
 /// Get a specific group by ID
 pub async fn get_group_by_id(
-    State(db): State<Database>,
-    Path(group_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
+    Path((realm_id, group_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let group = groups::get_group_by_id(&db, group_id)
+    let group = groups::get_group_by_id(&state.database, group_id)
         .await
         .map_err(|e| {
             error!("Failed to get group: {}", e);
@@ -96,10 +112,17 @@ pub async fn get_group_by_id(
         })?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Group not found".to_string()))?;
 
-    let member_count = groups::count_group_members(&db, group.id)
+    // Verify group belongs to the realm
+    if group.realm_id != realm_id {
+        return Err((StatusCode::NOT_FOUND, "Group not found in this realm".to_string()));
+    }
+
+    let member_count = groups::count_group_members(&state.database, group.id)
         .await
         .unwrap_or(0);
-    let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
+    let subgroup_count = groups::count_subgroups(&state.database, group.id)
+        .await
+        .unwrap_or(0);
 
     let mut response = GroupResponse::from(group);
     response.member_count = member_count;
@@ -110,12 +133,26 @@ pub async fn get_group_by_id(
 
 /// Update a group
 pub async fn update_group(
-    State(db): State<Database>,
-    Path(group_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
+    Path((realm_id, group_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<UpdateGroupRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // Check if group exists and belongs to realm
+    let current_group = groups::get_group_by_id(&state.database, group_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get group: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Group not found".to_string()))?;
+
+    if current_group.realm_id != realm_id {
+        return Err((StatusCode::NOT_FOUND, "Group not found in this realm".to_string()));
+    }
+
     let group = groups::update_group(
-        &db,
+        &state.database,
         group_id,
         req.name.clone(),
         req.parent_id.map(Some),
@@ -128,10 +165,12 @@ pub async fn update_group(
         (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
 
-    let member_count = groups::count_group_members(&db, group.id)
+    let member_count = groups::count_group_members(&state.database, group.id)
         .await
         .unwrap_or(0);
-    let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
+    let subgroup_count = groups::count_subgroups(&state.database, group.id)
+        .await
+        .unwrap_or(0);
 
     let mut response = GroupResponse::from(group);
     response.member_count = member_count;
@@ -142,10 +181,24 @@ pub async fn update_group(
 
 /// Delete a group
 pub async fn delete_group(
-    State(db): State<Database>,
-    Path(group_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
+    Path((realm_id, group_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    groups::delete_group(&db, group_id).await.map_err(|e| {
+    // Check if group exists and belongs to realm
+    let current_group = groups::get_group_by_id(&state.database, group_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get group: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Group not found".to_string()))?;
+
+    if current_group.realm_id != realm_id {
+        return Err((StatusCode::NOT_FOUND, "Group not found in this realm".to_string()));
+    }
+
+    groups::delete_group(&state.database, group_id).await.map_err(|e| {
         error!("Failed to delete group: {}", e);
         (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
@@ -155,11 +208,26 @@ pub async fn delete_group(
 
 /// Get subgroups of a group
 pub async fn get_subgroups(
-    State(db): State<Database>,
-    Path(group_id): Path<Uuid>,
-    Query(_query): Query<GroupListQuery>,
+    State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
+    Path((realm_id, group_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let subgroups = groups::get_subgroups(&db, group_id, true)
+    // Check if group exists and belongs to realm
+    let current_group = groups::get_group_by_id(&state.database, group_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get group: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Group not found".to_string()))?;
+
+    if current_group.realm_id != realm_id {
+        return Err((StatusCode::NOT_FOUND, "Group not found in this realm".to_string()));
+    }
+
+    // Pagination is not supported by the DB layer yet, so we don't expose query params
+    // direct_only is hardcoded to true for now as per previous logic
+    let subgroups = groups::get_subgroups(&state.database, group_id, true)
         .await
         .map_err(|e| {
             error!("Failed to get subgroups: {}", e);
@@ -168,10 +236,12 @@ pub async fn get_subgroups(
 
     let mut responses = Vec::new();
     for group in subgroups {
-        let member_count = groups::count_group_members(&db, group.id)
+        let member_count = groups::count_group_members(&state.database, group.id)
             .await
             .unwrap_or(0);
-        let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
+        let subgroup_count = groups::count_subgroups(&state.database, group.id)
+            .await
+            .unwrap_or(0);
 
         let mut response = GroupResponse::from(group);
         response.member_count = member_count;
@@ -184,10 +254,24 @@ pub async fn get_subgroups(
 
 /// Add user to group
 pub async fn add_group_member(
-    State(db): State<Database>,
-    Path((group_id, user_id)): Path<(Uuid, Uuid)>,
+    State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
+    Path((realm_id, group_id, user_id)): Path<(Uuid, Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    groups::add_user_to_group(&db, user_id, group_id, None, None)
+    // Check if group exists and belongs to realm
+    let current_group = groups::get_group_by_id(&state.database, group_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get group: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Group not found".to_string()))?;
+
+    if current_group.realm_id != realm_id {
+        return Err((StatusCode::NOT_FOUND, "Group not found in this realm".to_string()));
+    }
+
+    groups::add_user_to_group(&state.database, user_id, group_id, None, None)
         .await
         .map_err(|e| {
             error!("Failed to add user to group: {}", e);
@@ -199,10 +283,24 @@ pub async fn add_group_member(
 
 /// Remove user from group
 pub async fn remove_group_member(
-    State(db): State<Database>,
-    Path((group_id, user_id)): Path<(Uuid, Uuid)>,
+    State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
+    Path((realm_id, group_id, user_id)): Path<(Uuid, Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    groups::remove_user_from_group(&db, user_id, group_id)
+    // Check if group exists and belongs to realm
+    let current_group = groups::get_group_by_id(&state.database, group_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get group: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Group not found".to_string()))?;
+
+    if current_group.realm_id != realm_id {
+        return Err((StatusCode::NOT_FOUND, "Group not found in this realm".to_string()));
+    }
+
+    groups::remove_user_from_group(&state.database, user_id, group_id)
         .await
         .map_err(|e| {
             error!("Failed to remove user from group: {}", e);
@@ -214,11 +312,25 @@ pub async fn remove_group_member(
 
 /// Get members of a group
 pub async fn get_group_members(
-    State(db): State<Database>,
-    Path(group_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
+    Path((realm_id, group_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let member_ids = groups::get_group_members(&db, group_id, query.first, query.max)
+    // Check if group exists and belongs to realm
+    let current_group = groups::get_group_by_id(&state.database, group_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get group: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Group not found".to_string()))?;
+
+    if current_group.realm_id != realm_id {
+        return Err((StatusCode::NOT_FOUND, "Group not found in this realm".to_string()));
+    }
+
+    let member_ids = groups::get_group_members(&state.database, group_id, query.first, query.max)
         .await
         .map_err(|e| {
             error!("Failed to get group members: {}", e);
@@ -230,20 +342,28 @@ pub async fn get_group_members(
 
 /// Get user's groups
 pub async fn get_user_groups(
-    State(db): State<Database>,
-    Path(user_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    _auth: AuthBearer,
+    Path((realm_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let user_groups = groups::get_user_groups(&db, user_id).await.map_err(|e| {
+    let user_groups = groups::get_user_groups(&state.database, user_id).await.map_err(|e| {
         error!("Failed to get user groups: {}", e);
         (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
 
     let mut responses = Vec::new();
     for group in user_groups {
-        let member_count = groups::count_group_members(&db, group.id)
+        // Filter by realm_id to ensure we only return groups in the requested realm
+        if group.realm_id != realm_id {
+            continue;
+        }
+
+        let member_count = groups::count_group_members(&state.database, group.id)
             .await
             .unwrap_or(0);
-        let subgroup_count = groups::count_subgroups(&db, group.id).await.unwrap_or(0);
+        let subgroup_count = groups::count_subgroups(&state.database, group.id)
+            .await
+            .unwrap_or(0);
 
         let mut response = GroupResponse::from(group);
         response.member_count = member_count;
@@ -252,4 +372,15 @@ pub async fn get_user_groups(
     }
 
     Ok(Json(responses))
+}
+
+/// Create group management routes
+pub fn create_group_routes() -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/realms/:realm_id/groups", post(create_group).get(get_groups))
+        .route("/realms/:realm_id/groups/:group_id", get(get_group_by_id).put(update_group).delete(delete_group))
+        .route("/realms/:realm_id/groups/:group_id/subgroups", get(get_subgroups))
+        .route("/realms/:realm_id/groups/:group_id/members/:user_id", post(add_group_member).delete(remove_group_member))
+        .route("/realms/:realm_id/groups/:group_id/members", get(get_group_members))
+        .route("/realms/:realm_id/users/:user_id/groups", get(get_user_groups))
 }

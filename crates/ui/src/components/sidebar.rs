@@ -23,6 +23,12 @@ pub fn Sidebar() -> impl IntoView {
                         </A>
                     </li>
                     <li style="margin-bottom: 5px;">
+                        <A href="/admin/console/groups" class="nav-link" active_class="active">
+                            <i class="fas fa-layer-group" style="margin-right: 10px; width: 20px;"></i>
+                            "Groups"
+                        </A>
+                    </li>
+                    <li style="margin-bottom: 5px;">
                         <A href="/admin/console/realms" class="nav-link" active_class="active">
                             <i class="fas fa-globe" style="margin-right: 10px; width: 20px;"></i>
                             "Realms"

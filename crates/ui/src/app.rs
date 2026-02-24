@@ -7,6 +7,7 @@ use crate::pages::{
     realms::Realms,
     clients::Clients,
     roles::Roles,
+    groups::Groups,
     forgot_password::ForgotPassword,
     reset_password::ResetPassword,
     account::{profile::Profile, security::Security}
@@ -20,6 +21,7 @@ pub fn App() -> impl IntoView {
                 <Route path="/admin/console" view=Layout>
                     <Route path="" view=Home/>
                     <Route path="users" view=Users/>
+                    <Route path="groups" view=Groups/>
                     <Route path="realms" view=Realms/>
                     <Route path="clients" view=Clients/>
                     <Route path="roles" view=Roles/>

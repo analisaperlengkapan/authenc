@@ -133,6 +133,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .merge(api::auth::create_auth_routes().with_state(state.clone()))
         // Realm, User, Role, Permission routes
         .merge(api::realm::create_realm_routes().with_state(state.clone()))
+        .merge(group::create_group_routes().with_state(state.clone()))
         .merge(api::user::create_user_routes().with_state(state.clone()))
         .merge(api::user_role::create_user_role_routes().with_state(state.clone()))
         .merge(api::user_permission::create_user_permission_routes().with_state(state.clone()))

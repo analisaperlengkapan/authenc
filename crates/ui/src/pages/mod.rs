@@ -6,3 +6,4 @@ pub mod realms;
 pub mod clients;
 pub mod roles;
 pub mod account;
+pub mod groups;
