@@ -276,11 +276,10 @@ pub async fn get_user_groups(
 
 /// Create group management routes
 pub fn create_group_routes() -> Router<Arc<AppState>> {
-    Router::new()
-        .route("/realms/:realm_id/groups", post(create_group).get(get_groups))
-        .route("/groups/:group_id", get(get_group_by_id).put(update_group).delete(delete_group))
-        .route("/groups/:group_id/subgroups", get(get_subgroups))
-        .route("/groups/:group_id/members/:user_id", post(add_group_member).delete(remove_group_member))
-        .route("/groups/:group_id/members", get(get_group_members))
-        .route("/users/:user_id/groups", get(get_user_groups))
+        .route("/realms/{realm_id}/groups", post(create_group).get(get_groups))
+        .route("/groups/{group_id}", get(get_group_by_id).put(update_group).delete(delete_group))
+        .route("/groups/{group_id}/subgroups", get(get_subgroups))
+        .route("/groups/{group_id}/members/{user_id}", post(add_group_member).delete(remove_group_member))
+        .route("/groups/{group_id}/members", get(get_group_members))
+        .route("/users/{user_id}/groups", get(get_user_groups))
 }
