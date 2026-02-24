@@ -70,3 +70,16 @@ pub struct Group {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateGroupRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub realm_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateGroupRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
