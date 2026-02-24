@@ -51,3 +51,8 @@ pub struct TotpStatusResponse {
     pub enabled: bool,
     pub configured_at: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerifyTotpSetupRequest {
+    pub code: String,
+}

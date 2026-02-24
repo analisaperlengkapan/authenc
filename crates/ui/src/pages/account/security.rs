@@ -1,13 +1,10 @@
 use leptos::*;
 use crate::api_client::authenticated_request;
-use crate::models::{TotpStatusResponse, TotpSetupResponse, TotpSetupRequest};
+use crate::models::{TotpStatusResponse, TotpSetupResponse, TotpSetupRequest, VerifyTotpSetupRequest};
 use qrcodegen::{QrCode, QrCodeEcc};
 
 fn render_qr_svg(text: &str) -> String {
-    let qr = match QrCode::encode_text(text, QrCodeEcc::Medium) {
-        Ok(qr) => qr,
-        Err(_) => return r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" fill="red">QR generation failed</text></svg>"#.to_string(),
-    };
+    let qr = QrCode::encode_text(text, QrCodeEcc::Medium).unwrap();
     let size = qr.size();
     let mut path = String::new();
     for y in 0..size {
@@ -24,6 +21,8 @@ fn render_qr_svg(text: &str) -> String {
 pub fn Security() -> impl IntoView {
     let (setup_data, set_setup_data) = create_signal::<Option<TotpSetupResponse>>(None);
     let (error_msg, set_error_msg) = create_signal::<Option<String>>(None);
+    let (verify_code, set_verify_code) = create_signal(String::new());
+    let (success_msg, set_success_msg) = create_signal::<Option<String>>(None);
 
     let totp_status = create_resource(
         || (),
@@ -43,6 +42,8 @@ pub fn Security() -> impl IntoView {
     );
 
     let setup_action = create_action(move |_: &()| async move {
+        set_error_msg.set(None);
+        set_success_msg.set(None);
         let req = TotpSetupRequest { device_name: Some("Browser".to_string()) };
         let resp = authenticated_request("POST", "/api/v1/auth/account/totp/setup", Some(&req)).await;
         match resp {
@@ -50,8 +51,7 @@ pub fn Security() -> impl IntoView {
                 if response.ok() {
                     let data = response.json::<TotpSetupResponse>().await.ok();
                     set_setup_data.set(data);
-                    set_error_msg.set(None);
-                    totp_status.refetch();
+                    // Do NOT refetch status here, wait for verification
                 } else {
                     set_error_msg.set(Some("Failed to setup TOTP".to_string()));
                 }
@@ -60,22 +60,49 @@ pub fn Security() -> impl IntoView {
         }
     });
 
-    let disable_action = create_action(move |_: &()| async move {
-        let resp = authenticated_request("DELETE", "/api/v1/auth/account/totp", None::<&()>).await;
+    let verify_action = create_action(move |_: &()| async move {
+        set_error_msg.set(None);
+        let code = verify_code.get();
+        if code.len() < 6 {
+            set_error_msg.set(Some("Please enter a valid 6-digit code".to_string()));
+            return;
+        }
+
+        let req = VerifyTotpSetupRequest { code };
+        // Use the account_credentials endpoint for verification as it supports checking secrets
+        let resp = authenticated_request("POST", "/api/v1/auth/account/credentials/totp/verify", Some(&req)).await;
         match resp {
             Ok(response) => {
                 if response.ok() {
+                    set_success_msg.set(Some("TOTP verified and enabled successfully!".to_string()));
+                    set_setup_data.set(None); // Clear secret from DOM
+                    set_verify_code.set(String::new());
                     totp_status.refetch();
-                    set_setup_data.set(None);
-                    set_error_msg.set(None);
                 } else {
-                    set_error_msg.set(Some("Failed to disable TOTP".to_string()));
+                    set_error_msg.set(Some("Invalid code. Please try again.".to_string()));
                 }
             }
             Err(e) => set_error_msg.set(Some(e)),
         }
-
     });
+
+    let disable_action = create_action(move |_: &()| async move {
+        let resp = authenticated_request("DELETE", "/api/v1/auth/account/totp", None::<&()>).await;
+        if resp.is_ok() {
+            totp_status.refetch();
+            set_setup_data.set(None);
+            set_error_msg.set(None);
+            set_success_msg.set(Some("TOTP disabled successfully.".to_string()));
+        } else {
+            set_error_msg.set(Some("Failed to disable TOTP".to_string()));
+        }
+    });
+
+    let cancel_setup = move |_| {
+        set_setup_data.set(None);
+        set_error_msg.set(None);
+        set_verify_code.set(String::new());
+    };
 
     view! {
         <div class="security-page">
@@ -86,6 +113,12 @@ pub fn Security() -> impl IntoView {
 
                 {move || error_msg.get().map(|msg| view! {
                     <div class="alert" style="background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
+                        {msg}
+                    </div>
+                })}
+
+                {move || success_msg.get().map(|msg| view! {
+                    <div class="alert" style="background: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
                         {msg}
                     </div>
                 })}
@@ -118,7 +151,8 @@ pub fn Security() -> impl IntoView {
                                                 <p>"Protect your account by enabling two-factor authentication."</p>
                                                 <button
                                                     on:click=move |_| setup_action.dispatch(())
-                                                    style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                                                    style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;"
+                                                    prop:disabled=move || setup_data.get().is_some()>
                                                     "Setup TOTP"
                                                 </button>
                                             </div>
@@ -135,15 +169,41 @@ pub fn Security() -> impl IntoView {
                     let qr_svg = render_qr_svg(&data.qr_code_url);
                     view! {
                         <div class="setup-area" style="margin-top: 20px; border-top: 1px solid #dee2e6; padding-top: 20px;">
-                            <h4>"Scan QR Code"</h4>
+                            <h4>"Step 1: Scan QR Code"</h4>
                             <div inner_html=qr_svg style="width: 200px; height: 200px; margin-bottom: 15px;"></div>
                             <p>"Secret: " <code>{data.secret}</code></p>
-                            <div class="backup-codes">
+
+                            <div class="backup-codes" style="margin-bottom: 20px;">
                                 <h5>"Backup Codes"</h5>
                                 <p>"Save these codes in a secure place. They can be used to recover access to your account."</p>
-                                <ul style="column-count: 2;">
+                                <ul style="column-count: 2; font-family: monospace;">
                                     {data.backup_codes.into_iter().map(|code| view! { <li>{code}</li> }).collect_view()}
                                 </ul>
+                            </div>
+
+                            <div class="verify-area" style="border-top: 1px solid #eee; padding-top: 15px;">
+                                <h4>"Step 2: Verify Code"</h4>
+                                <p>"Enter the 6-digit code from your authenticator app to confirm setup."</p>
+                                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                                    <input
+                                        type="text"
+                                        placeholder="000000"
+                                        maxlength="6"
+                                        style="padding: 8px; border-radius: 4px; border: 1px solid #ccc; width: 120px; font-size: 1.2em; text-align: center;"
+                                        on:input=move |ev| set_verify_code.set(event_target_value(&ev))
+                                        prop:value=verify_code
+                                    />
+                                    <button
+                                        on:click=move |_| verify_action.dispatch(())
+                                        style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                        "Verify & Enable"
+                                    </button>
+                                </div>
+                                <button
+                                    on:click=cancel_setup
+                                    style="background: transparent; border: 1px solid #6c757d; color: #6c757d; padding: 6px 12px; border-radius: 4px; cursor: pointer; margin-top: 10px;">
+                                    "Cancel"
+                                </button>
                             </div>
                         </div>
                     }
