@@ -2358,7 +2358,10 @@ pub mod users {
                 require_password_change = false,
                 reset_token_hash = NULL,
                 reset_token_expires_at = NULL,
-                updated_at = $3
+                updated_at = $3,
+                failed_login_attempts = 0,
+                account_locked = false,
+                account_locked_until = NULL
             WHERE id = $1 AND reset_token_hash = $4 AND enabled = true
         "#;
         let rows_affected = db
