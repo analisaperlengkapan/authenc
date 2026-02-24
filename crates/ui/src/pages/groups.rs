@@ -10,12 +10,12 @@ pub fn Groups() -> impl IntoView {
         |_| async move {
             // Retrieve realm ID from local storage or URL path
             // If we are in the admin console, we should have a selected realm or default to "master"
-            // For now, we fallback to a known hardcoded ID if dynamic resolution fails, but we add logic to try better.
             let realm_id = if let Ok(Some(storage)) = gloo_utils::window().local_storage() {
                 if let Ok(Some(id)) = storage.get_item("authenc_selected_realm_id") {
                     id
                 } else {
                     // Fallback to placeholder - FIXME: Must implement proper realm selection context
+                    // This is primarily for development/testing when no realm context is set
                     "550e8400-e29b-41d4-a716-446655440000".to_string()
                 }
             } else {
