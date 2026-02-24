@@ -97,7 +97,7 @@ pub fn Groups() -> impl IntoView {
 
         spawn_local(async move {
             let req = UpdateGroupRequest {
-                name: Some(name),
+                description: Some(description),
                 description: if description.is_empty() { None } else { Some(description) },
             };
 
