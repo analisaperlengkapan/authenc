@@ -76,6 +76,8 @@ pub mod sso;
 pub mod zero_trust;
 /// FIPS management handlers
 pub mod fips;
+/// Password reset handlers
+pub mod reset;
 
 /// Create the main application router with all routes
 pub fn create_router(state: Arc<AppState>) -> Router {
@@ -218,6 +220,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/oidc/token", post(oidc_ed25519::oidc_token_ed25519))
         .route("/oidc/jwks", get(oidc_ed25519::oidc_jwks_ed25519))
         .route("/oidc/userinfo", get(oidc_ed25519::oidc_userinfo_ed25519))
+        // Password reset routes
+        .route("/auth/forgot-password", post(reset::request_password_reset))
+        .route("/auth/reset-password", post(reset::reset_password))
         // Merge OAuth2 test router (without auth)
         .merge(oauth2_test_router)
         // Merge OAuth2 router (with auth for token/userinfo endpoints)

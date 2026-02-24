@@ -23,6 +23,8 @@ pub struct AppState {
     pub totp_store: Arc<authenc_services::services::stores::totp_store::TotpStore>,
     /// Brute force attack protection service
     pub brute_force_protector: Arc<authenc_services::services::security::brute_force_protector::BruteForceProtector>,
+    /// Password reset rate limiter (separate from login brute force protection)
+    pub password_reset_protector: Arc<authenc_services::services::security::brute_force_protector::BruteForceProtector>,
     /// Anomaly detection service
     pub anomaly_detector: Arc<authenc_services::services::security::anomaly_detector::AnomalyDetector>,
     /// Federation provider registry
@@ -93,6 +95,8 @@ pub struct AppState {
     pub jit_provisioning_service: Arc<dyn authenc_services::services::federation::jit_provisioning::JITProvisioningService>,
     /// OAuth2 client validator
     pub client_validator: Arc<dyn authenc_services::services::oauth2::ClientValidator>,
+    /// Password reset service
+    pub password_reset_service: Arc<authenc_services::services::password_reset::PasswordResetService>,
 }
 
 // Support extraction of database for health checks
@@ -172,6 +176,14 @@ impl AppState {
         let totp_store = Arc::new(authenc_services::services::stores::totp_store::TotpStore::new());
 
         let brute_force_protector = Arc::new(
+            authenc_services::services::security::brute_force_protector::BruteForceProtector::new(
+                config.security.brute_force_max_attempts as usize,
+                config.security.brute_force_window_seconds,
+            ),
+        );
+
+        // Use same configuration as login protection for now, but separate instance
+        let password_reset_protector = Arc::new(
             authenc_services::services::security::brute_force_protector::BruteForceProtector::new(
                 config.security.brute_force_max_attempts as usize,
                 config.security.brute_force_window_seconds,
@@ -661,6 +673,9 @@ impl AppState {
         // Initialize client validator
         let client_validator = Arc::new(authenc_services::services::oauth2::DbClientValidator::new(database.clone()));
 
+        // Initialize password reset service
+        let password_reset_service = Arc::new(authenc_services::services::password_reset::PasswordResetService::new(user_store.clone()));
+
         Ok(Self {
             config,
             database,
@@ -668,6 +683,7 @@ impl AppState {
             session_store,
             totp_store,
             brute_force_protector,
+            password_reset_protector,
             anomaly_detector,
             federation_registry,
             audit_log_store,
@@ -702,6 +718,7 @@ impl AppState {
             authorization_manager,
             jit_provisioning_service,
             client_validator,
+            password_reset_service,
         })
     }
 

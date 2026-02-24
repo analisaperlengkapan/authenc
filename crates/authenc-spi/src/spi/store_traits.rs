@@ -80,6 +80,34 @@ pub trait UserStoreTrait: Send + Sync {
 
     /// Unlock user account
     async fn unlock_account(&self, user_id: Uuid) -> Result<(), AuthencError>;
+
+    /// Set password reset token for a user
+    async fn set_reset_token(
+        &self,
+        _user_id: Uuid,
+        _token_hash: Option<String>,
+        _expires_at: Option<DateTime<Utc>>,
+    ) -> Result<(), AuthencError> {
+        Err(AuthencError::not_implemented("Method not implemented"))
+    }
+
+    /// Get user by password reset token
+    async fn get_user_by_reset_token(
+        &self,
+        _token_hash: &str,
+    ) -> Result<Option<User>, AuthencError> {
+        Err(AuthencError::not_implemented("Method not implemented"))
+    }
+
+    /// Reset password and clear reset token atomically
+    async fn reset_password_transaction(
+        &self,
+        _user_id: Uuid,
+        _password_hash: String,
+        _token_hash: String,
+    ) -> Result<(), AuthencError> {
+        Err(AuthencError::not_implemented("Method not implemented"))
+    }
 }
 
 // ============================================================

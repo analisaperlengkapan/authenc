@@ -662,6 +662,8 @@ impl IdentityBroker for LdapIdentityBroker {
             updated_at: chrono::Utc::now(),
             deleted_at: None,
             login_count: 0,
+            reset_token_hash: None,
+            reset_token_expires_at: None,
         };
         Ok(user)
     }
@@ -753,6 +755,8 @@ fn create_user_from_ldap_entry(entry: &SearchEntry, config: &LdapConfig) -> Resu
         updated_at: chrono::Utc::now(),
         deleted_at: None,
         login_count: 0,
+        reset_token_hash: None,
+        reset_token_expires_at: None,
     })
 }
 
@@ -918,6 +922,8 @@ impl IdentityBroker for SocialIdentityBroker {
             updated_at: chrono::Utc::now(),
             deleted_at: None,
             login_count: 0,
+            reset_token_hash: None,
+            reset_token_expires_at: None,
         };
         Ok(user)
     }
