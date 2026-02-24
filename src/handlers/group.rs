@@ -173,8 +173,9 @@ pub async fn delete_group(
 pub async fn get_subgroups(
     State(state): State<Arc<AppState>>,
     Path(group_id): Path<Uuid>,
-    Query(_query): Query<GroupListQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // Pagination is not supported by the DB layer yet, so we don't expose query params
+    // direct_only is hardcoded to true for now as per previous logic
     let subgroups = groups::get_subgroups(&state.database, group_id, true)
         .await
         .map_err(|e| {
@@ -276,10 +277,11 @@ pub async fn get_user_groups(
 
 /// Create group management routes
 pub fn create_group_routes() -> Router<Arc<AppState>> {
-        .route("/realms/{realm_id}/groups", post(create_group).get(get_groups))
-        .route("/groups/{group_id}", get(get_group_by_id).put(update_group).delete(delete_group))
-        .route("/groups/{group_id}/subgroups", get(get_subgroups))
-        .route("/groups/{group_id}/members/{user_id}", post(add_group_member).delete(remove_group_member))
-        .route("/groups/{group_id}/members", get(get_group_members))
-        .route("/users/{user_id}/groups", get(get_user_groups))
+    Router::new()
+        .route("/realms/:realm_id/groups", post(create_group).get(get_groups))
+        .route("/groups/:group_id", get(get_group_by_id).put(update_group).delete(delete_group))
+        .route("/groups/:group_id/subgroups", get(get_subgroups))
+        .route("/groups/:group_id/members/:user_id", post(add_group_member).delete(remove_group_member))
+        .route("/groups/:group_id/members", get(get_group_members))
+        .route("/users/:user_id/groups", get(get_user_groups))
 }

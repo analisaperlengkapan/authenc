@@ -8,11 +8,20 @@ pub fn Groups() -> impl IntoView {
     let groups_resource = create_resource(
         || (),
         |_| async move {
-            // TODO: Get realm ID from context or URL
-            // For now, we'll try to fetch from a hardcoded UUID or fail gracefully
-            // This is a placeholder UUID for the master realm if it were deterministic, but it's not.
-            // In a real app, we'd have the realm ID in the app state.
-            let realm_id = "550e8400-e29b-41d4-a716-446655440000";
+            // Retrieve realm ID from local storage or URL path
+            // If we are in the admin console, we should have a selected realm or default to "master"
+            // For now, we fallback to a known hardcoded ID if dynamic resolution fails, but we add logic to try better.
+            let realm_id = if let Ok(Some(storage)) = gloo_utils::window().local_storage() {
+                if let Ok(Some(id)) = storage.get_item("authenc_selected_realm_id") {
+                    id
+                } else {
+                    // Fallback to placeholder - FIXME: Must implement proper realm selection context
+                    "550e8400-e29b-41d4-a716-446655440000".to_string()
+                }
+            } else {
+                 "550e8400-e29b-41d4-a716-446655440000".to_string()
+            };
+
             let url = format!("/api/v1/auth/realms/{}/groups", realm_id);
 
             match authenticated_request("GET", &url, None::<&()>).await {
@@ -20,7 +29,7 @@ pub fn Groups() -> impl IntoView {
                     if resp.ok() {
                         resp.json::<Vec<Group>>().await.map_err(|e| e.to_string())
                     } else {
-                        Err(format!("Error fetching groups: {}", resp.status()))
+                        Err(format!("Error fetching groups: {} (Realm: {})", resp.status(), realm_id))
                     }
                 }
                 Err(e) => Err(e),
