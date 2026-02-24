@@ -2359,7 +2359,7 @@ pub mod users {
                 reset_token_hash = NULL,
                 reset_token_expires_at = NULL,
                 updated_at = $3
-            WHERE id = $1 AND reset_token_hash = $4 AND enabled = true
+            WHERE id = $1 AND reset_token_hash = $4 AND enabled = true AND reset_token_expires_at > NOW()
         "#;
         let rows_affected = db
             .execute(query, &[&user_id, &password_hash, &now, &token_hash])
