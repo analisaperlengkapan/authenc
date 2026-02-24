@@ -119,7 +119,8 @@ impl UserStoreTrait for UserStore {
         &self,
         user_id: Uuid,
         password_hash: String,
+        token_hash: String,
     ) -> Result<(), AuthencError> {
-        operations::users::reset_password_transaction(&self.database, user_id, &password_hash).await
+        operations::users::reset_password_transaction(&self.database, user_id, &password_hash, &token_hash).await
     }
 }

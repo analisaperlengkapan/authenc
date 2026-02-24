@@ -108,7 +108,7 @@ impl PasswordResetService {
 
         // Use transactional update to reset password and clear token atomically
         self.user_store
-            .reset_password_transaction(user.id, password_hash)
+            .reset_password_transaction(user.id, password_hash, token_hash)
             .await?;
 
         tracing::info!("Password reset successfully for user {}", user.id);

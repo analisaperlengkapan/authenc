@@ -97,6 +97,7 @@ pub trait UserStoreTrait: Send + Sync {
         &self,
         user_id: Uuid,
         password_hash: String,
+        token_hash: String,
     ) -> Result<(), AuthencError>;
 }
 
