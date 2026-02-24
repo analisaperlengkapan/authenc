@@ -9,14 +9,14 @@ struct ResetPasswordRequest {
     new_password: String,
 }
 
-#[derive(Params, PartialEq, Clone)]
-struct ResetPasswordParams {
-    token: String,
-}
+// #[derive(Params, PartialEq, Clone)]
+// struct ResetPasswordParams {
+//     token: String,
+// }
 
 #[component]
 pub fn ResetPassword() -> impl IntoView {
-    let params = use_params::<ResetPasswordParams>();
+    // let params = use_params::<ResetPasswordParams>();
     let (password, set_password) = create_signal(String::new());
     let (status_msg, set_status_msg) = create_signal(String::new());
 

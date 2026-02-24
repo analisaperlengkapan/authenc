@@ -1,6 +1,6 @@
 use leptos::*;
 use serde::{Deserialize, Serialize};
-use gloo_net::http::Request;
+use crate::api_client::authenticated_request;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SystemStats {
@@ -18,25 +18,7 @@ pub struct SystemStats {
 }
 
 async fn fetch_stats() -> Result<SystemStats, String> {
-    // TODO: Retrieve actual token from AuthProvider/LocalStorage when login flow is implemented
-    let token = gloo_utils::window()
-        .local_storage()
-        .ok()
-        .flatten()
-        .and_then(|s: web_sys::Storage| s.get_item("authenc_admin_token").ok())
-        .flatten()
-        .unwrap_or_default();
-
-    let mut req = Request::get("/api/v1/admin/stats");
-
-    if !token.is_empty() {
-        req = req.header("Authorization", &format!("Bearer {}", token));
-    }
-
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let resp = authenticated_request("GET", "/api/v1/admin/stats", None::<&()>).await?;
 
     if !resp.ok() {
         return Err(format!("API error: {}", resp.status()));
