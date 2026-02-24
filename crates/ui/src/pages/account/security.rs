@@ -59,13 +59,19 @@ pub fn Security() -> impl IntoView {
 
     let disable_action = create_action(move |_: &()| async move {
         let resp = authenticated_request("DELETE", "/api/v1/auth/account/totp", None::<&()>).await;
-        if resp.is_ok() {
-            totp_status.refetch();
-            set_setup_data.set(None);
-            set_error_msg.set(None);
-        } else {
-            set_error_msg.set(Some("Failed to disable TOTP".to_string()));
+        match resp {
+            Ok(response) => {
+                if response.ok() {
+                    totp_status.refetch();
+                    set_setup_data.set(None);
+                    set_error_msg.set(None);
+                } else {
+                    set_error_msg.set(Some("Failed to disable TOTP".to_string()));
+                }
+            }
+            Err(e) => set_error_msg.set(Some(e)),
         }
+
     });
 
     view! {
