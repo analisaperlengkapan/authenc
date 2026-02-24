@@ -40,6 +40,22 @@ pub fn Sidebar() -> impl IntoView {
                             "Roles"
                         </A>
                     </li>
+
+                    <li style="margin-top: 20px; margin-bottom: 10px; padding: 0 15px; color: #95a5a6; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">
+                        "My Account"
+                    </li>
+                    <li style="margin-bottom: 5px;">
+                        <A href="/account/profile" class="nav-link" active_class="active">
+                            <i class="fas fa-user-circle" style="margin-right: 10px; width: 20px;"></i>
+                            "Profile"
+                        </A>
+                    </li>
+                    <li style="margin-bottom: 5px;">
+                        <A href="/account/security" class="nav-link" active_class="active">
+                            <i class="fas fa-shield-alt" style="margin-right: 10px; width: 20px;"></i>
+                            "Security"
+                        </A>
+                    </li>
                 </ul>
             </nav>
             <style>

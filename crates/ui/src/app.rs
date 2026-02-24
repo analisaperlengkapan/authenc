@@ -8,7 +8,8 @@ use crate::pages::{
     clients::Clients,
     roles::Roles,
     forgot_password::ForgotPassword,
-    reset_password::ResetPassword
+    reset_password::ResetPassword,
+    account::{profile::Profile, security::Security}
 };
 
 #[component]
@@ -22,6 +23,11 @@ pub fn App() -> impl IntoView {
                     <Route path="realms" view=Realms/>
                     <Route path="clients" view=Clients/>
                     <Route path="roles" view=Roles/>
+                </Route>
+
+                <Route path="/account" view=Layout>
+                    <Route path="profile" view=Profile/>
+                    <Route path="security" view=Security/>
                 </Route>
 
                 // Public auth routes

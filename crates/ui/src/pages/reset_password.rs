@@ -11,7 +11,7 @@ struct ResetPasswordRequest {
 
 #[derive(Params, PartialEq, Clone)]
 struct ResetPasswordParams {
-    token: String,
+    token: Option<String>,
 }
 
 #[component]
@@ -19,15 +19,15 @@ pub fn ResetPassword() -> impl IntoView {
     let params = use_params::<ResetPasswordParams>();
     let (password, set_password) = create_signal(String::new());
     let (status_msg, set_status_msg) = create_signal(String::new());
-
-    // Extract token from URL query params or route params
-    // Assuming route /auth/reset-password?token=... or /auth/reset-password/:token
-    // Here using query param logic if possible, or simple input for now.
-    // Ideally, the token comes from the URL. Let's assume the user has to paste it or it's in the URL.
-    // For simplicity in this demo, we'll ask for token input if not present, or assume it's passed.
-
-    // Simplified: Input for token and new password
     let (token_input, set_token_input) = create_signal(String::new());
+
+    create_effect(move |_| {
+        if let Ok(p) = params.get() {
+            if let Some(t) = p.token {
+                set_token_input.set(t);
+            }
+        }
+    });
 
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
