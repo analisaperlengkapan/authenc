@@ -2362,7 +2362,7 @@ pub mod users {
                 failed_login_attempts = 0,
                 account_locked = false,
                 account_locked_until = NULL
-            WHERE id = $1 AND reset_token_hash = $4 AND enabled = true
+            WHERE id = $1 AND reset_token_hash = $4 AND enabled = true AND reset_token_expires_at > $3
         "#;
         let rows_affected = db
             .execute(query, &[&user_id, &password_hash, &now, &token_hash])
