@@ -56,3 +56,17 @@ pub struct TotpStatusResponse {
 pub struct VerifyTotpSetupRequest {
     pub code: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Group {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub parent_id: Option<String>,
+    pub description: Option<String>,
+    pub member_count: i64,
+    pub subgroup_count: i64,
+    pub realm_id: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
