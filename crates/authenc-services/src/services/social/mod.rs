@@ -517,16 +517,19 @@ impl SocialLoginManager {
 
     /// Parse Apple user profile
     fn parse_apple_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        // Apple ID tokens do not contain name information. Name is only sent in the first POST request.
+        // For now, we fallback to email as the name, or None.
         SocialUserProfile {
             provider: SocialProvider::Apple,
             provider_user_id: data["sub"].as_str().unwrap_or("").to_string(),
             email: data["email"].as_str().map(|s| s.to_string()),
-            name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
-            first_name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
-            last_name: data["name"]["lastName"].as_str().map(|s| s.to_string()),
+            name: data["email"].as_str().map(|s| s.to_string()),
+            first_name: None,
+            last_name: None,
             picture_url: None,
             locale: None,
-            verified_email: data["email_verified"].as_bool().unwrap_or_else(|| data["email_verified"].as_str().map(|s| s == "true").unwrap_or(false)),
+            verified_email: data["email_verified"].as_bool().unwrap_or(false)
+                || data["email_verified"].as_str().map(|s| s == "true").unwrap_or(false),
             raw_data: data,
         }
     }
