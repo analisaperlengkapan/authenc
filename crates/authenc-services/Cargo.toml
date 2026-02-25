@@ -65,7 +65,7 @@ regex = { workspace = true }
 url = { workspace = true }
 urlencoding = { workspace = true }
 argon2 = { workspace = true }
-jsonwebtoken = { workspace = true }
+jsonwebtoken = { workspace = true, features = ["use_pem"] }
 ed25519-dalek = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }

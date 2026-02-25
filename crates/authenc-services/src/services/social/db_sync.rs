@@ -109,6 +109,37 @@ pub async fn sync_env_configs_to_db(db: &Database, configs: &[(SocialProvider, O
                 authenc_core::error::AuthencError::database(format!("Failed to insert provider config: {}", e))
             })?;
         }
+
+        // Handle Apple specific configuration if needed
+        if provider == &SocialProvider::Apple {
+            // Get the ID of the provider config we just touched
+            let config_id_query = "SELECT id FROM oauth2_provider_configs WHERE realm_id = $1 AND alias = $2";
+            let config_id_row = db.query_opt(config_id_query, &[&realm_id, &alias]).await.map_err(|e| {
+                authenc_core::error::AuthencError::database(format!("Failed to query provider config id: {}", e))
+            })?;
+
+            if let Some(row) = config_id_row {
+                let config_id: Uuid = row.get(0);
+
+                // Check if social_login_config exists
+                let check_social = "SELECT id FROM social_login_configs WHERE oauth2_config_id = $1";
+                let existing_social = db.query_opt(check_social, &[&config_id]).await.map_err(|e| {
+                    authenc_core::error::AuthencError::database(format!("Failed to check social config: {}", e))
+                })?;
+
+                if existing_social.is_some() {
+                    let update_social = "UPDATE social_login_configs SET apple_team_id = $2, apple_key_id = $3, apple_private_key = $4, updated_at = NOW() WHERE oauth2_config_id = $1";
+                    db.execute(update_social, &[&config_id, &config.team_id, &config.key_id, &config.private_key]).await.map_err(|e| {
+                        authenc_core::error::AuthencError::database(format!("Failed to update social config: {}", e))
+                    })?;
+                } else {
+                    let insert_social = "INSERT INTO social_login_configs (oauth2_config_id, provider_type, apple_team_id, apple_key_id, apple_private_key, created_at, updated_at) VALUES ($1, 'apple', $2, $3, $4, NOW(), NOW())";
+                    db.execute(insert_social, &[&config_id, &config.team_id, &config.key_id, &config.private_key]).await.map_err(|e| {
+                        authenc_core::error::AuthencError::database(format!("Failed to insert social config: {}", e))
+                    })?;
+                }
+            }
+        }
     }
 
     Ok(())
