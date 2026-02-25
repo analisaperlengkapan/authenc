@@ -93,3 +93,9 @@ pub struct AuditLog {
     pub status: String,
     pub detail: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogResponse {
+    pub total: u64,
+    pub logs: Vec<AuditLog>,
+}

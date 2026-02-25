@@ -1,5 +1,5 @@
 use leptos::*;
-use crate::models::AuditLog;
+use crate::models::{AuditLog, AuditLogResponse};
 use crate::api_client::authenticated_request;
 
 fn get_realm_id() -> String {
@@ -30,8 +30,8 @@ pub fn Audit() -> impl IntoView {
             match authenticated_request("GET", &url, None::<&()>).await {
                 Ok(response) => {
                     if response.ok() {
-                        let logs: Result<Vec<AuditLog>, _> = response.json().await;
-                        logs.map_err(|e| {
+                        let result: Result<AuditLogResponse, _> = response.json().await;
+                        result.map(|res| res.logs).map_err(|e| {
                             let msg = format!("Failed to parse response: {}", e);
                             set_error_message.set(Some(msg.clone()));
                             msg

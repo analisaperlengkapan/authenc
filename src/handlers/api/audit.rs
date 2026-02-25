@@ -1,14 +1,15 @@
-use authenc_models::models::audit_log::AuditLog;
+use authenc_models::models::audit_log::{AuditLog, AuditLogFilter};
 use authenc_services::services::stores::pg_audit_log_store::PgAuditLogStore;
+use crate::handlers::api::auth_bearer::AuthBearer;
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::{Path, State, Query},
     http::StatusCode,
     response::Json,
     routing::{get, post},
 };
 use chrono::Utc;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Create audit log routes for a realm
@@ -29,6 +30,12 @@ pub struct CreateAuditLogRequest {
     pub target: String,
     /// Optional additional details about the action
     pub details: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct AuditLogResponse {
+    pub total: u64,
+    pub logs: Vec<AuditLog>,
 }
 
 /// Add a new audit log entry to the specified realm
@@ -52,13 +59,23 @@ pub async fn add_audit_log(
     }
 }
 
-/// Retrieve all audit logs for the specified realm
+/// Retrieve audit logs for the specified realm with filtering and pagination
 pub async fn get_audit_logs(
     State(store): State<Arc<PgAuditLogStore>>,
-    Path(_realm): Path<String>,
-) -> Result<Json<Vec<AuditLog>>, StatusCode> {
-    match store.all().await {
-        Ok(logs) => Ok(Json(logs)),
+    _auth: AuthBearer, // Ensures authentication
+    Path(_realm): Path<String>, // Realm parameter currently unused due to backend schema limitations
+    Query(mut filter): Query<AuditLogFilter>,
+) -> Result<Json<AuditLogResponse>, StatusCode> {
+    // Set default pagination if not provided
+    if filter.limit.is_none() {
+        filter.limit = Some(50);
+    }
+    if filter.offset.is_none() {
+        filter.offset = Some(0);
+    }
+
+    match store.query(&filter).await {
+        Ok((logs, total)) => Ok(Json(AuditLogResponse { total, logs })),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
