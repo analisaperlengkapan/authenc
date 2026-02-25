@@ -320,15 +320,26 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/oid4vc",
             oid4vc::create_oid4vc_router().with_state(state.clone()),
         )
-        .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()))
-        .fallback_service(ServeDir::new(
+        .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()));
+
+    // Conditionally enable static file serving for UI
+    let router = if state
+        .config
+        .ui
+        .as_ref()
+        .map_or(false, |ui| ui.enabled)
+    {
+        router.fallback_service(ServeDir::new(
             state
                 .config
                 .ui
                 .as_ref()
                 .and_then(|ui| ui.static_path.clone())
                 .unwrap_or_else(|| "static".to_string()),
-        ));
+        ))
+    } else {
+        router
+    };
 
     router.with_state(state)
 }
