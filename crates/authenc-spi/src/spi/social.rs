@@ -570,20 +570,21 @@ impl DefaultSocialProvider {
 
     /// Parse Twitter OAuth2 user profile
     fn parse_twitter_profile(&self, data: &serde_json::Value) -> Result<SocialUserProfile> {
+        let user_data = data.get("data").unwrap_or(data);
         Ok(SocialUserProfile {
             provider_type: SocialProviderType::Twitter,
-            provider_user_id: data["id"]
+            provider_user_id: user_data["id"]
                 .as_str()
                 .ok_or_else(|| Error::ValidationError {
                     message: "Missing user ID".to_string(),
                 })?
                 .to_string(),
-            email: data["email"].as_str().map(|s| s.to_string()),
-            display_name: data["name"].as_str().map(|s| s.to_string()),
-            first_name: None,
+            email: user_data["email"].as_str().map(|s| s.to_string()),
+            display_name: user_data["name"].as_str().map(|s| s.to_string()),
+            first_name: user_data["name"].as_str().map(|s| s.to_string()),
             last_name: None,
-            username: data["username"].as_str().map(|s| s.to_string()),
-            picture_url: data["profile_image_url"].as_str().map(|s| s.to_string()),
+            username: user_data["username"].as_str().map(|s| s.to_string()),
+            picture_url: user_data["profile_image_url"].as_str().map(|s| s.to_string()),
             raw_profile: data.clone(),
             attributes: HashMap::new(),
         })
@@ -600,16 +601,7 @@ impl DefaultSocialProvider {
                 })?
                 .to_string(),
             email: data["email"].as_str().map(|s| s.to_string()),
-            display_name: {
-                let first = data["name"]["firstName"].as_str();
-                let last = data["name"]["lastName"].as_str();
-                match (first, last) {
-                    (Some(f), Some(l)) => Some(format!("{} {}", f, l)),
-                    (Some(f), None) => Some(f.to_string()),
-                    (None, Some(l)) => Some(l.to_string()),
-                    (None, None) => None,
-                }
-            },
+            display_name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
             first_name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
             last_name: data["name"]["lastName"].as_str().map(|s| s.to_string()),
             username: None,
@@ -900,10 +892,13 @@ mod tests {
         let provider = DefaultSocialProvider::new(config);
 
         let data = serde_json::json!({
-            "id": "twitter_123",
-            "name": "Twitter User",
-            "email": "user@twitter.com",
-            "profile_image_url": "http://example.com/twitter_pic.jpg"
+            "data": {
+                "id": "twitter_123",
+                "name": "Twitter User",
+                "username": "twitteruser",
+                "email": "user@twitter.com",
+                "profile_image_url": "http://example.com/twitter_pic.jpg"
+            }
         });
 
         let profile = provider.parse_twitter_profile(&data).unwrap();
@@ -911,6 +906,7 @@ mod tests {
         assert_eq!(profile.provider_type, SocialProviderType::Twitter);
         assert_eq!(profile.provider_user_id, "twitter_123");
         assert_eq!(profile.display_name, Some("Twitter User".to_string()));
+        assert_eq!(profile.username, Some("twitteruser".to_string()));
         assert_eq!(profile.email, Some("user@twitter.com".to_string()));
         assert_eq!(profile.picture_url, Some("http://example.com/twitter_pic.jpg".to_string()));
     }
@@ -937,7 +933,7 @@ mod tests {
         assert_eq!(profile.provider_type, SocialProviderType::Apple);
         assert_eq!(profile.provider_user_id, "apple_123");
         assert_eq!(profile.email, Some("user@privaterelay.appleid.com".to_string()));
-        assert_eq!(profile.display_name, Some("Apple User".to_string()));
+        assert_eq!(profile.display_name, Some("Apple".to_string()));
         assert_eq!(profile.first_name, Some("Apple".to_string()));
         assert_eq!(profile.last_name, Some("User".to_string()));
     }
