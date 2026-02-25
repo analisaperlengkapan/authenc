@@ -356,6 +356,10 @@ impl SocialProvider for DefaultSocialProvider {
             SocialProviderType::Google => self.parse_google_profile(&profile_data)?,
             SocialProviderType::Facebook => self.parse_facebook_profile(&profile_data)?,
             SocialProviderType::GitHub => self.parse_github_profile(&profile_data)?,
+            SocialProviderType::Microsoft => self.parse_microsoft_profile(&profile_data)?,
+            SocialProviderType::LinkedIn => self.parse_linkedin_profile(&profile_data)?,
+            SocialProviderType::Twitter => self.parse_twitter_profile(&profile_data)?,
+            SocialProviderType::Apple => self.parse_apple_profile(&profile_data)?,
             _ => self.parse_generic_profile(&profile_data)?,
         };
 
@@ -514,6 +518,93 @@ impl DefaultSocialProvider {
             last_name: None,
             username: data["login"].as_str().map(|s| s.to_string()),
             picture_url: data["avatar_url"].as_str().map(|s| s.to_string()),
+            raw_profile: data.clone(),
+            attributes: HashMap::new(),
+        })
+    }
+
+    /// Parse Microsoft OAuth2 user profile
+    fn parse_microsoft_profile(&self, data: &serde_json::Value) -> Result<SocialUserProfile> {
+        Ok(SocialUserProfile {
+            provider_type: SocialProviderType::Microsoft,
+            provider_user_id: data["id"]
+                .as_str()
+                .ok_or_else(|| Error::ValidationError {
+                    message: "Missing user ID".to_string(),
+                })?
+                .to_string(),
+            email: data["mail"]
+                .as_str()
+                .or_else(|| data["userPrincipalName"].as_str())
+                .map(|s| s.to_string()),
+            display_name: data["displayName"].as_str().map(|s| s.to_string()),
+            first_name: data["givenName"].as_str().map(|s| s.to_string()),
+            last_name: data["surname"].as_str().map(|s| s.to_string()),
+            username: None,
+            picture_url: None, // Microsoft Graph API requires separate call for photo
+            raw_profile: data.clone(),
+            attributes: HashMap::new(),
+        })
+    }
+
+    /// Parse LinkedIn OAuth2 user profile
+    fn parse_linkedin_profile(&self, data: &serde_json::Value) -> Result<SocialUserProfile> {
+        Ok(SocialUserProfile {
+            provider_type: SocialProviderType::LinkedIn,
+            provider_user_id: data["id"]
+                .as_str()
+                .ok_or_else(|| Error::ValidationError {
+                    message: "Missing user ID".to_string(),
+                })?
+                .to_string(),
+            email: data["emailAddress"].as_str().map(|s| s.to_string()),
+            display_name: data["formattedName"].as_str().map(|s| s.to_string()),
+            first_name: data["firstName"].as_str().map(|s| s.to_string()),
+            last_name: data["lastName"].as_str().map(|s| s.to_string()),
+            username: None,
+            picture_url: data["pictureUrl"].as_str().map(|s| s.to_string()),
+            raw_profile: data.clone(),
+            attributes: HashMap::new(),
+        })
+    }
+
+    /// Parse Twitter OAuth2 user profile
+    fn parse_twitter_profile(&self, data: &serde_json::Value) -> Result<SocialUserProfile> {
+        Ok(SocialUserProfile {
+            provider_type: SocialProviderType::Twitter,
+            provider_user_id: data["id"]
+                .as_str()
+                .ok_or_else(|| Error::ValidationError {
+                    message: "Missing user ID".to_string(),
+                })?
+                .to_string(),
+            email: data["email"].as_str().map(|s| s.to_string()),
+            display_name: data["name"].as_str().map(|s| s.to_string()),
+            first_name: data["name"].as_str().map(|s| s.to_string()),
+            last_name: None,
+            username: None,
+            picture_url: data["profile_image_url"].as_str().map(|s| s.to_string()),
+            raw_profile: data.clone(),
+            attributes: HashMap::new(),
+        })
+    }
+
+    /// Parse Apple OAuth2 user profile
+    fn parse_apple_profile(&self, data: &serde_json::Value) -> Result<SocialUserProfile> {
+        Ok(SocialUserProfile {
+            provider_type: SocialProviderType::Apple,
+            provider_user_id: data["sub"]
+                .as_str()
+                .ok_or_else(|| Error::ValidationError {
+                    message: "Missing user ID".to_string(),
+                })?
+                .to_string(),
+            email: data["email"].as_str().map(|s| s.to_string()),
+            display_name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
+            first_name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
+            last_name: data["name"]["lastName"].as_str().map(|s| s.to_string()),
+            username: None,
+            picture_url: None,
             raw_profile: data.clone(),
             attributes: HashMap::new(),
         })
@@ -734,5 +825,111 @@ mod tests {
             .unwrap();
         assert!(provider.is_enabled());
         assert_eq!(provider.get_provider_type(), SocialProviderType::Facebook);
+    }
+
+    #[tokio::test]
+    async fn test_microsoft_profile_parsing() {
+        let config = SocialProviderConfig {
+            provider_type: SocialProviderType::Microsoft,
+            ..Default::default()
+        };
+        let provider = DefaultSocialProvider::new(config);
+
+        let data = serde_json::json!({
+            "id": "12345",
+            "displayName": "John Doe",
+            "givenName": "John",
+            "surname": "Doe",
+            "userPrincipalName": "john.doe@example.com",
+            "mail": "john.doe@example.com"
+        });
+
+        let profile = provider.parse_microsoft_profile(&data).unwrap();
+
+        assert_eq!(profile.provider_type, SocialProviderType::Microsoft);
+        assert_eq!(profile.provider_user_id, "12345");
+        assert_eq!(profile.display_name, Some("John Doe".to_string()));
+        assert_eq!(profile.first_name, Some("John".to_string()));
+        assert_eq!(profile.last_name, Some("Doe".to_string()));
+        assert_eq!(profile.email, Some("john.doe@example.com".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_linkedin_profile_parsing() {
+        let config = SocialProviderConfig {
+            provider_type: SocialProviderType::LinkedIn,
+            ..Default::default()
+        };
+        let provider = DefaultSocialProvider::new(config);
+
+        let data = serde_json::json!({
+            "id": "linked_123",
+            "formattedName": "Jane Doe",
+            "firstName": "Jane",
+            "lastName": "Doe",
+            "emailAddress": "jane.doe@linkedin.com",
+            "pictureUrl": "http://example.com/pic.jpg"
+        });
+
+        let profile = provider.parse_linkedin_profile(&data).unwrap();
+
+        assert_eq!(profile.provider_type, SocialProviderType::LinkedIn);
+        assert_eq!(profile.provider_user_id, "linked_123");
+        assert_eq!(profile.display_name, Some("Jane Doe".to_string()));
+        assert_eq!(profile.first_name, Some("Jane".to_string()));
+        assert_eq!(profile.last_name, Some("Doe".to_string()));
+        assert_eq!(profile.email, Some("jane.doe@linkedin.com".to_string()));
+        assert_eq!(profile.picture_url, Some("http://example.com/pic.jpg".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_twitter_profile_parsing() {
+        let config = SocialProviderConfig {
+            provider_type: SocialProviderType::Twitter,
+            ..Default::default()
+        };
+        let provider = DefaultSocialProvider::new(config);
+
+        let data = serde_json::json!({
+            "id": "twitter_123",
+            "name": "Twitter User",
+            "email": "user@twitter.com",
+            "profile_image_url": "http://example.com/twitter_pic.jpg"
+        });
+
+        let profile = provider.parse_twitter_profile(&data).unwrap();
+
+        assert_eq!(profile.provider_type, SocialProviderType::Twitter);
+        assert_eq!(profile.provider_user_id, "twitter_123");
+        assert_eq!(profile.display_name, Some("Twitter User".to_string()));
+        assert_eq!(profile.email, Some("user@twitter.com".to_string()));
+        assert_eq!(profile.picture_url, Some("http://example.com/twitter_pic.jpg".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_apple_profile_parsing() {
+        let config = SocialProviderConfig {
+            provider_type: SocialProviderType::Apple,
+            ..Default::default()
+        };
+        let provider = DefaultSocialProvider::new(config);
+
+        let data = serde_json::json!({
+            "sub": "apple_123",
+            "email": "user@privaterelay.appleid.com",
+            "name": {
+                "firstName": "Apple",
+                "lastName": "User"
+            }
+        });
+
+        let profile = provider.parse_apple_profile(&data).unwrap();
+
+        assert_eq!(profile.provider_type, SocialProviderType::Apple);
+        assert_eq!(profile.provider_user_id, "apple_123");
+        assert_eq!(profile.email, Some("user@privaterelay.appleid.com".to_string()));
+        assert_eq!(profile.display_name, Some("Apple".to_string()));
+        assert_eq!(profile.first_name, Some("Apple".to_string()));
+        assert_eq!(profile.last_name, Some("User".to_string()));
     }
 }
