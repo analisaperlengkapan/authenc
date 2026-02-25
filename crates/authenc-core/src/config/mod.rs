@@ -698,6 +698,7 @@ impl AppConfig {
         if let Ok(static_path) = env::var("UI_STATIC_PATH") {
             let mut ui = config.ui.take().unwrap_or_default();
             ui.static_path = Some(static_path);
+            ui.enabled = true;
             config.ui = Some(ui);
         }
 
