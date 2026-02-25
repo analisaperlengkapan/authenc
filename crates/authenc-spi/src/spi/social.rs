@@ -359,7 +359,6 @@ impl SocialProvider for DefaultSocialProvider {
             SocialProviderType::Microsoft => self.parse_microsoft_profile(&profile_data)?,
             SocialProviderType::LinkedIn => self.parse_linkedin_profile(&profile_data)?,
             SocialProviderType::Twitter => self.parse_twitter_profile(&profile_data)?,
-            SocialProviderType::Apple => self.parse_apple_profile(&profile_data)?,
             _ => self.parse_generic_profile(&profile_data)?,
         };
 
@@ -535,7 +534,10 @@ impl DefaultSocialProvider {
                 .to_string(),
             email: data["mail"]
                 .as_str()
-                .or_else(|| data["userPrincipalName"].as_str())
+                .or_else(|| {
+                    // Note: userPrincipalName fallback may include non-email identifiers (e.g. for guest users)
+                    data["userPrincipalName"].as_str()
+                })
                 .map(|s| s.to_string()),
             display_name: data["displayName"].as_str().map(|s| s.to_string()),
             first_name: data["givenName"].as_str().map(|s| s.to_string()),
@@ -547,22 +549,39 @@ impl DefaultSocialProvider {
         })
     }
 
-    /// Parse LinkedIn OAuth2 user profile
+    /// Parse LinkedIn OAuth2 user profile (using OIDC standard fields)
     fn parse_linkedin_profile(&self, data: &serde_json::Value) -> Result<SocialUserProfile> {
+        // LinkedIn v2 API via OpenID Connect returns standard claims
         Ok(SocialUserProfile {
             provider_type: SocialProviderType::LinkedIn,
-            provider_user_id: data["id"]
+            provider_user_id: data["sub"]
                 .as_str()
+                .or_else(|| data["id"].as_str()) // Fallback for non-OIDC endpoints
                 .ok_or_else(|| Error::ValidationError {
-                    message: "Missing user ID".to_string(),
+                    message: "Missing user ID (sub/id)".to_string(),
                 })?
                 .to_string(),
-            email: data["emailAddress"].as_str().map(|s| s.to_string()),
-            display_name: data["formattedName"].as_str().map(|s| s.to_string()),
-            first_name: data["firstName"].as_str().map(|s| s.to_string()),
-            last_name: data["lastName"].as_str().map(|s| s.to_string()),
+            email: data["email"]
+                .as_str()
+                .or_else(|| data["emailAddress"].as_str()) // v1 fallback
+                .map(|s| s.to_string()),
+            display_name: data["name"]
+                .as_str()
+                .or_else(|| data["formattedName"].as_str()) // v1 fallback
+                .map(|s| s.to_string()),
+            first_name: data["given_name"]
+                .as_str()
+                .or_else(|| data["firstName"].as_str()) // v1 fallback
+                .map(|s| s.to_string()),
+            last_name: data["family_name"]
+                .as_str()
+                .or_else(|| data["lastName"].as_str()) // v1 fallback
+                .map(|s| s.to_string()),
             username: None,
-            picture_url: data["pictureUrl"].as_str().map(|s| s.to_string()),
+            picture_url: data["picture"]
+                .as_str()
+                .or_else(|| data["pictureUrl"].as_str()) // v1 fallback
+                .map(|s| s.to_string()),
             raw_profile: data.clone(),
             attributes: HashMap::new(),
         })
@@ -585,27 +604,6 @@ impl DefaultSocialProvider {
             last_name: None,
             username: user_data["username"].as_str().map(|s| s.to_string()),
             picture_url: user_data["profile_image_url"].as_str().map(|s| s.to_string()),
-            raw_profile: data.clone(),
-            attributes: HashMap::new(),
-        })
-    }
-
-    /// Parse Apple OAuth2 user profile
-    fn parse_apple_profile(&self, data: &serde_json::Value) -> Result<SocialUserProfile> {
-        Ok(SocialUserProfile {
-            provider_type: SocialProviderType::Apple,
-            provider_user_id: data["sub"]
-                .as_str()
-                .ok_or_else(|| Error::ValidationError {
-                    message: "Missing user ID".to_string(),
-                })?
-                .to_string(),
-            email: data["email"].as_str().map(|s| s.to_string()),
-            display_name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
-            first_name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
-            last_name: data["name"]["lastName"].as_str().map(|s| s.to_string()),
-            username: None,
-            picture_url: None,
             raw_profile: data.clone(),
             attributes: HashMap::new(),
         })
@@ -911,30 +909,4 @@ mod tests {
         assert_eq!(profile.picture_url, Some("http://example.com/twitter_pic.jpg".to_string()));
     }
 
-    #[tokio::test]
-    async fn test_apple_profile_parsing() {
-        let config = SocialProviderConfig {
-            provider_type: SocialProviderType::Apple,
-            ..Default::default()
-        };
-        let provider = DefaultSocialProvider::new(config);
-
-        let data = serde_json::json!({
-            "sub": "apple_123",
-            "email": "user@privaterelay.appleid.com",
-            "name": {
-                "firstName": "Apple",
-                "lastName": "User"
-            }
-        });
-
-        let profile = provider.parse_apple_profile(&data).unwrap();
-
-        assert_eq!(profile.provider_type, SocialProviderType::Apple);
-        assert_eq!(profile.provider_user_id, "apple_123");
-        assert_eq!(profile.email, Some("user@privaterelay.appleid.com".to_string()));
-        assert_eq!(profile.display_name, Some("Apple".to_string()));
-        assert_eq!(profile.first_name, Some("Apple".to_string()));
-        assert_eq!(profile.last_name, Some("User".to_string()));
-    }
 }
