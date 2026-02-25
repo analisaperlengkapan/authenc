@@ -23,20 +23,30 @@ impl EmailVerificationService {
     /// Request verification for a given email
     pub async fn request_verification(&self, email: &str, realm_id: &Uuid) -> Result<()> {
         // Find user by email
-        let user = match self.user_store.get_user_by_email(realm_id, email).await? {
-            Some(u) if u.enabled => u,
+        let user_opt = self.user_store.get_user_by_email(realm_id, email).await?;
+
+        let user = match user_opt {
+            Some(u) if u.enabled && !u.email_verified => u,
             _ => {
-                // Return OK to prevent email enumeration attacks (and hide disabled status)
-                tracing::debug!("Verification requested for non-existent or disabled email: {}", email);
+                // Return OK to prevent email enumeration attacks (and hide disabled status/already verified status)
+                tracing::debug!("Verification requested for non-existent, disabled, or already verified email: {}", email);
+
+                // Perform dummy work to mitigate timing attacks
+                let dummy_token = Uuid::new_v4().to_string();
+                let mut hasher = Sha256::new();
+                hasher.update(dummy_token.as_bytes());
+                let token_hash = hex::encode(hasher.finalize());
+                let expires_at = Utc::now() + Duration::hours(self.token_validity_hours);
+
+                // Execute a DB write with a random UUID to match timing of the success path
+                // This simulates the set_verification_token call in the success path
+                let _ = self.user_store
+                    .set_verification_token(Uuid::new_v4(), Some(token_hash), Some(expires_at))
+                    .await;
+
                 return Ok(());
             }
         };
-
-        if user.email_verified {
-             tracing::debug!("User {} already verified", email);
-             // Optionally send "Already verified" email
-             return Ok(());
-        }
 
         // Generate secure token
         let token = Uuid::new_v4().to_string();
