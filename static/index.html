@@ -301,10 +301,10 @@
             try {
                 // Try fetching with the realm string name first (might fail if backend requires UUID)
                 // If it fails with 400, try the Master UUID.
-                let url = `${API_BASE}/realms/${currentRealm}/users`;
+                let url = `${API_BASE}/auth/realms/${currentRealm}/users`;
                 if (currentRealm === 'master') {
                     // Pre-emptively use UUID for master based on code analysis
-                    url = `${API_BASE}/realms/${MASTER_REALM_UUID}/users`;
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users`;
                 }
 
                 const response = await fetch(url, {
