@@ -558,7 +558,7 @@
                     btnVerify.textContent = 'Verify';
                     btnVerify.onclick = async function() {
                         try {
-                            const res = await fetch(`${API_BASE}/auth/request-verification`, {
+                            const res = await fetch('/auth/request-verification', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
