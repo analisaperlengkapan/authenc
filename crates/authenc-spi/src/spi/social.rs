@@ -600,7 +600,16 @@ impl DefaultSocialProvider {
                 })?
                 .to_string(),
             email: data["email"].as_str().map(|s| s.to_string()),
-            display_name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
+            display_name: {
+                let first = data["name"]["firstName"].as_str();
+                let last = data["name"]["lastName"].as_str();
+                match (first, last) {
+                    (Some(f), Some(l)) => Some(format!("{} {}", f, l)),
+                    (Some(f), None) => Some(f.to_string()),
+                    (None, Some(l)) => Some(l.to_string()),
+                    (None, None) => None,
+                }
+            },
             first_name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
             last_name: data["name"]["lastName"].as_str().map(|s| s.to_string()),
             username: None,
