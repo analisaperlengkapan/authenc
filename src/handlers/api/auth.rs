@@ -1,6 +1,7 @@
 use crate::error::AuthencError;
 use authenc_services::services::stores::user_store::UserStoreTrait;
 use authenc_crypto::utils::crypto::jwt;
+use authenc_crypto::utils::crypto::password::verify_password;
 use axum::{Router, extract::State, response::Json, routing::post};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -59,58 +60,35 @@ pub async fn login(
         .await?
         .ok_or_else(|| AuthencError::unauthorized("Invalid credentials"))?;
 
-    // Verify password (temporarily disabled for testing)
-    // if let Some(ref password_hash) = user.password_hash {
-    //     if password::verify_password(password_hash, &req.password).unwrap_or(false) {
-    //         let token = jwt::generate_jwt(&user.id.to_string())
-    //             .map_err(|_| AuthencError::internal("Token generation failed"))?;
-    //         let message = format!("Login successful for user {}", user.username);
-    //
-    //         // Fire successful login event
-    //         let event = crate::services::events::EventBuilder::new(
-    //             crate::models::events::EventType::Login,
-    //             req.realm.clone(),
-    //         )
-    //         .user_id(user.id.to_string())
-    //         .client_id("api".to_string()) // API login
-    //         .detail("method", "password")
-    //         .build();
-    //
-    //         if let Err(e) = state.event_manager.write().await.fire_event(event).await {
-    //             tracing::error!("Failed to fire login event: {}", e);
-    //         }
-    //
-    //         return Ok(Json(LoginResponse {
-    //             access_token: token,
-    //             message,
-    //         }));
-    //     }
-    // }
+    // Verify password
+    if let Some(ref password_hash) = user.password_hash {
+        if verify_password(password_hash, &req.password)
+            .await
+            .unwrap_or(false)
+        {
+            let token = jwt::generate_jwt(&user.id.to_string())
+                .map_err(|_| AuthencError::internal("Token generation failed"))?;
+            let message = format!("Login successful for user {}", user.username);
 
-    // For testing: accept any password for admin user
-    if user.username == "admin" {
-        let token = jwt::generate_jwt(&user.id.to_string())
-            .map_err(|_| AuthencError::internal("Token generation failed"))?;
-        let message = format!("Test login successful for user {}", user.username);
+            // Fire successful login event
+            let event = crate::services::events::EventBuilder::new(
+                crate::models::events::EventType::Login,
+                req.realm.clone(),
+            )
+            .user_id(user.id.to_string())
+            .client_id("api".to_string()) // API login
+            .detail("method", "password")
+            .build();
 
-        // Fire successful login event
-        let event = crate::services::events::EventBuilder::new(
-            crate::models::events::EventType::Login,
-            req.realm.clone(),
-        )
-        .user_id(user.id.to_string())
-        .client_id("api".to_string()) // API login
-        .detail("method", "test")
-        .build();
+            if let Err(e) = state.event_manager.write().await.fire_event(event).await {
+                tracing::error!("Failed to fire login event: {}", e);
+            }
 
-        if let Err(e) = state.event_manager.write().await.fire_event(event).await {
-            tracing::error!("Failed to fire test login event: {}", e);
+            return Ok(Json(LoginResponse {
+                access_token: token,
+                message,
+            }));
         }
-
-        return Ok(Json(LoginResponse {
-            access_token: token,
-            message,
-        }));
     }
 
     // Fire login error event
@@ -135,6 +113,11 @@ pub async fn login(
 pub async fn test_login(
     State(state): State<Arc<crate::app::AppState>>,
 ) -> Result<Json<LoginResponse>, AuthencError> {
+    // Only allow in development mode or if explicitly enabled
+    if std::env::var("APP_ENV").unwrap_or_else(|_| "development".to_string()) == "production" {
+        return Err(AuthencError::unauthorized("Test login disabled in production"));
+    }
+
     // Use master realm for test
     let realm_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap();
 

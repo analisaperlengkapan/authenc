@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authenc Admin Console</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f3f4f6;
+            --card-bg: #ffffff;
+            --text: #1f2937;
+            --text-light: #6b7280;
+            --error: #ef4444;
+            --success: #10b981;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            padding: 2rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .dashboard-card {
+            max-width: 100%;
+        }
+
+        h1, h2 {
+            margin-top: 0;
+            color: var(--text);
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.25rem;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 1rem;
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button.secondary {
+            background-color: #6b7280;
+            margin-top: 1rem;
+        }
+
+        button.secondary:hover {
+            background-color: #4b5563;
+        }
+
+        .error-message {
+            color: var(--error);
+            margin-top: 1rem;
+            text-align: center;
+            display: none;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 0.75rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-error {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="login-view" class="container">
+        <div class="card">
+            <h1 style="text-align: center;">Authenc Admin</h1>
+            <p style="text-align: center; color: var(--text-light);">Sign in to your account</p>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required value="admin">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <div class="form-group">
+                    <label for="realm">Realm</label>
+                    <input type="text" id="realm" name="realm" value="master" required>
+                </div>
+                <button type="submit">Sign In</button>
+            </form>
+            <div id="login-error" class="error-message"></div>
+        </div>
+    </div>
+
+    <div id="dashboard-view" class="container hidden">
+        <div class="card dashboard-card">
+            <div class="header">
+                <h2>Admin Dashboard</h2>
+                <div>
+                    <span id="user-display" style="margin-right: 1rem; font-weight: 500;"></span>
+                    <button onclick="logout()" style="width: auto; display: inline-block; background-color: var(--error);">Logout</button>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 2rem;">
+                <h3>Users</h3>
+                <p style="color: var(--text-light);">Manage users for realm: <strong id="current-realm">master</strong></p>
+                <button onclick="fetchUsers()" style="width: auto;">Refresh List</button>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table id="users-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-body">
+                        <tr>
+                            <td colspan="5" style="text-align: center;">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="dashboard-error" class="error-message"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = '/api/v1';
+        // UUID for 'master' realm as verified in codebase logic for login, but assumed for API calls
+        // In a real app, we'd fetch the realm ID first. Here we hardcode the "Zero UUID" often used for master/system,
+        // or we rely on the backend mapping "master" string to UUID if supported (which we suspect it isn't for Users API).
+        // Let's assume the user knows the realm UUID or we default to the Zero UUID.
+        // Actually, let's try to fetch users from "master" first, and if 400, try the Zero UUID.
+        const MASTER_REALM_UUID = "00000000-0000-0000-0000-000000000000";
+
+        // State
+        let token = localStorage.getItem('authenc_token');
+        let currentUser = localStorage.getItem('authenc_user');
+        let currentRealm = localStorage.getItem('authenc_realm') || 'master';
+
+        // Init
+        if (token) {
+            showDashboard();
+        } else {
+            showLogin();
+        }
+
+        // View Management
+        function showLogin() {
+            document.getElementById('login-view').classList.remove('hidden');
+            document.getElementById('dashboard-view').classList.add('hidden');
+        }
+
+        function showDashboard() {
+            document.getElementById('login-view').classList.add('hidden');
+            document.getElementById('dashboard-view').classList.remove('hidden');
+            document.getElementById('user-display').textContent = currentUser || 'Admin';
+            document.getElementById('current-realm').textContent = currentRealm;
+            fetchUsers();
+        }
+
+        function logout() {
+            localStorage.removeItem('authenc_token');
+            localStorage.removeItem('authenc_user');
+            localStorage.removeItem('authenc_realm');
+            token = null;
+            currentUser = null;
+            showLogin();
+        }
+
+        // API Calls
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const realm = document.getElementById('realm').value;
+            const errorDiv = document.getElementById('login-error');
+
+            errorDiv.style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, realm })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    token = data.access_token;
+                    localStorage.setItem('authenc_token', token);
+                    localStorage.setItem('authenc_user', username);
+                    localStorage.setItem('authenc_realm', realm);
+                    currentUser = username;
+                    currentRealm = realm;
+                    showDashboard();
+                } else {
+                    throw new Error(data.message || 'Login failed');
+                }
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+            }
+        });
+
+        async function fetchUsers() {
+            const tbody = document.getElementById('users-body');
+            const errorDiv = document.getElementById('dashboard-error');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading...</td></tr>';
+            errorDiv.style.display = 'none';
+
+            try {
+                // Try fetching with the realm string name first (might fail if backend requires UUID)
+                // If it fails with 400, try the Master UUID.
+                let url = `${API_BASE}/realms/${currentRealm}/users`;
+                if (currentRealm === 'master') {
+                    // Pre-emptively use UUID for master based on code analysis
+                    url = `${API_BASE}/realms/${MASTER_REALM_UUID}/users`;
+                }
+
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        logout();
+                        throw new Error("Session expired");
+                    }
+                    throw new Error(`Failed to fetch users: ${response.statusText}`);
+                }
+
+                const users = await response.json();
+                renderUsers(users);
+
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--error);">Failed to load data</td></tr>';
+            }
+        }
+
+        function renderUsers(users) {
+            const tbody = document.getElementById('users-body');
+            tbody.innerHTML = '';
+
+            if (users.length === 0) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 5;
+                td.style.textAlign = 'center';
+                td.textContent = 'No users found';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+
+            users.forEach(user => {
+                const tr = document.createElement('tr');
+
+                // ID
+                const tdId = document.createElement('td');
+                tdId.style.fontFamily = 'monospace';
+                tdId.style.fontSize = '0.9em';
+                tdId.textContent = user.id;
+                tr.appendChild(tdId);
+
+                // Username
+                const tdUsername = document.createElement('td');
+                tdUsername.textContent = user.username;
+                tr.appendChild(tdUsername);
+
+                // Email
+                const tdEmail = document.createElement('td');
+                tdEmail.textContent = user.email || '-';
+                tr.appendChild(tdEmail);
+
+                // Status
+                const tdStatus = document.createElement('td');
+                const spanStatus = document.createElement('span');
+                spanStatus.className = `badge ${user.enabled ? 'badge-success' : 'badge-error'}`;
+                spanStatus.textContent = user.enabled ? 'Enabled' : 'Disabled';
+                tdStatus.appendChild(spanStatus);
+                tr.appendChild(tdStatus);
+
+                // Actions
+                const tdActions = document.createElement('td');
+                const btnEdit = document.createElement('button');
+                btnEdit.style.width = 'auto';
+                btnEdit.style.padding = '0.25rem 0.5rem';
+                btnEdit.style.fontSize = '0.8rem';
+                btnEdit.textContent = 'Edit';
+                btnEdit.onclick = function() {
+                    alert('Edit user ' + user.username);
+                };
+                tdActions.appendChild(btnEdit);
+                tr.appendChild(tdActions);
+
+                tbody.appendChild(tr);
+            });
+        }
+    </script>
+</body>
+</html>

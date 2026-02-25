@@ -29,6 +29,8 @@ pub struct UiConfig {
     pub enabled: bool,
     /// Optional UI theme
     pub theme: Option<String>,
+    /// Path to static files
+    pub static_path: Option<String>,
 }
 
 /// Multi-database configuration
@@ -691,6 +693,12 @@ impl AppConfig {
                     _ => {}
                 }
             }
+        }
+
+        if let Ok(static_path) = env::var("UI_STATIC_PATH") {
+            let mut ui = config.ui.take().unwrap_or_default();
+            ui.static_path = Some(static_path);
+            config.ui = Some(ui);
         }
 
         config.validate()?;
