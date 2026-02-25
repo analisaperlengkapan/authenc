@@ -937,7 +937,7 @@ mod tests {
         assert_eq!(profile.provider_type, SocialProviderType::Apple);
         assert_eq!(profile.provider_user_id, "apple_123");
         assert_eq!(profile.email, Some("user@privaterelay.appleid.com".to_string()));
-        assert_eq!(profile.display_name, Some("Apple".to_string()));
+        assert_eq!(profile.display_name, Some("Apple User".to_string()));
         assert_eq!(profile.first_name, Some("Apple".to_string()));
         assert_eq!(profile.last_name, Some("User".to_string()));
     }
