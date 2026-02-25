@@ -301,10 +301,10 @@
             try {
                 // Try fetching with the realm string name first (might fail if backend requires UUID)
                 // If it fails with 400, try the Master UUID.
-                let url = `${API_BASE}/auth/realms/${currentRealm}/users`;
+                let url = `${API_BASE}/realms/${currentRealm}/users`;
                 if (currentRealm === 'master') {
                     // Pre-emptively use UUID for master based on code analysis
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users`;
+                    url = `${API_BASE}/realms/${MASTER_REALM_UUID}/users`;
                 }
 
                 const response = await fetch(url, {
@@ -334,25 +334,57 @@
             tbody.innerHTML = '';
 
             if (users.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No users found</td></tr>';
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 5;
+                td.style.textAlign = 'center';
+                td.textContent = 'No users found';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
                 return;
             }
 
             users.forEach(user => {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="font-family: monospace; font-size: 0.9em;">${user.id}</td>
-                    <td>${user.username}</td>
-                    <td>${user.email || '-'}</td>
-                    <td>
-                        <span class="badge ${user.enabled ? 'badge-success' : 'badge-error'}">
-                            ${user.enabled ? 'Enabled' : 'Disabled'}
-                        </span>
-                    </td>
-                    <td>
-                        <button style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="alert('Edit user ${user.username}')">Edit</button>
-                    </td>
-                `;
+
+                // ID
+                const tdId = document.createElement('td');
+                tdId.style.fontFamily = 'monospace';
+                tdId.style.fontSize = '0.9em';
+                tdId.textContent = user.id;
+                tr.appendChild(tdId);
+
+                // Username
+                const tdUsername = document.createElement('td');
+                tdUsername.textContent = user.username;
+                tr.appendChild(tdUsername);
+
+                // Email
+                const tdEmail = document.createElement('td');
+                tdEmail.textContent = user.email || '-';
+                tr.appendChild(tdEmail);
+
+                // Status
+                const tdStatus = document.createElement('td');
+                const spanStatus = document.createElement('span');
+                spanStatus.className = `badge ${user.enabled ? 'badge-success' : 'badge-error'}`;
+                spanStatus.textContent = user.enabled ? 'Enabled' : 'Disabled';
+                tdStatus.appendChild(spanStatus);
+                tr.appendChild(tdStatus);
+
+                // Actions
+                const tdActions = document.createElement('td');
+                const btnEdit = document.createElement('button');
+                btnEdit.style.width = 'auto';
+                btnEdit.style.padding = '0.25rem 0.5rem';
+                btnEdit.style.fontSize = '0.8rem';
+                btnEdit.textContent = 'Edit';
+                btnEdit.onclick = function() {
+                    alert('Edit user ' + user.username);
+                };
+                tdActions.appendChild(btnEdit);
+                tr.appendChild(tdActions);
+
                 tbody.appendChild(tr);
             });
         }
