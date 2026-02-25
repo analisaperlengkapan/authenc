@@ -113,6 +113,11 @@ pub async fn login(
 pub async fn test_login(
     State(state): State<Arc<crate::app::AppState>>,
 ) -> Result<Json<LoginResponse>, AuthencError> {
+    // Only allow in development mode or if explicitly enabled
+    if std::env::var("APP_ENV").unwrap_or_else(|_| "development".to_string()) == "production" {
+        return Err(AuthencError::unauthorized("Test login disabled in production"));
+    }
+
     // Use master realm for test
     let realm_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap();
 
