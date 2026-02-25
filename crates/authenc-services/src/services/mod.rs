@@ -28,6 +28,7 @@ pub mod auth_flow;
 pub mod authorization;
 pub mod device;
 pub mod password_reset;
+pub mod email_verification;
 // pub mod saml; // Located in protocols::saml
 pub mod social;
 pub mod sso;

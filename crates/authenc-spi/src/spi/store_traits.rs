@@ -108,6 +108,33 @@ pub trait UserStoreTrait: Send + Sync {
     ) -> Result<(), AuthencError> {
         Err(AuthencError::not_implemented("Method not implemented"))
     }
+
+    /// Set verification token for a user
+    async fn set_verification_token(
+        &self,
+        _user_id: Uuid,
+        _token_hash: Option<String>,
+        _expires_at: Option<DateTime<Utc>>,
+    ) -> Result<(), AuthencError> {
+        Err(AuthencError::not_implemented("Method not implemented"))
+    }
+
+    /// Get user by verification token
+    async fn get_user_by_verification_token(
+        &self,
+        _token_hash: &str,
+    ) -> Result<Option<User>, AuthencError> {
+        Err(AuthencError::not_implemented("Method not implemented"))
+    }
+
+    /// Verify email transaction (clear token, set verified=true)
+    async fn verify_email_transaction(
+        &self,
+        _user_id: Uuid,
+        _token_hash: String,
+    ) -> Result<(), AuthencError> {
+        Err(AuthencError::not_implemented("Method not implemented"))
+    }
 }
 
 // ============================================================

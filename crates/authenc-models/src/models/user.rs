@@ -91,6 +91,12 @@ pub struct User {
     /// Expiration timestamp for the reset token
     #[serde(skip_serializing)]
     pub reset_token_expires_at: Option<DateTime<Utc>>,
+    /// Hashed token for email verification
+    #[serde(skip_serializing)]
+    pub verification_token_hash: Option<String>,
+    /// Expiration timestamp for the verification token
+    #[serde(skip_serializing)]
+    pub verification_token_expires_at: Option<DateTime<Utc>>,
 }
 
 /// User credential
@@ -661,6 +667,8 @@ impl User {
             login_count: 0,
             reset_token_hash: None,
             reset_token_expires_at: None,
+            verification_token_hash: None,
+            verification_token_expires_at: None,
         }
     }
 
@@ -843,6 +851,8 @@ impl TryFrom<tokio_postgres::Row> for User {
             login_count: row.try_get("login_count")?,
             reset_token_hash: row.try_get("reset_token_hash").ok().flatten(),
             reset_token_expires_at: row.try_get("reset_token_expires_at").ok().flatten(),
+            verification_token_hash: row.try_get("verification_token_hash").ok().flatten(),
+            verification_token_expires_at: row.try_get("verification_token_expires_at").ok().flatten(),
         })
     }
 }

@@ -79,6 +79,8 @@ pub mod zero_trust;
 pub mod fips;
 /// Password reset handlers
 pub mod reset;
+/// Email verification handlers
+pub mod verification;
 
 /// Create the main application router with all routes
 pub fn create_router(state: Arc<AppState>) -> Router {
@@ -225,6 +227,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Password reset routes
         .route("/auth/forgot-password", post(reset::request_password_reset))
         .route("/auth/reset-password", post(reset::reset_password))
+        // Email verification routes
+        .route("/auth/request-verification", post(verification::request_verification))
+        .route("/auth/verify-email", post(verification::verify_email))
         // Merge OAuth2 test router (without auth)
         .merge(oauth2_test_router)
         // Merge OAuth2 router (with auth for token/userinfo endpoints)
