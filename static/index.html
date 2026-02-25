@@ -162,6 +162,9 @@
                 <div class="form-group">
                     <label for="password">Password</label>
                     <input type="password" id="password" name="password" required>
+                    <div style="text-align: right; margin-top: 0.25rem;">
+                        <a href="#" onclick="showForgotPassword(); return false;" style="font-size: 0.85rem; color: var(--primary); text-decoration: none;">Forgot Password?</a>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="realm">Realm</label>
@@ -170,6 +173,41 @@
                 <button type="submit">Sign In</button>
             </form>
             <div id="login-error" class="error-message"></div>
+        </div>
+    </div>
+
+    <div id="forgot-password-view" class="container hidden">
+        <div class="card">
+            <h1 style="text-align: center;">Recovery</h1>
+            <p style="text-align: center; color: var(--text-light);">Enter your email to reset password</p>
+            <form id="forgot-password-form">
+                <div class="form-group">
+                    <label for="recovery-email">Email</label>
+                    <input type="email" id="recovery-email" name="email" required placeholder="user@example.com">
+                </div>
+                <button type="submit">Send Reset Link</button>
+                <button type="button" class="secondary" onclick="showLogin()">Back to Login</button>
+            </form>
+            <div id="forgot-password-message" class="error-message" style="color: var(--success); display: none;"></div>
+            <div id="forgot-password-error" class="error-message"></div>
+        </div>
+    </div>
+
+    <div id="reset-password-view" class="container hidden">
+        <div class="card">
+            <h1 style="text-align: center;">Reset Password</h1>
+            <p style="text-align: center; color: var(--text-light);">Enter your new password</p>
+            <form id="reset-password-form">
+                <input type="hidden" id="reset-token" name="token">
+                <div class="form-group">
+                    <label for="new-password">New Password</label>
+                    <input type="password" id="new-password" name="new_password" required minlength="8">
+                </div>
+                <button type="submit">Reset Password</button>
+                <button type="button" class="secondary" onclick="showLogin()">Back to Login</button>
+            </form>
+            <div id="reset-password-message" class="error-message" style="color: var(--success); display: none;"></div>
+            <div id="reset-password-error" class="error-message"></div>
         </div>
     </div>
 
@@ -227,24 +265,58 @@
         let currentRealm = localStorage.getItem('authenc_realm') || 'master';
 
         // Init
-        if (token) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const resetToken = urlParams.get('token'); // Look for ?token=... (from email link)
+
+        if (resetToken) {
+            showResetPassword(resetToken);
+        } else if (token) {
             showDashboard();
         } else {
             showLogin();
         }
 
         // View Management
-        function showLogin() {
-            document.getElementById('login-view').classList.remove('hidden');
+        function hideAllViews() {
+            document.getElementById('login-view').classList.add('hidden');
             document.getElementById('dashboard-view').classList.add('hidden');
+            document.getElementById('forgot-password-view').classList.add('hidden');
+            document.getElementById('reset-password-view').classList.add('hidden');
+        }
+
+        function showLogin() {
+            hideAllViews();
+            document.getElementById('login-view').classList.remove('hidden');
+            // Clear URL params if coming back to login
+            if (window.history.pushState) {
+                const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                window.history.pushState({path:newurl},'',newurl);
+            }
         }
 
         function showDashboard() {
-            document.getElementById('login-view').classList.add('hidden');
+            hideAllViews();
             document.getElementById('dashboard-view').classList.remove('hidden');
             document.getElementById('user-display').textContent = currentUser || 'Admin';
             document.getElementById('current-realm').textContent = currentRealm;
             fetchUsers();
+        }
+
+        function showForgotPassword() {
+            hideAllViews();
+            document.getElementById('forgot-password-view').classList.remove('hidden');
+            document.getElementById('forgot-password-error').style.display = 'none';
+            document.getElementById('forgot-password-message').style.display = 'none';
+        }
+
+        function showResetPassword(tokenVal) {
+            hideAllViews();
+            document.getElementById('reset-password-view').classList.remove('hidden');
+            if (tokenVal) {
+                document.getElementById('reset-token').value = tokenVal;
+            }
+            document.getElementById('reset-password-error').style.display = 'none';
+            document.getElementById('reset-password-message').style.display = 'none';
         }
 
         function logout() {
@@ -284,7 +356,70 @@
                     currentRealm = realm;
                     showDashboard();
                 } else {
-                    throw new Error(data.message || 'Login failed');
+                    throw new Error(data.message || data.error || 'Login failed');
+                }
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+            }
+        });
+
+        document.getElementById('forgot-password-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('recovery-email').value;
+            const errorDiv = document.getElementById('forgot-password-error');
+            const msgDiv = document.getElementById('forgot-password-message');
+
+            errorDiv.style.display = 'none';
+            msgDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    msgDiv.textContent = data.message || "If the email exists, a reset link has been sent.";
+                    msgDiv.style.display = 'block';
+                } else {
+                    throw new Error(data.error || 'Request failed');
+                }
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+            }
+        });
+
+        document.getElementById('reset-password-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const token = document.getElementById('reset-token').value;
+            const new_password = document.getElementById('new-password').value;
+            const errorDiv = document.getElementById('reset-password-error');
+            const msgDiv = document.getElementById('reset-password-message');
+
+            errorDiv.style.display = 'none';
+            msgDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/auth/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, new_password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    msgDiv.textContent = data.message || "Password reset successfully.";
+                    msgDiv.style.display = 'block';
+                    // Optional: redirect to login after a delay
+                    setTimeout(() => showLogin(), 2000);
+                } else {
+                    throw new Error(data.error || 'Reset failed');
                 }
             } catch (err) {
                 errorDiv.textContent = err.message;
