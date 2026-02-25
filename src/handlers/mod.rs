@@ -321,7 +321,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             oid4vc::create_oid4vc_router().with_state(state.clone()),
         )
         .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()))
-        .fallback_service(ServeDir::new("static"));
+        .fallback_service(ServeDir::new(
+            state
+                .config
+                .ui
+                .as_ref()
+                .and_then(|ui| ui.static_path.clone())
+                .unwrap_or_else(|| "static".to_string()),
+        ));
 
     router.with_state(state)
 }
