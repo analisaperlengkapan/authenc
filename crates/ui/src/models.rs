@@ -83,3 +83,19 @@ pub struct UpdateGroupRequest {
     pub name: Option<String>,
     pub description: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AuditLog {
+    pub timestamp: String,
+    pub event: String,
+    pub user_id: Option<String>,
+    pub client_id: Option<String>,
+    pub status: String,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogResponse {
+    pub total: u64,
+    pub logs: Vec<AuditLog>,
+}

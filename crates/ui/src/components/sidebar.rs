@@ -46,6 +46,12 @@ pub fn Sidebar() -> impl IntoView {
                             "Roles"
                         </A>
                     </li>
+                    <li style="margin-bottom: 5px;">
+                        <A href="/admin/console/audit" class="nav-link" active_class="active">
+                            <i class="fas fa-list-alt" style="margin-right: 10px; width: 20px;"></i>
+                            "Audit Logs"
+                        </A>
+                    </li>
 
                     <li style="margin-top: 20px; margin-bottom: 10px; padding: 0 15px; color: #95a5a6; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">
                         "My Account"
