@@ -655,7 +655,7 @@ impl AppState {
 
             let apple_config = authenc_services::services::social::OAuthConfig {
                 client_id,
-                client_secret: "unused".to_string(), // Unused for Apple
+                client_secret: "".to_string(), // Unused for Apple
                 redirect_uri: std::env::var("APPLE_REDIRECT_URI")
                     .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
                 authorization_url: "https://appleid.apple.com/auth/authorize".to_string(),

@@ -16,7 +16,7 @@ pub use state_store::SocialLoginState;
 // Re-export SocialProvider from models
 pub use authenc_models::models::social_account::SocialProvider;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct OAuthConfig {
     /// OAuth client ID
     pub client_id: String,
@@ -40,6 +40,24 @@ pub struct OAuthConfig {
     pub key_id: Option<String>,
     /// Apple Private Key (for Apple Sign In)
     pub private_key: Option<String>,
+}
+
+impl std::fmt::Debug for OAuthConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OAuthConfig")
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"[REDACTED]")
+            .field("redirect_uri", &self.redirect_uri)
+            .field("authorization_url", &self.authorization_url)
+            .field("token_url", &self.token_url)
+            .field("user_info_url", &self.user_info_url)
+            .field("scopes", &self.scopes)
+            .field("provider", &self.provider)
+            .field("team_id", &self.team_id.as_ref().map(|_| "[REDACTED]"))
+            .field("key_id", &self.key_id.as_ref().map(|_| "[REDACTED]"))
+            .field("private_key", &self.private_key.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 /// Social user profile from provider
@@ -198,12 +216,6 @@ impl SocialLoginManager {
             .append_pair("response_type", "code")
             .append_pair("scope", &config.scopes.join(" "))
             .append_pair("state", &state);
-
-        // Apple requires response_mode=form_post for web-based Sign In
-        if config.provider == SocialProvider::Apple {
-            url.query_pairs_mut()
-                .append_pair("response_mode", "form_post");
-        }
 
         Ok(url.to_string())
     }
