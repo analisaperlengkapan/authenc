@@ -89,8 +89,32 @@ pub async fn request_verification(
 /// Handler for verifying email
 pub async fn verify_email(
     State(state): State<Arc<AppState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(payload): Json<VerifyEmailRequest>,
 ) -> impl IntoResponse {
+    // Rate limit check
+    let ip = addr.ip().to_string();
+    let rate_limit_key = format!("email_verify_attempt:{}", ip);
+
+    // Reuse password reset protector for simplicity
+    match state.password_reset_protector.register_attempt(&rate_limit_key) {
+        Ok(true) => {
+            tracing::warn!("Rate limit exceeded for verification attempt from IP: {}", ip);
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({ "error": "Too many requests. Please try again later." })),
+            );
+        }
+        Err(e) => {
+            tracing::error!("Rate limiter error: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Internal server error" })),
+            );
+        }
+        _ => {}
+    }
+
     match state
         .email_verification_service
         .verify_email(&payload.token)

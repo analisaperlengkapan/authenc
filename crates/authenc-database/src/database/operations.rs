@@ -2004,6 +2004,8 @@ pub mod users {
             login_count: row.get("login_count"),
             reset_token_hash: None,
             reset_token_expires_at: None,
+            verification_token_hash: None,
+            verification_token_expires_at: None,
         };
 
         Ok(user)
@@ -2058,6 +2060,8 @@ pub mod users {
             login_count: r.get("login_count"),
             reset_token_hash: None,
             reset_token_expires_at: None,
+            verification_token_hash: r.try_get("verification_token_hash").ok().flatten(),
+            verification_token_expires_at: r.try_get("verification_token_expires_at").ok().flatten(),
         }))
     }
 
@@ -2114,6 +2118,8 @@ pub mod users {
             login_count: r.get("login_count"),
             reset_token_hash: None,
             reset_token_expires_at: None,
+            verification_token_hash: r.try_get("verification_token_hash").ok().flatten(),
+            verification_token_expires_at: r.try_get("verification_token_expires_at").ok().flatten(),
         }))
     }
 
@@ -2538,6 +2544,8 @@ pub mod users {
                 login_count: row.get("login_count"),
             reset_token_hash: None,
                 reset_token_expires_at: None,
+            verification_token_hash: row.try_get("verification_token_hash").ok().flatten(),
+            verification_token_expires_at: row.try_get("verification_token_expires_at").ok().flatten(),
             });
         }
 
@@ -2598,6 +2606,8 @@ pub mod users {
                 login_count: row.get("login_count"),
             reset_token_hash: None,
                 reset_token_expires_at: None,
+            verification_token_hash: row.try_get("verification_token_hash").ok().flatten(),
+            verification_token_expires_at: row.try_get("verification_token_expires_at").ok().flatten(),
             });
         }
 
