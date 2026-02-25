@@ -526,7 +526,7 @@ impl SocialLoginManager {
             last_name: data["name"]["lastName"].as_str().map(|s| s.to_string()),
             picture_url: None,
             locale: None,
-            verified_email: data["email_verified"].as_bool().unwrap_or(false),
+            verified_email: data["email_verified"].as_bool().unwrap_or_else(|| data["email_verified"].as_str().map(|s| s == "true").unwrap_or(false)),
             raw_data: data,
         }
     }
