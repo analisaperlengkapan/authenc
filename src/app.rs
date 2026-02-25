@@ -639,6 +639,42 @@ impl AppState {
             env_configs.push((authenc_services::services::social::SocialProvider::Microsoft, microsoft_config));
         }
 
+        // Register Apple provider if configured
+        if let (Ok(client_id), Ok(team_id), Ok(key_id), Ok(private_key_path_or_content)) = (
+            std::env::var("APPLE_CLIENT_ID"),
+            std::env::var("APPLE_TEAM_ID"),
+            std::env::var("APPLE_KEY_ID"),
+            std::env::var("APPLE_PRIVATE_KEY"),
+        ) {
+            // Check if it's a file path
+            let private_key = if std::path::Path::new(&private_key_path_or_content).exists() {
+                std::fs::read_to_string(&private_key_path_or_content).unwrap_or_else(|_| private_key_path_or_content.clone())
+            } else {
+                private_key_path_or_content
+            };
+
+            let apple_config = authenc_services::services::social::OAuthConfig {
+                client_id,
+                client_secret: "".to_string(), // Unused for Apple
+                redirect_uri: std::env::var("APPLE_REDIRECT_URI")
+                    .unwrap_or_else(|_| "http://localhost:3000/auth/social/callback".to_string()),
+                authorization_url: "https://appleid.apple.com/auth/authorize".to_string(),
+                token_url: "https://appleid.apple.com/auth/token".to_string(),
+                // Not used for Apple as we get info from ID token, but kept for compatibility
+                user_info_url: "https://appleid.apple.com/auth/token".to_string(),
+                scopes: vec![
+                    "name".to_string(),
+                    "email".to_string(),
+                ],
+                provider: authenc_services::services::social::SocialProvider::Apple,
+                team_id: Some(team_id),
+                key_id: Some(key_id),
+                private_key: Some(private_key),
+            };
+            social_manager.register_provider(apple_config.clone());
+            env_configs.push((authenc_services::services::social::SocialProvider::Apple, apple_config));
+        }
+
         // Sync configs to DB
         // We spawn this as a background task or run it here. Running it here might block startup slightly
         // but ensures consistency. However, `sync_env_configs_to_db` is async and we are in async context.

@@ -7,13 +7,16 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use chrono::{Utc, Duration};
+use base64::Engine;
 use self::state_store::SocialStateStore;
 pub use state_store::SocialLoginState;
 
 // Re-export SocialProvider from models
 pub use authenc_models::models::social_account::SocialProvider;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct OAuthConfig {
     /// OAuth client ID
     pub client_id: String,
@@ -31,6 +34,30 @@ pub struct OAuthConfig {
     pub scopes: Vec<String>,
     /// Social provider type
     pub provider: SocialProvider,
+    /// Apple Team ID (for Apple Sign In)
+    pub team_id: Option<String>,
+    /// Apple Key ID (for Apple Sign In)
+    pub key_id: Option<String>,
+    /// Apple Private Key (for Apple Sign In)
+    pub private_key: Option<String>,
+}
+
+impl std::fmt::Debug for OAuthConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OAuthConfig")
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"[REDACTED]")
+            .field("redirect_uri", &self.redirect_uri)
+            .field("authorization_url", &self.authorization_url)
+            .field("token_url", &self.token_url)
+            .field("user_info_url", &self.user_info_url)
+            .field("scopes", &self.scopes)
+            .field("provider", &self.provider)
+            .field("team_id", &self.team_id.as_ref().map(|_| "[REDACTED]"))
+            .field("key_id", &self.key_id.as_ref().map(|_| "[REDACTED]"))
+            .field("private_key", &self.private_key.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 /// Social user profile from provider
@@ -82,7 +109,7 @@ pub trait SocialLoginService: Send + Sync {
     /// Get user profile from provider
     async fn get_user_profile(
         &self,
-        access_token: &str,
+        token_response: &OAuthTokenResponse,
         config: &OAuthConfig,
     ) -> Result<SocialUserProfile, String>;
 }
@@ -193,6 +220,33 @@ impl SocialLoginManager {
         Ok(url.to_string())
     }
 
+    /// Generate Apple client secret (JWT)
+    fn generate_apple_client_secret(&self, config: &OAuthConfig) -> Result<String, String> {
+        let team_id = config.team_id.as_ref().ok_or("Missing Apple Team ID")?;
+        let key_id = config.key_id.as_ref().ok_or("Missing Apple Key ID")?;
+        let private_key_pem = config.private_key.as_ref().ok_or("Missing Apple Private Key")?;
+
+        let now = Utc::now();
+        let expiration = now + Duration::days(180); // Max 6 months
+
+        let claims = serde_json::json!({
+            "iss": team_id,
+            "iat": now.timestamp(),
+            "exp": expiration.timestamp(),
+            "aud": "https://appleid.apple.com",
+            "sub": config.client_id,
+        });
+
+        let mut header = Header::new(Algorithm::ES256);
+        header.kid = Some(key_id.clone());
+
+        let key = EncodingKey::from_ec_pem(private_key_pem.as_bytes())
+            .map_err(|e| format!("Invalid Apple Private Key: {}", e))?;
+
+        encode(&header, &claims, &key)
+            .map_err(|e| format!("Failed to sign Apple client secret: {}", e))
+    }
+
     /// Validate and consume OAuth state parameter
     pub async fn validate_and_consume_state(&self, state: &str) -> Result<state_store::SocialLoginState, String> {
         let session = self.store.validate_and_consume_state(state)
@@ -231,7 +285,7 @@ impl SocialLoginService for SocialLoginManager {
 
         // Get user profile
         let profile = self
-            .get_user_profile(&token_response.access_token, &config)
+            .get_user_profile(&token_response, &config)
             .await?;
 
         Ok((profile, session))
@@ -244,7 +298,14 @@ impl SocialLoginService for SocialLoginManager {
     ) -> Result<OAuthTokenResponse, String> {
         let mut params = HashMap::new();
         params.insert("client_id", config.client_id.clone());
-        params.insert("client_secret", config.client_secret.clone());
+
+        if config.provider == SocialProvider::Apple {
+            let client_secret = self.generate_apple_client_secret(config)?;
+            params.insert("client_secret", client_secret);
+        } else {
+            params.insert("client_secret", config.client_secret.clone());
+        }
+
         params.insert("code", code.to_string());
         params.insert("grant_type", "authorization_code".to_string());
         params.insert("redirect_uri", config.redirect_uri.clone());
@@ -275,28 +336,48 @@ impl SocialLoginService for SocialLoginManager {
 
     async fn get_user_profile(
         &self,
-        access_token: &str,
+        token_response: &OAuthTokenResponse,
         config: &OAuthConfig,
     ) -> Result<SocialUserProfile, String> {
-        let response = self
-            .http_client
-            .get(&config.user_info_url)
-            .bearer_auth(access_token)
-            .send()
-            .await
-            .map_err(|e| format!("User info request failed: {}", e))?;
+        let user_data: serde_json::Value = if config.provider == SocialProvider::Apple {
+            // For Apple, we extract info from ID Token
+            let id_token = token_response.id_token.as_ref()
+                .ok_or_else(|| "Missing ID token for Apple login".to_string())?;
 
-        if !response.status().is_success() {
-            return Err(format!(
-                "User info request failed with status: {}",
-                response.status()
-            ));
-        }
+            // We use insecure decode because we just received this token from Apple's token endpoint
+            // over TLS, so we trust it. Proper validation would require fetching Apple's JWKS.
+            let parts: Vec<&str> = id_token.split('.').collect();
+            if parts.len() != 3 {
+                return Err("Invalid ID token format".to_string());
+            }
 
-        let user_data: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse user info: {}", e))?;
+            let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(parts[1])
+                .map_err(|e| format!("Failed to decode Apple ID token payload: {}", e))?;
+
+            serde_json::from_slice::<serde_json::Value>(&decoded)
+                .map_err(|e| format!("Failed to parse Apple ID token JSON: {}", e))?
+        } else {
+            let response = self
+                .http_client
+                .get(&config.user_info_url)
+                .bearer_auth(&token_response.access_token)
+                .send()
+                .await
+                .map_err(|e| format!("User info request failed: {}", e))?;
+
+            if !response.status().is_success() {
+                return Err(format!(
+                    "User info request failed with status: {}",
+                    response.status()
+                ));
+            }
+
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse user info: {}", e))?
+        };
 
         // Parse user profile based on provider
         let profile = match config.provider {
@@ -454,16 +535,19 @@ impl SocialLoginManager {
 
     /// Parse Apple user profile
     fn parse_apple_profile(&self, data: serde_json::Value) -> SocialUserProfile {
+        // Apple ID tokens do not contain name information. Name is only sent in the first POST request.
+        // For now, we fallback to email as the name, or None.
         SocialUserProfile {
             provider: SocialProvider::Apple,
             provider_user_id: data["sub"].as_str().unwrap_or("").to_string(),
             email: data["email"].as_str().map(|s| s.to_string()),
-            name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
-            first_name: data["name"]["firstName"].as_str().map(|s| s.to_string()),
-            last_name: data["name"]["lastName"].as_str().map(|s| s.to_string()),
+            name: data["email"].as_str().map(|s| s.to_string()),
+            first_name: None,
+            last_name: None,
             picture_url: None,
             locale: None,
-            verified_email: data["email_verified"].as_bool().unwrap_or(false),
+            verified_email: data["email_verified"].as_bool().unwrap_or(false)
+                || data["email_verified"].as_str().map(|s| s == "true").unwrap_or(false),
             raw_data: data,
         }
     }
