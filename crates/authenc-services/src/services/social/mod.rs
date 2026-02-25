@@ -199,6 +199,12 @@ impl SocialLoginManager {
             .append_pair("scope", &config.scopes.join(" "))
             .append_pair("state", &state);
 
+        // Apple requires response_mode=form_post for web-based Sign In
+        if config.provider == SocialProvider::Apple {
+            url.query_pairs_mut()
+                .append_pair("response_mode", "form_post");
+        }
+
         Ok(url.to_string())
     }
 
