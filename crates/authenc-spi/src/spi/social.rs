@@ -580,7 +580,7 @@ impl DefaultSocialProvider {
                 .to_string(),
             email: data["email"].as_str().map(|s| s.to_string()),
             display_name: data["name"].as_str().map(|s| s.to_string()),
-            first_name: data["name"].as_str().map(|s| s.to_string()),
+            first_name: None,
             last_name: None,
             username: data["username"].as_str().map(|s| s.to_string()),
             picture_url: data["profile_image_url"].as_str().map(|s| s.to_string()),
