@@ -78,6 +78,8 @@ impl AxumApp {
                 "/metrics".to_string(),
                 "/.well-known/".to_string(), // OIDC discovery endpoints
                 "/api/v1/csrf/token".to_string(), // CSRF token endpoint
+                "/auth/forgot-password".to_string(),
+                "/auth/reset-password".to_string(),
             ],
         };
         let csrf_state = Arc::new(CsrfState::new(csrf_config));
