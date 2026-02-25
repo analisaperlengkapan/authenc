@@ -53,7 +53,7 @@ http-body-util = "0.1.2"
 axum = { version = "0.8.1", features = ["http1", "http2", "json", "macros"] }
 axum-extra = { version = "0.10.0", features = ["cookie"] }
 tower = { version = "0.5.2", features = ["util", "timeout", "load-shed", "limit"] }
-tower-http = { version = "0.6.2", features = ["cors", "trace", "compression-br", "add-extension"] }
+tower-http = { version = "0.6.2", features = ["cors", "trace", "compression-br", "add-extension", "fs"] }
 hyper = { version = "1.5.1", features = ["full"] }
 reqwest = { version = "0.12.12", features = ["json"] }
 

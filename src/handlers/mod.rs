@@ -4,6 +4,7 @@ use axum::{
     routing::{get, post},
 };
 use std::sync::Arc;
+use tower_http::services::ServeDir;
 
 // Database
 use crate::app::AppState;
@@ -319,7 +320,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/oid4vc",
             oid4vc::create_oid4vc_router().with_state(state.clone()),
         )
-        .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()));
+        .nest("/vp", oid4vc::create_vp_router().with_state(state.clone()))
+        .fallback_service(ServeDir::new("static"));
 
     router.with_state(state)
 }
