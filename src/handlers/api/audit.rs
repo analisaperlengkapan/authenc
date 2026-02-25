@@ -41,9 +41,13 @@ pub struct AuditLogResponse {
 /// Add a new audit log entry to the specified realm
 pub async fn add_audit_log(
     State(store): State<Arc<PgAuditLogStore>>,
-    Path(_realm): Path<String>,
+    _auth: AuthBearer, // Ensure authentication for writing logs
+    Path(_realm): Path<String>, // Realm parameter currently unused due to backend schema limitations
     Json(req): Json<CreateAuditLogRequest>,
 ) -> Result<StatusCode, StatusCode> {
+    // Note: 'target' field from request is currently unused as AuditLog model lacks a corresponding field.
+    // This is a known limitation to be addressed in a future schema update.
+
     let log = AuditLog {
         timestamp: Utc::now(),
         event: req.action,
