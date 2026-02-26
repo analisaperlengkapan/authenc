@@ -570,7 +570,7 @@
             document.getElementById('edit-phone').value = user.phone_number || '';
             document.getElementById('edit-enabled').checked = user.enabled;
             document.getElementById('edit-email-verified').checked = user.email_verified;
-            document.getElementById('edit-require-password-change').checked = user.require_password_change;
+            document.getElementById('edit-require-password-change').checked = false;
             document.getElementById('edit-user-error').style.display = 'none';
         }
 
@@ -587,9 +587,9 @@
             const payload = {
                 username: document.getElementById('edit-username').value,
                 email: document.getElementById('edit-email').value,
-                first_name: document.getElementById('edit-first-name').value || null,
-                last_name: document.getElementById('edit-last-name').value || null,
-                phone_number: document.getElementById('edit-phone').value || null,
+                first_name: document.getElementById('edit-first-name').value || "",
+                last_name: document.getElementById('edit-last-name').value || "",
+                phone_number: document.getElementById('edit-phone').value || "",
                 enabled: document.getElementById('edit-enabled').checked,
                 email_verified: document.getElementById('edit-email-verified').checked,
                 require_password_change: document.getElementById('edit-require-password-change').checked

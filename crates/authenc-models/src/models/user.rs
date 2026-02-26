@@ -44,6 +44,7 @@ pub struct User {
     /// Whether the phone number has been verified
     pub phone_verified: bool,
     /// Hashed password for authentication
+    #[serde(skip_serializing)]
     pub password_hash: Option<String>,
     /// TOTP secret for two-factor authentication
     pub totp_secret: Option<String>,

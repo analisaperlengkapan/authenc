@@ -46,15 +46,23 @@ pub async fn get_users(
 pub async fn get_user_by_id(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path((_realm, id)): Path<(String, String)>,
+    Path((realm, id)): Path<(String, String)>,
 ) -> Result<Json<User>, StatusCode> {
     let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+
     let user = state
         .user_store
         .get_user(user_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    user.ok_or(StatusCode::NOT_FOUND).map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    if user.realm_id != Some(realm_id) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    Ok(Json(user))
 }
 #[derive(Deserialize)]
 /// Request payload for creating a new user account
@@ -97,14 +105,14 @@ pub async fn create_user(
         attributes: None,
     };
 
+    let realm_id = request.realm_id.ok_or(StatusCode::BAD_REQUEST)?;
+
     // Store the user
     let created_user = state
         .user_store
         .add_user(model_request)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let realm_id = request.realm_id.ok_or(StatusCode::BAD_REQUEST)?;
 
     // Fire admin event for user creation
     let auth_details = crate::models::events::AuthDetails {
