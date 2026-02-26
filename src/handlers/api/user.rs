@@ -143,6 +143,18 @@ pub struct UpdateUserRequest {
     pub username: Option<String>,
     /// Optional new email address for the user
     pub email: Option<String>,
+    /// Optional new first name for the user
+    pub first_name: Option<String>,
+    /// Optional new last name for the user
+    pub last_name: Option<String>,
+    /// Optional new phone number for the user
+    pub phone_number: Option<String>,
+    /// Whether the user account is enabled
+    pub enabled: Option<bool>,
+    /// Whether the email address has been verified
+    pub email_verified: Option<bool>,
+    /// Whether the user must change their password on next login
+    pub require_password_change: Option<bool>,
 }
 
 /// Update an existing user's information in the specified realm
@@ -158,13 +170,13 @@ pub async fn update_user(
     let update_request = crate::models::user::UpdateUserRequest {
         username: req.username,
         email: req.email,
-        first_name: None,
-        last_name: None,
-        phone_number: None,
-        enabled: None,
-        email_verified: None,
+        first_name: req.first_name,
+        last_name: req.last_name,
+        phone_number: req.phone_number,
+        enabled: req.enabled,
+        email_verified: req.email_verified,
         phone_verified: None,
-        require_password_change: None,
+        require_password_change: req.require_password_change,
         attributes: None,
     };
 
