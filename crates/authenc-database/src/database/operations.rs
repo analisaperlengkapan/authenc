@@ -1958,7 +1958,7 @@ pub mod users {
                     &false,                         // require_password_change
                     &organization_id,
                     &request.attributes,
-                    &false, // email_verified - default to false for security
+                    &request.email_verified.unwrap_or(false), // email_verified
                     &true, // enabled
                     &realm_id,
                     &false, // federated (default to false for regular user creation)
@@ -2666,7 +2666,7 @@ pub mod users {
                     &[
                         &user_req.username,
                         &user_req.email,
-                        &false, // email_verified - default false
+                    &user_req.email_verified.unwrap_or(false), // email_verified
                         &user_req.first_name,
                         &user_req.last_name,
                         &user_req.phone_number,

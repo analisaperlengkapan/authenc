@@ -556,6 +556,8 @@ pub struct CreateUserRequest {
     pub last_name: Option<String>,
     /// Phone number of the user
     pub phone_number: Option<String>,
+    /// Whether the email address is verified (defaults to false if not specified)
+    pub email_verified: Option<bool>,
     /// ID of the realm to create the user in
     pub realm_id: Option<Uuid>,
     /// ID of the organization to assign the user to

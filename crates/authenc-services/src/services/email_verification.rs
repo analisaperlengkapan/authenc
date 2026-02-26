@@ -74,6 +74,12 @@ impl EmailVerificationService {
         #[cfg(debug_assertions)]
         println!("*** EMAIL SIMULATION: Verify {} - Token: {} ***", email, token);
 
+        #[cfg(not(debug_assertions))]
+        tracing::warn!(
+            "Email verification simulated for {}. Token not sent (Email service not configured).",
+            email
+        );
+
         Ok(())
     }
 
