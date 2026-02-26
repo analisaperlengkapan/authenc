@@ -1958,7 +1958,7 @@ pub mod users {
                     &false,                         // require_password_change
                     &organization_id,
                     &request.attributes,
-                    &true, // email_verified
+                    &false, // email_verified - default to false for security
                     &true, // enabled
                     &realm_id,
                     &false, // federated (default to false for regular user creation)
@@ -2366,7 +2366,7 @@ pub mod users {
                 verification_token_hash = NULL,
                 verification_token_expires_at = NULL,
                 updated_at = $2
-            WHERE id = $1 AND verification_token_hash = $3 AND enabled = true AND verification_token_expires_at > $2
+            WHERE id = $1 AND verification_token_hash = $3 AND enabled = true
         "#;
         let rows_affected = db
             .execute(query, &[&user_id, &now, &token_hash])
