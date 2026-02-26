@@ -2366,7 +2366,7 @@ pub mod users {
                 verification_token_hash = NULL,
                 verification_token_expires_at = NULL,
                 updated_at = $2
-            WHERE id = $1 AND verification_token_hash = $3 AND enabled = true
+            WHERE id = $1 AND verification_token_hash = $3 AND enabled = true AND verification_token_expires_at > $2
         "#;
         let rows_affected = db
             .execute(query, &[&user_id, &now, &token_hash])
