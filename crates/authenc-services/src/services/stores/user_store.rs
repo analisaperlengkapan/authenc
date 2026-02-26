@@ -123,4 +123,25 @@ impl UserStoreTrait for UserStore {
     ) -> Result<(), AuthencError> {
         operations::users::reset_password_transaction(&self.database, user_id, &password_hash, &token_hash).await
     }
+
+    async fn set_verification_token(
+        &self,
+        user_id: Uuid,
+        token_hash: Option<String>,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<(), AuthencError> {
+        operations::users::set_verification_token(&self.database, user_id, token_hash, expires_at).await
+    }
+
+    async fn get_user_by_verification_token(&self, token_hash: &str) -> Result<Option<User>, AuthencError> {
+        operations::users::get_user_by_verification_token(&self.database, token_hash).await
+    }
+
+    async fn verify_email_transaction(
+        &self,
+        user_id: Uuid,
+        token_hash: String,
+    ) -> Result<(), AuthencError> {
+        operations::users::verify_email_transaction(&self.database, user_id, &token_hash).await
+    }
 }

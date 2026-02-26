@@ -1958,7 +1958,7 @@ pub mod users {
                     &false,                         // require_password_change
                     &organization_id,
                     &request.attributes,
-                    &true, // email_verified
+                    &request.email_verified.unwrap_or(false), // email_verified
                     &true, // enabled
                     &realm_id,
                     &false, // federated (default to false for regular user creation)
@@ -2004,6 +2004,8 @@ pub mod users {
             login_count: row.get("login_count"),
             reset_token_hash: None,
             reset_token_expires_at: None,
+            verification_token_hash: None,
+            verification_token_expires_at: None,
         };
 
         Ok(user)
@@ -2058,6 +2060,8 @@ pub mod users {
             login_count: r.get("login_count"),
             reset_token_hash: None,
             reset_token_expires_at: None,
+            verification_token_hash: r.try_get("verification_token_hash").ok().flatten(),
+            verification_token_expires_at: r.try_get("verification_token_expires_at").ok().flatten(),
         }))
     }
 
@@ -2114,6 +2118,8 @@ pub mod users {
             login_count: r.get("login_count"),
             reset_token_hash: None,
             reset_token_expires_at: None,
+            verification_token_hash: r.try_get("verification_token_hash").ok().flatten(),
+            verification_token_expires_at: r.try_get("verification_token_expires_at").ok().flatten(),
         }))
     }
 
@@ -2303,6 +2309,76 @@ pub mod users {
         Ok(())
     }
 
+    /// Set verification token for a user
+    pub async fn set_verification_token(
+        db: &Database,
+        user_id: Uuid,
+        token_hash: Option<String>,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<()> {
+        let now = Utc::now();
+        let query = r#"
+            UPDATE users SET
+                verification_token_hash = $2,
+                verification_token_expires_at = $3,
+                updated_at = $4
+            WHERE id = $1
+        "#;
+        db.execute(query, &[&user_id, &token_hash, &expires_at, &now])
+            .await?;
+        Ok(())
+    }
+
+    /// Get user by verification token
+    pub async fn get_user_by_verification_token(
+        db: &Database,
+        token_hash: &str,
+    ) -> Result<Option<User>> {
+        let query = r#"
+            SELECT
+                id, username, email, email_verified, first_name, last_name,
+                phone_number, phone_verified, password_hash, totp_secret,
+                totp_backup_codes, webauthn_enabled, account_locked,
+                account_locked_until, failed_login_attempts, last_login_at,
+                last_failed_login_at, password_changed_at, password_expires_at,
+                require_password_change, realm_id, organization_id, attributes,
+                enabled, federated, created_at, updated_at, deleted_at, login_count,
+                reset_token_hash, reset_token_expires_at,
+                verification_token_hash, verification_token_expires_at
+            FROM users
+            WHERE verification_token_hash = $1 AND deleted_at IS NULL AND enabled = true
+        "#;
+
+        let row_opt = db.query_opt(query, &[&token_hash]).await?;
+        Ok(row_opt.map(|r| row_to_user(&r)))
+    }
+
+    /// Verify email and clear token atomically
+    pub async fn verify_email_transaction(
+        db: &Database,
+        user_id: Uuid,
+        token_hash: &str,
+    ) -> Result<()> {
+        let now = Utc::now();
+        let query = r#"
+            UPDATE users SET
+                email_verified = true,
+                verification_token_hash = NULL,
+                verification_token_expires_at = NULL,
+                updated_at = $2
+            WHERE id = $1 AND verification_token_hash = $3 AND enabled = true
+        "#;
+        let rows_affected = db
+            .execute(query, &[&user_id, &now, &token_hash])
+            .await?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::validation("Verification token invalid"));
+        }
+
+        Ok(())
+    }
+
     /// Set password reset token for a user
     pub async fn set_reset_token(
         db: &Database,
@@ -2409,6 +2485,8 @@ pub mod users {
             login_count: row.get("login_count"),
             reset_token_hash: row.try_get("reset_token_hash").ok().flatten(),
             reset_token_expires_at: row.try_get("reset_token_expires_at").ok().flatten(),
+            verification_token_hash: row.try_get("verification_token_hash").ok().flatten(),
+            verification_token_expires_at: row.try_get("verification_token_expires_at").ok().flatten(),
         }
     }
 
@@ -2466,6 +2544,8 @@ pub mod users {
                 login_count: row.get("login_count"),
             reset_token_hash: None,
                 reset_token_expires_at: None,
+            verification_token_hash: row.try_get("verification_token_hash").ok().flatten(),
+            verification_token_expires_at: row.try_get("verification_token_expires_at").ok().flatten(),
             });
         }
 
@@ -2526,6 +2606,8 @@ pub mod users {
                 login_count: row.get("login_count"),
             reset_token_hash: None,
                 reset_token_expires_at: None,
+            verification_token_hash: row.try_get("verification_token_hash").ok().flatten(),
+            verification_token_expires_at: row.try_get("verification_token_expires_at").ok().flatten(),
             });
         }
 
@@ -2584,7 +2666,7 @@ pub mod users {
                     &[
                         &user_req.username,
                         &user_req.email,
-                        &false, // email_verified - default false
+                    &user_req.email_verified.unwrap_or(false), // email_verified
                         &user_req.first_name,
                         &user_req.last_name,
                         &user_req.phone_number,

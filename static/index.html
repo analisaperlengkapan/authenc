@@ -211,6 +211,20 @@
         </div>
     </div>
 
+    <div id="verify-email-view" class="container hidden">
+        <div class="card">
+            <h1 style="text-align: center;">Verify Email</h1>
+            <p style="text-align: center; color: var(--text-light);">Verifying your email address...</p>
+            <div id="verify-email-loading" style="text-align: center; margin: 2rem 0;">
+                <div class="spinner"></div> <!-- CSS spinner would be nice but text is fine -->
+                Processing...
+            </div>
+            <div id="verify-email-message" class="error-message" style="color: var(--success); display: none; text-align: center;"></div>
+            <div id="verify-email-error" class="error-message"></div>
+            <button type="button" onclick="showLogin()" style="margin-top: 1rem;">Back to Login</button>
+        </div>
+    </div>
+
     <div id="dashboard-view" class="container hidden">
         <div class="card dashboard-card">
             <div class="header">
@@ -267,9 +281,12 @@
         // Init
         const urlParams = new URLSearchParams(window.location.search);
         const resetToken = urlParams.get('token'); // Look for ?token=... (from email link)
+        const verificationToken = urlParams.get('verification_token');
 
         if (resetToken) {
             showResetPassword(resetToken);
+        } else if (verificationToken) {
+            verifyEmail(verificationToken);
         } else if (token) {
             showDashboard();
         } else {
@@ -282,6 +299,7 @@
             document.getElementById('dashboard-view').classList.add('hidden');
             document.getElementById('forgot-password-view').classList.add('hidden');
             document.getElementById('reset-password-view').classList.add('hidden');
+            document.getElementById('verify-email-view').classList.add('hidden');
         }
 
         function showLogin() {
@@ -326,6 +344,40 @@
             token = null;
             currentUser = null;
             showLogin();
+        }
+
+        async function verifyEmail(tokenVal) {
+            hideAllViews();
+            document.getElementById('verify-email-view').classList.remove('hidden');
+            const msgDiv = document.getElementById('verify-email-message');
+            const errorDiv = document.getElementById('verify-email-error');
+            const loadingDiv = document.getElementById('verify-email-loading');
+
+            msgDiv.style.display = 'none';
+            errorDiv.style.display = 'none';
+            loadingDiv.style.display = 'block';
+
+            try {
+                const response = await fetch('/auth/verify-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: tokenVal })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    msgDiv.textContent = data.message || "Email verified successfully.";
+                    msgDiv.style.display = 'block';
+                } else {
+                    throw new Error(data.error || 'Verification failed');
+                }
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+            } finally {
+                loadingDiv.style.display = 'none';
+            }
         }
 
         // API Calls
@@ -497,6 +549,29 @@
                 // Email
                 const tdEmail = document.createElement('td');
                 tdEmail.textContent = user.email || '-';
+                if (!user.email_verified) {
+                    const btnVerify = document.createElement('button');
+                    btnVerify.style.fontSize = '0.7rem';
+                    btnVerify.style.marginLeft = '0.5rem';
+                    btnVerify.style.width = 'auto';
+                    btnVerify.style.padding = '0.1rem 0.3rem';
+                    btnVerify.textContent = 'Verify';
+                    btnVerify.onclick = async function() {
+                        try {
+                            const res = await fetch(`${API_BASE}/auth/request-verification`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`
+                                },
+                                body: JSON.stringify({ email: user.email, realm_id: user.realm_id })
+                            });
+                            const d = await res.json();
+                            alert(d.message || d.error);
+                        } catch(e) { alert(e); }
+                    };
+                    tdEmail.appendChild(btnVerify);
+                }
                 tr.appendChild(tdEmail);
 
                 // Status
