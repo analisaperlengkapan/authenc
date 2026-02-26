@@ -91,7 +91,7 @@ pub async fn create_user(
         password: Some(request.password),
         first_name: request.first_name,
         last_name: request.last_name,
-        phone_number: None,
+        phone_number: request.phone_number,
         realm_id: request.realm_id,
         organization_id: None,
         attributes: None,
@@ -165,6 +165,19 @@ pub async fn update_user(
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<StatusCode, StatusCode> {
     let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Check if user exists and belongs to the realm
+    let user = state
+        .user_store
+        .get_user(user_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    if user.realm_id != Some(realm_id) {
+        return Err(StatusCode::FORBIDDEN);
+    }
 
     // Create update request for the model
     let update_request = crate::models::user::UpdateUserRequest {
