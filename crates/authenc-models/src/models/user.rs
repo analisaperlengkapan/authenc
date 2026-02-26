@@ -47,8 +47,10 @@ pub struct User {
     #[serde(skip_serializing)]
     pub password_hash: Option<String>,
     /// TOTP secret for two-factor authentication
+    #[serde(skip_serializing)]
     pub totp_secret: Option<String>,
     /// Backup codes for TOTP recovery
+    #[serde(skip_serializing)]
     pub totp_backup_codes: Option<Vec<String>>,
     /// Whether WebAuthn is enabled for this user
     pub webauthn_enabled: bool,
