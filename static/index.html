@@ -569,8 +569,8 @@
             document.getElementById('edit-last-name').value = user.last_name || '';
             document.getElementById('edit-phone').value = user.phone_number || '';
             document.getElementById('edit-enabled').checked = user.enabled;
+            document.getElementById('edit-email-verified').checked = user.email_verified;
             document.getElementById('edit-require-password-change').checked = user.require_password_change;
-            document.getElementById('edit-require-password-change').checked = false;
             document.getElementById('edit-user-error').style.display = 'none';
         }
 
