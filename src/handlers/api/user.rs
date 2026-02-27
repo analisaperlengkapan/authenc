@@ -110,6 +110,9 @@ pub async fn create_user(
         first_name: request.first_name,
         last_name: request.last_name,
         phone_number: request.phone_number,
+        email_verified: request.email_verified,
+        enabled: request.enabled,
+        require_password_change: request.require_password_change,
         realm_id: Some(realm_id),
         organization_id: None,
         attributes: None,
@@ -268,7 +271,9 @@ pub async fn delete_user(
     }
 
     // Prevent self-deletion
-    if auth.sub == user_id.to_string() {
+    // Compare Uuids if possible to avoid string format mismatches
+    let auth_user_id = Uuid::parse_str(&auth.sub).unwrap_or_default();
+    if auth_user_id == user_id {
         return Err(StatusCode::FORBIDDEN);
     }
 
