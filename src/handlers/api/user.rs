@@ -59,7 +59,7 @@ pub async fn get_user_by_id(
         .ok_or(StatusCode::NOT_FOUND)?;
 
     if user.realm_id != Some(realm_id) {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(StatusCode::NOT_FOUND);
     }
 
     Ok(Json(user))
@@ -90,8 +90,18 @@ pub struct CreateUserRequest {
 pub async fn create_user(
     State(state): State<Arc<AppState>>,
     AuthBearer(auth): AuthBearer,
+    Path(realm): Path<String>,
     Json(request): Json<CreateUserRequest>,
 ) -> Result<Json<User>, StatusCode> {
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Validate that request body realm_id matches path realm_id if present
+    if let Some(req_realm_id) = request.realm_id {
+        if req_realm_id != realm_id {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+
     // Convert handler request to model request
     let model_request = user::CreateUserRequest {
         username: request.username,
@@ -100,12 +110,10 @@ pub async fn create_user(
         first_name: request.first_name,
         last_name: request.last_name,
         phone_number: request.phone_number,
-        realm_id: request.realm_id,
+        realm_id: Some(realm_id),
         organization_id: None,
         attributes: None,
     };
-
-    let realm_id = request.realm_id.ok_or(StatusCode::BAD_REQUEST)?;
 
     // Store the user
     let created_user = state
@@ -184,7 +192,7 @@ pub async fn update_user(
         .ok_or(StatusCode::NOT_FOUND)?;
 
     if user.realm_id != Some(realm_id) {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(StatusCode::NOT_FOUND);
     }
 
     // Create update request for the model
@@ -256,6 +264,11 @@ pub async fn delete_user(
         .ok_or(StatusCode::NOT_FOUND)?;
 
     if user.realm_id != Some(realm_id) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // Prevent self-deletion
+    if auth.sub == user_id.to_string() {
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -326,7 +339,7 @@ pub async fn update_password(
 
     // Check if user belongs to the realm
     if user.realm_id != Some(realm_id) {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(StatusCode::NOT_FOUND);
     }
 
     // Verify old password if user has a password hash

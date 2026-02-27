@@ -338,14 +338,12 @@
         }
 
         // View Management
-        // View Management
         function hideAllViews() {
             document.getElementById('login-view').classList.add('hidden');
             document.getElementById('dashboard-view').classList.add('hidden');
             document.getElementById('forgot-password-view').classList.add('hidden');
             document.getElementById('reset-password-view').classList.add('hidden');
             document.getElementById('verify-email-view').classList.add('hidden');
-            document.getElementById('edit-user-modal').classList.add('hidden');
         }
 
         function showLogin() {
@@ -589,9 +587,9 @@
             const payload = {
                 username: document.getElementById('edit-username').value,
                 email: document.getElementById('edit-email').value,
-                first_name: document.getElementById('edit-first-name').value || null,
-                last_name: document.getElementById('edit-last-name').value || null,
-                phone_number: document.getElementById('edit-phone').value || null,
+                first_name: document.getElementById('edit-first-name').value || "",
+                last_name: document.getElementById('edit-last-name').value || "",
+                phone_number: document.getElementById('edit-phone').value || "",
                 enabled: document.getElementById('edit-enabled').checked,
                 email_verified: document.getElementById('edit-email-verified').checked,
                 require_password_change: document.getElementById('edit-require-password-change').checked
