@@ -627,6 +627,8 @@ pub struct UserResponse {
     pub realm_id: Option<Uuid>,
     /// ID of the organization this user belongs to
     pub organization_id: Option<Uuid>,
+    /// Whether the user must change their password on next login
+    pub require_password_change: bool,
     /// Whether the user account is enabled
     pub enabled: bool,
     /// Timestamp when the user was created
@@ -814,6 +816,7 @@ impl From<User> for UserResponse {
             last_login_at: user.last_login_at,
             realm_id: user.realm_id,
             organization_id: user.organization_id,
+            require_password_change: user.require_password_change,
             enabled: user.enabled,
             created_at: user.created_at,
             updated_at: user.updated_at,
