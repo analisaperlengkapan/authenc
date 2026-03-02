@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::handlers::api::auth_bearer::AuthBearer;
-use authenc_models::models::user::{self, User};
+use authenc_models::models::user::{self, User, UserResponse};
 use authenc_services::services::stores::user_store::UserStoreTrait;
 use axum::{
     Router,
@@ -32,29 +32,38 @@ pub async fn get_users(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
     Path(realm): Path<String>,
-) -> Result<Json<Vec<User>>, StatusCode> {
+) -> Result<Json<Vec<UserResponse>>, StatusCode> {
     let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
     let users = state
         .user_store
         .get_users_by_realm(realm_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(users))
+    let response_users = users.into_iter().map(UserResponse::from).collect();
+    Ok(Json(response_users))
 }
 
 /// Get a specific user by ID in the specified realm
 pub async fn get_user_by_id(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
-    Path((_realm, id)): Path<(String, String)>,
-) -> Result<Json<User>, StatusCode> {
+    Path((realm, id)): Path<(String, String)>,
+) -> Result<Json<UserResponse>, StatusCode> {
     let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+
     let user = state
         .user_store
         .get_user(user_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    user.ok_or(StatusCode::NOT_FOUND).map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    if user.realm_id != Some(realm_id) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    Ok(Json(UserResponse::from(user)))
 }
 #[derive(Deserialize)]
 /// Request payload for creating a new user account
@@ -75,6 +84,8 @@ pub struct CreateUserRequest {
     pub phone_number: Option<String>,
     /// Whether the user account should be enabled upon creation
     pub enabled: Option<bool>,
+    /// Whether the email address has been verified
+    pub email_verified: Option<bool>,
     /// Whether the user must change their password on first login
     pub require_password_change: Option<bool>,
 }
@@ -82,8 +93,18 @@ pub struct CreateUserRequest {
 pub async fn create_user(
     State(state): State<Arc<AppState>>,
     AuthBearer(auth): AuthBearer,
+    Path(realm): Path<String>,
     Json(request): Json<CreateUserRequest>,
-) -> Result<Json<User>, StatusCode> {
+) -> Result<Json<UserResponse>, StatusCode> {
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Validate that request body realm_id matches path realm_id if present
+    if let Some(req_realm_id) = request.realm_id {
+        if req_realm_id != realm_id {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+
     // Convert handler request to model request
     let model_request = user::CreateUserRequest {
         username: request.username,
@@ -91,8 +112,11 @@ pub async fn create_user(
         password: Some(request.password),
         first_name: request.first_name,
         last_name: request.last_name,
-        phone_number: None,
-        realm_id: request.realm_id,
+        phone_number: request.phone_number,
+        email_verified: request.email_verified,
+        enabled: request.enabled,
+        require_password_change: request.require_password_change,
+        realm_id: Some(realm_id),
         organization_id: None,
         attributes: None,
     };
@@ -103,8 +127,6 @@ pub async fn create_user(
         .add_user(model_request)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let realm_id = request.realm_id.ok_or(StatusCode::BAD_REQUEST)?;
 
     // Fire admin event for user creation
     let auth_details = crate::models::events::AuthDetails {
@@ -134,7 +156,7 @@ pub async fn create_user(
         tracing::error!("Failed to fire user creation admin event: {}", e);
     }
 
-    Ok(Json(created_user))
+    Ok(Json(UserResponse::from(created_user)))
 }
 #[derive(Deserialize)]
 /// Request payload for updating user information
@@ -143,6 +165,18 @@ pub struct UpdateUserRequest {
     pub username: Option<String>,
     /// Optional new email address for the user
     pub email: Option<String>,
+    /// Optional new first name for the user
+    pub first_name: Option<String>,
+    /// Optional new last name for the user
+    pub last_name: Option<String>,
+    /// Optional new phone number for the user
+    pub phone_number: Option<String>,
+    /// Whether the user account is enabled
+    pub enabled: Option<bool>,
+    /// Whether the email address has been verified
+    pub email_verified: Option<bool>,
+    /// Whether the user must change their password on next login
+    pub require_password_change: Option<bool>,
 }
 
 /// Update an existing user's information in the specified realm
@@ -153,18 +187,36 @@ pub async fn update_user(
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<StatusCode, StatusCode> {
     let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Check if user exists and belongs to the realm
+    let user = state
+        .user_store
+        .get_user(user_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    if user.realm_id != Some(realm_id) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // Prevent self-disabling
+    if req.enabled == Some(false) && (auth.sub == id || Uuid::parse_str(&auth.sub).ok() == Some(user_id)) {
+        return Err(StatusCode::FORBIDDEN);
+    }
 
     // Create update request for the model
     let update_request = crate::models::user::UpdateUserRequest {
         username: req.username,
         email: req.email,
-        first_name: None,
-        last_name: None,
-        phone_number: None,
-        enabled: None,
-        email_verified: None,
+        first_name: req.first_name,
+        last_name: req.last_name,
+        phone_number: req.phone_number,
+        enabled: req.enabled,
+        email_verified: req.email_verified,
         phone_verified: None,
-        require_password_change: None,
+        require_password_change: req.require_password_change,
         attributes: None,
     };
 
@@ -223,6 +275,12 @@ pub async fn delete_user(
         .ok_or(StatusCode::NOT_FOUND)?;
 
     if user.realm_id != Some(realm_id) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // Prevent self-deletion
+    // Compare as strings and, if possible, as UUIDs to ensure format mismatches don't bypass the check
+    if auth.sub == id || Uuid::parse_str(&auth.sub).ok() == Some(user_id) {
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -293,7 +351,7 @@ pub async fn update_password(
 
     // Check if user belongs to the realm
     if user.realm_id != Some(realm_id) {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(StatusCode::NOT_FOUND);
     }
 
     // Verify old password if user has a password hash

@@ -1955,11 +1955,11 @@ pub mod users {
                     &None::<chrono::DateTime<Utc>>, // last_failed_login_at
                     &None::<chrono::DateTime<Utc>>, // password_changed_at
                     &None::<chrono::DateTime<Utc>>, // password_expires_at
-                    &false,                         // require_password_change
+                    &request.require_password_change.unwrap_or(false), // require_password_change
                     &organization_id,
                     &request.attributes,
                     &request.email_verified.unwrap_or(false), // email_verified
-                    &true, // enabled
+                    &request.enabled.unwrap_or(true), // enabled
                     &realm_id,
                     &false, // federated (default to false for regular user creation)
                     &now,

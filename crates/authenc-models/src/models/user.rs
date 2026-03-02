@@ -44,10 +44,13 @@ pub struct User {
     /// Whether the phone number has been verified
     pub phone_verified: bool,
     /// Hashed password for authentication
+    #[serde(skip_serializing)]
     pub password_hash: Option<String>,
     /// TOTP secret for two-factor authentication
+    #[serde(skip_serializing)]
     pub totp_secret: Option<String>,
     /// Backup codes for TOTP recovery
+    #[serde(skip_serializing)]
     pub totp_backup_codes: Option<Vec<String>>,
     /// Whether WebAuthn is enabled for this user
     pub webauthn_enabled: bool,
@@ -558,6 +561,10 @@ pub struct CreateUserRequest {
     pub phone_number: Option<String>,
     /// Whether the email address is verified (defaults to false if not specified)
     pub email_verified: Option<bool>,
+    /// Whether the user account is enabled (defaults to true)
+    pub enabled: Option<bool>,
+    /// Whether the user must change their password on next login (defaults to false)
+    pub require_password_change: Option<bool>,
     /// ID of the realm to create the user in
     pub realm_id: Option<Uuid>,
     /// ID of the organization to assign the user to
@@ -620,6 +627,8 @@ pub struct UserResponse {
     pub realm_id: Option<Uuid>,
     /// ID of the organization this user belongs to
     pub organization_id: Option<Uuid>,
+    /// Whether the user must change their password on next login
+    pub require_password_change: bool,
     /// Whether the user account is enabled
     pub enabled: bool,
     /// Timestamp when the user was created
@@ -807,6 +816,7 @@ impl From<User> for UserResponse {
             last_login_at: user.last_login_at,
             realm_id: user.realm_id,
             organization_id: user.organization_id,
+            require_password_change: user.require_password_change,
             enabled: user.enabled,
             created_at: user.created_at,
             updated_at: user.updated_at,
