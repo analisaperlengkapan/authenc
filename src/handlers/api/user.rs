@@ -201,6 +201,11 @@ pub async fn update_user(
         return Err(StatusCode::NOT_FOUND);
     }
 
+    // Prevent self-disabling
+    if req.enabled == Some(false) && (auth.sub == id || Uuid::parse_str(&auth.sub).ok() == Some(user_id)) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
     // Create update request for the model
     let update_request = crate::models::user::UpdateUserRequest {
         username: req.username,
