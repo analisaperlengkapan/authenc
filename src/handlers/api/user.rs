@@ -273,9 +273,8 @@ pub async fn delete_user(
     }
 
     // Prevent self-deletion
-    // Compare Uuids if possible to avoid string format mismatches
-    let auth_user_id = Uuid::parse_str(&auth.sub).unwrap_or_default();
-    if auth_user_id == user_id {
+    // Compare as strings and, if possible, as UUIDs to ensure format mismatches don't bypass the check
+    if auth.sub == id || Uuid::parse_str(&auth.sub).ok() == Some(user_id) {
         return Err(StatusCode::FORBIDDEN);
     }
 
