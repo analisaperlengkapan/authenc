@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::handlers::api::auth_bearer::AuthBearer;
-use authenc_models::models::user::{self, User};
+use authenc_models::models::user::{self, User, UserResponse};
 use authenc_services::services::stores::user_store::UserStoreTrait;
 use axum::{
     Router,
@@ -32,14 +32,15 @@ pub async fn get_users(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
     Path(realm): Path<String>,
-) -> Result<Json<Vec<User>>, StatusCode> {
+) -> Result<Json<Vec<UserResponse>>, StatusCode> {
     let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
     let users = state
         .user_store
         .get_users_by_realm(realm_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(users))
+    let response_users = users.into_iter().map(UserResponse::from).collect();
+    Ok(Json(response_users))
 }
 
 /// Get a specific user by ID in the specified realm
@@ -47,7 +48,7 @@ pub async fn get_user_by_id(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
     Path((realm, id)): Path<(String, String)>,
-) -> Result<Json<User>, StatusCode> {
+) -> Result<Json<UserResponse>, StatusCode> {
     let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
 
@@ -62,7 +63,7 @@ pub async fn get_user_by_id(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    Ok(Json(user))
+    Ok(Json(UserResponse::from(user)))
 }
 #[derive(Deserialize)]
 /// Request payload for creating a new user account
@@ -94,7 +95,7 @@ pub async fn create_user(
     AuthBearer(auth): AuthBearer,
     Path(realm): Path<String>,
     Json(request): Json<CreateUserRequest>,
-) -> Result<Json<User>, StatusCode> {
+) -> Result<Json<UserResponse>, StatusCode> {
     let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Validate that request body realm_id matches path realm_id if present
@@ -155,7 +156,7 @@ pub async fn create_user(
         tracing::error!("Failed to fire user creation admin event: {}", e);
     }
 
-    Ok(Json(created_user))
+    Ok(Json(UserResponse::from(created_user)))
 }
 #[derive(Deserialize)]
 /// Request payload for updating user information
