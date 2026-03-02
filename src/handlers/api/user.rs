@@ -83,6 +83,8 @@ pub struct CreateUserRequest {
     pub phone_number: Option<String>,
     /// Whether the user account should be enabled upon creation
     pub enabled: Option<bool>,
+    /// Whether the email address has been verified
+    pub email_verified: Option<bool>,
     /// Whether the user must change their password on first login
     pub require_password_change: Option<bool>,
 }
