@@ -41,6 +41,9 @@ async fn user_store_basic_flow() {
         realm_id: Some(Uuid::new_v4()),
         organization_id: None,
         attributes: None,
+        enabled: Some(true),
+        email_verified: Some(true),
+        require_password_change: Some(false),
     };
 
     let user = store.add_user(request).await.unwrap();

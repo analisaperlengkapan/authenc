@@ -110,7 +110,7 @@ impl WebAuthnService {
             )
             .map_err(|e| AuthencError::internal(format!("Failed to start registration: {}", e)))?;
 
-        let key = format!("reg:{}:{}", parsed_realm, request.username);
+        let key = format!("reg:{}:{}", request.realm_id, request.username);
         self.reg_states.insert(key.clone(), (state, Utc::now()));
 
         // Cleanup expired states lazily (probabilistic: 1 in 100)
@@ -222,7 +222,7 @@ impl WebAuthnService {
             .map_err(|e| AuthencError::internal(format!("Failed to start authentication: {}", e)))?;
 
         // Store state in memory
-        let key = format!("auth:{}:{}", parsed_realm, request.username);
+        let key = format!("auth:{}:{}", request.realm_id, request.username);
         self.auth_states.insert(key, (state, Utc::now()));
 
         // Cleanup expired states lazily (probabilistic: 1 in 100)

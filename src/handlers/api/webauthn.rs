@@ -90,9 +90,22 @@ pub async fn verify_authentication(
         Uuid::parse_str(&req.realm_id).map_err(|_| AuthencError::validation("Invalid realm_id"))?
     };
 
+    // Verify via service
     state.webauthn_service.verify_authentication(
         &parsed_realm,
         &req.username,
         req.response
-    ).await
+    ).await?;
+
+    // Look up user to generate token
+    let user = state.user_store.get_user_by_username(&parsed_realm, &req.username).await?
+        .ok_or_else(|| AuthencError::resource_not_found("User not found after passkey auth"))?;
+
+    let token = authenc_crypto::utils::crypto::jwt::generate_jwt(&user.id.to_string())
+        .map_err(|_| AuthencError::internal("Token generation failed"))?;
+
+    Ok(Json(serde_json::json!({
+        "status": "authenticated",
+        "access_token": token
+    })))
 }
