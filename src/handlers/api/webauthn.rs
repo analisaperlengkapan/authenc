@@ -36,7 +36,7 @@ pub async fn generate_registration_challenge(
 /// Wrapper for verification request to include context
 #[derive(serde::Deserialize)]
 pub struct RegistrationVerificationRequest {
-    pub realm_id: Uuid,
+    pub realm_id: String,
     pub username: String,
     #[serde(flatten)]
     pub response: WebauthnRegistrationResponse,
@@ -48,8 +48,14 @@ pub async fn verify_registration(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RegistrationVerificationRequest>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
+    let parsed_realm = if req.realm_id == "master" {
+        Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap()
+    } else {
+        Uuid::parse_str(&req.realm_id).map_err(|_| AuthencError::validation("Invalid realm_id"))?
+    };
+
     state.webauthn_service.verify_registration(
-        &req.realm_id,
+        &parsed_realm,
         &req.username,
         req.response,
         req.device_id
@@ -67,7 +73,7 @@ pub async fn generate_authentication_challenge(
 /// Wrapper for authentication verification to include context
 #[derive(serde::Deserialize)]
 pub struct AuthenticationVerificationRequest {
-    pub realm_id: Uuid,
+    pub realm_id: String,
     pub username: String,
     #[serde(flatten)]
     pub response: WebauthnAuthenticationResponse,
@@ -78,8 +84,14 @@ pub async fn verify_authentication(
     State(state): State<Arc<AppState>>,
     Json(req): Json<AuthenticationVerificationRequest>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
+    let parsed_realm = if req.realm_id == "master" {
+        Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap()
+    } else {
+        Uuid::parse_str(&req.realm_id).map_err(|_| AuthencError::validation("Invalid realm_id"))?
+    };
+
     state.webauthn_service.verify_authentication(
-        &req.realm_id,
+        &parsed_realm,
         &req.username,
         req.response
     ).await
