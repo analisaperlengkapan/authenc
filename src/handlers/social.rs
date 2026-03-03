@@ -223,7 +223,7 @@ pub async fn social_callback(
                  organization_id: None,
                  attributes: None,
                  enabled: Some(true),
-                 email_verified: Some(profile.verified_email),
+                 email_verified: Some(true),
                  require_password_change: Some(false),
              };
 

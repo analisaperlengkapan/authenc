@@ -67,9 +67,9 @@ impl AdminService for SamlAdminService {
             attributes: request.attributes.clone(),
             realm_id: Some(request.realm_id),
             organization_id: None,
-            enabled: Some(request.enabled),
-            email_verified: Some(request.email_verified),
-            require_password_change: Some(request.require_password_change.unwrap_or(false)),
+            enabled: Some(true),
+            email_verified: Some(true),
+            require_password_change: Some(false),
         };
 
         match users::create_user(&self.db, &db_request).await {
