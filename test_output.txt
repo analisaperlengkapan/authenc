@@ -1,12 +1,1067 @@
-   Compiling authenc v0.4.0 (/app)
-warning: unused import: `super::*`
-   --> src/database/batch.rs:280:9
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /app/crates/ui/Cargo.toml
+workspace: /app/Cargo.toml
+   Compiling rustls v0.23.37
+   Compiling jsonpath-rust v0.3.5
+   Compiling serde_core v1.0.228
+   Compiling der-parser v9.0.0
+   Compiling p521 v0.13.3
+   Compiling p384 v0.13.1
+   Compiling p256 v0.13.2
+   Compiling axum-core v0.4.5
+   Compiling rustls-pemfile v2.2.0
+   Compiling lber v0.5.1
+   Compiling rdkafka-sys v4.10.0+2.12.1
+   Compiling half v2.7.1
+   Compiling zmij v1.0.21
+   Compiling bincode v1.3.3
+   Compiling secrecy v0.8.0
+   Compiling quick-xml v0.31.0
+   Compiling cookie v0.18.1
+   Compiling instant v0.1.13
+   Compiling async-stream-impl v0.3.6
+   Compiling pqcrypto-traits v0.3.5
+   Compiling home v0.5.12
+   Compiling crc32fast v1.5.0
+   Compiling itoa v1.0.17
+   Compiling matchit v0.7.3
+   Compiling either v1.15.0
+   Compiling webauthn-rs-core v0.5.4
+   Compiling bitflags v1.3.2
+   Compiling typetag v0.2.21
+   Compiling raw-cpuid v10.7.0
+   Compiling kube-client v0.87.2
+   Compiling axum v0.7.9
+   Compiling async-stream v0.3.6
+   Compiling authenc-crypto v0.4.0 (/app/crates/authenc-crypto)
+warning: unexpected `cfg` condition value: `test`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:1864:15
+     |
+1864 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |               ^^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `test` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+     = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unexpected `cfg` condition value: `dev`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:1864:33
+     |
+1864 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |                                 ^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `dev` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:1885:15
+     |
+1885 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |               ^^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `test` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:1885:33
+     |
+1885 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |                                 ^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `dev` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:1901:15
+     |
+1901 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |               ^^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `test` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:1901:33
+     |
+1901 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |                                 ^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `dev` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:1924:15
+     |
+1924 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |               ^^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `test` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:1924:33
+     |
+1924 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |                                 ^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `dev` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:1990:15
+     |
+1990 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |               ^^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `test` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:1990:33
+     |
+1990 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |                                 ^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `dev` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:2125:15
+     |
+2125 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |               ^^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `test` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+    --> crates/authenc-crypto/src/crypto/xmldsig.rs:2125:33
+     |
+2125 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+     |                                 ^^^^^^^^^^^^^^^
+     |
+     = note: expected values for `feature` are: `default` and `quantum`
+     = help: consider adding `dev` as a feature in `Cargo.toml`
+     = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+   Compiling serde_json v1.0.149
+   Compiling backoff v0.4.0
+   Compiling serde_cbor_2 v0.13.0
+   Compiling ldap3 v0.12.1
+warning: `authenc-crypto` (lib) generated 12 warnings
+   Compiling x509-parser v0.16.0
+   Compiling darling v0.20.11
+   Compiling erased-serde v0.4.10
+   Compiling num_enum v0.7.5
+   Compiling prost v0.13.5
+   Compiling webauthn-attestation-ca v0.5.4
+   Compiling webauthn-rs-proto v0.5.4
+   Compiling authenc-models v0.4.0 (/app/crates/authenc-models)
+   Compiling dashmap v6.1.0
+   Compiling derivative v2.2.0
+   Compiling num-rational v0.4.2
+   Compiling hyper-timeout v0.5.2
+   Compiling num-iter v0.1.45
+   Compiling opentelemetry v0.27.1
+   Compiling num-complex v0.4.6
+   Compiling inout v0.1.4
+   Compiling typetag-impl v0.2.21
+   Compiling metrics-macros v0.7.1
+   Compiling simd-adler32 v0.3.8
+   Compiling utf8parse v0.2.2
+   Compiling glob v0.3.3
+   Compiling base32 v0.4.0
+   Compiling adler2 v2.0.1
+   Compiling inventory v0.3.22
+   Compiling urlencoding v2.1.3
+   Compiling authenc-spi v0.4.0 (/app/crates/authenc-spi)
+   Compiling kube-runtime v0.87.2
+   Compiling miniz_oxide v0.8.9
+   Compiling opentelemetry_sdk v0.27.1
+   Compiling anstyle-parse v0.2.7
+   Compiling metrics v0.21.1
+   Compiling cipher v0.4.4
+   Compiling num v0.4.3
+   Compiling tonic v0.12.3
+   Compiling kube-derive v0.87.2
+   Compiling quanta v0.11.1
+   Compiling crossbeam-epoch v0.9.18
+   Compiling hashbrown v0.13.1
+   Compiling email_address v0.2.9
+   Compiling expect-json-macros v1.9.0
+   Compiling yansi v1.0.1
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle-query v1.1.5
+   Compiling diff v0.1.13
+   Compiling anstyle v1.0.13
+   Compiling base32 v0.5.1
+   Compiling constant_time_eq v0.3.1
+   Compiling colorchoice v1.0.4
+   Compiling sketches-ddsketch v0.2.2
+   Compiling expect-json v1.9.0
+   Compiling metrics-util v0.15.1
+   Compiling anstream v0.6.21
+   Compiling totp-rs v5.7.0
+   Compiling pretty_assertions v1.4.1
+   Compiling flate2 v1.1.9
+   Compiling kube v0.87.2
+   Compiling webauthn-rs v0.5.4
+   Compiling opentelemetry-proto v0.27.0
+   Compiling authenc-database v0.4.0 (/app/crates/authenc-database)
+warning: unused variable: `authentication_method`
+     --> crates/authenc-database/src/database/operations.rs:10026:9
+      |
+10026 |         authentication_method: Option<&str>,
+      |         ^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_authentication_method`
+      |
+      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `protocol`
+     --> crates/authenc-database/src/database/operations.rs:10027:9
+      |
+10027 |         protocol: Option<&str>,
+      |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_protocol`
+
+warning: missing documentation for a module
+    --> crates/authenc-database/src/database/operations.rs:6643:1
+     |
+6643 | pub mod webauthn {
+     | ^^^^^^^^^^^^^^^^
+     |
+note: the lint level is defined here
+    --> crates/authenc-database/src/lib.rs:1:9
+     |
+   1 | #![warn(missing_docs)]
+     |         ^^^^^^^^^^^^
+
+warning: missing documentation for a function
+    --> crates/authenc-database/src/database/operations.rs:6526:5
+     |
+6526 |     pub async fn get_user_roles(db: &Database, user_id: &Uuid) -> Result<Vec<Role>> {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling blowfish v0.9.1
+   Compiling authenc-vault v0.4.0 (/app/crates/authenc-vault)
+   Compiling rdkafka v0.38.0
+   Compiling env_filter v1.0.0
+   Compiling rust-multipart-rfc7578_2 v0.8.0
+warning: `authenc-database` (lib) generated 4 warnings (run `cargo fix --lib -p authenc-database` to apply 2 suggestions)
+   Compiling opentelemetry v0.31.0
+   Compiling reserve-port v2.3.0
+   Compiling rustix v1.1.4
+   Compiling jiff v0.2.22
+   Compiling bytesize v2.3.1
+   Compiling axum-test v18.7.0
+   Compiling env_logger v0.11.9
+   Compiling tracing-opentelemetry v0.32.1
+   Compiling authenc-services v0.4.0 (/app/crates/authenc-services)
+warning: unexpected `cfg` condition value: `tpm`
+ --> crates/authenc-services/src/services/security/forever_unknown_secrets.rs:8:7
+  |
+8 | #[cfg(feature = "tpm")]
+  |       ^^^^^^^^^^^^^^^
+  |
+  = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+  = help: consider adding `tpm` as a feature in `Cargo.toml`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unexpected `cfg` condition value: `tpm`
+  --> crates/authenc-services/src/services/security/forever_unknown_secrets.rs:24:11
+   |
+24 |     #[cfg(feature = "tpm")]
+   |           ^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+   = help: consider adding `tpm` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `tpm`
+  --> crates/authenc-services/src/services/security/forever_unknown_secrets.rs:61:11
+   |
+61 |     #[cfg(feature = "tpm")]
+   |           ^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+   = help: consider adding `tpm` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `tpm`
+  --> crates/authenc-services/src/services/security/forever_unknown_secrets.rs:38:15
+   |
+38 |         #[cfg(feature = "tpm")]
+   |               ^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+   = help: consider adding `tpm` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `tpm`
+  --> crates/authenc-services/src/services/security/forever_unknown_secrets.rs:52:19
+   |
+52 |         #[cfg(not(feature = "tpm"))]
+   |                   ^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+   = help: consider adding `tpm` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `tpm`
+  --> crates/authenc-services/src/services/security/forever_unknown_secrets.rs:83:15
+   |
+83 |         #[cfg(feature = "tpm")]
+   |               ^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+   = help: consider adding `tpm` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unused import: `std::collections::HashMap`
+  --> crates/authenc-services/src/services/mod.rs:15:5
+   |
+15 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `Arc` and `RwLock`
+  --> crates/authenc-services/src/services/mod.rs:16:17
+   |
+16 | use std::sync::{Arc, RwLock};
+   |                 ^^^  ^^^^^^
+
+warning: unused import: `crate::services::stores::realm_store::RealmStore`
+  --> crates/authenc-services/src/services/mod.rs:18:5
+   |
+18 | use crate::services::stores::realm_store::RealmStore;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::services::stores::role_store::RoleStore`
+  --> crates/authenc-services/src/services/mod.rs:19:5
+   |
+19 | use crate::services::stores::role_store::RoleStore;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::services::stores::user_store::UserStore`
+  --> crates/authenc-services/src/services/mod.rs:20:5
+   |
+20 | use crate::services::stores::user_store::UserStore;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `authenc_models::models::realm::Realm`
+  --> crates/authenc-services/src/services/mod.rs:21:5
+   |
+21 | use authenc_models::models::realm::Realm;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `authenc_models::models::role::Role`
+  --> crates/authenc-services/src/services/mod.rs:22:5
+   |
+22 | use authenc_models::models::role::Role;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `authenc_models::models::user::User`
+  --> crates/authenc-services/src/services/mod.rs:23:5
+   |
+23 | use authenc_models::models::user::User;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+ --> crates/authenc-services/src/services/social/state_store.rs:3:5
+  |
+3 | use uuid::Uuid;
+  |     ^^^^^^^^^^
+
+warning: unexpected `cfg` condition value: `test`
+  --> crates/authenc-services/src/services/federation/saml_security.rs:89:15
+   |
+89 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+   |               ^^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+   = help: consider adding `test` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+  --> crates/authenc-services/src/services/federation/saml_security.rs:89:33
+   |
+89 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+   |                                 ^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+   = help: consider adding `dev` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+  --> crates/authenc-services/src/services/federation/saml_security.rs:93:15
+   |
+93 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+   |               ^^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+   = help: consider adding `test` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+  --> crates/authenc-services/src/services/federation/saml_security.rs:93:33
+   |
+93 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+   |                                 ^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+   = help: consider adding `dev` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:352:15
     |
-280 |     use super::*;
-    |         ^^^^^^^^
+352 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |               ^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `test` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:352:33
+    |
+352 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                                 ^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `dev` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:370:15
+    |
+370 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |               ^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `test` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:370:33
+    |
+370 |     #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                                 ^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `dev` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:133:19
+    |
+133 |         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `test` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:133:37
+    |
+133 |         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                                     ^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `dev` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:145:19
+    |
+145 |         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `test` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:145:37
+    |
+145 |         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                                     ^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `dev` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:159:23
+    |
+159 |             #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                       ^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `test` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:159:41
+    |
+159 |             #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                                         ^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `dev` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:161:23
+    |
+161 |             #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                       ^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `test` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:161:41
+    |
+161 |             #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                                         ^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `dev` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:246:19
+    |
+246 |         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `test` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:246:37
+    |
+246 |         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                                     ^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `dev` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `test`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:278:19
+    |
+278 |         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `test` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `dev`
+   --> crates/authenc-services/src/services/federation/saml_security.rs:278:37
+    |
+278 |         #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    |                                     ^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `default`, `metrics`, `rdkafka`, and `redis-store`
+    = help: consider adding `dev` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+   Compiling bcrypt v0.17.1
+   Compiling opentelemetry-otlp v0.27.0
+   Compiling metrics-exporter-prometheus v0.12.2
+warning: value assigned to `param_idx` is never read
+   --> crates/authenc-services/src/services/stores/pg_audit_log_store.rs:169:13
+    |
+169 |             param_idx += 1;
+    |             ^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling axum-extra v0.10.3
+   Compiling rustls-native-certs v0.8.3
+   Compiling webpki-roots v1.0.6
+   Compiling serde_qs v0.15.0
+   Compiling temp-env v0.3.6
+   Compiling sdd v3.0.10
+   Compiling linux-raw-sys v0.12.1
+warning: methods `get_credential` and `verify_origin` are never used
+   --> crates/authenc-services/src/services/protocols/webauthn.rs:349:14
+    |
+ 49 | impl WebAuthnService {
+    | -------------------- methods in this implementation
+...
+349 |     async fn get_credential(
+    |              ^^^^^^^^^^^^^^
+...
+402 |     fn verify_origin(&self, origin: &str) -> bool {
+    |        ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `resource_servers` and `scopes` are never read
+   --> crates/authenc-services/src/services/authorization/mod.rs:225:5
+    |
+223 | struct AuthorizationState {
+    |        ------------------ fields in this struct
+224 |     policies: HashMap<Uuid, Policy>,
+225 |     resource_servers: HashMap<Uuid, ResourceServer>,
+    |     ^^^^^^^^^^^^^^^^
+226 |     permissions: HashMap<Uuid, Permission>,
+227 |     scopes: HashMap<Uuid, Scope>,
+    |     ^^^^^^
+
+warning: missing documentation for a module
+ --> crates/authenc-services/src/services/mod.rs:1:1
+  |
+1 | pub mod security;
+  | ^^^^^^^^^^^^^^^^
+  |
+note: the lint level is defined here
+ --> crates/authenc-services/src/lib.rs:1:9
+  |
+1 | #![warn(missing_docs)]
+  |         ^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:26:1
+   |
+26 | pub mod admin;
+   | ^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:28:1
+   |
+28 | pub mod authorization;
+   | ^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:29:1
+   |
+29 | pub mod device;
+   | ^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:30:1
+   |
+30 | pub mod password_reset;
+   | ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:31:1
+   |
+31 | pub mod email_verification;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:33:1
+   |
+33 | pub mod social;
+   | ^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:36:1
+   |
+36 | pub mod oauth2;
+   | ^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:37:1
+   |
+37 | pub mod broker;
+   | ^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:38:1
+   |
+38 | pub mod realm;
+   | ^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:39:1
+   |
+39 | pub mod client_registration;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:40:1
+   |
+40 | pub mod fips;
+   | ^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:41:1
+   |
+41 | pub mod federation_provider;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:42:1
+   |
+42 | pub mod clustering;
+   | ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:43:1
+   |
+43 | pub mod observability;
+   | ^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:44:1
+   |
+44 | pub mod compliance_mode;
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:45:1
+   |
+45 | pub mod compliance;
+   | ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> crates/authenc-services/src/services/mod.rs:46:1
+   |
+46 | pub mod federation;
+   | ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/authenc-services/src/services/protocols/webauthn.rs:37:5
+   |
+37 |     pub username: String,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/authenc-services/src/services/protocols/webauthn.rs:38:5
+   |
+38 |     pub display_name: String,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/authenc-services/src/services/protocols/webauthn.rs:39:5
+   |
+39 |     pub realm_id: String,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/authenc-services/src/services/protocols/webauthn.rs:45:5
+   |
+45 |     pub username: String,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> crates/authenc-services/src/services/protocols/webauthn.rs:46:5
+   |
+46 |     pub realm_id: String,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+ --> crates/authenc-services/src/services/social/mod.rs:1:1
+  |
+1 | pub mod state_store;
+  | ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+ --> crates/authenc-services/src/services/social/mod.rs:2:1
+  |
+2 | pub mod in_memory_store;
+  | ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+ --> crates/authenc-services/src/services/social/mod.rs:3:1
+  |
+3 | pub mod pg_store;
+  | ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+ --> crates/authenc-services/src/services/social/mod.rs:4:1
+  |
+4 | pub mod db_sync;
+  | ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct
+  --> crates/authenc-services/src/services/social/mod.rs:20:1
+   |
+20 | pub struct OAuthConfig {
+   | ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> crates/authenc-services/src/services/social/in_memory_store.rs:19:5
+   |
+19 |     pub fn new() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> crates/authenc-services/src/services/social/pg_store.rs:15:5
+   |
+15 |     pub fn new(db: Arc<Database>) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> crates/authenc-services/src/services/oauth2.rs:26:5
+   |
+26 |     pub fn new(db: Arc<Database>) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling scc v2.4.0
+   Compiling serial_test_derive v3.4.0
+   Compiling fastrand v2.3.0
+   Compiling tempfile v3.26.0
+   Compiling tokio-test v0.4.5
+   Compiling authenc v0.4.0 (/app)
+   Compiling serial_test v3.4.0
+warning: unused import: `axum::extract::FromRef`
+   --> src/app.rs:865:5
+    |
+865 | use axum::extract::FromRef;
+    |     ^^^^^^^^^^^^^^^^^^^^^^
     |
     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
+warning: unused import: `authenc_database::database::Database`
+ --> src/handlers/oauth2.rs:3:5
+  |
+3 | use authenc_database::database::Database;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `authenc_database::database::operations::oauth2`
+ --> src/handlers/oauth2.rs:4:5
+  |
+4 | use authenc_database::database::operations::oauth2;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `delete` and `put`
+ --> src/handlers/group.rs:9:15
+  |
+9 |     routing::{delete, get, post, put},
+  |               ^^^^^^             ^^^
+
+warning: unused import: `User`
+ --> src/handlers/api/user.rs:3:42
+  |
+3 | use authenc_models::models::user::{self, User, UserResponse};
+  |                                          ^^^^
+
+warning: unused import: `http::StatusCode`
+ --> src/handlers/api/authorization.rs:3:5
+  |
+3 |     http::StatusCode,
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `Decision`
+  --> src/handlers/api/authorization.rs:10:93
+   |
+10 | use authenc_services::services::authorization::{AuthorizationContext, AuthorizationService, Decision};
+   |                                                                                             ^^^^^^^^
+
+warning: unused import: `crate::app::AppState`
+ --> src/handlers/saml.rs:1:5
+  |
+1 | use crate::app::AppState;
+  |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::handlers::federated_auth::MockAdminService`
+ --> src/handlers/saml.rs:5:5
+  |
+5 | use crate::handlers::federated_auth::MockAdminService;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `authenc_services::services::stores::consent_store::ConsentStoreTrait`
+  --> src/handlers/consent_ui.rs:16:5
+   |
+16 | use authenc_services::services::stores::consent_store::ConsentStoreTrait;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `authenc_services::services::stores::consent_store::ConsentStoreTrait`
+ --> src/handlers/oauth2.rs:7:5
+  |
+7 | use authenc_services::services::stores::consent_store::ConsentStoreTrait;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `authenc_services::services::stores::user_store::UserStoreTrait`
+ --> src/handlers/oauth2.rs:8:5
+  |
+8 | use authenc_services::services::stores::user_store::UserStoreTrait;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `authenc_services::services::stores::user_store::UserStoreTrait`
+ --> src/handlers/api/auth.rs:2:5
+  |
+2 | use authenc_services::services::stores::user_store::UserStoreTrait;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `authenc_services::services::stores::user_store::UserStoreTrait`
+ --> src/handlers/api/user.rs:4:5
+  |
+4 | use authenc_services::services::stores::user_store::UserStoreTrait;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `authenc_services::services::stores::user_store::UserStoreTrait`
+  --> src/handlers/social.rs:18:5
+   |
+18 | use authenc_services::services::stores::user_store::UserStoreTrait;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `authenc_services::services::sso::SsoSessionManager`
+  --> src/handlers/social.rs:16:5
+   |
+16 | use authenc_services::services::sso::SsoSessionManager;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct
+  --> src/handlers/api/audit.rs:36:1
+   |
+36 | pub struct AuditLogResponse {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the lint level is defined here
+  --> src/lib.rs:1:9
+   |
+ 1 | #![warn(missing_docs)]
+   |         ^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/audit.rs:37:5
+   |
+37 |     pub total: u64,
+   |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/audit.rs:38:5
+   |
+38 |     pub logs: Vec<AuditLog>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/account.rs:75:5
+   |
+75 |     pub user_store: Arc<dyn UserStoreTrait>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/account.rs:76:5
+   |
+76 |     pub session_store: Arc<dyn SessionStoreTrait>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/account.rs:77:5
+   |
+77 |     pub oidc_client_store: Arc<OidcClientStore>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/account.rs:78:5
+   |
+78 |     pub totp_store: Arc<TotpStore>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/account.rs:79:5
+   |
+79 |     pub audit_log_store: Arc<PgAuditLogStore>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/account.rs:80:5
+   |
+80 |     pub social_account_store: Arc<SocialAccountStore>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/account.rs:81:5
+   |
+81 |     pub consent_store: Arc<dyn ConsentStoreTrait>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/account.rs:82:5
+   |
+82 |     pub oauth2_service: Arc<OAuth2Service>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/account.rs:83:5
+   |
+83 |     pub webauthn_service: Arc<WebAuthnService>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/webauthn.rs:39:5
+   |
+39 |     pub realm_id: String,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/webauthn.rs:40:5
+   |
+40 |     pub username: String,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/webauthn.rs:42:5
+   |
+42 |     pub response: WebauthnRegistrationResponse,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/webauthn.rs:43:5
+   |
+43 |     pub device_id: Option<Uuid>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/webauthn.rs:76:5
+   |
+76 |     pub realm_id: String,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/webauthn.rs:77:5
+   |
+77 |     pub username: String,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/handlers/api/webauthn.rs:79:5
+   |
+79 |     pub response: WebauthnAuthenticationResponse,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused `axum::Json` that must be used
+  --> src/handlers/api/webauthn.rs:94:5
+   |
+94 | /     state.webauthn_service.verify_authentication(
+95 | |         &parsed_realm,
+96 | |         &req.username,
+97 | |         req.response
+98 | |     ).await?;
+   | |____________^
+   |
+   = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+   |
+94 |     let _ = state.webauthn_service.verify_authentication(
+   |     +++++++
+
+warning: `authenc-services` (lib) generated 69 warnings (run `cargo fix --lib -p authenc-services` to apply 9 suggestions)
 warning: unused imports: `Router` and `routing::get`
    --> src/handlers/health.rs:107:9
     |
@@ -17,22 +1072,22 @@ warning: unused imports: `Router` and `routing::get`
     |         ^^^^^^^^^^^^
 
 warning: unused import: `super::*`
-   --> src/handlers/mod.rs:349:9
+   --> src/handlers/mod.rs:354:9
     |
-349 |     use super::*;
+354 |     use super::*;
     |         ^^^^^^^^
 
 warning: unused import: `crate::app::AppState`
-   --> src/handlers/mod.rs:350:9
+   --> src/handlers/mod.rs:355:9
     |
-350 |     use crate::app::AppState;
+355 |     use crate::app::AppState;
     |         ^^^^^^^^^^^^^^^^^^^^
 
-warning: unused import: `crate::config::AppConfig`
-   --> src/handlers/mod.rs:351:9
+warning: unused import: `authenc_core::config::AppConfig`
+   --> src/handlers/mod.rs:356:9
     |
-351 |     use crate::config::AppConfig;
-    |         ^^^^^^^^^^^^^^^^^^^^^^^^
+356 |     use authenc_core::config::AppConfig;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 warning: unused imports: `Request`, `Router`, `StatusCode`, `body::Body`, `extract::ConnectInfo`, and `routing::get`
    --> src/middleware/rate_limit.rs:331:9
@@ -54,96 +1109,7 @@ warning: unused imports: `ServiceExt` and `Service`
 337 |     use tower::{Service, ServiceExt};
     |                 ^^^^^^^  ^^^^^^^^^^
 
-warning: unused variable: `commitment`
-    --> src/crypto/shamir.rs:1017:26
-     |
-1017 |         let (mut shares, commitment) = generate_shares_with_commitments(secret, &config).unwrap();
-     |                          ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_commitment`
-     |
-     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: missing documentation for a struct field
-    --> src/database/operations.rs:5460:9
-     |
-5460 |         pub realm_id: Uuid,
-     |         ^^^^^^^^^^^^^^^^^^
-     |
-note: the lint level is defined here
-    --> src/lib.rs:1:9
-     |
-   1 | #![warn(missing_docs)]
-     |         ^^^^^^^^^^^^
-
-warning: missing documentation for a struct field
-    --> src/database/operations.rs:5461:9
-     |
-5461 |         pub event_category: Option<String>,
-     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: missing documentation for a struct field
-    --> src/database/operations.rs:5462:9
-     |
-5462 |         pub event_type: Option<String>,
-     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: missing documentation for a struct field
-    --> src/database/operations.rs:5463:9
-     |
-5463 |         pub resource_type: Option<String>,
-     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: missing documentation for a struct field
-    --> src/database/operations.rs:5464:9
-     |
-5464 |         pub resource_id: Option<String>,
-     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: missing documentation for a struct field
-    --> src/database/operations.rs:5465:9
-     |
-5465 |         pub user_id: Option<Uuid>,
-     |         ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: missing documentation for a struct field
-    --> src/database/operations.rs:5466:9
-     |
-5466 |         pub from_date: Option<DateTime<Utc>>,
-     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: missing documentation for a struct field
-    --> src/database/operations.rs:5467:9
-     |
-5467 |         pub to_date: Option<DateTime<Utc>>,
-     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: missing documentation for a struct field
-    --> src/database/operations.rs:5468:9
-     |
-5468 |         pub success_only: Option<bool>,
-     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: missing documentation for a struct field
-    --> src/database/operations.rs:5469:9
-     |
-5469 |         pub offset: i64,
-     |         ^^^^^^^^^^^^^^^
-
-warning: missing documentation for a struct field
-    --> src/database/operations.rs:5470:9
-     |
-5470 |         pub limit: i64,
-     |         ^^^^^^^^^^^^^^
-
-warning: `authenc` (lib test) generated 19 warnings (11 duplicates) (run `cargo fix --lib -p authenc --tests` to apply 7 suggestions)
-warning: `authenc` (lib) generated 11 warnings
-warning: unused import: `XmlSecurityLimits`
- --> tests/xmldsig_security_tests.rs:2:32
-  |
-2 | use authenc::crypto::xmldsig::{XmlSecurityLimits, XmlSecurityValidator};
-  |                                ^^^^^^^^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
+warning: `authenc` (lib) generated 36 warnings (run `cargo fix --lib -p authenc` to apply 9 suggestions)
 warning: unused import: `std::env`
  --> tests/config_tests.rs:2:5
   |
@@ -152,429 +1118,14 @@ warning: unused import: `std::env`
   |
   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
-warning: unused imports: `delete` and `put`
-  --> tests/advanced_security_tests.rs:10:15
+warning: `authenc` (test "config_tests") generated 1 warning (run `cargo fix --test "config_tests" -p authenc` to apply 1 suggestion)
+error[E0063]: missing fields `email_verified`, `enabled` and `require_password_change` in initializer of `authenc::models::user::CreateUserRequest`
+  --> tests/webauthn_tests.rs:76:31
    |
-10 |     routing::{delete, get, post, put},
-   |               ^^^^^^             ^^^
-   |
-   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+76 |     let create_user_request = CreateUserRequest {
+   |                               ^^^^^^^^^^^^^^^^^ missing `email_verified`, `enabled` and `require_password_change`
 
-warning: unused import: `chrono::Utc`
-  --> tests/advanced_security_tests.rs:13:5
-   |
-13 | use chrono::Utc;
-   |     ^^^^^^^^^^^
-
-warning: unused variable: `state`
-   --> tests/user_management_tests.rs:993:29
-    |
-993 |                 move |State(state): State<UserMgmtState>,
-    |                             ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
-    |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `state`
-    --> tests/user_management_tests.rs:1015:29
-     |
-1015 |                 move |State(state): State<UserMgmtState>,
-     |                             ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
-
-warning: fields `password_hash`, `failed_login_attempts`, `locked_until`, and `email_verified` are never read
-  --> tests/user_management_tests.rs:31:5
-   |
-27 | struct UserAccount {
-   |        ----------- fields in this struct
-...
-31 |     password_hash: String,
-   |     ^^^^^^^^^^^^^
-...
-37 |     failed_login_attempts: u32,
-   |     ^^^^^^^^^^^^^^^^^^^^^
-38 |     locked_until: Option<String>,
-   |     ^^^^^^^^^^^^
-39 |     email_verified: bool,
-   |     ^^^^^^^^^^^^^^
-   |
-   = note: `UserAccount` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: field `metadata` is never read
-  --> tests/user_management_tests.rs:76:5
-   |
-69 | struct AccountEvent {
-   |        ------------ field in this struct
-...
-76 |     metadata: HashMap<String, String>,
-   |     ^^^^^^^^
-   |
-   = note: `AccountEvent` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: fields `id`, `invited_by`, `role`, `expires_at`, and `created_at` are never read
-  --> tests/user_management_tests.rs:81:5
-   |
-80 | struct Invitation {
-   |        ---------- fields in this struct
-81 |     id: String,
-   |     ^^
-82 |     email: String,
-83 |     invited_by: String,
-   |     ^^^^^^^^^^
-84 |     role: String,
-   |     ^^^^
-85 |     status: String, // pending, accepted, expired
-86 |     expires_at: String,
-   |     ^^^^^^^^^^
-87 |     created_at: String,
-   |     ^^^^^^^^^^
-   |
-   = note: `Invitation` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: fields `id`, `name`, `description`, `created_by`, `created_at`, and `is_system_group` are never read
-  --> tests/user_management_tests.rs:93:5
-   |
-92 | struct Group {
-   |        ----- fields in this struct
-93 |     id: String,
-   |     ^^
-94 |     name: String,
-   |     ^^^^
-95 |     description: String,
-   |     ^^^^^^^^^^^
-96 |     created_by: String,
-   |     ^^^^^^^^^^
-97 |     created_at: String,
-   |     ^^^^^^^^^^
-98 |     member_count: u32,
-99 |     is_system_group: bool,
-   |     ^^^^^^^^^^^^^^^
-   |
-   = note: `Group` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: unused variable: `database`
-   --> tests/advanced_security_tests.rs:839:9
-    |
-839 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-    |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `database`
-   --> tests/advanced_security_tests.rs:892:9
-    |
-892 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/advanced_security_tests.rs:944:9
-    |
-944 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/advanced_security_tests.rs:993:9
-    |
-993 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `i`
-    --> tests/advanced_security_tests.rs:1008:10
-     |
-1008 |     for (i, user) in users.iter().enumerate() {
-     |          ^ help: if this is intentional, prefix it with an underscore: `_i`
-
-warning: `authenc` (test "xmldsig_security_tests") generated 1 warning (run `cargo fix --test "xmldsig_security_tests"` to apply 1 suggestion)
-warning: `authenc` (test "config_tests") generated 1 warning (run `cargo fix --test "config_tests"` to apply 1 suggestion)
-warning: fields `id`, `email`, `manager_id`, and `is_active` are never read
-  --> tests/authorization_tests.rs:29:5
-   |
-28 | struct UserProfile {
-   |        ----------- fields in this struct
-29 |     id: String,
-   |     ^^
-30 |     email: String,
-   |     ^^^^^
-31 |     department: String,
-32 |     manager_id: Option<String>,
-   |     ^^^^^^^^^^
-33 |     is_active: bool,
-   |     ^^^^^^^^^
-   |
-   = note: `UserProfile` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: fields `is_system_role` and `created_at` are never read
-  --> tests/authorization_tests.rs:41:5
-   |
-37 | struct Role {
-   |        ---- fields in this struct
-...
-41 |     is_system_role: bool,
-   |     ^^^^^^^^^^^^^^
-42 |     created_at: String,
-   |     ^^^^^^^^^^
-   |
-   = note: `Role` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: fields `id` and `name` are never read
-  --> tests/authorization_tests.rs:56:5
-   |
-55 | struct Policy {
-   |        ------ fields in this struct
-56 |     id: String,
-   |     ^^
-57 |     name: String,
-   |     ^^^^
-   |
-   = note: `Policy` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: field `id` is never read
-  --> tests/authorization_tests.rs:74:5
-   |
-73 | struct Resource {
-   |        -------- field in this struct
-74 |     id: String,
-   |     ^^
-   |
-   = note: `Resource` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: `authenc` (test "advanced_security_tests") generated 7 warnings (run `cargo fix --test "advanced_security_tests"` to apply 2 suggestions)
-warning: `authenc` (test "user_management_tests") generated 6 warnings
-warning: `authenc` (test "authorization_tests") generated 4 warnings
-warning: field `connections` is never read
-  --> tests/network_tests.rs:19:5
-   |
-17 | struct NetworkState {
-   |        ------------ field in this struct
-18 |     services: Arc<Mutex<HashMap<String, ServiceStatus>>>,
-19 |     connections: Arc<Mutex<Vec<ConnectionInfo>>>,
-   |     ^^^^^^^^^^^
-   |
-   = note: `NetworkState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: fields `source`, `destination`, `protocol`, and `status` are never read
-  --> tests/network_tests.rs:32:5
-   |
-31 | struct ConnectionInfo {
-   |        -------------- fields in this struct
-32 |     source: String,
-   |     ^^^^^^
-33 |     destination: String,
-   |     ^^^^^^^^^^^
-34 |     protocol: String,
-   |     ^^^^^^^^
-35 |     status: String,
-   |     ^^^^^^
-   |
-   = note: `ConnectionInfo` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: field `configs` is never read
-  --> tests/configuration_tests.rs:18:5
-   |
-17 | struct ConfigState {
-   |        ----------- field in this struct
-18 |     configs: Arc<Mutex<HashMap<String, serde_json::Value>>>,
-   |     ^^^^^^^
-   |
-   = note: `ConfigState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: `authenc` (test "network_tests") generated 2 warnings
-warning: variable does not need to be mutable
-   --> tests/federation_providers_tests.rs:109:9
-    |
-109 |     let mut request = AuthRequest {
-    |         ----^^^^^^^
-    |         |
-    |         help: remove this `mut`
-    |
-    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `provider`
-   --> tests/federation_providers_tests.rs:198:9
-    |
-198 |     let provider = OidcIdentityProvider::new(config).await;
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_provider`
-    |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `response`
-   --> tests/federation_providers_tests.rs:258:13
-    |
-258 |         let response = provider.authenticate(&request).await;
-    |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_response`
-
-warning: variable does not need to be mutable
-   --> tests/federation_providers_tests.rs:245:13
-    |
-245 |         let mut request = AuthRequest {
-    |             ----^^^^^^^
-    |             |
-    |             help: remove this `mut`
-
-warning: unused variable: `result`
-   --> tests/federation_providers_tests.rs:352:13
-    |
-352 |         let result = provider.get_user_info("test_access_token").await;
-    |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_result`
-
-warning: unused variable: `result`
-   --> tests/federation_providers_tests.rs:481:9
-    |
-481 |     let result = service.register_provider(config).await;
-    |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_result`
-
-warning: `authenc` (test "configuration_tests") generated 1 warning
-warning: unused variable: `sessions`
-    --> tests/comprehensive.rs:1413:9
-     |
-1413 |     let sessions = Arc::new(Mutex::new(HashMap::<String, serde_json::Value>::new()));
-     |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_sessions`
-     |
-     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: variable does not need to be mutable
-    --> tests/comprehensive.rs:1536:29
-     |
-1536 |                         let mut user_data = json!({
-     |                             ----^^^^^^^^^
-     |                             |
-     |                             help: remove this `mut`
-     |
-     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `users`
-    --> tests/comprehensive.rs:2112:9
-     |
-2112 |     let users = Arc::new(Mutex::new(HashMap::<String, serde_json::Value>::new()));
-     |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_users`
-
-warning: unused variable: `payload`
-    --> tests/comprehensive.rs:2151:47
-     |
-2151 |                 |Path(id): Path<String>, Json(payload): Json<serde_json::Value>| async move {
-     |                                               ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_payload`
-
-warning: unused variable: `headers`
-    --> tests/comprehensive.rs:2448:65
-     |
-2448 |                 |Query(params): Query<HashMap<String, String>>, headers: HeaderMap| async move {
-     |                                                                 ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_headers`
-
-warning: unused variable: `vault`
-    --> tests/comprehensive.rs:2627:9
-     |
-2627 |     let vault = Arc::new(Mutex::new(HashMap::<String, serde_json::Value>::new()));
-     |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_vault`
-
-warning: unused variable: `value`
-    --> tests/comprehensive.rs:2710:17
-     |
-2710 |             let value = payload.get("value").and_then(|v| v.as_str()).unwrap_or("");
-     |                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_value`
-
-warning: unused variable: `value`
-    --> tests/comprehensive.rs:2837:21
-     |
-2837 |                 let value = payload.get("value").and_then(|v| v.as_str()).unwrap_or("");
-     |                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_value`
-
-warning: struct `DummySink` is never constructed
-    --> tests/comprehensive.rs:1942:8
-     |
-1942 | struct DummySink;
-     |        ^^^^^^^^^
-     |
-     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: `authenc` (test "federation_providers_tests") generated 6 warnings (run `cargo fix --test "federation_providers_tests"` to apply 2 suggestions)
-warning: unused variable: `database`
-  --> tests/zero_trust_tests.rs:27:9
-   |
-27 |     let database = match database_result {
-   |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-   |
-   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `database`
-  --> tests/zero_trust_tests.rs:69:9
-   |
-69 |     let database = match database_result {
-   |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/zero_trust_tests.rs:132:9
-    |
-132 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/zero_trust_tests.rs:197:9
-    |
-197 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/zero_trust_tests.rs:284:9
-    |
-284 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/zero_trust_tests.rs:338:9
-    |
-338 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/zero_trust_tests.rs:395:9
-    |
-395 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/zero_trust_tests.rs:446:9
-    |
-446 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/zero_trust_tests.rs:528:9
-    |
-528 |     let database = Arc::new(Database::new(&database_config).await.unwrap());
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/zero_trust_tests.rs:622:9
-    |
-622 |     let database = Arc::new(Database::new(&database_config).await.unwrap());
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused imports: `State` and `get`
- --> tests/federation_integration_tests.rs:3:21
-  |
-3 |     extract::{Json, State},
-  |                     ^^^^^
-4 |     http::StatusCode,
-5 |     routing::{get, post},
-  |               ^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: field `saml_responses` is never read
-  --> tests/federation_integration_tests.rs:22:5
-   |
-18 | struct FederationTestState {
-   |        ------------------- field in this struct
-...
-22 |     saml_responses: Arc<Mutex<HashMap<String, String>>>,
-   |     ^^^^^^^^^^^^^^
-   |
-   = note: `FederationTestState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: `authenc` (test "zero_trust_tests") generated 10 warnings
+warning: `authenc` (lib test) generated 42 warnings (36 duplicates) (run `cargo fix --lib -p authenc --tests` to apply 6 suggestions)
 warning: unused import: `super::*`
  --> tests/user_model_unit_tests.rs:3:9
   |
@@ -589,758 +1140,66 @@ warning: unused import: `DateTime`
 6 |     use chrono::{DateTime, Duration, Utc};
   |                  ^^^^^^^^
 
-warning: unused import: `super::*`
- --> tests/oid4vc_tests.rs:3:9
-  |
-3 |     use super::*;
-  |         ^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused imports: `CredentialResponse` and `CredentialTokenResponse`
- --> tests/oid4vc_tests.rs:6:46
-  |
-6 |         CredentialFormat, CredentialRequest, CredentialResponse, CredentialSubject,
-  |                                              ^^^^^^^^^^^^^^^^^^
-7 |         CredentialTokenRequest, CredentialTokenResponse, DeferredCredentialRequest,
-  |                                 ^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: unused import: `std::sync::Arc`
-  --> tests/oid4vc_tests.rs:13:9
-   |
-13 |     use std::sync::Arc;
-   |         ^^^^^^^^^^^^^^
-
-warning: unused import: `tokio::sync::RwLock`
-  --> tests/oid4vc_tests.rs:14:9
-   |
-14 |     use tokio::sync::RwLock;
-   |         ^^^^^^^^^^^^^^^^^^^
-
-warning: `authenc` (test "user_model_unit_tests") generated 2 warnings (run `cargo fix --test "user_model_unit_tests"` to apply 2 suggestions)
-warning: unused import: `chrono::Utc`
- --> tests/device_management_tests_corrected.rs:4:5
-  |
-4 | use chrono::Utc;
-  |     ^^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: variable does not need to be mutable
-  --> tests/device_management_tests_corrected.rs:77:9
-   |
-77 |     let mut device_service = DeviceService::new(database);
-   |         ----^^^^^^^^^^^^^^
-   |         |
-   |         help: remove this `mut`
-   |
-   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
-
-warning: `authenc` (test "oid4vc_tests") generated 4 warnings (run `cargo fix --test "oid4vc_tests"` to apply 4 suggestions)
-warning: `authenc` (test "federation_integration_tests") generated 2 warnings (run `cargo fix --test "federation_integration_tests"` to apply 1 suggestion)
-warning: `authenc` (test "comprehensive") generated 9 warnings (run `cargo fix --test "comprehensive"` to apply 1 suggestion)
-warning: unused import: `chrono::Utc`
- --> tests/device_management_tests.rs:4:5
-  |
-4 | use chrono::Utc;
-  |     ^^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused imports: `SystemTime` and `UNIX_EPOCH`
- --> tests/device_management_tests.rs:6:17
-  |
-6 | use std::time::{SystemTime, UNIX_EPOCH};
-  |                 ^^^^^^^^^^  ^^^^^^^^^^
-
-warning: variable does not need to be mutable
-   --> tests/device_management_tests.rs:126:9
+error[E0063]: missing fields `email_verified`, `enabled` and `require_password_change` in initializer of `authenc::models::user::CreateUserRequest`
+   --> tests/user_model_unit_tests.rs:615:23
     |
-126 |     let mut device_service = DeviceService::new(database.clone());
-    |         ----^^^^^^^^^^^^^^
-    |         |
-    |         help: remove this `mut`
+615 |         let request = CreateUserRequest {
+    |                       ^^^^^^^^^^^^^^^^^ missing `email_verified`, `enabled` and `require_password_change`
+
+error[E0308]: mismatched types
+   --> tests/webauthn_tests.rs:106:9
     |
-    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `user`
-   --> tests/authentication_flow_tests.rs:124:25
+106 |         realm_id,
+    |         ^^^^^^^^ expected `String`, found `Uuid`
     |
-124 |             if let Some(user) = users.get(email) {
-    |                         ^^^^ help: if this is intentional, prefix it with an underscore: `_user`
+help: try using a conversion method
     |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+106 |         realm_id: realm_id.to_string(),
+    |         +++++++++         ++++++++++++
 
-warning: field `email` is never read
-  --> tests/authentication_flow_tests.rs:27:5
-   |
-25 | struct User {
-   |        ---- field in this struct
-26 |     id: String,
-27 |     email: String,
-   |     ^^^^^
-   |
-   = note: `User` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: fields `id`, `created_at`, `ip_address`, and `user_agent` are never read
-  --> tests/authentication_flow_tests.rs:38:5
-   |
-37 | struct Session {
-   |        ------- fields in this struct
-38 |     id: String,
-   |     ^^
-39 |     user_id: String,
-40 |     created_at: String,
-   |     ^^^^^^^^^^
-41 |     expires_at: String,
-42 |     ip_address: String,
-   |     ^^^^^^^^^^
-43 |     user_agent: String,
-   |     ^^^^^^^^^^
-   |
-   = note: `Session` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: field `token` is never read
-  --> tests/authentication_flow_tests.rs:49:5
-   |
-48 | struct TokenInfo {
-   |        --------- field in this struct
-49 |     token: String,
-   |     ^^^^^
-   |
-   = note: `TokenInfo` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: fields `user_id`, `code`, `created_at`, `expires_at`, and `used` are never read
-  --> tests/authentication_flow_tests.rs:60:5
-   |
-59 | struct MfaCode {
-   |        ------- fields in this struct
-60 |     user_id: String,
-   |     ^^^^^^^
-61 |     code: String,
-   |     ^^^^
-62 |     created_at: String,
-   |     ^^^^^^^^^^
-63 |     expires_at: String,
-   |     ^^^^^^^^^^
-64 |     used: bool,
-   |     ^^^^
-   |
-   = note: `MfaCode` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: `authenc` (test "device_management_tests_corrected") generated 2 warnings (run `cargo fix --test "device_management_tests_corrected"` to apply 2 suggestions)
-warning: unused variable: `database`
-  --> tests/advanced_federation_tests.rs:84:9
-   |
-84 |     let database = match database_result {
-   |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-   |
-   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `database`
-   --> tests/advanced_federation_tests.rs:137:9
+error[E0063]: missing fields `email_verified`, `enabled` and `require_password_change` in initializer of `authenc::models::user::CreateUserRequest`
+   --> tests/webauthn_tests.rs:223:31
     |
-137 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
+223 |     let create_user_request = CreateUserRequest {
+    |                               ^^^^^^^^^^^^^^^^^ missing `email_verified`, `enabled` and `require_password_change`
 
-warning: unused variable: `database`
-   --> tests/advanced_federation_tests.rs:263:9
+error[E0308]: mismatched types
+   --> tests/webauthn_tests.rs:292:19
     |
-263 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/advanced_federation_tests.rs:434:9
+292 |         realm_id: Uuid::new_v4(),
+    |                   ^^^^^^^^^^^^^^ expected `String`, found `Uuid`
     |
-434 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `display_name_attr`
-   --> tests/advanced_federation_tests.rs:539:9
+help: try using a conversion method
     |
-539 |         display_name_attr,
-    |         ^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_display_name_attr`
+292 |         realm_id: Uuid::new_v4().to_string(),
+    |                                 ++++++++++++
 
-warning: unused variable: `database`
-   --> tests/advanced_federation_tests.rs:596:9
+error[E0308]: mismatched types
+   --> tests/webauthn_tests.rs:344:9
     |
-596 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused variable: `database`
-   --> tests/advanced_federation_tests.rs:636:9
+344 |         realm_id,
+    |         ^^^^^^^^ expected `String`, found `Uuid`
     |
-636 |     let database = match database_result {
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_database`
-
-warning: unused imports: `Method`, `Path`, `Request`, `body::Body`, `delete`, `header`, `middleware`, and `put`
-  --> tests/comprehensive_security_tests.rs:6:5
-   |
- 6 |     body::Body,
-   |     ^^^^^^^^^^
- 7 |     extract::{Json, Path, Query, State},
-   |                     ^^^^
- 8 |     http::{HeaderMap, Method, Request, StatusCode, header},
-   |                       ^^^^^^  ^^^^^^^              ^^^^^^
- 9 |     middleware,
-   |     ^^^^^^^^^^
-10 |     response::Json as AxumJson,
-11 |     routing::{delete, get, post, put},
-   |               ^^^^^^             ^^^
-   |
-   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused imports: `Duration` and `sleep`
-  --> tests/comprehensive_security_tests.rs:17:19
-   |
-17 | use tokio::time::{Duration, sleep};
-   |                   ^^^^^^^^  ^^^^^
-
-warning: field `blocked_ips` is never read
-  --> tests/comprehensive_security_tests.rs:25:5
-   |
-22 | struct SecurityTestState {
-   |        ----------------- field in this struct
-...
-25 |     blocked_ips: Arc<Mutex<HashMap<String, chrono::DateTime<chrono::Utc>>>>,
-   |     ^^^^^^^^^^^
-   |
-   = note: `SecurityTestState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: `authenc` (test "device_management_tests") generated 3 warnings (run `cargo fix --test "device_management_tests"` to apply 3 suggestions)
-warning: field `metrics` is never read
-  --> tests/load_stress_tests.rs:18:5
-   |
-15 | struct LoadTestState {
-   |        ------------- field in this struct
-...
-18 |     metrics: Arc<Mutex<Vec<serde_json::Value>>>,
-   |     ^^^^^^^
-   |
-   = note: `LoadTestState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: `authenc` (test "advanced_federation_tests") generated 7 warnings
-warning: unused import: `body::Body`
- --> tests/monitoring_tests.rs:3:5
-  |
-3 |     body::Body,
-  |     ^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: `authenc` (test "authentication_flow_tests") generated 5 warnings
-warning: unused imports: `delete` and `header::HeaderMap`
- --> tests/session_management_tests.rs:7:24
-  |
-7 |     http::{StatusCode, header::HeaderMap},
-  |                        ^^^^^^^^^^^^^^^^^
-8 |     routing::{delete, get, post},
-  |               ^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `range`
-   --> tests/session_management_tests.rs:407:54
+help: try using a conversion method
     |
-407 |                 policy.allowed_ip_ranges.iter().any(|range| ip_address.starts_with("192.168.1."));
-    |                                                      ^^^^^ help: if this is intentional, prefix it with an underscore: `_range`
+344 |         realm_id: realm_id.to_string(),
+    |         +++++++++         ++++++++++++
+
+error[E0308]: mismatched types
+   --> tests/webauthn_tests.rs:405:9
     |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `used_count`
-   --> tests/session_management_tests.rs:574:21
+405 |         realm_id,
+    |         ^^^^^^^^ expected `String`, found `Uuid`
     |
-574 |                 let used_count = token_info.used_count;
-    |                     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_used_count`
-
-warning: unused variable: `user_id`
-   --> tests/session_management_tests.rs:758:17
+help: try using a conversion method
     |
-758 |             let user_id = search.get("user_id").and_then(|u| u.as_str());
-    |                 ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_user_id`
+405 |         realm_id: realm_id.to_string(),
+    |         +++++++++         ++++++++++++
 
-warning: fields `device_fingerprint`, `max_age_seconds`, and `idle_timeout_seconds` are never read
-  --> tests/session_management_tests.rs:35:5
-   |
-26 | struct Session {
-   |        ------- fields in this struct
-...
-35 |     device_fingerprint: Option<String>,
-   |     ^^^^^^^^^^^^^^^^^^
-36 |     is_active: bool,
-37 |     max_age_seconds: u64,
-   |     ^^^^^^^^^^^^^^^
-38 |     idle_timeout_seconds: u64,
-   |     ^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: `Session` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: fields `id`, `email`, and `require_device_fingerprint` are never read
-  --> tests/session_management_tests.rs:43:5
-   |
-42 | struct User {
-   |        ---- fields in this struct
-43 |     id: String,
-   |     ^^
-44 |     email: String,
-   |     ^^^^^
-...
-47 |     require_device_fingerprint: bool,
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: `User` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: fields `id`, `name`, `require_mfa`, and `device_fingerprint_required` are never read
-  --> tests/session_management_tests.rs:52:5
-   |
-51 | struct SessionPolicy {
-   |        ------------- fields in this struct
-52 |     id: String,
-   |     ^^
-53 |     name: String,
-   |     ^^^^
-...
-57 |     require_mfa: bool,
-   |     ^^^^^^^^^^^
-...
-60 |     device_fingerprint_required: bool,
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: `SessionPolicy` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: fields `token` and `issued_at` are never read
-  --> tests/session_management_tests.rs:65:5
-   |
-64 | struct RefreshToken {
-   |        ------------ fields in this struct
-65 |     token: String,
-   |     ^^^^^
-...
-68 |     issued_at: String,
-   |     ^^^^^^^^^
-   |
-   = note: `RefreshToken` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: field `session_id` is never read
-  --> tests/session_management_tests.rs:77:5
-   |
-75 | struct SessionEvent {
-   |        ------------ field in this struct
-76 |     id: String,
-77 |     session_id: String,
-   |     ^^^^^^^^^^
-   |
-   = note: `SessionEvent` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: `authenc` (test "comprehensive_security_tests") generated 3 warnings (run `cargo fix --test "comprehensive_security_tests"` to apply 2 suggestions)
-warning: unused import: `header::HeaderMap`
- --> tests/audit_logging_tests.rs:7:24
-  |
-7 |     http::{StatusCode, header::HeaderMap},
-  |                        ^^^^^^^^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: fields `session_id`, `user_agent`, `request_size_bytes`, `response_size_bytes`, and `metadata` are never read
-  --> tests/audit_logging_tests.rs:31:5
-   |
-27 | struct AuditLogEntry {
-   |        ------------- fields in this struct
-...
-31 |     session_id: Option<String>,
-   |     ^^^^^^^^^^
-...
-38 |     user_agent: String,
-   |     ^^^^^^^^^^
-...
-41 |     request_size_bytes: u64,
-   |     ^^^^^^^^^^^^^^^^^^
-42 |     response_size_bytes: u64,
-   |     ^^^^^^^^^^^^^^^^^^^
-43 |     metadata: HashMap<String, String>,
-   |     ^^^^^^^^
-   |
-   = note: `AuditLogEntry` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: fields `user_id`, `action`, and `evidence` are never read
-  --> tests/audit_logging_tests.rs:54:5
-   |
-49 | struct ComplianceLogEntry {
-   |        ------------------ fields in this struct
-...
-54 |     user_id: Option<String>,
-   |     ^^^^^^^
-55 |     action: String,
-   |     ^^^^^^
-...
-58 |     evidence: HashMap<String, String>,
-   |     ^^^^^^^^
-   |
-   = note: `ComplianceLogEntry` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: fields `user_id`, `session_id`, `user_agent`, `indicators`, and `response_actions` are never read
-  --> tests/audit_logging_tests.rs:69:5
-   |
-64 | struct SecurityEvent {
-   |        ------------- fields in this struct
-...
-69 |     user_id: Option<String>,
-   |     ^^^^^^^
-70 |     session_id: Option<String>,
-   |     ^^^^^^^^^^
-71 |     ip_address: String,
-72 |     user_agent: String,
-   |     ^^^^^^^^^^
-73 |     description: String,
-74 |     indicators: Vec<String>,
-   |     ^^^^^^^^^^
-75 |     response_actions: Vec<String>,
-   |     ^^^^^^^^^^^^^^^^
-   |
-   = note: `SecurityEvent` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: fields `id`, `retention_days`, `archive_after_days`, `delete_after_days`, `encryption_required`, and `compliance_standards` are never read
-  --> tests/audit_logging_tests.rs:83:5
-   |
-82 | struct RetentionPolicy {
-   |        --------------- fields in this struct
-83 |     id: String,
-   |     ^^
-...
-86 |     retention_days: u32,
-   |     ^^^^^^^^^^^^^^
-87 |     archive_after_days: u32,
-   |     ^^^^^^^^^^^^^^^^^^
-88 |     delete_after_days: u32,
-   |     ^^^^^^^^^^^^^^^^^
-89 |     encryption_required: bool,
-   |     ^^^^^^^^^^^^^^^^^^^
-90 |     compliance_standards: Vec<String>,
-   |     ^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: `RetentionPolicy` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: field `user_id` is never read
-  --> tests/audit_logging_tests.rs:97:5
-   |
-94 | struct AuditTrailEntry {
-   |        --------------- field in this struct
-...
-97 |     user_id: String,
-   |     ^^^^^^^
-   |
-   = note: `AuditTrailEntry` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-
-warning: `authenc` (test "load_stress_tests") generated 1 warning
-warning: unused import: `authenc::crypto::xmldsig::*`
- --> tests/saml_integration_tests.rs:6:5
-  |
-6 | use authenc::crypto::xmldsig::*;
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused import: `AuthResponse`
- --> tests/saml_integration_tests.rs:9:18
-  |
-9 |     AuthRequest, AuthResponse, IdentityProvider, IdentityProviderConfig, IdentityProviderType,
-  |                  ^^^^^^^^^^^^
-
-warning: `authenc` (test "monitoring_tests") generated 1 warning (run `cargo fix --test "monitoring_tests"` to apply 1 suggestion)
-warning: `authenc` (test "session_management_tests") generated 9 warnings (run `cargo fix --test "session_management_tests"` to apply 1 suggestion)
-warning: use of deprecated associated function `openssl::x509::X509Extension::new_nid`: Use x509::extension types or new_from_der instead
-  --> tests/xmldsig_crl_tests.rs:41:44
-   |
-41 |     let basic_constraints = X509Extension::new_nid(
-   |                                            ^^^^^^^
-   |
-   = note: `#[warn(deprecated)]` on by default
-
-warning: `authenc` (test "xmldsig_crl_tests") generated 1 warning
-warning: unused imports: `Method`, `Request`, `body::Body`, `delete`, `header`, `middleware`, and `put`
- --> tests/stress_tests.rs:3:5
-  |
-3 |     body::Body,
-  |     ^^^^^^^^^^
-4 |     extract::{Path, Query, State},
-5 |     http::{Method, Request, StatusCode, header},
-  |            ^^^^^^  ^^^^^^^              ^^^^^^
-6 |     middleware,
-  |     ^^^^^^^^^^
-7 |     response::Json,
-8 |     routing::{delete, get, post, put},
-  |               ^^^^^^             ^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `errors`
-   --> tests/stress_tests.rs:164:17
-    |
-164 |         let mut errors: Vec<String> = Vec::new();
-    |                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_errors`
-    |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `index`
-   --> tests/stress_tests.rs:166:14
-    |
-166 |         for (index, resource_payload) in resources.iter().enumerate() {
-    |              ^^^^^ help: if this is intentional, prefix it with an underscore: `_index`
-
-warning: variable does not need to be mutable
-   --> tests/stress_tests.rs:164:13
-    |
-164 |         let mut errors: Vec<String> = Vec::new();
-    |             ----^^^^^^
-    |             |
-    |             help: remove this `mut`
-    |
-    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `state`
-   --> tests/stress_tests.rs:222:11
-    |
-222 |     State(state): State<AppState>,
-    |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
-
-warning: unused variable: `state`
-   --> tests/stress_tests.rs:259:43
-    |
-259 | async fn memory_intensive_operation(State(state): State<AppState>) -> Json<serde_json::Value> {
-    |                                           ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
-
-warning: unused variable: `server`
-   --> tests/stress_tests.rs:439:9
-    |
-439 |     let server = TestServer::new(app.clone()).unwrap();
-    |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_server`
-
-warning: unused variable: `i`
-   --> tests/stress_tests.rs:444:9
-    |
-444 |     for i in 0..10 {
-    |         ^ help: if this is intentional, prefix it with an underscore: `_i`
-
-warning: unused import: `delete`
- --> tests/advanced_performance_tests.rs:6:15
-  |
-6 |     routing::{delete, get, post, put},
-  |               ^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: variable `cache_hits` is assigned to, but never used
-   --> tests/advanced_performance_tests.rs:171:13
-    |
-171 |     let mut cache_hits = 0;
-    |             ^^^^^^^^^^
-    |
-    = note: consider using `_cache_hits` instead
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: variable `cache_misses` is assigned to, but never used
-   --> tests/advanced_performance_tests.rs:172:13
-    |
-172 |     let mut cache_misses = 0;
-    |             ^^^^^^^^^^^^
-    |
-    = note: consider using `_cache_misses` instead
-
-warning: unused variable: `idle_connections`
-   --> tests/advanced_performance_tests.rs:278:9
-    |
-278 |     let idle_connections = body["idle_connections"].as_u64().unwrap();
-    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_idle_connections`
-
-warning: variable does not need to be mutable
-   --> tests/advanced_performance_tests.rs:310:9
-    |
-310 |     let mut load_levels = vec![10, 50, 100, 200, 500];
-    |         ----^^^^^^^^^^^
-    |         |
-    |         help: remove this `mut`
-    |
-    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
-
-warning: fields `metrics` and `database_connections` are never read
-  --> tests/advanced_performance_tests.rs:17:5
-   |
-16 | struct PerformanceTestState {
-   |        -------------------- fields in this struct
-17 |     metrics: Arc<Mutex<Vec<serde_json::Value>>>,
-   |     ^^^^^^^
-18 |     cache: Arc<Mutex<HashMap<String, serde_json::Value>>>,
-19 |     database_connections: Arc<Mutex<Vec<serde_json::Value>>>,
-   |     ^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: `PerformanceTestState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: `authenc` (test "saml_integration_tests") generated 2 warnings (run `cargo fix --test "saml_integration_tests"` to apply 2 suggestions)
-warning: `authenc` (test "audit_logging_tests") generated 6 warnings (run `cargo fix --test "audit_logging_tests"` to apply 1 suggestion)
-warning: unused import: `authenc::axum_app::AxumApp`
- --> tests/axum_app_tests.rs:3:9
-  |
-3 |     use authenc::axum_app::AxumApp;
-  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: `authenc` (test "axum_app_tests") generated 1 warning (run `cargo fix --test "axum_app_tests"` to apply 1 suggestion)
-warning: unused import: `State`
- --> tests/security_tests.rs:6:34
-  |
-6 |     extract::{Json, Path, Query, State},
-  |                                  ^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `username`
-   --> tests/security_tests.rs:146:9
-    |
-146 |     let username = payload
-    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_username`
-    |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused variable: `valid_tokens`
-   --> tests/security_tests.rs:316:9
-    |
-316 |     let valid_tokens = Arc::new(Mutex::new(HashMap::<String, String>::new()));
-    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_valid_tokens`
-
-warning: unused variable: `i`
-   --> tests/security_tests.rs:426:9
-    |
-426 |     for i in 0..4 {
-    |         ^ help: if this is intentional, prefix it with an underscore: `_i`
-
-warning: unused import: `authenc::spi::Spi`
- --> tests/spi_theme_tests.rs:3:9
-  |
-3 |     use authenc::spi::Spi;
-  |         ^^^^^^^^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: `authenc` (test "spi_theme_tests") generated 1 warning (run `cargo fix --test "spi_theme_tests"` to apply 1 suggestion)
-warning: `authenc` (test "advanced_performance_tests") generated 6 warnings (run `cargo fix --test "advanced_performance_tests"` to apply 2 suggestions)
-warning: `authenc` (test "stress_tests") generated 8 warnings (run `cargo fix --test "stress_tests"` to apply 2 suggestions)
-warning: `authenc` (test "security_tests") generated 4 warnings (run `cargo fix --test "security_tests"` to apply 1 suggestion)
-error[E0061]: this function takes 3 arguments but 2 arguments were supplied
-    --> tests/webauthn_tests.rs:56:38
-     |
-  56 |     if let Ok(Some(existing_user)) = users::get_user_by_username(&database, "testuser").await {
-     |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^            ---------- argument #2 of type `&Uuid` is missing
-     |
-note: function defined here
-    --> /app/src/database/operations.rs:2222:18
-     |
-2222 |     pub async fn get_user_by_username(
-     |                  ^^^^^^^^^^^^^^^^^^^^
-help: provide the argument
-     |
-  56 |     if let Ok(Some(existing_user)) = users::get_user_by_username(&database, /* &Uuid */, "testuser").await {
-     |                                                                             ++++++++++++
-
-error[E0063]: missing field `realm_id` in initializer of `authenc::services::webauthn::WebAuthnRegistrationRequest`
-   --> tests/webauthn_tests.rs:100:19
-    |
-100 |     let request = WebAuthnRegistrationRequest {
-    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `realm_id`
-
-error[E0061]: this function takes 3 arguments but 2 arguments were supplied
-    --> tests/webauthn_tests.rs:201:38
-     |
- 201 |     if let Ok(Some(existing_user)) = users::get_user_by_username(&database, "testuser").await {
-     |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^            ---------- argument #2 of type `&Uuid` is missing
-     |
-note: function defined here
-    --> /app/src/database/operations.rs:2222:18
-     |
-2222 |     pub async fn get_user_by_username(
-     |                  ^^^^^^^^^^^^^^^^^^^^
-help: provide the argument
-     |
- 201 |     if let Ok(Some(existing_user)) = users::get_user_by_username(&database, /* &Uuid */, "testuser").await {
-     |                                                                             ++++++++++++
-
-error[E0061]: this function takes 3 arguments but 2 arguments were supplied
-    --> tests/webauthn_tests.rs:237:23
-     |
- 237 |     let user_result = users::get_user_by_username(&database, "testuser").await;
-     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^            ---------- argument #2 of type `&Uuid` is missing
-     |
-note: function defined here
-    --> /app/src/database/operations.rs:2222:18
-     |
-2222 |     pub async fn get_user_by_username(
-     |                  ^^^^^^^^^^^^^^^^^^^^
-help: provide the argument
-     |
- 237 |     let user_result = users::get_user_by_username(&database, /* &Uuid */, "testuser").await;
-     |                                                              ++++++++++++
-
-error[E0063]: missing field `realm_id` in initializer of `authenc::services::webauthn::WebAuthnAuthenticationRequest`
-   --> tests/webauthn_tests.rs:285:19
-    |
-285 |     let request = WebAuthnAuthenticationRequest {
-    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `realm_id`
-
-error[E0063]: missing field `realm_id` in initializer of `authenc::services::webauthn::WebAuthnRegistrationRequest`
-   --> tests/webauthn_tests.rs:333:29
-    |
-333 |     let challenge_request = WebAuthnRegistrationRequest {
-    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `realm_id`
-
-error[E0061]: this method takes 4 arguments but 2 arguments were supplied
-   --> tests/webauthn_tests.rs:359:10
-    |
-359 |         .verify_registration("testuser", credential_response)
-    |          ^^^^^^^^^^^^^^^^^^^---------------------------------
-    |                             ||
-    |                             |argument #1 of type `&Uuid` is missing
-    |                             argument #4 of type `Option<Uuid>` is missing
-    |
-note: method defined here
-   --> /app/src/services/webauthn.rs:171:18
-    |
-171 |     pub async fn verify_registration(
-    |                  ^^^^^^^^^^^^^^^^^^^
-help: provide the arguments
-    |
-359 -         .verify_registration("testuser", credential_response)
-359 +         .verify_registration(/* &Uuid */, "testuser", credential_response, /* Option<Uuid> */)
-    |
-
-error[E0063]: missing field `realm_id` in initializer of `authenc::services::webauthn::WebAuthnAuthenticationRequest`
-   --> tests/webauthn_tests.rs:392:29
-    |
-392 |     let challenge_request = WebAuthnAuthenticationRequest {
-    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `realm_id`
-
-error[E0061]: this method takes 3 arguments but 2 arguments were supplied
-   --> tests/webauthn_tests.rs:419:10
-    |
-419 |         .verify_authentication("testuser", assertion_response)
-    |          ^^^^^^^^^^^^^^^^^^^^^ ---------- argument #1 of type `&Uuid` is missing
-    |
-note: method defined here
-   --> /app/src/services/webauthn.rs:307:18
-    |
-307 |     pub async fn verify_authentication(
-    |                  ^^^^^^^^^^^^^^^^^^^^^
-help: provide the argument
-    |
-419 |         .verify_authentication(/* &Uuid */, "testuser", assertion_response)
-    |                                ++++++++++++
-
-Some errors have detailed explanations: E0061, E0063.
-For more information about an error, try `rustc --explain E0061`.
-error: could not compile `authenc` (test "webauthn_tests") due to 9 previous errors
+For more information about this error, try `rustc --explain E0063`.
+warning: `authenc` (test "user_model_unit_tests") generated 2 warnings
+error: could not compile `authenc` (test "user_model_unit_tests") due to 1 previous error; 2 warnings emitted
 warning: build failed, waiting for other jobs to finish...
+Some errors have detailed explanations: E0063, E0308.
+For more information about an error, try `rustc --explain E0063`.
+error: could not compile `authenc` (test "webauthn_tests") due to 6 previous errors
