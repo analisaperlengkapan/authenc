@@ -27,31 +27,39 @@
 
 ## ✨ Features
 
-- **Standard Protocols:** Support for OAuth 2.0, OpenID Connect (OIDC), and SAML 2.0.
+- **Standard Protocols:** Full support for OAuth 2.0, OpenID Connect (OIDC), and SAML 2.0 (SP/IdP).
+- **Federation & Integrations:** Social login integration, LDAP/AD synchronization, and federated SSO.
 - **Modern Authentication:** Passwordless login via WebAuthn/Passkeys (Experimental/In Development) and Multi-Factor Authentication (MFA) via TOTP.
-- **Account Management:** User lifecycle management, email verification, and Role-Based Access Control (RBAC).
-- **Security-First:** Built-in rate limiting, brute-force protection, audit logging, and modern cryptography (Ed25519, AES-256-GCM, Argon2id).
+- **Account Management:** Multi-tenant realms, user lifecycle management, robust Groups and Organization hierarchies, and email verification.
+- **Advanced Authorization:** Fine-grained Role-Based Access Control (RBAC) and explicit consent workflows.
+- **Security-First:** Built-in rate limiting, brute-force protection, device trust scoring (Zero Trust), and verifiable credentials (OID4VC).
+- **Compliance & Audit:** FIPS-mode capabilities, comprehensive audit logging (with export and webhook support), and risk analytics.
 - **Admin Console:** A lightweight, static Single Page Application (SPA) for managing realms, users, and configurations.
 
 ## 📚 API Overview
 
-The following core endpoints are available (see `tests/` for full usage examples):
+The following endpoint areas are fully supported (see `tests/` and `src/handlers/` for full details):
 
-### Core & OAuth2/OIDC
-- `GET /.well-known/openid-configuration` (Discovery)
-- `GET /oauth2/authorize`
-- `POST /oauth2/token`
-- `GET /oauth2/userinfo`
-- `GET /oauth2/jwks`
+### Core Authentication & Identity Protocols
+- **OAuth 2.0 / OIDC:** `/.well-known/openid-configuration`, `/oauth2/authorize`, `/oauth2/token`, `/oauth2/userinfo`, `/oauth2/jwks`, `/oauth2/revoke`, `/oauth2/consent`
+- **SAML 2.0:** `/saml/acs`, `/saml/metadata`, `/slo`
+- **Federated Auth & Social Login:** `/federated-auth`, `/social/auth`, `/social/callback`, `/social/initiate`, `/social/providers`, `/federation/ldap/auth`, `/federation/idp/metadata`
+- **SSO:** `/sso/login`, `/sso/callback`, `/sso/logout`, `/sso/sessions`
 
-### Admin API (REST)
-- `CRUD /api/v1/realms`
-- `CRUD /api/v1/realms/{id}/users`
-- `CRUD /api/v1/realms/{id}/clients`
+### Admin & Management API
+- **Realms:** `CRUD /api/v1/realms`, `GET /api/v1/realms/{id}/status`
+- **Users & Groups:** `CRUD /api/v1/realms/{id}/users`, `CRUD /api/v1/realms/{id}/groups`
+- **Roles & Permissions:** `CRUD /api/v1/roles`, `/authz/evaluate`, `/check-permission`
+- **Clients & Providers:** `CRUD /api/v1/realms/{id}/clients`, `CRUD /api/v1/providers`
+- **Organizations & Members:** `/organization/{id}`, `/organization/{id}/members`, `/organization/{id}/invitations`
 
-### SAML
-- `POST /saml/acs`
-- `GET /saml/metadata`
+### Advanced Security & Features
+- **MFA / TOTP:** `/users/{id}/totp`, `/users/{id}/totp/verify`
+- **WebAuthn (Passkeys):** `/webauthn/login/challenge`, `/webauthn/login/verify`, `/webauthn/register/challenge` *(Experimental)*
+- **Zero Trust & Device Trust:** `/zero-trust/risk/assess`, `/zero-trust/status`, `/device/{id}/trust`
+- **Audit & Monitoring:** `/logs`, `/logs/export`, `/events`, `/dashboard`, `/stats`
+- **Verifiable Credentials:** `/oid4vc/credentials`, `/vp/verify`
+- **FIPS Mode:** `/fips/enable`, `/fips/disable`, `/fips/status`
 
 ---
 
