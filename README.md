@@ -8,6 +8,19 @@
 
 ---
 
+## ⚠️ PROJECT STATUS
+
+> [!CAUTION]
+> **DEVELOPMENT VERSION - NOT FOR PRODUCTION**
+>
+> This project is actively developed. While core features are implemented, it has **not undergone a professional security review**.
+> - Always change default secrets and keys.
+> - Always use HTTPS/TLS in deployment.
+>
+> **Current Use:** Development, testing, and experimentation only.
+
+---
+
 ## 📖 About
 
 **Authenc** is an Identity and Access Management (IAM) platform built in Rust. It provides modern, secure authentication and authorization capabilities for web and enterprise applications. Built on top of the Axum web framework and PostgreSQL, it focuses on performance, modularity, and strong security defaults.
@@ -15,10 +28,32 @@
 ## ✨ Features
 
 - **Standard Protocols:** Support for OAuth 2.0, OpenID Connect (OIDC), and SAML 2.0.
-- **Modern Authentication:** Passwordless login via WebAuthn (Passkeys) and Multi-Factor Authentication (MFA) via TOTP.
+- **Modern Authentication:** Passwordless login via WebAuthn/Passkeys (Experimental/In Development) and Multi-Factor Authentication (MFA) via TOTP.
 - **Account Management:** User lifecycle management, email verification, and Role-Based Access Control (RBAC).
 - **Security-First:** Built-in rate limiting, brute-force protection, audit logging, and modern cryptography (Ed25519, AES-256-GCM, Argon2id).
 - **Admin Console:** A lightweight, static Single Page Application (SPA) for managing realms, users, and configurations.
+
+## 📚 API Overview
+
+The following core endpoints are available (see `tests/` for full usage examples):
+
+### Core & OAuth2/OIDC
+- `GET /.well-known/openid-configuration` (Discovery)
+- `GET /oauth2/authorize`
+- `POST /oauth2/token`
+- `GET /oauth2/userinfo`
+- `GET /oauth2/jwks`
+
+### Admin API (REST)
+- `CRUD /api/v1/realms`
+- `CRUD /api/v1/realms/{id}/users`
+- `CRUD /api/v1/realms/{id}/clients`
+
+### SAML
+- `POST /saml/acs`
+- `GET /saml/metadata`
+
+---
 
 ## 🏗️ Architecture & Workspace
 
@@ -52,7 +87,7 @@ The project is structured as a Cargo workspace to maintain clean boundaries betw
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/analisaperlengkapan/authenc.git
+   git clone https://github.com/authenc/authenc.git
    cd authenc
    ```
 
@@ -89,6 +124,13 @@ Run tests for a specific workspace crate:
 ```bash
 cargo test -p authenc-services
 ```
+
+## 📚 Documentation & Links
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [SECURITY.md](SECURITY.md)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- [TODO.md](TODO.md)
 
 ## 📄 License
 
