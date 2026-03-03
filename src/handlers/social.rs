@@ -222,6 +222,9 @@ pub async fn social_callback(
                  realm_id: Some(target_realm_id),
                  organization_id: None,
                  attributes: None,
+                 enabled: Some(true),
+                 email_verified: Some(true),
+                 require_password_change: Some(false),
              };
 
              let user = state.user_store.add_user(req).await.map_err(|e| {

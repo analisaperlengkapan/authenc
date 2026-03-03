@@ -108,7 +108,7 @@ async fn test_auth_flow_end_to_end() {
         audit_log_store,
         consent_store: mock_consent_store.clone(),
         auth_flow_store,
-        realm_store,
+        realm_store: realm_store.clone(),
         realm_service: mock_realm_service.clone(),
         role_store,
         permission_store,
@@ -137,6 +137,13 @@ async fn test_auth_flow_end_to_end() {
         authorization_manager,
         jit_provisioning_service,
         client_validator,
+        password_reset_service: Arc::new(authenc::services::password_reset::PasswordResetService::new(
+            mock_user_store.clone(),
+        )),
+        password_reset_protector: Arc::new(authenc::services::security::brute_force_protector::BruteForceProtector::new(5, 300)),
+        email_verification_service: Arc::new(authenc::services::email_verification::EmailVerificationService::new(
+            mock_user_store.clone(),
+        )),
     };
 
     // Create Realm (using mock service)
@@ -147,22 +154,38 @@ async fn test_auth_flow_end_to_end() {
         enabled: Some(true),
         attributes: None,
     };
-    let _realm: RealmResponse = mock_realm_service.create_realm(realm_req).await.expect("Failed to create realm");
+    let realm_resp: RealmResponse = mock_realm_service.create_realm(realm_req).await.expect("Failed to create realm");
+
+    // Also add to realm_store since some handlers bypass the service layer
+    let mut db_realm = authenc::models::Realm::default();
+    db_realm.id = realm_resp.id;
+    db_realm.name = realm_resp.name;
+    db_realm.display_name = realm_resp.display_name;
+    db_realm.description = realm_resp.description;
+    db_realm.enabled = realm_resp.enabled;
+    db_realm.created_at = realm_resp.created_at;
+    db_realm.updated_at = realm_resp.updated_at;
+
+    realm_store.add_realm(db_realm);
 
     // Create Router
     let router = authenc::handlers::create_router(Arc::new(state.clone()));
 
     // Test 1: Create User
+    let hashed_pw = authenc_crypto::utils::crypto::password::hash_password("password123").await.unwrap();
     let create_user_req = CreateUserRequest {
         username: "testuser".to_string(),
         email: "test@example.com".to_string(),
-        password: Some("password123".to_string()),
+        password: Some(hashed_pw),
         first_name: Some("Test".to_string()),
         last_name: Some("User".to_string()),
         phone_number: None,
         realm_id: Some(uuid::Uuid::new_v4()),
         organization_id: None,
         attributes: None,
+        enabled: Some(true),
+        email_verified: Some(true),
+        require_password_change: Some(false),
     };
 
     // Get realm ID
@@ -180,13 +203,18 @@ async fn test_auth_flow_end_to_end() {
         .unwrap();
 
     let response = router.clone().oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    let status = response.status();
+    if status != StatusCode::OK {
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        println!("Health check failed. Status: {}, Body: {:?}", status, String::from_utf8_lossy(&body));
+    }
+    assert_eq!(status, StatusCode::OK);
 
     // Test 3: Login
     let login_body = serde_json::json!({
         "username": "testuser",
         "password": "password123",
-        "realm": "test-realm"
+        "realm": realm_id.to_string() // handler uses realm name to match mock or parse UUID
     });
 
     let request = Request::builder()
@@ -197,5 +225,10 @@ async fn test_auth_flow_end_to_end() {
         .unwrap();
 
     let response = router.clone().oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    let status = response.status();
+    if status != StatusCode::OK {
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        println!("Login failed. Body: {:?}", String::from_utf8_lossy(&body));
+    }
+    assert_eq!(status, StatusCode::OK);
 }

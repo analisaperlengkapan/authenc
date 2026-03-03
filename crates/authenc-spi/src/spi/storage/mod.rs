@@ -240,6 +240,9 @@ impl UserStorageProvider for DefaultUserStorageProvider {
             realm_id: user.realm_id,
             organization_id: user.organization_id,
             attributes: user.attributes.clone(),
+            enabled: Some(user.enabled),
+            email_verified: Some(user.email_verified),
+            require_password_change: Some(user.require_password_change),
         };
         self.user_store.add_user(request).await
     }

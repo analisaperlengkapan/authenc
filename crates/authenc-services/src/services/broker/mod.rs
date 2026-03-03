@@ -664,6 +664,8 @@ impl IdentityBroker for LdapIdentityBroker {
             login_count: 0,
             reset_token_hash: None,
             reset_token_expires_at: None,
+            verification_token_hash: None,
+            verification_token_expires_at: None,
         };
         Ok(user)
     }
@@ -757,6 +759,8 @@ fn create_user_from_ldap_entry(entry: &SearchEntry, config: &LdapConfig) -> Resu
         login_count: 0,
         reset_token_hash: None,
         reset_token_expires_at: None,
+        verification_token_hash: None,
+        verification_token_expires_at: None,
     })
 }
 
@@ -924,6 +928,8 @@ impl IdentityBroker for SocialIdentityBroker {
             login_count: 0,
             reset_token_hash: None,
             reset_token_expires_at: None,
+            verification_token_hash: None,
+            verification_token_expires_at: None,
         };
         Ok(user)
     }

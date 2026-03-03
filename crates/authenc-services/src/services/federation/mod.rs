@@ -338,6 +338,7 @@ pub mod jit_provisioning {
                 attributes: request.external_attributes.clone(),
                 email_verified: true, // Trusted from external provider
                 enabled: true,
+                require_password_change: Some(false),
             };
 
             // Use admin service to create user, ensuring proper side effects

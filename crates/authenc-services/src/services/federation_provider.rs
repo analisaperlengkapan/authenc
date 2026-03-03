@@ -99,6 +99,8 @@ impl FederationProvider for DummyFederationProvider {
                 login_count: 0,
                 reset_token_hash: None,
                 reset_token_expires_at: None,
+                verification_token_hash: None,
+                verification_token_expires_at: None,
             })
         } else {
             None

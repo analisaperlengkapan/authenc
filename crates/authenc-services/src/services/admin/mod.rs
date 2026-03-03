@@ -208,6 +208,8 @@ pub struct CreateUserRequest {
     pub email_verified: bool,
     /// Whether the user account should be enabled
     pub enabled: bool,
+    /// Require password change
+    pub require_password_change: Option<bool>,
 }
 
 /// Update user request
@@ -975,6 +977,9 @@ impl AdminService for AdminManager {
             realm_id: Some(request.realm_id),
             organization_id: request.organization_id,
             attributes: request.attributes.clone(),
+            enabled: Some(request.enabled),
+            email_verified: Some(request.email_verified),
+            require_password_change: Some(request.require_password_change.unwrap_or(false)),
         };
 
         // Create user in database

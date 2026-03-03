@@ -50,7 +50,13 @@ pub async fn login(
     } else {
         // Here we should look up realm by name. Since we don't have realm store in state yet (or exposed easily),
         // we might fail or try to parse as UUID.
-        Uuid::parse_str(&req.realm).map_err(|_| AuthencError::validation("Invalid realm"))?
+        if let Ok(id) = Uuid::parse_str(&req.realm) {
+            id
+        } else if let Some(realm_obj) = state.realm_store.get_by_name(&req.realm) {
+            realm_obj.id
+        } else {
+            return Err(AuthencError::validation("Invalid realm"));
+        }
     };
 
     // Get user by username from database, filtering by realm
