@@ -222,7 +222,7 @@ impl WebAuthnService {
             .map_err(|e| AuthencError::internal(format!("Failed to start authentication: {}", e)))?;
 
         // Store state in memory
-        let key = format!("auth:{}:{}", request.realm_id, request.username);
+        let key = format!("auth:{}:{}", parsed_realm, request.username);
         self.auth_states.insert(key, (state, Utc::now()));
 
         // Cleanup expired states lazily (probabilistic: 1 in 100)
