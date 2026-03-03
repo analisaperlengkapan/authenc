@@ -171,6 +171,9 @@
                     <input type="text" id="realm" name="realm" value="master" required>
                 </div>
                 <button type="submit">Sign In</button>
+                <div style="margin-top: 1rem; text-align: center;">
+                    <button type="button" class="secondary" onclick="startWebAuthnLogin()">Sign in with Passkey</button>
+                </div>
             </form>
             <div id="login-error" class="error-message"></div>
         </div>
@@ -303,6 +306,7 @@
                 <button type="submit">Save Changes</button>
                 <button type="button" class="secondary" onclick="closeEditModal()">Cancel</button>
             </form>
+            <div id="passkey-registration-container"></div>
             <div id="edit-user-error" class="error-message"></div>
         </div>
     </div>
@@ -560,6 +564,174 @@
             }
         }
 
+        // Utility functions for WebAuthn (Base64URL encoding/decoding)
+        function bufferToBase64url(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let str = '';
+            for (const byte of bytes) {
+                str += String.fromCharCode(byte);
+            }
+            return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+
+        function base64urlToBuffer(base64url) {
+            const padding = '='.repeat((4 - base64url.length % 4) % 4);
+            const base64 = (base64url + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = atob(base64);
+            const buffer = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                buffer[i] = rawData.charCodeAt(i);
+            }
+            return buffer.buffer;
+        }
+
+        async function startWebAuthnLogin() {
+            const username = document.getElementById('username').value;
+            const realm = document.getElementById('realm').value;
+            const errorDiv = document.getElementById('login-error');
+            errorDiv.style.display = 'none';
+
+            if (!username || !realm) {
+                errorDiv.textContent = "Username and Realm are required for Passkey login.";
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            try {
+                let realm_id = realm;
+                if (realm === 'master') {
+                    realm_id = MASTER_REALM_UUID;
+                }
+
+                // 1. Get challenge
+                const challengeRes = await fetch('/api/v1/auth/webauthn/login/challenge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ realm_id, username })
+                });
+
+                if (!challengeRes.ok) throw new Error("Failed to get authentication challenge");
+                const challengeData = await challengeRes.json();
+
+                // Decouple the challenge for the browser
+                challengeData.publicKey.challenge = base64urlToBuffer(challengeData.publicKey.challenge);
+                challengeData.publicKey.allowCredentials.forEach(cred => {
+                    cred.id = base64urlToBuffer(cred.id);
+                });
+
+                // 2. Invoke WebAuthn
+                const credential = await navigator.credentials.get({
+                    publicKey: challengeData.publicKey
+                });
+
+                // 3. Format response for verification
+                const authResponse = {
+                    id: credential.id,
+                    rawId: bufferToBase64url(credential.rawId),
+                    type: credential.type,
+                    response: {
+                        authenticatorData: bufferToBase64url(credential.response.authenticatorData),
+                        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                        signature: bufferToBase64url(credential.response.signature),
+                        userHandle: credential.response.userHandle ? bufferToBase64url(credential.response.userHandle) : null
+                    }
+                };
+
+                // 4. Verify on backend
+                const verifyRes = await fetch('/api/v1/auth/webauthn/login/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ realm_id, username, ...authResponse })
+                });
+
+                if (!verifyRes.ok) throw new Error("Passkey verification failed");
+                const verifyData = await verifyRes.json();
+
+                // Assuming it returns a token on success
+                if (verifyData.access_token) {
+                    token = verifyData.access_token;
+                    currentUser = username;
+                    currentRealm = realm;
+                    localStorage.setItem('authenc_token', token);
+                    localStorage.setItem('authenc_user', currentUser);
+                    localStorage.setItem('authenc_realm', currentRealm);
+                    showDashboard();
+                } else {
+                    throw new Error("No access token received.");
+                }
+            } catch (err) {
+                console.error(err);
+                errorDiv.textContent = err.message || "Passkey login failed";
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        async function registerWebAuthn(username, email, realm_id) {
+            const errorDiv = document.getElementById('edit-user-error');
+            errorDiv.style.display = 'none';
+
+            try {
+                // 1. Get registration challenge
+                const challengeRes = await fetch('/api/v1/auth/webauthn/register/challenge', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        realm_id,
+                        username,
+                        display_name: email || username
+                    })
+                });
+
+                if (!challengeRes.ok) throw new Error("Failed to get registration challenge");
+                const challengeData = await challengeRes.json();
+
+                // Format challenge for navigator
+                challengeData.publicKey.challenge = base64urlToBuffer(challengeData.publicKey.challenge);
+                challengeData.publicKey.user.id = base64urlToBuffer(challengeData.publicKey.user.id);
+                if (challengeData.publicKey.excludeCredentials) {
+                    challengeData.publicKey.excludeCredentials.forEach(cred => {
+                        cred.id = base64urlToBuffer(cred.id);
+                    });
+                }
+
+                // 2. Invoke WebAuthn
+                const credential = await navigator.credentials.create({
+                    publicKey: challengeData.publicKey
+                });
+
+                // 3. Format response
+                const regResponse = {
+                    id: credential.id,
+                    rawId: bufferToBase64url(credential.rawId),
+                    type: credential.type,
+                    response: {
+                        attestationObject: bufferToBase64url(credential.response.attestationObject),
+                        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                    }
+                };
+
+                // 4. Verify on backend
+                const verifyRes = await fetch('/api/v1/auth/webauthn/register/verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ realm_id, username, ...regResponse, device_id: null })
+                });
+
+                if (!verifyRes.ok) throw new Error("Passkey registration verification failed");
+                alert("Passkey registered successfully!");
+            } catch (err) {
+                console.error(err);
+                errorDiv.textContent = err.message || "Passkey registration failed";
+                errorDiv.style.display = 'block';
+            }
+        }
+
         function openEditUserModal(user) {
             document.getElementById('edit-user-modal').classList.remove('hidden');
             document.getElementById('edit-user-modal').style.display = 'flex';
@@ -568,6 +740,18 @@
             document.getElementById('edit-user-id').value = user.id;
             document.getElementById('edit-username').value = user.username;
             document.getElementById('edit-email').value = user.email;
+
+            // Generate Passkey Registration Button inside the Edit Modal
+            const passkeyBtnContainer = document.getElementById('passkey-registration-container');
+            if (passkeyBtnContainer) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'secondary';
+                btn.style.marginTop = '10px';
+                btn.textContent = 'Register Passkey';
+                btn.addEventListener('click', () => registerWebAuthn(user.username, user.email, user.realm_id));
+                passkeyBtnContainer.replaceChildren(btn);
+            }
             document.getElementById('edit-first-name').value = user.first_name || '';
             document.getElementById('edit-last-name').value = user.last_name || '';
             document.getElementById('edit-phone').value = user.phone_number || '';

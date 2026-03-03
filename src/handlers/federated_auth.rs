@@ -94,6 +94,9 @@ impl AdminService for MockAdminService {
             attributes: request.attributes,
             realm_id: Some(request.realm_id),
             organization_id: None, // Not provided in admin CreateUserRequest
+            enabled: Some(true),
+            email_verified: Some(true),
+            require_password_change: Some(false),
         };
 
         match users::create_user(&self.db, &db_request).await {

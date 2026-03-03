@@ -36,14 +36,14 @@ pub struct WebAuthnService {
 pub struct WebAuthnRegistrationRequest {
     pub username: String,
     pub display_name: String,
-    pub realm_id: Uuid,
+    pub realm_id: String,
 }
 
 /// WebAuthn authentication request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebAuthnAuthenticationRequest {
     pub username: String,
-    pub realm_id: Uuid,
+    pub realm_id: String,
 }
 
 impl WebAuthnService {
@@ -89,7 +89,13 @@ impl WebAuthnService {
         &self,
         request: WebAuthnRegistrationRequest,
     ) -> Result<Json<serde_json::Value>> {
-        let user = users::get_user_by_username(&self.db, &request.realm_id, &request.username)
+        let parsed_realm = if request.realm_id == "master" {
+            Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap()
+        } else {
+            Uuid::parse_str(&request.realm_id).map_err(|_| AuthencError::validation("Invalid realm_id"))?
+        };
+
+        let user = users::get_user_by_username(&self.db, &parsed_realm, &request.username)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
@@ -186,7 +192,13 @@ impl WebAuthnService {
         &self,
         request: WebAuthnAuthenticationRequest,
     ) -> Result<Json<serde_json::Value>> {
-        let credentials = self.get_user_credentials(&request.realm_id, &request.username).await?;
+        let parsed_realm = if request.realm_id == "master" {
+            Uuid::parse_str("00000000-0000-0000-0000-000000000000").unwrap()
+        } else {
+            Uuid::parse_str(&request.realm_id).map_err(|_| AuthencError::validation("Invalid realm_id"))?
+        };
+
+        let credentials = self.get_user_credentials(&parsed_realm, &request.username).await?;
 
         if credentials.is_empty() {
             return Err(AuthencError::resource_not_found("No credentials found for user"));

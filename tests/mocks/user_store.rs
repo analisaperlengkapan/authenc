@@ -45,9 +45,9 @@ impl UserStoreTrait for MockUserStore {
         Ok(users.get(&id).cloned())
     }
 
-    async fn get_user_by_username(&self, _realm_id: &Uuid, username: &str) -> Result<Option<User>> {
+    async fn get_user_by_username(&self, realm_id: &Uuid, username: &str) -> Result<Option<User>> {
         let users = self.users.read().unwrap();
-        Ok(users.values().find(|u| u.username == username).cloned())
+        Ok(users.values().find(|u| u.username == username && u.realm_id == Some(*realm_id)).cloned())
     }
 
     async fn get_user_by_email(&self, _realm_id: &Uuid, email: &str) -> Result<Option<User>> {
@@ -87,6 +87,10 @@ impl UserStoreTrait for MockUserStore {
              organization_id: req.organization_id,
              federated: false,
              login_count: 0,
+             reset_token_hash: None,
+             reset_token_expires_at: None,
+             verification_token_hash: None,
+             verification_token_expires_at: None,
          };
          users.insert(user.id, user.clone());
          Ok(user)

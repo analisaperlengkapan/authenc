@@ -571,6 +571,9 @@ impl AppState {
                     "profile".to_string(),
                 ],
                 provider: authenc_services::services::social::SocialProvider::Google,
+                team_id: None,
+                key_id: None,
+                private_key: None,
             };
             social_manager.register_provider(google_config.clone());
             env_configs.push((authenc_services::services::social::SocialProvider::Google, google_config));
@@ -591,6 +594,9 @@ impl AppState {
                 user_info_url: "https://api.github.com/user".to_string(),
                 scopes: vec!["user:email".to_string()],
                 provider: authenc_services::services::social::SocialProvider::GitHub,
+                team_id: None,
+                key_id: None,
+                private_key: None,
             };
             social_manager.register_provider(github_config.clone());
             env_configs.push((authenc_services::services::social::SocialProvider::GitHub, github_config));
@@ -611,6 +617,9 @@ impl AppState {
                 user_info_url: "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name,picture".to_string(),
                 scopes: vec!["email".to_string(), "public_profile".to_string()],
                 provider: authenc_services::services::social::SocialProvider::Facebook,
+                team_id: None,
+                key_id: None,
+                private_key: None,
             };
             social_manager.register_provider(facebook_config.clone());
             env_configs.push((authenc_services::services::social::SocialProvider::Facebook, facebook_config));
@@ -636,6 +645,9 @@ impl AppState {
                     "User.Read".to_string(),
                 ],
                 provider: authenc_services::services::social::SocialProvider::Microsoft,
+                team_id: None,
+                key_id: None,
+                private_key: None,
             };
             social_manager.register_provider(microsoft_config.clone());
             env_configs.push((authenc_services::services::social::SocialProvider::Microsoft, microsoft_config));
