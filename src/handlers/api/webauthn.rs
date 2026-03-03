@@ -19,10 +19,10 @@ use authenc_models::models::webauthn::{
 /// Create WebAuthn routes
 pub fn create_webauthn_routes() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/auth/webauthn/register/challenge", post(generate_registration_challenge))
-        .route("/auth/webauthn/register/verify", post(verify_registration))
-        .route("/auth/webauthn/login/challenge", post(generate_authentication_challenge))
-        .route("/auth/webauthn/login/verify", post(verify_authentication))
+        .route("/webauthn/register/challenge", post(generate_registration_challenge))
+        .route("/webauthn/register/verify", post(verify_registration))
+        .route("/webauthn/login/challenge", post(generate_authentication_challenge))
+        .route("/webauthn/login/verify", post(verify_authentication))
 }
 
 /// Generate registration challenge

@@ -744,7 +744,13 @@
             // Generate Passkey Registration Button inside the Edit Modal
             const passkeyBtnContainer = document.getElementById('passkey-registration-container');
             if (passkeyBtnContainer) {
-                passkeyBtnContainer.innerHTML = `<button type="button" class="secondary" style="margin-top: 10px;" onclick="registerWebAuthn('${user.username}', '${user.email}', '${user.realm_id}')">Register Passkey</button>`;
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'secondary';
+                btn.style.marginTop = '10px';
+                btn.textContent = 'Register Passkey';
+                btn.addEventListener('click', () => registerWebAuthn(user.username, user.email, user.realm_id));
+                passkeyBtnContainer.replaceChildren(btn);
             }
             document.getElementById('edit-first-name').value = user.first_name || '';
             document.getElementById('edit-last-name').value = user.last_name || '';
