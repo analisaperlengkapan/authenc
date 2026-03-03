@@ -52,7 +52,7 @@ The project is structured as a Cargo workspace to maintain clean boundaries betw
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/authenc/authenc.git
+   git clone https://github.com/analisaperlengkapan/authenc.git
    cd authenc
    ```
 
