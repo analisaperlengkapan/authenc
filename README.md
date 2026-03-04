@@ -16,6 +16,8 @@
 > This project is actively developed. While core features are implemented, it has **not undergone a professional security review**.
 > - Always change default secrets and keys.
 > - Always use HTTPS/TLS in deployment.
+> - **Database Security:** Use strong passwords and encrypted connections. PostgreSQL is required (no in-memory mode).
+> - **Compliance:** Some OAuth2 flows may not match all RFC nuances exactly.
 >
 > **Current Use:** Development, testing, and experimentation only.
 
