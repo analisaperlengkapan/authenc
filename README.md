@@ -47,10 +47,10 @@ The following endpoint areas are fully supported (see `tests/` and `src/handlers
 - **SSO:** `/sso/login`, `/sso/callback`, `/sso/logout`, `/sso/sessions`
 
 ### Admin & Management API
-- **Realms:** `CRUD /api/v1/realms`, `GET /api/v1/realms/{id}/status`
-- **Users & Groups:** `CRUD /api/v1/realms/{id}/users`, `CRUD /api/v1/realms/{id}/groups`
-- **Roles & Permissions:** `CRUD /api/v1/roles`, `/authz/evaluate`, `/check-permission`
-- **Clients & Providers:** `CRUD /api/v1/realms/{id}/clients`, `CRUD /api/v1/providers`
+- **Realms:** `CRUD /api/v1/auth/realms`, `GET /api/v1/auth/realms/{id}/status`
+- **Users & Groups:** `CRUD /api/v1/auth/realms/{realm}/users`, `CRUD /api/v1/auth/realms/{realm}/groups`
+- **Roles & Permissions:** `CRUD /api/v1/auth/realms/{realm}/roles`, `/authz/evaluate`, `/check-permission`
+- **Clients & Providers:** `CRUD /api/v1/auth/realms/{realm}/clients`, `CRUD /api/v1/providers`
 - **Organizations & Members:** `/organization/{id}`, `/organization/{id}/members`, `/organization/{id}/invitations`
 
 ### Advanced Security & Features
@@ -95,7 +95,7 @@ The project is structured as a Cargo workspace to maintain clean boundaries betw
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/authenc/authenc.git
+   git clone https://github.com/analisaperlengkapan/authenc.git
    cd authenc
    ```
 
