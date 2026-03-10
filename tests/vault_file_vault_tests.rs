@@ -18,3 +18,57 @@ async fn test_file_vault_get_secret() {
     assert!(secret.is_some());
     assert_eq!(secret.unwrap().value, "supersecret");
 }
+
+#[tokio::test]
+async fn test_file_vault_path_traversal_validation() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let vault = FileVault::new(temp_dir.path());
+
+    // Test cases that should be REJECTED
+    let invalid_cases = vec![
+        "../escape",
+        "secret/../../etc/passwd",
+        "/absolute/path",
+        ".",
+        "some/./path",
+        "",
+    ];
+
+    for case in invalid_cases {
+        // get_secret should return None
+        assert!(vault.get_secret(case, None).await.is_none(), "Should reject key: {}", case);
+        assert!(vault.get_secret("valid", Some(case)).await.is_none(), "Should reject realm: {}", case);
+
+        // put_secret should return Err
+        assert!(vault.put_secret(case, "val", None, None).await.is_err(), "Should reject key: {}", case);
+        assert!(vault.put_secret("valid", "val", Some(case), None).await.is_err(), "Should reject realm: {}", case);
+
+        // delete_secret should return Err
+        assert!(vault.delete_secret(case, None).await.is_err(), "Should reject key: {}", case);
+        assert!(vault.delete_secret("valid", Some(case)).await.is_err(), "Should reject realm: {}", case);
+    }
+
+    // list_secrets validation
+    for case in vec!["..", "/", "."] {
+        assert!(vault.list_secrets(Some(case)).await.is_err(), "Should reject realm in list_secrets: {}", case);
+    }
+}
+
+#[tokio::test]
+async fn test_file_vault_valid_subdirectories() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let vault = FileVault::new(temp_dir.path());
+
+    // Valid nested keys/realms should work as long as they don't use traversal
+    let valid_key = "subdir/secret";
+    let valid_realm = "my/realm";
+
+    vault.put_secret(valid_key, "data", Some(valid_realm), None).await.unwrap();
+
+    let secret = vault.get_secret(valid_key, Some(valid_realm)).await.unwrap();
+    assert_eq!(secret.value, "data");
+
+    // Check that it's actually in a subdirectory
+    let expected_path = temp_dir.path().join(valid_realm).join(valid_key);
+    assert!(expected_path.exists());
+}
