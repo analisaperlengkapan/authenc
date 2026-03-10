@@ -52,6 +52,20 @@ impl FileVault {
 
     /// Validates a path component (key or realm) to prevent path traversal
     fn validate_component(&self, component: &str) -> Result<(), super::VaultError> {
+        // Reject empty components
+        if component.is_empty() {
+            return Err(super::VaultError::InvalidFormat(
+                "Path component must not be empty".to_string(),
+            ));
+        }
+
+        // Reject components containing path separators
+        if component.contains('/') || component.contains('\\') {
+            return Err(super::VaultError::InvalidFormat(
+                format!("Path component must not contain separators: {}", component),
+            ));
+        }
+
         let path = Path::new(component);
 
         // Check for absolute paths
