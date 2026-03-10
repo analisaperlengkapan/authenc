@@ -128,6 +128,11 @@ impl Vault for FileVault {
             })?;
         }
         path.push(key);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                super::VaultError::Other(format!("Failed to create parent directory: {}", e))
+            })?;
+        }
         tokio::fs::write(&path, value)
             .await
             .map_err(|e| super::VaultError::Other(format!("Failed to write secret: {}", e)))
