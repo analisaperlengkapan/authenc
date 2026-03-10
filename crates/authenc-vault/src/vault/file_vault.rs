@@ -49,11 +49,42 @@ impl FileVault {
             base_dir: base_dir.as_ref().to_path_buf(),
         }
     }
+
+    /// Validates a path component (key or realm) to prevent path traversal
+    fn validate_component(&self, component: &str) -> Result<(), super::VaultError> {
+        if component.is_empty() {
+             return Err(super::VaultError::InvalidFormat(
+                "Path component must not be empty".to_string(),
+            ));
+        }
+
+        let path = Path::new(component);
+        let mut components = path.components();
+
+        // We expect exactly one normal component that matches the input exactly
+        // This prevents traversal (..), absolute paths, and nested subdirectories (subdir/key)
+        match (components.next(), components.next()) {
+            (Some(std::path::Component::Normal(p)), None) if p == component => Ok(()),
+            _ => Err(super::VaultError::InvalidFormat(
+                format!("Invalid path component: {}", component),
+            )),
+        }
+    }
 }
 
 #[async_trait]
 impl Vault for FileVault {
     async fn get_secret(&self, key: &str, realm: Option<&str>) -> Option<Secret> {
+        // Validate key and realm to prevent path traversal
+        if self.validate_component(key).is_err() {
+            return None;
+        }
+        if let Some(realm) = realm {
+            if self.validate_component(realm).is_err() {
+                return None;
+            }
+        }
+
         let mut path = self.base_dir.clone();
         if let Some(realm) = realm {
             path.push(realm);
@@ -78,6 +109,12 @@ impl Vault for FileVault {
         realm: Option<&str>,
         _metadata: Option<std::collections::HashMap<String, String>>,
     ) -> Result<(), super::VaultError> {
+        // Validate key and realm to prevent path traversal
+        self.validate_component(key)?;
+        if let Some(realm) = realm {
+            self.validate_component(realm)?;
+        }
+
         let mut path = self.base_dir.clone();
         if let Some(realm) = realm {
             path.push(realm);
@@ -92,6 +129,12 @@ impl Vault for FileVault {
     }
 
     async fn delete_secret(&self, key: &str, realm: Option<&str>) -> Result<(), super::VaultError> {
+        // Validate key and realm to prevent path traversal
+        self.validate_component(key)?;
+        if let Some(realm) = realm {
+            self.validate_component(realm)?;
+        }
+
         let mut path = self.base_dir.clone();
         if let Some(realm) = realm {
             path.push(realm);
@@ -103,6 +146,11 @@ impl Vault for FileVault {
     }
 
     async fn list_secrets(&self, realm: Option<&str>) -> Result<Vec<String>, super::VaultError> {
+        // Validate realm to prevent path traversal
+        if let Some(realm) = realm {
+            self.validate_component(realm)?;
+        }
+
         let mut path = self.base_dir.clone();
         if let Some(realm) = realm {
             path.push(realm);
