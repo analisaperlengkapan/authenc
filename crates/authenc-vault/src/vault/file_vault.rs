@@ -52,28 +52,23 @@ impl FileVault {
 
     /// Validates a path component (key or realm) to prevent path traversal
     fn validate_component(&self, component: &str) -> Result<(), super::VaultError> {
-        let path = Path::new(component);
-
-        // Check for absolute paths
-        if path.is_absolute() {
-            return Err(super::VaultError::InvalidFormat(
-                "Path component must not be absolute".to_string(),
+        if component.is_empty() {
+             return Err(super::VaultError::InvalidFormat(
+                "Path component must not be empty".to_string(),
             ));
         }
 
-        // Check for traversal components (.. or .)
-        for part in path.components() {
-            match part {
-                std::path::Component::Normal(_) => continue,
-                _ => {
-                    return Err(super::VaultError::InvalidFormat(
-                        format!("Invalid path component: {}", component),
-                    ));
-                }
-            }
-        }
+        let path = Path::new(component);
+        let mut components = path.components();
 
-        Ok(())
+        // We expect exactly one normal component that matches the input exactly
+        // This prevents traversal (..), absolute paths, and nested subdirectories (subdir/key)
+        match (components.next(), components.next()) {
+            (Some(std::path::Component::Normal(p)), None) if p == component => Ok(()),
+            _ => Err(super::VaultError::InvalidFormat(
+                format!("Invalid path component: {}", component),
+            )),
+        }
     }
 }
 
@@ -128,11 +123,6 @@ impl Vault for FileVault {
             })?;
         }
         path.push(key);
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await.map_err(|e| {
-                super::VaultError::Other(format!("Failed to create parent directory: {}", e))
-            })?;
-        }
         tokio::fs::write(&path, value)
             .await
             .map_err(|e| super::VaultError::Other(format!("Failed to write secret: {}", e)))

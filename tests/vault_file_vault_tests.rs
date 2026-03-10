@@ -55,20 +55,14 @@ async fn test_file_vault_path_traversal_validation() {
 }
 
 #[tokio::test]
-async fn test_file_vault_valid_subdirectories() {
+async fn test_file_vault_nested_paths_rejected() {
     let temp_dir = tempfile::tempdir().unwrap();
     let vault = FileVault::new(temp_dir.path());
 
-    // Valid nested keys/realms should work as long as they don't use traversal
-    let valid_key = "subdir/secret";
-    let valid_realm = "my/realm";
+    // Subdirectories are now explicitly rejected to prevent inconsistencies with list_secrets
+    let nested_key = "subdir/secret";
+    let nested_realm = "my/realm";
 
-    vault.put_secret(valid_key, "data", Some(valid_realm), None).await.unwrap();
-
-    let secret = vault.get_secret(valid_key, Some(valid_realm)).await.unwrap();
-    assert_eq!(secret.value, "data");
-
-    // Check that it's actually in a subdirectory
-    let expected_path = temp_dir.path().join(valid_realm).join(valid_key);
-    assert!(expected_path.exists());
+    assert!(vault.put_secret(nested_key, "data", None, None).await.is_err());
+    assert!(vault.put_secret("secret", "data", Some(nested_realm), None).await.is_err());
 }
