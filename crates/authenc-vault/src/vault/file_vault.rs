@@ -198,6 +198,12 @@ impl Vault for FileVault {
         realm: Option<&str>,
         generator: Box<dyn Fn() -> String + Send>,
     ) -> Result<super::RotationResult, super::VaultError> {
+        // Validate key and realm to prevent path traversal
+        self.validate_component(key)?;
+        if let Some(realm) = realm {
+            self.validate_component(realm)?;
+        }
+
         let old_secret = self.get_secret(key, realm).await;
         let new_value = generator();
         self.put_secret(key, &new_value, realm, None).await?;
