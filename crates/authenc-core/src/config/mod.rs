@@ -759,6 +759,10 @@ impl AppConfig {
             return Err(AuthencError::validation("JWT secret cannot be empty"));
         }
 
+        if self.security.webauthn_rp_id.is_empty() {
+            return Err(AuthencError::validation("WebAuthn RP ID cannot be empty"));
+        }
+
         if self.security.jwt_secret == "default_jwt_secret_change_in_production" {
             if std::env::var("APP_ENV").unwrap_or_else(|_| "development".to_string()) == "production" {
                  return Err(AuthencError::validation(
@@ -855,6 +859,8 @@ impl Default for AppConfig {
                 jwt_secret: env::var("JWT_SECRET")
                     .unwrap_or_else(|_| "default_jwt_secret_change_in_production".to_string()),
                 webauthn_encryption_key: None,
+                webauthn_rp_id: default_webauthn_rp_id(),
+                webauthn_rp_name: default_webauthn_rp_name(),
                 jwt_expiry: default_jwt_expiry(),
                 password_min_length: default_password_min_length(),
                 rate_limit_requests: default_rate_limit_requests(),

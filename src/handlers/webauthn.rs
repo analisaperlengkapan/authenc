@@ -25,8 +25,8 @@ pub async fn register_challenge(
 ) -> Result<Json<serde_json::Value>> {
     let webauthn_service = WebAuthnService::new(
         state.database.clone(),
-        "localhost".to_string(), // In production, use actual domain
-        "Authenc Identity".to_string(),
+        state.config.security.webauthn_rp_id.clone(),
+        state.config.security.webauthn_rp_name.clone(),
         state.config.security.jwt_secret.clone(),
         state.config.security.webauthn_encryption_key.clone(),
     );
@@ -79,8 +79,8 @@ pub async fn register_verify(
 
     let webauthn_service = WebAuthnService::new(
         state.database.clone(),
-        "localhost".to_string(),
-        "Authenc Identity".to_string(),
+        state.config.security.webauthn_rp_id.clone(),
+        state.config.security.webauthn_rp_name.clone(),
         state.config.security.jwt_secret.clone(),
         state.config.security.webauthn_encryption_key.clone(),
     );
@@ -101,8 +101,8 @@ pub async fn authenticate_challenge(
 ) -> Result<Json<serde_json::Value>> {
     let webauthn_service = WebAuthnService::new(
         state.database.clone(),
-        "localhost".to_string(),
-        "Authenc Identity".to_string(),
+        state.config.security.webauthn_rp_id.clone(),
+        state.config.security.webauthn_rp_name.clone(),
         state.config.security.jwt_secret.clone(),
         state.config.security.webauthn_encryption_key.clone(),
     );
@@ -135,8 +135,8 @@ pub async fn authenticate_verify(
 
     let webauthn_service = WebAuthnService::new(
         state.database.clone(),
-        "localhost".to_string(),
-        "Authenc Identity".to_string(),
+        state.config.security.webauthn_rp_id.clone(),
+        state.config.security.webauthn_rp_name.clone(),
         state.config.security.jwt_secret.clone(),
         state.config.security.webauthn_encryption_key.clone(),
     );
