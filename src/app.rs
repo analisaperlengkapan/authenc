@@ -531,15 +531,12 @@ impl AppState {
         ));
 
         // Initialize WebAuthn service
-        // TODO: Configure RP ID and name from config
-        let rp_id = "localhost".to_string();
-        let rp_name = "Authenc".to_string();
         let webauthn_service = Arc::new(authenc_services::services::protocols::webauthn::WebAuthnService::new(
             database.clone(),
-            rp_id,
-            rp_name,
+            config.security.webauthn_rp_id.clone(),
+            config.security.webauthn_rp_name.clone(),
             config.security.jwt_secret.clone(),
-            None, // Encryption key derived from JWT secret by default
+            config.security.webauthn_encryption_key.clone(),
         ));
 
         // Initialize FIPS provider

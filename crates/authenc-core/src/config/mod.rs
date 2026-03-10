@@ -487,6 +487,12 @@ pub struct BasicSecurityConfig {
     pub jwt_secret: String,
     /// Encryption key for WebAuthn credentials
     pub webauthn_encryption_key: Option<String>,
+    /// WebAuthn Relying Party ID
+    #[serde(default = "default_webauthn_rp_id")]
+    pub webauthn_rp_id: String,
+    /// WebAuthn Relying Party Name
+    #[serde(default = "default_webauthn_rp_name")]
+    pub webauthn_rp_name: String,
     /// JWT token expiration time in seconds
     #[serde(default = "default_jwt_expiry")]
     pub jwt_expiry: u64,
@@ -518,6 +524,8 @@ impl Default for BasicSecurityConfig {
         Self {
             jwt_secret: "default_jwt_secret_change_in_production".to_string(),
             webauthn_encryption_key: None,
+            webauthn_rp_id: default_webauthn_rp_id(),
+            webauthn_rp_name: default_webauthn_rp_name(),
             jwt_expiry: default_jwt_expiry(),
             password_min_length: default_password_min_length(),
             rate_limit_requests: default_rate_limit_requests(),
@@ -665,6 +673,14 @@ impl AppConfig {
 
         if let Ok(key) = env::var("WEBAUTHN_ENCRYPTION_KEY") {
             config.security.webauthn_encryption_key = Some(key);
+        }
+
+        if let Ok(rp_id) = env::var("WEBAUTHN_RP_ID") {
+            config.security.webauthn_rp_id = rp_id;
+        }
+
+        if let Ok(rp_name) = env::var("WEBAUTHN_RP_NAME") {
+            config.security.webauthn_rp_name = rp_name;
         }
 
         if let Ok(allow_origins) = env::var("CORS_ALLOWED_ORIGINS") {
@@ -931,6 +947,14 @@ fn default_rate_limit_per_minute() -> u32 {
 }
 fn default_password_salt_rounds() -> u32 {
     10
+}
+
+fn default_webauthn_rp_id() -> String {
+    "localhost".to_string()
+}
+
+fn default_webauthn_rp_name() -> String {
+    "Authenc".to_string()
 }
 
 #[cfg(test)]
