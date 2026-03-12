@@ -551,7 +551,7 @@ pub async fn unlink_user_social_account(
         realm.clone(),
         auth_details,
         crate::models::events::ResourceType::User,
-        crate::models::events::OperationType::Update,
+        crate::models::events::OperationType::Delete,
         format!("/realms/{}/users/{}/social/{}", realm, user_id, provider_str),
     )
     .build();
