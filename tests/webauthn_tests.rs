@@ -83,6 +83,9 @@ async fn test_webauthn_registration_challenge_generation() {
         realm_id: None, // Set to None to avoid foreign key constraint
         organization_id: None,
         attributes: None,
+        email_verified: Some(true),
+        enabled: Some(true),
+        require_password_change: Some(false),
     };
 
     users::create_user(&database, &create_user_request)
@@ -103,7 +106,7 @@ async fn test_webauthn_registration_challenge_generation() {
     let request = WebAuthnRegistrationRequest {
         username: "testuser".to_string(),
         display_name: "Test User".to_string(),
-        realm_id,
+        realm_id: realm_id.to_string(),
     };
 
     let response = webauthn_service
@@ -230,6 +233,9 @@ async fn test_webauthn_authentication_challenge_generation() {
         realm_id: None, // Set to None to avoid foreign key constraint
         organization_id: None,
         attributes: None,
+        email_verified: Some(true),
+        enabled: Some(true),
+        require_password_change: Some(false),
     };
 
     if let Err(_) = users::create_user(&database, &create_user_request).await {
@@ -289,7 +295,7 @@ async fn test_webauthn_authentication_challenge_generation() {
     // Test authentication challenge generation
     let request = WebAuthnAuthenticationRequest {
         username: "testuser".to_string(),
-        realm_id: Uuid::new_v4(),
+        realm_id: Uuid::new_v4().to_string(),
     };
 
     let response = webauthn_service
@@ -341,7 +347,7 @@ async fn test_webauthn_credential_registration() {
     let challenge_request = WebAuthnRegistrationRequest {
         username: "testuser".to_string(),
         display_name: "Test User".to_string(),
-        realm_id,
+        realm_id: realm_id.to_string(),
     };
 
     let challenge_response = webauthn_service
@@ -402,7 +408,7 @@ async fn test_webauthn_credential_authentication() {
     // First, generate an authentication challenge
     let challenge_request = WebAuthnAuthenticationRequest {
         username: "testuser".to_string(),
-        realm_id,
+        realm_id: realm_id.to_string(),
     };
 
     let challenge_response = webauthn_service

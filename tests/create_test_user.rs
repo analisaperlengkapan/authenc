@@ -35,6 +35,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         realm_id: Some(realm_id),
         organization_id: None,
         attributes: None,
+        email_verified: Some(true),
+        enabled: Some(true),
+        require_password_change: Some(false),
     };
 
     match operations::users::create_user(&database, &create_user_request).await {

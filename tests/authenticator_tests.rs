@@ -42,6 +42,10 @@ fn create_mock_user() -> Arc<User> {
         updated_at: chrono::Utc::now(),
         deleted_at: None,
         login_count: 0,
+        reset_token_hash: None,
+        reset_token_expires_at: None,
+        verification_token_hash: None,
+        verification_token_expires_at: None,
     })
 }
 

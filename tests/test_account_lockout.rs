@@ -163,6 +163,13 @@ async fn test_account_lockout_logic() {
         sso_session_manager,
         jit_provisioning_service,
         client_validator: Arc::new(MockClientValidator),
+        password_reset_service: Arc::new(authenc::services::password_reset::PasswordResetService::new(
+            mock_user_store_dyn.clone(),
+        )),
+        password_reset_protector: Arc::new(authenc::services::security::brute_force_protector::BruteForceProtector::new(5, 300)),
+        email_verification_service: Arc::new(authenc::services::email_verification::EmailVerificationService::new(
+            mock_user_store_dyn.clone(),
+        )),
     };
 
     let router = authenc::handlers::create_router(Arc::new(state.clone()));
@@ -187,6 +194,9 @@ async fn test_account_lockout_logic() {
         realm_id: Some(uuid::Uuid::nil()),
         organization_id: None,
         attributes: None,
+        email_verified: Some(true),
+        enabled: Some(true),
+        require_password_change: Some(false),
     };
 
     let user = mock_user_store.add_user(create_user_req).await.expect("Failed to add user");

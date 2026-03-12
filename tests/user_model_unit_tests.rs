@@ -622,6 +622,9 @@ mod tests {
             realm_id: Some(realm_id),
             organization_id: Some(Uuid::new_v4()),
             attributes: Some(json!({"department": "engineering"})),
+            email_verified: Some(true),
+            enabled: Some(true),
+            require_password_change: Some(false),
         };
 
         assert_eq!(request.username, "testuser");
