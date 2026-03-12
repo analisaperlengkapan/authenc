@@ -421,7 +421,7 @@ pub async fn update_password(
 pub async fn link_user_social_account(
     State(state): State<Arc<AppState>>,
     Path((realm, user_id)): Path<(String, Uuid)>,
-    _auth: AuthBearer,
+    AuthBearer(auth): AuthBearer,
     Json(request): Json<CreateSocialAccountRequest>,
 ) -> Result<Json<SocialAccountResponse>, crate::error::AuthencError> {
     // Get user to verify they exist and belong to the realm
@@ -431,12 +431,8 @@ pub async fn link_user_social_account(
         .await?
         .ok_or_else(|| crate::error::AuthencError::resource_not_found("User not found"))?;
 
-    // Validate realm
-    let realm_uuid = if realm == "master" {
-        Uuid::nil()
-    } else {
-        Uuid::parse_str(&realm).map_err(|_| crate::error::AuthencError::validation("Invalid realm ID"))?
-    };
+    // Validate realm consistently with other handlers
+    let realm_uuid = Uuid::parse_str(&realm).map_err(|_| crate::error::AuthencError::validation("Invalid realm ID"))?;
 
     if user.realm_id != Some(realm_uuid) {
         return Err(crate::error::AuthencError::resource_not_found("User not found in realm"));
@@ -446,6 +442,34 @@ pub async fn link_user_social_account(
         .social_account_store
         .add_social_account(user_id, request)
         .await?;
+
+    // Fire admin event for linking social account
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let admin_event = crate::services::events::AdminEventBuilder::new(
+        realm.clone(),
+        auth_details,
+        crate::models::events::ResourceType::User,
+        crate::models::events::OperationType::Update,
+        format!("/realms/{}/users/{}/social", realm, user_id),
+    )
+    .representation(serde_json::to_string(&account).unwrap_or_default())
+    .build();
+
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, false)
+        .await
+    {
+        tracing::error!("Failed to fire link social account admin event: {}", e);
+    }
 
     Ok(Json(account.into()))
 }
@@ -463,12 +487,8 @@ pub async fn get_user_social_accounts(
         .await?
         .ok_or_else(|| crate::error::AuthencError::resource_not_found("User not found"))?;
 
-    // Validate realm (assuming UUID format or "master")
-    let realm_uuid = if realm == "master" {
-        Uuid::nil()
-    } else {
-        Uuid::parse_str(&realm).map_err(|_| crate::error::AuthencError::validation("Invalid realm ID"))?
-    };
+    // Validate realm consistently with other handlers
+    let realm_uuid = Uuid::parse_str(&realm).map_err(|_| crate::error::AuthencError::validation("Invalid realm ID"))?;
 
     if user.realm_id != Some(realm_uuid) {
         return Err(crate::error::AuthencError::resource_not_found("User not found in realm"));
@@ -493,7 +513,7 @@ pub async fn get_user_social_accounts(
 pub async fn unlink_user_social_account(
     State(state): State<Arc<AppState>>,
     Path((realm, user_id, provider_str)): Path<(String, Uuid, String)>,
-    _auth: AuthBearer,
+    AuthBearer(auth): AuthBearer,
 ) -> Result<StatusCode, crate::error::AuthencError> {
     // Admin validation: Check if user exists and belongs to the realm
     let user = state
@@ -502,11 +522,8 @@ pub async fn unlink_user_social_account(
         .await?
         .ok_or_else(|| crate::error::AuthencError::resource_not_found("User not found"))?;
 
-    let realm_uuid = if realm == "master" {
-        Uuid::nil()
-    } else {
-        Uuid::parse_str(&realm).map_err(|_| crate::error::AuthencError::validation("Invalid realm ID"))?
-    };
+    // Validate realm consistently with other handlers
+    let realm_uuid = Uuid::parse_str(&realm).map_err(|_| crate::error::AuthencError::validation("Invalid realm ID"))?;
 
     if user.realm_id != Some(realm_uuid) {
         return Err(crate::error::AuthencError::resource_not_found("User not found in realm"));
@@ -521,6 +538,33 @@ pub async fn unlink_user_social_account(
         .social_account_store
         .remove_social_account_by_provider(user_id, &provider)
         .await?;
+
+    // Fire admin event for unlinking social account
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let admin_event = crate::services::events::AdminEventBuilder::new(
+        realm.clone(),
+        auth_details,
+        crate::models::events::ResourceType::User,
+        crate::models::events::OperationType::Update,
+        format!("/realms/{}/users/{}/social/{}", realm, user_id, provider_str),
+    )
+    .build();
+
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, false)
+        .await
+    {
+        tracing::error!("Failed to fire unlink social account admin event: {}", e);
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
