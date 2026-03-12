@@ -152,7 +152,7 @@ pub struct SocialAccountResponse {
 impl From<SocialAccount> for SocialAccountResponse {
     fn from(account: SocialAccount) -> Self {
         Self {
-            provider: format!("{:?}", account.provider).to_lowercase(),
+            provider: account.provider.to_string(),
             provider_user_id: account.provider_user_id,
             display_name: account.display_name,
             email: account.email,

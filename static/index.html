@@ -552,10 +552,10 @@
             try {
                 // Try fetching with the realm string name first (might fail if backend requires UUID)
                 // If it fails with 400, try the Master UUID.
-                let url = `${API_BASE}/realms/${currentRealm}/users`;
+                let url = `${API_BASE}/auth/realms/${currentRealm}/users`;
                 if (currentRealm === 'master') {
                     // Pre-emptively use UUID for master based on code analysis
-                    url = `${API_BASE}/realms/${MASTER_REALM_UUID}/users`;
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users`;
                 }
 
                 const response = await fetch(url, {
@@ -775,10 +775,25 @@
                         table.classList.remove('hidden');
                         accounts.forEach(acc => {
                             const tr = document.createElement('tr');
-                            tr.innerHTML = `
-                                <td><span style="text-transform: capitalize; font-weight: 500;">${acc.provider}</span> <br><small style="color: var(--text-light);">${acc.provider_user_id}</small></td>
-                                <td><button type="button" onclick="unlinkUserSocialAccount('${userId}', '${acc.provider}')" style="background-color: var(--error); padding: 0.25rem 0.5rem; font-size: 0.8rem; width: auto;">Unlink</button></td>
-                            `;
+                            const tdInfo = document.createElement('td');
+                            const providerSpan = document.createElement('span');
+                            providerSpan.style.cssText = 'text-transform: capitalize; font-weight: 500;';
+                            providerSpan.textContent = acc.provider;
+                            const br = document.createElement('br');
+                            const small = document.createElement('small');
+                            small.style.color = 'var(--text-light)';
+                            small.textContent = acc.provider_user_id;
+                            tdInfo.append(providerSpan, br, small);
+
+                            const tdAction = document.createElement('td');
+                            const btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.textContent = 'Unlink';
+                            btn.style.cssText = 'background-color: var(--error); padding: 0.25rem 0.5rem; font-size: 0.8rem; width: auto;';
+                            btn.addEventListener('click', () => unlinkUserSocialAccount(userId, acc.provider));
+                            tdAction.appendChild(btn);
+
+                            tr.append(tdInfo, tdAction);
                             tbody.appendChild(tr);
                         });
                     } else {
@@ -871,9 +886,9 @@
             };
 
             try {
-                let url = `${API_BASE}/realms/${currentRealm}/users/${id}`;
+                let url = `${API_BASE}/auth/realms/${currentRealm}/users/${id}`;
                 if (currentRealm === 'master') {
-                    url = `${API_BASE}/realms/${MASTER_REALM_UUID}/users/${id}`;
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users/${id}`;
                 }
 
                 const response = await fetch(url, {
@@ -902,9 +917,9 @@
             if (!confirm("Are you sure you want to delete this user?")) return;
 
             try {
-                let url = `${API_BASE}/realms/${currentRealm}/users/${id}`;
+                let url = `${API_BASE}/auth/realms/${currentRealm}/users/${id}`;
                 if (currentRealm === 'master') {
-                    url = `${API_BASE}/realms/${MASTER_REALM_UUID}/users/${id}`;
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users/${id}`;
                 }
 
                 const response = await fetch(url, {

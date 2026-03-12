@@ -480,21 +480,8 @@ pub async fn unlink_user_social_account(
     }
 
     // Parse provider
-    let provider = match provider_str.as_str() {
-        "google" => SocialProvider::Google,
-        "github" => SocialProvider::GitHub,
-        "microsoft" => SocialProvider::Microsoft,
-        "facebook" => SocialProvider::Facebook,
-        "twitter" => SocialProvider::Twitter,
-        "linkedin" => SocialProvider::LinkedIn,
-        "apple" => SocialProvider::Apple,
-        "discord" => SocialProvider::Discord,
-        "slack" => SocialProvider::Slack,
-        "amazon" => SocialProvider::Amazon,
-        "okta" => SocialProvider::Okta,
-        "auth0" => SocialProvider::Auth0,
-        _ => return Err(crate::error::AuthencError::validation("Invalid social provider")),
-    };
+    let provider = std::str::FromStr::from_str(&provider_str)
+        .unwrap_or_else(|_| SocialProvider::Custom(provider_str.clone()));
 
     // Remove the social account link
     state
