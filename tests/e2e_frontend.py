@@ -49,6 +49,14 @@ def test_groups_ui():
                 ) # POST/PUT mock
             ))
 
+            page.route("**/api/v1/auth/realms/*/users/*/social", lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps([]) if route.request.method == "GET" else json.dumps(
+                    {"provider": "github", "provider_user_id": "test_github_id", "linked_at": "2023-01-01T00:00:00Z", "updated_at": "2023-01-01T00:00:00Z"}
+                )
+            ))
+
             page.add_init_script("localStorage.clear();")
 
             url = "http://localhost:8000/index.html"
@@ -93,6 +101,34 @@ def test_groups_ui():
             print("Saving screenshot...")
             page.screenshot(path="groups_ui.png", full_page=True)
             print("Groups UI screenshot saved to groups_ui.png")
+
+            # 5. Navigate to Users Tab to test social linking
+            print("Navigating to users tab...")
+            page.click("#tab-users")
+            page.wait_for_selector("#users-section:not(.hidden)", state="visible")
+
+            print("Opening edit user modal...")
+            page.click("#users-body button:has-text('Edit')")
+            page.wait_for_selector("#edit-user-modal:not(.hidden)", state="visible")
+
+            print("Clicking Link Account...")
+            page.click("button:has-text('Link Account')")
+            page.wait_for_selector("#link-social-account-modal:not(.hidden)", state="visible")
+
+            print("Filling Link Account form...")
+            page.select_option("#link-social-provider", "github")
+            page.fill("#link-social-provider-user-id", "test_github_id")
+            page.fill("#link-social-email", "github@example.com")
+
+            print("Submitting Link Account form...")
+            page.click("#link-social-account-form button[type='submit']")
+
+            # Wait for modal to hide
+            page.wait_for_selector("#link-social-account-modal.hidden", state="hidden")
+
+            print("Saving screenshot of social linking UI...")
+            page.screenshot(path="social_linking_ui.png", full_page=True)
+            print("Social linking UI screenshot saved to social_linking_ui.png")
 
             browser.close()
     finally:

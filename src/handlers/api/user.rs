@@ -10,7 +10,7 @@ use axum::{
     routing::{delete, get, patch, post, put},
 };
 use serde::Deserialize;
-use authenc_models::models::social_account::SocialAccountResponse;
+use authenc_models::models::social_account::{CreateSocialAccountRequest, SocialAccountResponse};
 use authenc_services::services::social::SocialProvider;
 use authenc_services::services::stores::social_account_store::SocialAccountStoreTrait;
 use std::sync::Arc;
@@ -28,7 +28,7 @@ pub fn create_user_routes() -> Router<Arc<AppState>> {
             "/realms/{realm}/users/{id}/password",
             patch(update_password),
         )
-        .route("/realms/{realm}/users/{id}/social", get(get_user_social_accounts))
+        .route("/realms/{realm}/users/{id}/social", get(get_user_social_accounts).post(link_user_social_account))
         .route(
             "/realms/{realm}/users/{id}/social/{provider}",
             delete(unlink_user_social_account),
@@ -415,6 +415,39 @@ pub async fn update_password(
     }
 
     Ok(StatusCode::OK)
+}
+
+/// Link a social account for a specific user
+pub async fn link_user_social_account(
+    State(state): State<Arc<AppState>>,
+    Path((realm, user_id)): Path<(String, Uuid)>,
+    _auth: AuthBearer,
+    Json(request): Json<CreateSocialAccountRequest>,
+) -> Result<Json<SocialAccountResponse>, crate::error::AuthencError> {
+    // Get user to verify they exist and belong to the realm
+    let user = state
+        .user_store
+        .get_user(user_id)
+        .await?
+        .ok_or_else(|| crate::error::AuthencError::resource_not_found("User not found"))?;
+
+    // Validate realm
+    let realm_uuid = if realm == "master" {
+        Uuid::nil()
+    } else {
+        Uuid::parse_str(&realm).map_err(|_| crate::error::AuthencError::validation("Invalid realm ID"))?
+    };
+
+    if user.realm_id != Some(realm_uuid) {
+        return Err(crate::error::AuthencError::resource_not_found("User not found in realm"));
+    }
+
+    let account = state
+        .social_account_store
+        .add_social_account(user_id, request)
+        .await?;
+
+    Ok(Json(account.into()))
 }
 
 /// Get linked social accounts for a specific user

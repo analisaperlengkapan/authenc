@@ -373,7 +373,10 @@
                 </div>
 
                 <div style="margin-top: 1rem; margin-bottom: 1rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
-                    <h3 style="margin-bottom: 0.5rem;">Linked Social Accounts</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <h3 style="margin: 0;">Linked Social Accounts</h3>
+                        <button type="button" onclick="openLinkSocialAccountModal()" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background-color: var(--success);">Link Account</button>
+                    </div>
                     <div id="social-accounts-container" style="margin-bottom: 1rem;">
                         <p style="color: var(--text-light); font-size: 0.9rem;">Loading social accounts...</p>
                     </div>
@@ -392,6 +395,36 @@
             </form>
             <div id="passkey-registration-container"></div>
             <div id="edit-user-error" class="error-message"></div>
+        </div>
+    </div>
+
+    <div id="link-social-account-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1001;">
+        <div class="card" style="max-width: 400px; width: 100%;">
+            <h2 style="text-align: center;">Link Social Account</h2>
+            <form id="link-social-account-form">
+                <input type="hidden" id="link-social-user-id">
+                <div class="form-group">
+                    <label for="link-social-provider">Provider</label>
+                    <select id="link-social-provider" name="provider" required style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.25rem;">
+                        <option value="google">Google</option>
+                        <option value="github">GitHub</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="microsoft">Microsoft</option>
+                        <option value="apple">Apple</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="link-social-provider-user-id">Provider User ID</label>
+                    <input type="text" id="link-social-provider-user-id" name="provider_user_id" required>
+                </div>
+                <div class="form-group">
+                    <label for="link-social-email">Email (optional)</label>
+                    <input type="email" id="link-social-email" name="email">
+                </div>
+                <button type="submit">Link Account</button>
+                <button type="button" class="secondary" onclick="closeLinkSocialAccountModal()">Cancel</button>
+            </form>
+            <div id="link-social-account-error" class="error-message"></div>
         </div>
     </div>
 
@@ -936,6 +969,67 @@
                 alert('Error unlinking social account: ' + err.message);
             }
         }
+
+        function openLinkSocialAccountModal() {
+            const userId = document.getElementById('edit-user-id').value;
+            if (!userId) return;
+
+            document.getElementById('link-social-user-id').value = userId;
+            document.getElementById('link-social-provider').value = 'google';
+            document.getElementById('link-social-provider-user-id').value = '';
+            document.getElementById('link-social-email').value = '';
+            document.getElementById('link-social-account-error').style.display = 'none';
+
+            document.getElementById('link-social-account-modal').classList.remove('hidden');
+            document.getElementById('link-social-account-modal').style.display = 'flex';
+            document.getElementById('link-social-account-modal').style.alignItems = 'center';
+            document.getElementById('link-social-account-modal').style.justifyContent = 'center';
+        }
+
+        function closeLinkSocialAccountModal() {
+            document.getElementById('link-social-account-modal').classList.add('hidden');
+            document.getElementById('link-social-account-modal').style.display = 'none';
+        }
+
+        document.getElementById('link-social-account-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userId = document.getElementById('link-social-user-id').value;
+            const errorDiv = document.getElementById('link-social-account-error');
+            errorDiv.style.display = 'none';
+
+            const payload = {
+                provider: document.getElementById('link-social-provider').value,
+                provider_user_id: document.getElementById('link-social-provider-user-id').value,
+                email: document.getElementById('link-social-email').value || null,
+            };
+
+            try {
+                let url = `${API_BASE}/auth/realms/${currentRealm}/users/${userId}/social`;
+                if (currentRealm === 'master') {
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users/${userId}/social`;
+                }
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    closeLinkSocialAccountModal();
+                    fetchUserSocialAccounts(userId);
+                } else {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.message || data.error || 'Failed to link account');
+                }
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+            }
+        });
 
         function openEditUserModal(user) {
             document.getElementById('edit-user-modal').classList.remove('hidden');
