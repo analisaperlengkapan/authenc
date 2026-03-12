@@ -78,7 +78,7 @@ impl std::str::FromStr for SocialProvider {
             "slack" => Ok(SocialProvider::Slack),
             "okta" => Ok(SocialProvider::Okta),
             "auth0" => Ok(SocialProvider::Auth0),
-            _ => Ok(SocialProvider::Custom(s.to_string())),
+            _ => Ok(SocialProvider::Custom(s.to_lowercase())),
         }
     }
 }
