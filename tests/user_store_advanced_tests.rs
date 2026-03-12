@@ -106,6 +106,9 @@ async fn test_user_store_comprehensive_operations() {
             realm_id: Some(realm_id),
             organization_id: None,
             attributes: None,
+            email_verified: Some(true),
+            enabled: Some(true),
+            require_password_change: Some(false),
         },
         CreateUserRequest {
             username: format!("bob{}", unique_suffix),
@@ -117,6 +120,9 @@ async fn test_user_store_comprehensive_operations() {
             realm_id: Some(realm_id),
             organization_id: None,
             attributes: None,
+            email_verified: Some(true),
+            enabled: Some(true),
+            require_password_change: Some(false),
         },
     ];
 
@@ -320,6 +326,9 @@ async fn test_user_store_bulk_operations() {
             realm_id: Some(realm_id),
             organization_id: None,
             attributes: None,
+            email_verified: Some(true),
+            enabled: Some(true),
+            require_password_change: Some(false),
         };
         bulk_users.push(user_req);
     }

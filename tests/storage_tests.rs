@@ -88,6 +88,10 @@ impl UserStoreTrait for MockUserStore {
             updated_at: chrono::Utc::now(),
             deleted_at: None,
             login_count: 0,
+            reset_token_hash: None,
+            reset_token_expires_at: None,
+            verification_token_hash: None,
+            verification_token_expires_at: None,
         };
         users.push(user.clone());
         Ok(user)
@@ -260,6 +264,9 @@ mod tests {
             realm_id: Some(Uuid::new_v4()),
             organization_id: None,
             attributes: None,
+            email_verified: Some(true),
+            enabled: Some(true),
+            require_password_change: Some(false),
         };
 
         let user = user_store.add_user(create_request).await.unwrap();

@@ -53,6 +53,9 @@ mod tests {
             realm_id: Some(Uuid::new_v4()), // Assuming realm doesn't need to exist for this test if FKs are loose or we're mocking
             organization_id: None,
             attributes: None,
+            email_verified: Some(true),
+            enabled: Some(true),
+            require_password_change: Some(false),
         };
 
         // This might fail if realm FK is enforced.

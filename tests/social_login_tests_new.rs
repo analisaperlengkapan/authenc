@@ -36,6 +36,9 @@ async fn test_social_provider_configuration() {
             "email".to_string(),
             "profile".to_string(),
         ],
+        team_id: None,
+        key_id: None,
+        private_key: None,
     };
 
     assert_eq!(google_config.provider, SocialProvider::Google);
@@ -54,6 +57,9 @@ async fn test_social_provider_configuration() {
         token_url: "https://graph.facebook.com/v18.0/oauth/access_token".to_string(),
         user_info_url: "https://graph.facebook.com/me".to_string(),
         scopes: vec!["email".to_string(), "public_profile".to_string()],
+        team_id: None,
+        key_id: None,
+        private_key: None,
     };
 
     assert_eq!(facebook_config.provider, SocialProvider::Facebook);
@@ -70,6 +76,9 @@ async fn test_social_provider_configuration() {
         token_url: "https://github.com/login/oauth/access_token".to_string(),
         user_info_url: "https://api.github.com/user".to_string(),
         scopes: vec!["user:email".to_string(), "read:user".to_string()],
+        team_id: None,
+        key_id: None,
+        private_key: None,
     };
 
     assert_eq!(github_config.provider, SocialProvider::GitHub);

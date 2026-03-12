@@ -270,6 +270,13 @@ async fn test_ldap_jit_provisioning_success() {
         sso_session_manager,
         jit_provisioning_service: mock_jit_service,
         client_validator: Arc::new(MockClientValidator),
+        password_reset_service: Arc::new(authenc::services::password_reset::PasswordResetService::new(
+            mock_user_store_dyn.clone(),
+        )),
+        password_reset_protector: Arc::new(authenc::services::security::brute_force_protector::BruteForceProtector::new(5, 300)),
+        email_verification_service: Arc::new(authenc::services::email_verification::EmailVerificationService::new(
+            mock_user_store_dyn.clone(),
+        )),
     };
 
     // 2. Setup Mock Provider return value
