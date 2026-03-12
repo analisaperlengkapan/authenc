@@ -65,7 +65,8 @@ impl std::str::FromStr for SocialProvider {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        let lower = s.to_lowercase();
+        match lower.as_str() {
             "google" => Ok(SocialProvider::Google),
             "facebook" => Ok(SocialProvider::Facebook),
             "twitter" => Ok(SocialProvider::Twitter),
@@ -78,7 +79,7 @@ impl std::str::FromStr for SocialProvider {
             "slack" => Ok(SocialProvider::Slack),
             "okta" => Ok(SocialProvider::Okta),
             "auth0" => Ok(SocialProvider::Auth0),
-            _ => Ok(SocialProvider::Custom(s.to_string())),
+            _ => Ok(SocialProvider::Custom(lower)),
         }
     }
 }
