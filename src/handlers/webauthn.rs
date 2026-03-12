@@ -23,13 +23,7 @@ pub async fn register_challenge(
     State(state): State<Arc<AppState>>,
     Json(request): Json<crate::services::webauthn::WebAuthnRegistrationRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let webauthn_service = WebAuthnService::new(
-        state.database.clone(),
-        "localhost".to_string(), // In production, use actual domain
-        "Authenc Identity".to_string(),
-        state.config.security.jwt_secret.clone(),
-        state.config.security.webauthn_encryption_key.clone(),
-    );
+    let webauthn_service = state.webauthn_service.clone();
 
     match webauthn_service
         .generate_registration_challenge(request)
@@ -77,13 +71,7 @@ pub async fn register_verify(
         }
     }
 
-    let webauthn_service = WebAuthnService::new(
-        state.database.clone(),
-        "localhost".to_string(),
-        "Authenc Identity".to_string(),
-        state.config.security.jwt_secret.clone(),
-        state.config.security.webauthn_encryption_key.clone(),
-    );
+    let webauthn_service = state.webauthn_service.clone();
 
     match webauthn_service
         .verify_registration(&realm_id, username, response, device_id)
@@ -99,13 +87,7 @@ pub async fn authenticate_challenge(
     State(state): State<Arc<AppState>>,
     Json(request): Json<crate::services::webauthn::WebAuthnAuthenticationRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let webauthn_service = WebAuthnService::new(
-        state.database.clone(),
-        "localhost".to_string(),
-        "Authenc Identity".to_string(),
-        state.config.security.jwt_secret.clone(),
-        state.config.security.webauthn_encryption_key.clone(),
-    );
+    let webauthn_service = state.webauthn_service.clone();
 
     match webauthn_service
         .generate_authentication_challenge(request)
@@ -133,13 +115,7 @@ pub async fn authenticate_verify(
     let realm_id = uuid::Uuid::parse_str(realm_id_str)
         .map_err(|_| AuthencError::validation("Invalid realm_id format"))?;
 
-    let webauthn_service = WebAuthnService::new(
-        state.database.clone(),
-        "localhost".to_string(),
-        "Authenc Identity".to_string(),
-        state.config.security.jwt_secret.clone(),
-        state.config.security.webauthn_encryption_key.clone(),
-    );
+    let webauthn_service = state.webauthn_service.clone();
 
     match webauthn_service
         .verify_authentication(&realm_id, username, response)
