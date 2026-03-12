@@ -75,6 +75,8 @@ impl std::str::FromStr for SocialProvider {
             "amazon" => Ok(SocialProvider::Amazon),
             "discord" => Ok(SocialProvider::Discord),
             "slack" => Ok(SocialProvider::Slack),
+            "okta" => Ok(SocialProvider::Okta),
+            "auth0" => Ok(SocialProvider::Auth0),
             _ => Err(format!("Unknown social provider: {}", s)),
         }
     }
