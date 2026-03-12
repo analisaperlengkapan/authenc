@@ -33,20 +33,20 @@ def test_groups_ui():
                 ])
             ))
 
-            page.route("**/api/v1/auth/realms/*/groups", lambda route, request: route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps([
-                    {"id": "group1", "name": "Admins", "path": "/Admins", "description": "Administrator group"}
-                ]) if request.method == "GET" else json.dumps(
-                    {"id": "group2", "name": "TestGroup", "path": "/TestGroup", "description": "Test group"}
-                ) # POST/PUT mock
-            ))
-
             page.route("**/api/v1/auth/realms/*/groups/*", lambda route: route.fulfill(
                 status=200,
                 content_type="application/json",
                 body=json.dumps({"message": "Success"})
+            ))
+
+            page.route("**/api/v1/auth/realms/*/groups", lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps([
+                    {"id": "group1", "name": "Admins", "path": "/Admins", "description": "Administrator group"}
+                ]) if route.request.method == "GET" else json.dumps(
+                    {"id": "group2", "name": "TestGroup", "path": "/TestGroup", "description": "Test group"}
+                ) # POST/PUT mock
             ))
 
             page.add_init_script("localStorage.clear();")
