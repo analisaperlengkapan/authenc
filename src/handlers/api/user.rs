@@ -458,7 +458,7 @@ pub async fn link_user_social_account(
         crate::models::events::OperationType::Update,
         format!("/realms/{}/users/{}/social", realm, user_id),
     )
-    .representation(serde_json::to_string(&account).unwrap_or_default())
+    .representation(serde_json::to_string(&SocialAccountResponse::from(account.clone())).unwrap_or_default())
     .build();
 
     if let Err(e) = state
