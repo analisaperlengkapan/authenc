@@ -10,6 +10,9 @@ use axum::{
     routing::{delete, get, patch, post, put},
 };
 use serde::Deserialize;
+use authenc_models::models::social_account::SocialAccountResponse;
+use authenc_services::services::social::SocialProvider;
+use authenc_services::services::stores::social_account_store::SocialAccountStoreTrait;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -24,6 +27,11 @@ pub fn create_user_routes() -> Router<Arc<AppState>> {
         .route(
             "/realms/{realm}/users/{id}/password",
             patch(update_password),
+        )
+        .route("/realms/{realm}/users/{id}/social", get(get_user_social_accounts))
+        .route(
+            "/realms/{realm}/users/{id}/social/{provider}",
+            delete(unlink_user_social_account),
         )
 }
 
@@ -407,4 +415,79 @@ pub async fn update_password(
     }
 
     Ok(StatusCode::OK)
+}
+
+/// Get linked social accounts for a specific user
+pub async fn get_user_social_accounts(
+    State(state): State<Arc<AppState>>,
+    Path((realm, user_id)): Path<(String, Uuid)>,
+    _auth: AuthBearer,
+) -> Result<Json<Vec<SocialAccountResponse>>, crate::error::AuthencError> {
+    // Get user to verify they exist and belong to the realm
+    let user = state
+        .user_store
+        .get_user(user_id)
+        .await?
+        .ok_or_else(|| crate::error::AuthencError::resource_not_found("User not found"))?;
+
+    // Validate realm (assuming UUID format or "master")
+    let realm_uuid = if realm == "master" {
+        Uuid::nil()
+    } else {
+        Uuid::parse_str(&realm).map_err(|_| crate::error::AuthencError::validation("Invalid realm ID"))?
+    };
+
+    if user.realm_id != Some(realm_uuid) {
+        return Err(crate::error::AuthencError::resource_not_found("User not found in realm"));
+    }
+
+    // Get social accounts for the user
+    let social_accounts = state
+        .social_account_store
+        .get_user_social_accounts(user_id)
+        .await?;
+
+    // Convert to response format
+    let responses: Vec<SocialAccountResponse> = social_accounts
+        .into_iter()
+        .map(|account| account.into())
+        .collect();
+
+    Ok(Json(responses))
+}
+
+/// Unlink a social account for a specific user
+pub async fn unlink_user_social_account(
+    State(state): State<Arc<AppState>>,
+    Path((realm, user_id, provider_str)): Path<(String, Uuid, String)>,
+    _auth: AuthBearer,
+) -> Result<StatusCode, crate::error::AuthencError> {
+    // Admin validation: Check if user exists and belongs to the realm
+    let user = state
+        .user_store
+        .get_user(user_id)
+        .await?
+        .ok_or_else(|| crate::error::AuthencError::resource_not_found("User not found"))?;
+
+    let realm_uuid = if realm == "master" {
+        Uuid::nil()
+    } else {
+        Uuid::parse_str(&realm).map_err(|_| crate::error::AuthencError::validation("Invalid realm ID"))?
+    };
+
+    if user.realm_id != Some(realm_uuid) {
+        return Err(crate::error::AuthencError::resource_not_found("User not found in realm"));
+    }
+
+    // Parse provider
+    let provider = std::str::FromStr::from_str(&provider_str)
+        .unwrap_or_else(|_| SocialProvider::Custom(provider_str.clone()));
+
+    // Remove the social account link
+    state
+        .social_account_store
+        .remove_social_account_by_provider(user_id, &provider)
+        .await?;
+
+    Ok(StatusCode::NO_CONTENT)
 }

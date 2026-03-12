@@ -75,6 +75,8 @@ impl std::str::FromStr for SocialProvider {
             "amazon" => Ok(SocialProvider::Amazon),
             "discord" => Ok(SocialProvider::Discord),
             "slack" => Ok(SocialProvider::Slack),
+            "okta" => Ok(SocialProvider::Okta),
+            "auth0" => Ok(SocialProvider::Auth0),
             _ => Err(format!("Unknown social provider: {}", s)),
         }
     }
@@ -152,7 +154,7 @@ pub struct SocialAccountResponse {
 impl From<SocialAccount> for SocialAccountResponse {
     fn from(account: SocialAccount) -> Self {
         Self {
-            provider: format!("{:?}", account.provider).to_lowercase(),
+            provider: account.provider.to_string(),
             provider_user_id: account.provider_user_id,
             display_name: account.display_name,
             email: account.email,
