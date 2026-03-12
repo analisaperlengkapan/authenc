@@ -303,6 +303,22 @@
                     <input type="checkbox" id="edit-require-password-change" name="require_password_change" style="width: auto;">
                     <label for="edit-require-password-change" style="margin: 0;">Require Password Change</label>
                 </div>
+
+                <div style="margin-top: 1rem; margin-bottom: 1rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
+                    <h3 style="margin-bottom: 0.5rem;">Linked Social Accounts</h3>
+                    <div id="social-accounts-container" style="margin-bottom: 1rem;">
+                        <p style="color: var(--text-light); font-size: 0.9rem;">Loading social accounts...</p>
+                    </div>
+                    <table id="social-accounts-table" class="hidden" style="margin-top: 0; margin-bottom: 1rem;">
+                        <thead>
+                            <tr>
+                                <th>Provider</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="social-accounts-body"></tbody>
+                    </table>
+                </div>
                 <button type="submit">Save Changes</button>
                 <button type="button" class="secondary" onclick="closeEditModal()">Cancel</button>
             </form>
@@ -732,6 +748,74 @@
             }
         }
 
+        async function fetchUserSocialAccounts(userId) {
+            const container = document.getElementById('social-accounts-container');
+            const table = document.getElementById('social-accounts-table');
+            const tbody = document.getElementById('social-accounts-body');
+
+            container.innerHTML = '<p style="color: var(--text-light); font-size: 0.9rem;">Loading social accounts...</p>';
+            container.classList.remove('hidden');
+            table.classList.add('hidden');
+            tbody.innerHTML = '';
+
+            try {
+                let url = `${API_BASE}/auth/realms/${currentRealm}/users/${userId}/social`;
+                if (currentRealm === 'master') {
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users/${userId}/social`;
+                }
+
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const accounts = await response.json();
+                    if (accounts && accounts.length > 0) {
+                        container.classList.add('hidden');
+                        table.classList.remove('hidden');
+                        accounts.forEach(acc => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td><span style="text-transform: capitalize; font-weight: 500;">${acc.provider}</span> <br><small style="color: var(--text-light);">${acc.provider_user_id}</small></td>
+                                <td><button type="button" onclick="unlinkUserSocialAccount('${userId}', '${acc.provider}')" style="background-color: var(--error); padding: 0.25rem 0.5rem; font-size: 0.8rem; width: auto;">Unlink</button></td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    } else {
+                        container.innerHTML = '<p style="color: var(--text-light); font-size: 0.9rem;">No linked social accounts.</p>';
+                    }
+                } else {
+                    container.innerHTML = '<p style="color: var(--error); font-size: 0.9rem;">Failed to load social accounts.</p>';
+                }
+            } catch (err) {
+                container.innerHTML = '<p style="color: var(--error); font-size: 0.9rem;">Error loading social accounts.</p>';
+            }
+        }
+
+        async function unlinkUserSocialAccount(userId, provider) {
+            if (!confirm(`Are you sure you want to unlink ${provider} from this user?`)) return;
+
+            try {
+                let url = `${API_BASE}/auth/realms/${currentRealm}/users/${userId}/social/${provider}`;
+                if (currentRealm === 'master') {
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users/${userId}/social/${provider}`;
+                }
+
+                const response = await fetch(url, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    fetchUserSocialAccounts(userId);
+                } else {
+                    alert('Failed to unlink social account');
+                }
+            } catch (err) {
+                alert('Error unlinking social account: ' + err.message);
+            }
+        }
+
         function openEditUserModal(user) {
             document.getElementById('edit-user-modal').classList.remove('hidden');
             document.getElementById('edit-user-modal').style.display = 'flex';
@@ -759,6 +843,9 @@
             document.getElementById('edit-email-verified').checked = user.email_verified;
             document.getElementById('edit-require-password-change').checked = user.require_password_change || false;
             document.getElementById('edit-user-error').style.display = 'none';
+
+            // Fetch social accounts
+            fetchUserSocialAccounts(user.id);
         }
 
         function closeEditModal() {
