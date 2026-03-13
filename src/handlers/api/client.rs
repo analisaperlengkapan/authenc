@@ -37,16 +37,12 @@ pub async fn get_clients(
 
     match state.oidc_client_store.all().await {
         Ok(clients) => {
-            // Filter clients by realm and remove sensitive data before returning
-            let mut safe_clients: Vec<OidcClient> = clients
-                .into_iter()
-                .filter(|c| c.realm_id == _realm_obj.id)
-                .collect();
+            // Clone clients to mutate them before returning, removing sensitive data
+            let mut safe_clients = clients;
             for client in safe_clients.iter_mut() {
                 client.client_secret = "".to_string(); // Hide secret in list response
             }
             Ok(Json(safe_clients))
-        },
         },
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -142,7 +138,9 @@ pub async fn create_client(
     };
 
     let resource_path = format!("/realms/{}/clients/{}", realm, client.client_id);
-    let representation = serde_json::to_string(&client).unwrap_or_default();
+    let mut safe_client = client.clone();
+    safe_client.client_secret = "".to_string();
+    let representation = serde_json::to_string(&safe_client).unwrap_or_default();
 
     let admin_event = AdminEventBuilder::new(
         realm_obj.id.to_string(),
@@ -245,7 +243,9 @@ pub async fn update_client(
     };
 
     let resource_path = format!("/realms/{}/clients/{}", realm, client_id);
-    let new_representation = serde_json::to_string(&client).unwrap_or_default();
+    let mut safe_client = client.clone();
+    safe_client.client_secret = "".to_string();
+    let new_representation = serde_json::to_string(&safe_client).unwrap_or_default();
 
     let admin_event = AdminEventBuilder::new(
         realm_obj.id.to_string(),
@@ -306,7 +306,9 @@ pub async fn delete_client(
             };
 
             let resource_path = format!("/realms/{}/clients/{}", realm, client_id);
-            let representation = serde_json::to_string(&client).unwrap_or_default();
+            let mut safe_client = client.clone();
+            safe_client.client_secret = "".to_string();
+            let representation = serde_json::to_string(&safe_client).unwrap_or_default();
 
             let admin_event = AdminEventBuilder::new(
                 realm_obj.id.to_string(),
