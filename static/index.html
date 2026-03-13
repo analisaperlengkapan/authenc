@@ -513,7 +513,6 @@
         <div class="card" style="margin: 2rem auto; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
             <h2 style="margin-top: 0;" id="edit-role-title">Create Role</h2>
             <form id="edit-role-form">
-                <input type="hidden" id="edit-role-id">
                 <div class="form-group">
                     <label for="edit-role-name">Name</label>
                     <input type="text" id="edit-role-name" name="name" required>
@@ -1270,7 +1269,6 @@
 
         function openCreateRoleModal() {
             document.getElementById('edit-role-title').textContent = 'Create Role';
-            document.getElementById('edit-role-id').value = '';
             document.getElementById('edit-role-name').value = '';
             document.getElementById('edit-role-description').value = '';
             document.getElementById('edit-role-error').style.display = 'none';
@@ -1327,9 +1325,9 @@
             if (!confirm(`Are you sure you want to delete the role '${name}'?`)) return;
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/roles/${encodeURIComponent(name)}`;
+                let url = `${API_BASE}/auth/realms/${currentRealm}/roles/${name}`;
                 if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles/${encodeURIComponent(name)}`;
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles/${name}`;
                 }
 
                 const response = await fetch(url, {
@@ -1392,7 +1390,17 @@
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
+                if (response.status === 401) {
+                    logout();
+                    return;
+                }
 
+                if (response.status === 400 && currentRealm === 'master') {
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles`;
+                    response = await fetch(url, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                }
 
                 if (response.ok) {
                     const roles = await response.json();
