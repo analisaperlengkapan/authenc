@@ -1399,6 +1399,9 @@
 
             try {
                 let url = `${API_BASE}/auth/realms/${currentRealm}/roles`;
+                if (currentRealm === 'master') {
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles`;
+                }
 
                 let response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
