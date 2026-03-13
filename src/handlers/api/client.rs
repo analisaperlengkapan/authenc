@@ -37,27 +37,10 @@ pub async fn get_clients(
     };
 
     // Get realm by ID to validate it exists
-    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
+    let _realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
-
-    match state.oidc_client_store.all().await {
-        Ok(clients) => {
-            // Filter clients by realm and remove sensitive data
-            let safe_clients: Vec<OidcClient> = clients
-                .into_iter()
-                .filter(|c| c.realm_id == realm_obj.id)
-                .map(|mut c| {
-                    c.client_secret = "".to_string();
-                    c
-                })
-                .collect();
-            Ok(Json(safe_clients))
-        },
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
-}
 
     match state.oidc_client_store.all().await {
         Ok(clients) => {

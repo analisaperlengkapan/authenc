@@ -65,6 +65,22 @@ impl RoleStore {
         });
         vec.len() < len_before
     }
+
+    /// Update an existing role
+    pub fn update_role(&self, realm_id: &str, name: &str, updated_role: Role) -> bool {
+        let mut roles = self.roles.write().unwrap();
+        let vec = Arc::make_mut(&mut roles);
+
+        if let Some(index) = vec.iter().position(|r| {
+            r.realm_id.map(|id| id.to_string()).as_ref() == Some(&realm_id.to_string())
+                && r.name == name
+        }) {
+            vec[index] = updated_role;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl RoleStoreTrait for RoleStore {
