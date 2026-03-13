@@ -49,6 +49,32 @@ def test_groups_ui():
                 ) # POST/PUT mock
             ))
 
+            page.route("**/api/v1/auth/realms/*/roles/*", lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"message": "Success"})
+            ))
+
+            def roles_handler(route):
+                if route.request.method == "GET":
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps([
+                            {"id": "role1", "name": "AdminRole", "description": "Administrator role"}
+                        ])
+                    )
+                else:
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps(
+                            {"id": "role2", "name": "TestRole", "description": "Test role"}
+                        )
+                    )
+
+            page.route("**/api/v1/auth/realms/*/roles", roles_handler)
+
             page.route("**/api/v1/auth/realms/*/users/*/social", lambda route: route.fulfill(
                 status=200,
                 content_type="application/json",
@@ -118,7 +144,35 @@ def test_groups_ui():
             page.screenshot(path="groups_ui.png", full_page=True)
             print("Groups UI screenshot saved to groups_ui.png")
 
-            # 5. Navigate to Users Tab to test social linking
+            # 5. Navigate to Roles Tab
+            print("Navigating to roles tab...")
+            page.click("#tab-roles")
+            page.wait_for_selector("#roles-section:not(.hidden)", state="visible")
+
+            # Verify initial role fetch
+            print("Verifying initial roles fetch...")
+            page.wait_for_selector("#roles-body tr td:has-text('AdminRole')")
+
+            # Create Role
+            print("Creating a role...")
+            page.click("button:has-text('Create Role')")
+            page.wait_for_selector("#edit-role-modal:not(.hidden)", state="visible")
+            page.fill("#edit-role-name", "TestRole")
+            page.fill("#edit-role-description", "A test role")
+
+            # Save role
+            print("Saving role...")
+            page.click("#edit-role-form button[type='submit']")
+
+            # Wait for modal to hide
+            page.wait_for_selector("#edit-role-modal.hidden", state="hidden")
+
+            # Save a screenshot for verification
+            print("Saving roles screenshot...")
+            page.screenshot(path="roles_ui.png", full_page=True)
+            print("Roles UI screenshot saved to roles_ui.png")
+
+            # 6. Navigate to Users Tab to test social linking
             print("Navigating to users tab...")
             page.click("#tab-users")
             page.wait_for_selector("#users-section:not(.hidden)", state="visible")
