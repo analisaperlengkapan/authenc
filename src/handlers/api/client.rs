@@ -37,12 +37,17 @@ pub async fn get_clients(
 
     match state.oidc_client_store.all().await {
         Ok(clients) => {
-            // Clone clients to mutate them before returning, removing sensitive data
-            let mut safe_clients = clients;
-            for client in safe_clients.iter_mut() {
-                client.client_secret = "".to_string(); // Hide secret in list response
-            }
+            // Filter clients by realm and remove sensitive data
+            let safe_clients: Vec<OidcClient> = clients
+                .into_iter()
+                .filter(|c| c.realm_id == _realm_obj.id)
+                .map(|mut c| {
+                    c.client_secret = "".to_string();
+                    c
+                })
+                .collect();
             Ok(Json(safe_clients))
+        },
         },
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
