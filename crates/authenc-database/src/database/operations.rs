@@ -3281,8 +3281,7 @@ pub mod social_accounts {
         match row {
             Some(row) => {
                 let provider_str: String = row.get(2);
-                let provider =
-                    SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
+                let provider = SocialProvider::from_str(&provider_str).unwrap();
 
                 Ok(Some(SocialAccount {
                     id: row.get(0),
@@ -3322,8 +3321,7 @@ pub mod social_accounts {
             .into_iter()
             .map(|row: tokio_postgres::Row| {
                 let provider_str: String = row.get(2);
-                let provider =
-                    SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
+                let provider = SocialProvider::from_str(&provider_str).unwrap();
 
                 SocialAccount {
                     id: row.get(0),
@@ -3365,8 +3363,7 @@ pub mod social_accounts {
         match row {
             Some(row) => {
                 let provider_str: String = row.get(2);
-                let provider =
-                    SocialProvider::from_str(&provider_str).unwrap_or(SocialProvider::Google);
+                let provider = SocialProvider::from_str(&provider_str).unwrap();
 
                 Ok(Some(SocialAccount {
                     id: row.get(0),

@@ -438,6 +438,25 @@ pub async fn link_user_social_account(
         return Err(crate::error::AuthencError::resource_not_found("User not found in realm"));
     }
 
+    // Check if the social account already exists
+    if state
+        .social_account_store
+        .has_social_account(user_id, &request.provider)
+        .await?
+    {
+        return Err(crate::error::AuthencError::validation("User already has an account linked for this provider"));
+    }
+
+    // Check if the provider_user_id is already linked to another account
+    let existing = state
+        .social_account_store
+        .get_social_account_by_provider(&request.provider, &request.provider_user_id)
+        .await?;
+
+    if existing.is_some() {
+        return Err(crate::error::AuthencError::validation("This social account is already linked to a user"));
+    }
+
     let account = state
         .social_account_store
         .add_social_account(user_id, request)
@@ -530,8 +549,7 @@ pub async fn unlink_user_social_account(
     }
 
     // Parse provider
-    let provider = std::str::FromStr::from_str(&provider_str)
-        .unwrap_or_else(|_| SocialProvider::Custom(provider_str.clone()));
+    let provider = std::str::FromStr::from_str(&provider_str).unwrap();
 
     // Remove the social account link
     state

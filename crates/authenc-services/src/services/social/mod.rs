@@ -273,8 +273,7 @@ impl SocialLoginService for SocialLoginManager {
         let session = self.validate_and_consume_state(state).await?;
 
         // Convert string provider back to enum
-        let provider = std::str::FromStr::from_str(&session.provider)
-            .map_err(|e| format!("Invalid provider in state: {}", e))?;
+        let provider = std::str::FromStr::from_str(&session.provider).unwrap();
 
         let config = self
             .get_provider_config(&provider)
