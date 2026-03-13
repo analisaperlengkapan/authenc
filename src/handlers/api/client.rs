@@ -48,7 +48,7 @@ pub async fn get_clients(
                 .collect();
             Ok(Json(safe_clients))
         },
-        },
+
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
