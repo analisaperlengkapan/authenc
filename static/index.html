@@ -1294,10 +1294,7 @@
             };
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/roles`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles`;
-                }
+                const url = `${API_BASE}/auth/realms/${currentRealm}/roles`;
 
                 const response = await fetch(url, {
                     method: 'POST',
