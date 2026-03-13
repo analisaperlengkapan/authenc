@@ -1313,6 +1313,10 @@
 
             try {
                 let url = `${API_BASE}/auth/realms/${currentRealm}/roles`;
+                if (currentRealm === 'master') {
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles`;
+                }
+
                 if (isUpdate) {
                     const encodedName = encodeURIComponent(payload.name);
                     url += `/${encodedName}`;
@@ -1346,6 +1350,9 @@
             try {
                 const encodedName = encodeURIComponent(name);
                 let url = `${API_BASE}/auth/realms/${currentRealm}/roles/${encodedName}`;
+                if (currentRealm === 'master') {
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles/${encodedName}`;
+                }
 
                 const response = await fetch(url, {
                     method: 'DELETE',
@@ -1370,10 +1377,20 @@
 
             try {
                 let url = `${API_BASE}/auth/realms/${currentRealm}/clients`;
+                if (currentRealm === 'master') {
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/clients`;
+                }
 
-                const response = await fetch(url, {
+                let response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
+
+                if (response.status === 400 && currentRealm === 'master') {
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/clients`;
+                    response = await fetch(url, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                }
 
                 if (!response.ok) {
                     if (response.status === 401) {
@@ -1410,6 +1427,13 @@
                 if (response.status === 401) {
                     logout();
                     return;
+                }
+
+                if (response.status === 400 && currentRealm === 'master') {
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles`;
+                    response = await fetch(url, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
                 }
 
                 if (response.ok) {
@@ -1613,6 +1637,10 @@
             }
 
             let url = `${API_BASE}/auth/realms/${currentRealm}/clients`;
+            if (currentRealm === 'master') {
+                url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/clients`;
+            }
+
             if (isUpdate) {
                 url += `/${id}`;
             }
@@ -1645,6 +1673,9 @@
 
             try {
                 let url = `${API_BASE}/auth/realms/${currentRealm}/clients/${id}`;
+                if (currentRealm === 'master') {
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/clients/${id}`;
+                }
 
                 const response = await fetch(url, {
                     method: 'DELETE',

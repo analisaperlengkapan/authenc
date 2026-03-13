@@ -35,8 +35,14 @@ pub async fn get_roles(
     State(state): State<Arc<AppState>>,
     Path(realm): Path<String>,
 ) -> Result<Json<Vec<Role>>, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to validate it exists
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -69,8 +75,14 @@ pub async fn create_role(
     Path(realm): Path<String>,
     Json(req): Json<CreateRoleRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to get the UUID
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -137,8 +149,14 @@ pub async fn delete_role(
     AuthBearer(auth): AuthBearer,
     Path((realm, name)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to get the UUID
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -197,8 +215,14 @@ pub async fn assign_permission_to_role(
     AuthBearer(auth): AuthBearer,
     Path((realm, role_name, permission)): Path<(String, String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to get the UUID
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -268,8 +292,14 @@ pub async fn unassign_permission_from_role(
     AuthBearer(auth): AuthBearer,
     Path((realm, role_name, permission)): Path<(String, String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to get the UUID
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };

@@ -12,6 +12,7 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Create client management routes for a realm
 pub fn create_client_routes() -> Router<Arc<AppState>> {
@@ -29,8 +30,14 @@ pub async fn get_clients(
     AuthBearer(_auth): AuthBearer,
     Path(realm): Path<String>,
 ) -> Result<Json<Vec<OidcClient>>, StatusCode> {
-    // Get realm by name to validate it exists
-    let _realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to validate it exists
+    let _realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -54,8 +61,14 @@ pub async fn get_client(
     AuthBearer(_auth): AuthBearer,
     Path((realm, client_id)): Path<(String, String)>,
 ) -> Result<Json<OidcClient>, StatusCode> {
-    // Get realm by name to validate it exists
-    let _realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to validate it exists
+    let _realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -95,8 +108,14 @@ pub async fn create_client(
     Path(realm): Path<String>,
     Json(req): Json<CreateClientRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to validate it exists
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -185,8 +204,14 @@ pub async fn update_client(
     Path((realm, client_id)): Path<(String, String)>,
     Json(req): Json<UpdateClientRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to validate it exists
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -271,8 +296,14 @@ pub async fn delete_client(
     AuthBearer(auth): AuthBearer,
     Path((realm, client_id)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to validate it exists
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
