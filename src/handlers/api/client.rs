@@ -37,16 +37,12 @@ pub async fn get_clients(
 
     match state.oidc_client_store.all().await {
         Ok(clients) => {
-            // Filter clients by realm and remove sensitive data before returning
-            let mut safe_clients: Vec<OidcClient> = clients
-                .into_iter()
-                .filter(|c| c.realm_id == _realm_obj.id)
-                .collect();
+            // Clone clients to mutate them before returning, removing sensitive data
+            let mut safe_clients = clients;
             for client in safe_clients.iter_mut() {
                 client.client_secret = "".to_string(); // Hide secret in list response
             }
             Ok(Json(safe_clients))
-        },
         },
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -224,14 +220,9 @@ pub async fn update_client(
         client.enabled = enabled;
     }
 
-    // For now, we'll delete and re-add since the store doesn't have an update method
-    // In a real implementation, you'd want an update method
-    if state.oidc_client_store.delete(&client_id).await.is_err() {
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
     if state
         .oidc_client_store
-        .add(client.clone())
+        .update(client.clone())
         .await
         .is_err()
     {

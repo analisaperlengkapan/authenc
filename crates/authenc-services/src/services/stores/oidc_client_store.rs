@@ -44,8 +44,9 @@ impl OidcClientStore {
         use authenc_models::models::OAuth2Client;
 
         // Convert OidcClient to OAuth2Client
+        let id = Uuid::parse_str(&client.id).unwrap_or_else(|_| Uuid::new_v4());
         let oauth_client = OAuth2Client {
-            id: Uuid::new_v4(), // Generate new ID
+            id,
             client_id: client.client_id.clone(),
             client_secret_hash: client.client_secret.clone(), // In production, this should be hashed
             client_name: client.name.clone(),
@@ -58,12 +59,44 @@ impl OidcClientStore {
             owner_id: None, // No owner specified
             realm_id: Some(client.realm_id), // Default realm
             enabled: client.enabled,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            created_at: client.created_at,
+            updated_at: client.updated_at,
             deleted_at: None,
         };
 
         oauth2::create_client(&self.db, &oauth_client).await?;
+        Ok(())
+    }
+
+    /// Update OIDC client
+    pub async fn update(&self, client: OidcClient) -> Result<()> {
+        use authenc_database::database::operations::oauth2;
+        use authenc_models::models::OAuth2Client;
+
+        // Ensure we preserve the ID if possible, otherwise generate a new one
+        let id = Uuid::parse_str(&client.id).unwrap_or_else(|_| Uuid::new_v4());
+
+        let oauth_client = OAuth2Client {
+            id,
+            client_id: client.client_id.clone(),
+            client_secret_hash: client.client_secret.clone(), // Note: password hash isn't updated securely if not passed in as hash
+            client_name: client.name.clone(),
+            client_type: "confidential".to_string(),
+            redirect_uris: client.redirect_uris.clone(),
+            scopes: vec!["openid".to_string(), "profile".to_string()],
+            grant_types: vec!["authorization_code".to_string()],
+            response_types: vec!["code".to_string()],
+            token_endpoint_auth_method: "client_secret_basic".to_string(),
+            owner_id: None,
+            realm_id: Some(client.realm_id),
+            enabled: client.enabled,
+            created_at: client.created_at,
+            updated_at: Utc::now(),
+            deleted_at: None,
+        };
+
+        // Call the database operation to update
+        oauth2::update_client(&self.db, &oauth_client).await?;
         Ok(())
     }
 
