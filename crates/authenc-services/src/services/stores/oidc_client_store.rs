@@ -71,32 +71,26 @@ impl OidcClientStore {
     /// Update OIDC client
     pub async fn update(&self, client: OidcClient) -> Result<()> {
         use authenc_database::database::operations::oauth2;
-        use authenc_models::models::OAuth2Client;
 
-        // Ensure we preserve the ID if possible, otherwise generate a new one
-        let id = Uuid::parse_str(&client.id).unwrap_or_else(|_| Uuid::new_v4());
+        let existing_client = oauth2::get_client_by_id(&self.db, &client.client_id).await?
+            .ok_or_else(|| authenc_core::error::AuthencError::resource_not_found("Client not found"))?;
 
-        let oauth_client = OAuth2Client {
-            id,
-            client_id: client.client_id.clone(),
-            client_secret_hash: client.client_secret.clone(), // Note: password hash isn't updated securely if not passed in as hash
-            client_name: client.name.clone(),
-            client_type: "confidential".to_string(),
-            redirect_uris: client.redirect_uris.clone(),
-            scopes: vec!["openid".to_string(), "profile".to_string()],
-            grant_types: vec!["authorization_code".to_string()],
-            response_types: vec!["code".to_string()],
-            token_endpoint_auth_method: "client_secret_basic".to_string(),
-            owner_id: None,
-            realm_id: Some(client.realm_id),
-            enabled: client.enabled,
-            created_at: client.created_at,
-            updated_at: Utc::now(),
-            deleted_at: None,
-        };
+        let mut updated_oauth_client = existing_client;
+
+        // Ensure we preserve the internal ID
+        let id = Uuid::parse_str(&client.id).unwrap_or(updated_oauth_client.id);
+
+        updated_oauth_client.id = id;
+        updated_oauth_client.client_id = client.client_id.clone();
+        updated_oauth_client.client_secret_hash = client.client_secret.clone(); // Note: password hash isn't updated securely if not passed in as hash
+        updated_oauth_client.client_name = client.name.clone();
+        updated_oauth_client.redirect_uris = client.redirect_uris.clone();
+        updated_oauth_client.enabled = client.enabled;
+        updated_oauth_client.updated_at = Utc::now();
+        // The previous realm_id, owner_id, scopes, grant_types, response_types, etc., are kept intact
 
         // Call the database operation to update
-        oauth2::update_client(&self.db, &oauth_client).await?;
+        oauth2::update_client(&self.db, &updated_oauth_client).await?;
         Ok(())
     }
 
