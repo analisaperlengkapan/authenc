@@ -51,7 +51,7 @@ Authenc v0.4.0 is a production-ready identity management platform with comprehen
 - [x] Google OAuth2 Provider implementation
 - [x] GitHub OAuth2 Provider implementation
 - [x] Microsoft OAuth2 Provider implementation
-- [ ] Social account linking and management UI
+- [x] Social account linking and management UI
 
 ### LDAP/Active Directory Federation
 - [ ] LDAP client implementation
