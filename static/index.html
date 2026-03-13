@@ -1327,9 +1327,9 @@
             if (!confirm(`Are you sure you want to delete the role '${name}'?`)) return;
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/roles/${name}`;
+                let url = `${API_BASE}/auth/realms/${currentRealm}/roles/${encodeURIComponent(name)}`;
                 if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles/${name}`;
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles/${encodeURIComponent(name)}`;
                 }
 
                 const response = await fetch(url, {
