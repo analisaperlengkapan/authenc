@@ -269,7 +269,12 @@ pub async fn delete_role(
     };
 
     // Get the role before deleting for event representation
-    let role = match state.role_store.get_by_name(&name) {
+    let role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == name)
+    {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
