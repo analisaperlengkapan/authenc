@@ -1385,12 +1385,7 @@
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
-                if (response.status === 400 && currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/clients`;
-                    response = await fetch(url, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                }
+
 
                 if (!response.ok) {
                     if (response.status === 401) {
