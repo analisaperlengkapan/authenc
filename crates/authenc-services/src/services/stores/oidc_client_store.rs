@@ -170,6 +170,10 @@ impl OidcClientStoreTrait for OidcClientStore {
         self.add(client).await
     }
 
+    async fn update(&self, client: OidcClient) -> std::result::Result<(), AuthencError> {
+        self.update(client).await
+    }
+
     async fn delete(&self, client_id: &str) -> std::result::Result<bool, AuthencError> {
         self.delete(client_id).await
     }
