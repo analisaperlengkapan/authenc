@@ -56,7 +56,7 @@ impl OidcClientStore {
             response_types: vec!["code".to_string()],
             token_endpoint_auth_method: "client_secret_basic".to_string(),
             owner_id: None, // No owner specified
-            realm_id: None, // Default realm
+            realm_id: Some(client.realm_id), // Default realm
             enabled: client.enabled,
             created_at: Utc::now(),
             updated_at: Utc::now(),
