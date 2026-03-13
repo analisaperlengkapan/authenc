@@ -90,7 +90,7 @@ pub async fn create_role(
     };
 
     // Check if role already exists
-    if state.role_store.get_by_name(&req.name).is_some() {
+    if state.role_store.get_by_realm(&realm_obj.id.to_string()).iter().any(|r| r.name == req.name) {
         return Err(StatusCode::CONFLICT);
     }
 
