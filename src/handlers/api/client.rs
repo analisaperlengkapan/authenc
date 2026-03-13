@@ -46,6 +46,7 @@ pub async fn get_clients(
         Ok(clients) => {
             // Clone clients to mutate them before returning, removing sensitive data
             let mut safe_clients = clients;
+            safe_clients.retain(|c| c.realm_id == realm_id);
             for client in safe_clients.iter_mut() {
                 client.client_secret = "".to_string(); // Hide secret in list response
             }
