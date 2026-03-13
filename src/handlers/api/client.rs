@@ -26,6 +26,7 @@ pub fn create_client_routes() -> Router<Arc<AppState>> {
 /// Get all clients in the specified realm
 pub async fn get_clients(
     State(state): State<Arc<AppState>>,
+    AuthBearer(_auth): AuthBearer,
     Path(realm): Path<String>,
 ) -> Result<Json<Vec<OidcClient>>, StatusCode> {
     // Get realm by name to validate it exists
@@ -35,7 +36,14 @@ pub async fn get_clients(
     };
 
     match state.oidc_client_store.all().await {
-        Ok(clients) => Ok(Json(clients)),
+        Ok(clients) => {
+            // Clone clients to mutate them before returning, removing sensitive data
+            let mut safe_clients = clients;
+            for client in safe_clients.iter_mut() {
+                client.client_secret = "".to_string(); // Hide secret in list response
+            }
+            Ok(Json(safe_clients))
+        },
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
@@ -43,6 +51,7 @@ pub async fn get_clients(
 /// Get a specific client by client ID
 pub async fn get_client(
     State(state): State<Arc<AppState>>,
+    AuthBearer(_auth): AuthBearer,
     Path((realm, client_id)): Path<(String, String)>,
 ) -> Result<Json<OidcClient>, StatusCode> {
     // Get realm by name to validate it exists

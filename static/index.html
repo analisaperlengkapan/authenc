@@ -1216,9 +1216,6 @@
 
             try {
                 let url = `${API_BASE}/auth/realms/${currentRealm}/clients`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/clients`;
-                }
 
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -1376,9 +1373,6 @@
             }
 
             let url = `${API_BASE}/auth/realms/${currentRealm}/clients`;
-            if (currentRealm === 'master') {
-                url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/clients`;
-            }
             if (isUpdate) {
                 url += `/${id}`;
             }
@@ -1411,9 +1405,6 @@
 
             try {
                 let url = `${API_BASE}/auth/realms/${currentRealm}/clients/${id}`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/clients/${id}`;
-                }
 
                 const response = await fetch(url, {
                     method: 'DELETE',
