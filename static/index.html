@@ -1455,7 +1455,7 @@
             const tbody = document.getElementById('clients-body');
             tbody.innerHTML = '';
 
-            if (clients.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--error);">Failed to load roles</td></tr>';
                 const tr = document.createElement('tr');
                 const td = document.createElement('td');
                 td.colSpan = 4;
