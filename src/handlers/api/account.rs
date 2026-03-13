@@ -529,15 +529,7 @@ pub async fn unlink_social_account(
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     // Parse provider
-    let provider = match provider.as_str() {
-        "google" => SocialProvider::Google,
-        "github" => SocialProvider::GitHub,
-        "microsoft" => SocialProvider::Microsoft,
-        "facebook" => SocialProvider::Facebook,
-        "twitter" => SocialProvider::Twitter,
-        "linkedin" => SocialProvider::LinkedIn,
-        _ => return Err(AuthencError::validation("Invalid social provider")),
-    };
+    let provider: SocialProvider = std::str::FromStr::from_str(&provider).unwrap();
 
     // Remove the social account link
     state.social_account_store

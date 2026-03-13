@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 /// Supported social login providers
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(try_from = "String", into = "String")]
 pub enum SocialProvider {
     /// Google OAuth provider
     Google,
@@ -64,7 +65,8 @@ impl std::str::FromStr for SocialProvider {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        let lower = s.to_lowercase();
+        match lower.as_str() {
             "google" => Ok(SocialProvider::Google),
             "facebook" => Ok(SocialProvider::Facebook),
             "twitter" => Ok(SocialProvider::Twitter),
@@ -77,8 +79,22 @@ impl std::str::FromStr for SocialProvider {
             "slack" => Ok(SocialProvider::Slack),
             "okta" => Ok(SocialProvider::Okta),
             "auth0" => Ok(SocialProvider::Auth0),
-            _ => Err(format!("Unknown social provider: {}", s)),
+            _ => Ok(SocialProvider::Custom(lower)),
         }
+    }
+}
+
+impl TryFrom<String> for SocialProvider {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        s.parse()
+    }
+}
+
+impl From<SocialProvider> for String {
+    fn from(val: SocialProvider) -> Self {
+        val.as_str().to_string()
     }
 }
 

@@ -256,7 +256,7 @@ CREATE TABLE IF NOT EXISTS user_consents (
 -- ============================================================================
 
 -- Social account links for identity brokering
-CREATE TABLE IF NOT EXISTS social_accounts (
+CREATE TABLE IF NOT EXISTS user_social_accounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     provider VARCHAR(50) NOT NULL, -- Social provider (google, github, etc.)
