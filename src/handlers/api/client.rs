@@ -37,18 +37,13 @@ pub async fn get_clients(
 
     match state.oidc_client_store.all().await {
         Ok(clients) => {
-            // Filter clients by realm and remove sensitive data
-            let safe_clients: Vec<OidcClient> = clients
-                .into_iter()
-                .filter(|c| c.realm_id == _realm_obj.id)
-                .map(|mut c| {
-                    c.client_secret = "".to_string();
-                    c
-                })
-                .collect();
+            // Clone clients to mutate them before returning, removing sensitive data
+            let mut safe_clients = clients;
+            for client in safe_clients.iter_mut() {
+                client.client_secret = "".to_string(); // Hide secret in list response
+            }
             Ok(Json(safe_clients))
         },
-
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
@@ -66,7 +61,13 @@ pub async fn get_client(
     };
 
     match state.oidc_client_store.get(&client_id).await {
-        Ok(Some(client)) => Ok(Json(client)),
+        Ok(Some(mut client)) => {
+            if client.realm_id != _realm_obj.id {
+                return Err(StatusCode::NOT_FOUND);
+            }
+            client.client_secret = "".to_string();
+            Ok(Json(client))
+        },
         Ok(None) => Err(StatusCode::NOT_FOUND),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -190,7 +191,12 @@ pub async fn update_client(
 
     // Get the existing client
     let mut client = match state.oidc_client_store.get(&client_id).await {
-        Ok(Some(c)) => c,
+        Ok(Some(c)) => {
+            if c.realm_id != realm_obj.id {
+                return Err(StatusCode::NOT_FOUND);
+            }
+            c
+        },
         Ok(None) => return Err(StatusCode::NOT_FOUND),
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
@@ -274,7 +280,12 @@ pub async fn delete_client(
 
     // Get the client before deleting for event representation
     let client = match state.oidc_client_store.get(&client_id).await {
-        Ok(Some(c)) => c,
+        Ok(Some(c)) => {
+            if c.realm_id != realm_obj.id {
+                return Err(StatusCode::NOT_FOUND);
+            }
+            c
+        },
         Ok(None) => return Err(StatusCode::NOT_FOUND),
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
