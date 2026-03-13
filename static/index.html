@@ -513,6 +513,7 @@
         <div class="card" style="margin: 2rem auto; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
             <h2 style="margin-top: 0;" id="edit-role-title">Create Role</h2>
             <form id="edit-role-form">
+                <input type="hidden" id="edit-role-id">
                 <div class="form-group">
                     <label for="edit-role-name">Name</label>
                     <input type="text" id="edit-role-name" name="name" required>
@@ -1269,8 +1270,23 @@
 
         function openCreateRoleModal() {
             document.getElementById('edit-role-title').textContent = 'Create Role';
+            document.getElementById('edit-role-id').value = '';
             document.getElementById('edit-role-name').value = '';
+            document.getElementById('edit-role-name').disabled = false;
             document.getElementById('edit-role-description').value = '';
+            document.getElementById('edit-role-error').style.display = 'none';
+            document.getElementById('edit-role-modal').classList.remove('hidden');
+            document.getElementById('edit-role-modal').style.display = 'flex';
+            document.getElementById('edit-role-modal').style.alignItems = 'center';
+            document.getElementById('edit-role-modal').style.justifyContent = 'center';
+        }
+
+        function openEditRoleModal(role) {
+            document.getElementById('edit-role-title').textContent = 'Edit Role';
+            document.getElementById('edit-role-id').value = role.name;
+            document.getElementById('edit-role-name').value = role.name;
+            document.getElementById('edit-role-name').disabled = true; // Can't change name
+            document.getElementById('edit-role-description').value = role.description || '';
             document.getElementById('edit-role-error').style.display = 'none';
             document.getElementById('edit-role-modal').classList.remove('hidden');
             document.getElementById('edit-role-modal').style.display = 'flex';
@@ -1285,6 +1301,8 @@
 
         document.getElementById('edit-role-form').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const id = document.getElementById('edit-role-id').value;
+            const isUpdate = !!id;
             const errorDiv = document.getElementById('edit-role-error');
             errorDiv.style.display = 'none';
 
@@ -1294,10 +1312,14 @@
             };
 
             try {
-                const url = `${API_BASE}/auth/realms/${currentRealm}/roles`;
+                let url = `${API_BASE}/auth/realms/${currentRealm}/roles`;
+                if (isUpdate) {
+                    const encodedName = encodeURIComponent(payload.name);
+                    url += `/${encodedName}`;
+                }
 
                 const response = await fetch(url, {
-                    method: 'POST',
+                    method: isUpdate ? 'PUT' : 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
@@ -1310,7 +1332,7 @@
                     fetchRoles();
                 } else {
                     const data = await response.json().catch(() => ({}));
-                    throw new Error(data.message || data.error || 'Creation failed');
+                    throw new Error(data.message || data.error || (isUpdate ? 'Update failed' : 'Creation failed'));
                 }
             } catch (err) {
                 errorDiv.textContent = err.message;
@@ -1377,9 +1399,6 @@
 
             try {
                 let url = `${API_BASE}/auth/realms/${currentRealm}/roles`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles`;
-                }
 
                 let response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -1418,6 +1437,16 @@
                         tdActions.style.display = 'flex';
                         tdActions.style.gap = '0.5rem';
 
+                        const btnEdit = document.createElement('button');
+                        btnEdit.style.width = 'auto';
+                        btnEdit.style.padding = '0.25rem 0.5rem';
+                        btnEdit.style.fontSize = '0.8rem';
+                        btnEdit.textContent = 'Edit';
+                        btnEdit.onclick = () => {
+                            openEditRoleModal(role);
+                        };
+                        tdActions.appendChild(btnEdit);
+
                         const btnDelete = document.createElement('button');
                         btnDelete.style.width = 'auto';
                         btnDelete.style.padding = '0.25rem 0.5rem';
@@ -1435,7 +1464,15 @@
                 }
             } catch (err) {
                 console.error(err);
-                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--error);">${err.message}</td></tr>`;
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 4;
+                td.style.textAlign = 'center';
+                td.style.color = 'var(--error)';
+                td.textContent = err.message;
+                tr.appendChild(td);
+                tbody.innerHTML = '';
+                tbody.appendChild(tr);
             }
         }
 
