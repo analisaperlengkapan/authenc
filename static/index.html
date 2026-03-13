@@ -1429,12 +1429,7 @@
                     return;
                 }
 
-                if (response.status === 400 && currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles`;
-                    response = await fetch(url, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                }
+
 
                 if (response.ok) {
                     const roles = await response.json();
