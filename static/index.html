@@ -272,6 +272,7 @@
             <div class="tab-buttons">
                 <button id="tab-users" class="tab-button active" onclick="switchTab('users')">Users</button>
                 <button id="tab-groups" class="tab-button" onclick="switchTab('groups')">Groups</button>
+                <button id="tab-clients" class="tab-button" onclick="switchTab('clients')">Clients</button>
             </div>
 
             <div id="users-section">
@@ -322,6 +323,35 @@
                             </tr>
                         </thead>
                         <tbody id="groups-body">
+                            <tr>
+                                <td colspan="4" style="text-align: center;">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="clients-section" class="hidden">
+                <div style="margin-bottom: 2rem;">
+                    <h3>Clients</h3>
+                    <p style="color: var(--text-light);">Manage OAuth2/OIDC clients for realm: <strong id="current-realm-clients">master</strong></p>
+                    <div style="display: flex; gap: 1rem;">
+                        <button onclick="fetchClients()" style="width: auto;">Refresh List</button>
+                        <button onclick="openCreateClientModal()" style="width: auto; background-color: var(--success);">Create Client</button>
+                    </div>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table id="clients-table">
+                        <thead>
+                            <tr>
+                                <th>Client ID</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clients-body">
                             <tr>
                                 <td colspan="4" style="text-align: center;">Loading...</td>
                             </tr>
@@ -448,6 +478,38 @@
         </div>
     </div>
 
+    <div id="edit-client-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div class="card" style="max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;">
+            <h2 id="edit-client-title" style="text-align: center;">Create Client</h2>
+            <form id="edit-client-form">
+                <input type="hidden" id="edit-client-id">
+                <div class="form-group">
+                    <label for="edit-client-client-id">Client ID</label>
+                    <input type="text" id="edit-client-client-id" name="client_id" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-client-name">Name</label>
+                    <input type="text" id="edit-client-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-client-secret">Client Secret</label>
+                    <input type="password" id="edit-client-secret" name="client_secret" placeholder="Leave blank to keep current (on edit)">
+                </div>
+                <div class="form-group">
+                    <label for="edit-client-redirect-uris">Redirect URIs (comma separated)</label>
+                    <input type="text" id="edit-client-redirect-uris" name="redirect_uris" required placeholder="https://app.com/callback, http://localhost:8080">
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="edit-client-enabled" name="enabled" style="width: auto;">
+                    <label for="edit-client-enabled" style="margin: 0;">Enabled</label>
+                </div>
+                <button type="submit">Save Client</button>
+                <button type="button" class="secondary" onclick="closeEditClientModal()">Cancel</button>
+            </form>
+            <div id="edit-client-error" class="error-message"></div>
+        </div>
+    </div>
+
     <script>
         // Configuration
         const API_BASE = '/api/v1';
@@ -503,14 +565,17 @@
             document.getElementById('user-display').textContent = currentUser || 'Admin';
             document.getElementById('current-realm').textContent = currentRealm;
             document.getElementById('current-realm-groups').textContent = currentRealm;
+            document.getElementById('current-realm-clients').textContent = currentRealm;
             switchTab('users');
         }
 
         function switchTab(tabName) {
             document.getElementById('tab-users').classList.remove('active');
             document.getElementById('tab-groups').classList.remove('active');
+            document.getElementById('tab-clients').classList.remove('active');
             document.getElementById('users-section').classList.add('hidden');
             document.getElementById('groups-section').classList.add('hidden');
+            document.getElementById('clients-section').classList.add('hidden');
 
             if (tabName === 'users') {
                 document.getElementById('tab-users').classList.add('active');
@@ -520,6 +585,10 @@
                 document.getElementById('tab-groups').classList.add('active');
                 document.getElementById('groups-section').classList.remove('hidden');
                 fetchGroups();
+            } else if (tabName === 'clients') {
+                document.getElementById('tab-clients').classList.add('active');
+                document.getElementById('clients-section').classList.remove('hidden');
+                fetchClients();
             }
         }
 
@@ -1131,6 +1200,221 @@
 
                 if (response.ok) {
                     fetchUsers();
+                } else {
+                    throw new Error('Delete failed');
+                }
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        async function fetchClients() {
+            const tbody = document.getElementById('clients-body');
+            const errorDiv = document.getElementById('dashboard-error');
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Loading...</td></tr>';
+            errorDiv.style.display = 'none';
+
+            try {
+                let url = `${API_BASE}/auth/realms/${currentRealm}/clients`;
+
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        logout();
+                        throw new Error("Session expired");
+                    }
+                    throw new Error(`Failed to fetch clients: ${response.statusText}`);
+                }
+
+                const clients = await response.json();
+                renderClients(clients);
+
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--error);">Failed to load data</td></tr>';
+            }
+        }
+
+        function renderClients(clients) {
+            const tbody = document.getElementById('clients-body');
+            tbody.innerHTML = '';
+
+            if (clients.length === 0) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 4;
+                td.style.textAlign = 'center';
+                td.textContent = 'No clients found';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+
+            clients.forEach(client => {
+                const tr = document.createElement('tr');
+
+                const tdId = document.createElement('td');
+                tdId.textContent = client.client_id;
+                tr.appendChild(tdId);
+
+                const tdName = document.createElement('td');
+                tdName.textContent = client.name;
+                tr.appendChild(tdName);
+
+                const tdStatus = document.createElement('td');
+                const spanStatus = document.createElement('span');
+                spanStatus.className = `badge ${client.enabled ? 'badge-success' : 'badge-error'}`;
+                spanStatus.textContent = client.enabled ? 'Enabled' : 'Disabled';
+                tdStatus.appendChild(spanStatus);
+                tr.appendChild(tdStatus);
+
+                const tdActions = document.createElement('td');
+
+                const btnEdit = document.createElement('button');
+                btnEdit.style.width = 'auto';
+                btnEdit.style.padding = '0.25rem 0.5rem';
+                btnEdit.style.fontSize = '0.8rem';
+                btnEdit.style.marginRight = '0.5rem';
+                btnEdit.textContent = 'Edit';
+                btnEdit.onclick = function() {
+                    openEditClientModal(client);
+                };
+                tdActions.appendChild(btnEdit);
+
+                const btnDelete = document.createElement('button');
+                btnDelete.style.width = 'auto';
+                btnDelete.style.padding = '0.25rem 0.5rem';
+                btnDelete.style.fontSize = '0.8rem';
+                btnDelete.style.backgroundColor = 'var(--error)';
+                btnDelete.textContent = 'Delete';
+                btnDelete.onclick = function() {
+                    deleteClient(client.client_id);
+                };
+                tdActions.appendChild(btnDelete);
+
+                tr.appendChild(tdActions);
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openCreateClientModal() {
+            document.getElementById('edit-client-title').textContent = 'Create Client';
+            document.getElementById('edit-client-id').value = '';
+            document.getElementById('edit-client-client-id').value = '';
+            document.getElementById('edit-client-client-id').disabled = false;
+            document.getElementById('edit-client-name').value = '';
+            document.getElementById('edit-client-secret').value = '';
+            document.getElementById('edit-client-redirect-uris').value = '';
+            document.getElementById('edit-client-enabled').checked = true;
+            document.getElementById('edit-client-error').style.display = 'none';
+            document.getElementById('edit-client-modal').classList.remove('hidden');
+            document.getElementById('edit-client-modal').style.display = 'flex';
+            document.getElementById('edit-client-modal').style.alignItems = 'center';
+            document.getElementById('edit-client-modal').style.justifyContent = 'center';
+        }
+
+        function openEditClientModal(client) {
+            document.getElementById('edit-client-title').textContent = 'Edit Client';
+            document.getElementById('edit-client-id').value = client.client_id;
+            document.getElementById('edit-client-client-id').value = client.client_id;
+            document.getElementById('edit-client-client-id').disabled = true; // Can't change client_id after creation usually
+            document.getElementById('edit-client-name').value = client.name;
+            document.getElementById('edit-client-secret').value = '';
+            document.getElementById('edit-client-redirect-uris').value = client.redirect_uris ? client.redirect_uris.join(', ') : '';
+            document.getElementById('edit-client-enabled').checked = client.enabled;
+            document.getElementById('edit-client-error').style.display = 'none';
+            document.getElementById('edit-client-modal').classList.remove('hidden');
+            document.getElementById('edit-client-modal').style.display = 'flex';
+            document.getElementById('edit-client-modal').style.alignItems = 'center';
+            document.getElementById('edit-client-modal').style.justifyContent = 'center';
+        }
+
+        function closeEditClientModal() {
+            document.getElementById('edit-client-modal').classList.add('hidden');
+            document.getElementById('edit-client-modal').style.display = 'none';
+        }
+
+        document.getElementById('edit-client-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-client-id').value;
+            const errorDiv = document.getElementById('edit-client-error');
+            errorDiv.style.display = 'none';
+
+            let redirect_uris = document.getElementById('edit-client-redirect-uris').value
+                .split(',')
+                .map(u => u.trim())
+                .filter(u => u.length > 0);
+
+            const isUpdate = id !== '';
+            let payload = {
+                name: document.getElementById('edit-client-name').value,
+                enabled: document.getElementById('edit-client-enabled').checked,
+                redirect_uris: redirect_uris
+            };
+
+            if (isUpdate) {
+                const secret = document.getElementById('edit-client-secret').value;
+                if (secret) {
+                    payload.client_secret = secret;
+                }
+            } else {
+                payload.client_id = document.getElementById('edit-client-client-id').value;
+                payload.client_secret = document.getElementById('edit-client-secret').value;
+                if (!payload.client_secret) {
+                    errorDiv.textContent = 'Client Secret is required for new clients';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+            }
+
+            let url = `${API_BASE}/auth/realms/${currentRealm}/clients`;
+            if (isUpdate) {
+                url += `/${id}`;
+            }
+
+            try {
+                const response = await fetch(url, {
+                    method: isUpdate ? 'PUT' : 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    closeEditClientModal();
+                    fetchClients();
+                } else {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.message || data.error || (isUpdate ? 'Update failed' : 'Creation failed'));
+                }
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+            }
+        });
+
+        async function deleteClient(id) {
+            if (!confirm("Are you sure you want to delete this client?")) return;
+
+            try {
+                let url = `${API_BASE}/auth/realms/${currentRealm}/clients/${id}`;
+
+                const response = await fetch(url, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    fetchClients();
                 } else {
                     throw new Error('Delete failed');
                 }

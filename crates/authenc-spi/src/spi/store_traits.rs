@@ -283,6 +283,9 @@ pub trait OidcClientStoreTrait: Send + Sync {
     /// Add a new client
     async fn add(&self, client: OidcClient) -> Result<(), AuthencError>;
 
+    /// Update a client
+    async fn update(&self, client: OidcClient) -> Result<(), AuthencError>;
+
     /// Delete a client by client ID
     async fn delete(&self, client_id: &str) -> Result<bool, AuthencError>;
 }

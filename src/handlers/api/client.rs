@@ -26,6 +26,7 @@ pub fn create_client_routes() -> Router<Arc<AppState>> {
 /// Get all clients in the specified realm
 pub async fn get_clients(
     State(state): State<Arc<AppState>>,
+    AuthBearer(_auth): AuthBearer,
     Path(realm): Path<String>,
 ) -> Result<Json<Vec<OidcClient>>, StatusCode> {
     // Get realm by name to validate it exists
@@ -35,7 +36,14 @@ pub async fn get_clients(
     };
 
     match state.oidc_client_store.all().await {
-        Ok(clients) => Ok(Json(clients)),
+        Ok(clients) => {
+            // Clone clients to mutate them before returning, removing sensitive data
+            let mut safe_clients = clients;
+            for client in safe_clients.iter_mut() {
+                client.client_secret = "".to_string(); // Hide secret in list response
+            }
+            Ok(Json(safe_clients))
+        },
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
@@ -43,6 +51,7 @@ pub async fn get_clients(
 /// Get a specific client by client ID
 pub async fn get_client(
     State(state): State<Arc<AppState>>,
+    AuthBearer(_auth): AuthBearer,
     Path((realm, client_id)): Path<(String, String)>,
 ) -> Result<Json<OidcClient>, StatusCode> {
     // Get realm by name to validate it exists
@@ -52,7 +61,13 @@ pub async fn get_client(
     };
 
     match state.oidc_client_store.get(&client_id).await {
-        Ok(Some(client)) => Ok(Json(client)),
+        Ok(Some(mut client)) => {
+            if client.realm_id != _realm_obj.id {
+                return Err(StatusCode::NOT_FOUND);
+            }
+            client.client_secret = "".to_string();
+            Ok(Json(client))
+        },
         Ok(None) => Err(StatusCode::NOT_FOUND),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -123,7 +138,9 @@ pub async fn create_client(
     };
 
     let resource_path = format!("/realms/{}/clients/{}", realm, client.client_id);
-    let representation = serde_json::to_string(&client).unwrap_or_default();
+    let mut safe_client = client.clone();
+    safe_client.client_secret = "".to_string();
+    let representation = serde_json::to_string(&safe_client).unwrap_or_default();
 
     let admin_event = AdminEventBuilder::new(
         realm_obj.id.to_string(),
@@ -176,7 +193,12 @@ pub async fn update_client(
 
     // Get the existing client
     let mut client = match state.oidc_client_store.get(&client_id).await {
-        Ok(Some(c)) => c,
+        Ok(Some(c)) => {
+            if c.realm_id != realm_obj.id {
+                return Err(StatusCode::NOT_FOUND);
+            }
+            c
+        },
         Ok(None) => return Err(StatusCode::NOT_FOUND),
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
@@ -198,14 +220,9 @@ pub async fn update_client(
         client.enabled = enabled;
     }
 
-    // For now, we'll delete and re-add since the store doesn't have an update method
-    // In a real implementation, you'd want an update method
-    if state.oidc_client_store.delete(&client_id).await.is_err() {
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
     if state
         .oidc_client_store
-        .add(client.clone())
+        .update(client.clone())
         .await
         .is_err()
     {
@@ -221,7 +238,9 @@ pub async fn update_client(
     };
 
     let resource_path = format!("/realms/{}/clients/{}", realm, client_id);
-    let new_representation = serde_json::to_string(&client).unwrap_or_default();
+    let mut safe_client = client.clone();
+    safe_client.client_secret = "".to_string();
+    let new_representation = serde_json::to_string(&safe_client).unwrap_or_default();
 
     let admin_event = AdminEventBuilder::new(
         realm_obj.id.to_string(),
@@ -260,7 +279,12 @@ pub async fn delete_client(
 
     // Get the client before deleting for event representation
     let client = match state.oidc_client_store.get(&client_id).await {
-        Ok(Some(c)) => c,
+        Ok(Some(c)) => {
+            if c.realm_id != realm_obj.id {
+                return Err(StatusCode::NOT_FOUND);
+            }
+            c
+        },
         Ok(None) => return Err(StatusCode::NOT_FOUND),
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
@@ -277,7 +301,9 @@ pub async fn delete_client(
             };
 
             let resource_path = format!("/realms/{}/clients/{}", realm, client_id);
-            let representation = serde_json::to_string(&client).unwrap_or_default();
+            let mut safe_client = client.clone();
+            safe_client.client_secret = "".to_string();
+            let representation = serde_json::to_string(&safe_client).unwrap_or_default();
 
             let admin_event = AdminEventBuilder::new(
                 realm_obj.id.to_string(),

@@ -57,6 +57,22 @@ def test_groups_ui():
                 )
             ))
 
+            page.route("**/api/v1/auth/realms/*/clients/*", lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"message": "Success"})
+            ))
+
+            page.route("**/api/v1/auth/realms/*/clients", lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps([
+                    {"client_id": "client1", "name": "Main App", "enabled": True, "redirect_uris": ["https://app.com"]}
+                ]) if route.request.method == "GET" else json.dumps(
+                    {"client_id": "client2", "name": "Test Client", "enabled": True}
+                ) # POST/PUT mock
+            ))
+
             page.add_init_script("localStorage.clear();")
 
             url = "http://localhost:8000/index.html"
@@ -129,6 +145,40 @@ def test_groups_ui():
             print("Saving screenshot of social linking UI...")
             page.screenshot(path="social_linking_ui.png", full_page=True)
             print("Social linking UI screenshot saved to social_linking_ui.png")
+
+            # Close edit user modal
+            page.click("#edit-user-modal .secondary")
+            page.wait_for_selector("#edit-user-modal.hidden", state="hidden")
+
+            # 6. Navigate to Clients Tab
+            print("Navigating to clients tab...")
+            page.click("#tab-clients")
+            page.wait_for_selector("#clients-section:not(.hidden)", state="visible")
+
+            # Verify initial client fetch
+            print("Verifying initial clients fetch...")
+            page.wait_for_selector("#clients-body tr td:has-text('Main App')")
+
+            # 7. Create Client
+            print("Creating a client...")
+            page.click("button:has-text('Create Client')")
+            page.wait_for_selector("#edit-client-modal:not(.hidden)", state="visible")
+            page.fill("#edit-client-client-id", "test-client")
+            page.fill("#edit-client-name", "Test Client")
+            page.fill("#edit-client-secret", "supersecret")
+            page.fill("#edit-client-redirect-uris", "http://localhost:3000/callback")
+
+            # Save client
+            print("Saving client...")
+            page.click("#edit-client-form button[type='submit']")
+
+            # Wait for modal to hide
+            page.wait_for_selector("#edit-client-modal.hidden", state="hidden")
+
+            # 8. Save a screenshot for verification
+            print("Saving clients UI screenshot...")
+            page.screenshot(path="clients_ui.png", full_page=True)
+            print("Clients UI screenshot saved to clients_ui.png")
 
             browser.close()
     finally:

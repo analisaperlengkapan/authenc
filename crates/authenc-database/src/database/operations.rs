@@ -790,6 +790,58 @@ pub mod oauth2 {
         row.try_into()
     }
 
+    /// Update OAuth2 client
+    pub async fn update_client(db: &Database, client: &OAuth2Client) -> Result<OAuth2Client> {
+        let now = Utc::now();
+
+        let query = r#"
+            UPDATE oauth2_clients
+            SET
+                client_secret_hash = $2,
+                client_name = $3,
+                client_type = $4,
+                redirect_uris = $5,
+                scopes = $6,
+                grant_types = $7,
+                response_types = $8,
+                token_endpoint_auth_method = $9,
+                owner_id = $10,
+                realm_id = $11,
+                enabled = $12,
+                updated_at = $13
+            WHERE client_id = $1 AND deleted_at IS NULL
+            RETURNING
+                id, client_id, client_secret_hash, client_name, client_type,
+                redirect_uris, scopes, grant_types, response_types,
+                token_endpoint_auth_method, owner_id, realm_id,
+                enabled, created_at, updated_at, deleted_at
+        "#;
+
+        let row: tokio_postgres::Row = db
+            .query_one(
+                query,
+                &[
+                    &client.client_id,
+                    &client.client_secret_hash,
+                    &client.client_name,
+                    &client.client_type,
+                    &client.redirect_uris,
+                    &client.scopes,
+                    &client.grant_types,
+                    &client.response_types,
+                    &client.token_endpoint_auth_method,
+                    &client.owner_id,
+                    &client.realm_id,
+                    &client.enabled,
+                    &now,
+                ],
+            )
+            .await?;
+
+        // Convert row to OAuth2Client
+        row.try_into()
+    }
+
     /// Get OAuth2 client by client ID
     pub async fn get_client_by_id(db: &Database, client_id: &str) -> Result<Option<OAuth2Client>> {
         let query = r#"

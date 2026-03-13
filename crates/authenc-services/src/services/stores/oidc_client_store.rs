@@ -44,8 +44,9 @@ impl OidcClientStore {
         use authenc_models::models::OAuth2Client;
 
         // Convert OidcClient to OAuth2Client
+        let id = Uuid::parse_str(&client.id).unwrap_or_else(|_| Uuid::new_v4());
         let oauth_client = OAuth2Client {
-            id: Uuid::new_v4(), // Generate new ID
+            id,
             client_id: client.client_id.clone(),
             client_secret_hash: client.client_secret.clone(), // In production, this should be hashed
             client_name: client.name.clone(),
@@ -56,14 +57,40 @@ impl OidcClientStore {
             response_types: vec!["code".to_string()],
             token_endpoint_auth_method: "client_secret_basic".to_string(),
             owner_id: None, // No owner specified
-            realm_id: None, // Default realm
+            realm_id: Some(client.realm_id), // Default realm
             enabled: client.enabled,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            created_at: client.created_at,
+            updated_at: client.updated_at,
             deleted_at: None,
         };
 
         oauth2::create_client(&self.db, &oauth_client).await?;
+        Ok(())
+    }
+
+    /// Update OIDC client
+    pub async fn update(&self, client: OidcClient) -> Result<()> {
+        use authenc_database::database::operations::oauth2;
+
+        let existing_client = oauth2::get_client_by_id(&self.db, &client.client_id).await?
+            .ok_or_else(|| authenc_core::error::AuthencError::resource_not_found("Client not found"))?;
+
+        let mut updated_oauth_client = existing_client;
+
+        // Ensure we preserve the internal ID
+        let id = Uuid::parse_str(&client.id).unwrap_or(updated_oauth_client.id);
+
+        updated_oauth_client.id = id;
+        updated_oauth_client.client_id = client.client_id.clone();
+        updated_oauth_client.client_secret_hash = client.client_secret.clone(); // Note: password hash isn't updated securely if not passed in as hash
+        updated_oauth_client.client_name = client.name.clone();
+        updated_oauth_client.redirect_uris = client.redirect_uris.clone();
+        updated_oauth_client.enabled = client.enabled;
+        updated_oauth_client.updated_at = Utc::now();
+        // The previous realm_id, owner_id, scopes, grant_types, response_types, etc., are kept intact
+
+        // Call the database operation to update
+        oauth2::update_client(&self.db, &updated_oauth_client).await?;
         Ok(())
     }
 
@@ -135,6 +162,10 @@ impl OidcClientStoreTrait for OidcClientStore {
 
     async fn add(&self, client: OidcClient) -> std::result::Result<(), AuthencError> {
         self.add(client).await
+    }
+
+    async fn update(&self, client: OidcClient) -> std::result::Result<(), AuthencError> {
+        self.update(client).await
     }
 
     async fn delete(&self, client_id: &str) -> std::result::Result<bool, AuthencError> {
