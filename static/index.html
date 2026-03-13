@@ -1325,9 +1325,10 @@
             if (!confirm(`Are you sure you want to delete the role '${name}'?`)) return;
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/roles/${name}`;
+                const encodedName = encodeURIComponent(name);
+                let url = `${API_BASE}/auth/realms/${currentRealm}/roles/${encodedName}`;
                 if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles/${name}`;
+                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles/${encodedName}`;
                 }
 
                 const response = await fetch(url, {
@@ -1395,13 +1396,6 @@
                     return;
                 }
 
-                if (response.status === 400 && currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles`;
-                    response = await fetch(url, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                }
-
                 if (response.ok) {
                     const roles = await response.json();
                     tbody.innerHTML = '';
@@ -1455,7 +1449,7 @@
             const tbody = document.getElementById('clients-body');
             tbody.innerHTML = '';
 
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--error);">Failed to load roles</td></tr>';
+            if (clients.length === 0) {
                 const tr = document.createElement('tr');
                 const td = document.createElement('td');
                 td.colSpan = 4;
