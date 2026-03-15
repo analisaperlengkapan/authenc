@@ -335,7 +335,12 @@ pub async fn assign_permission_to_role(
     };
 
     // Get role by name
-    let role = match state.role_store.get_by_name(&role_name) {
+    let role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == role_name)
+    {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -412,7 +417,12 @@ pub async fn unassign_permission_from_role(
     };
 
     // Get role by name
-    let role = match state.role_store.get_by_name(&role_name) {
+    let role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == role_name)
+    {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
