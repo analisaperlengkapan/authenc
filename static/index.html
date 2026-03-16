@@ -745,22 +745,19 @@
                     // Fetch realm UUID for the given realm
                     try {
                         let realm_id = realm;
-                        if (realm === 'master') {
-                            realm_id = "00000000-0000-0000-0000-000000000000";
-                        } else {
-                            const realmRes = await fetch(`${API_BASE}/auth/realms`, {
-                                headers: { 'Authorization': `Bearer ${token}` }
-                            });
-                            if (!realmRes.ok) {
-                                throw new Error("Failed to fetch realms");
-                            }
-                            const realms = await realmRes.json();
-                            const r = realms.find(x => x.name === realm);
-                            if (!r) {
-                                throw new Error("Realm not found");
-                            }
-                            realm_id = r.id;
+                        const realmRes = await fetch(`${API_BASE}/auth/realms`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        if (!realmRes.ok) {
+                            throw new Error("Failed to fetch realms");
                         }
+                        const realms = await realmRes.json();
+                        const r = realms.find(x => x.name === realm);
+                        if (!r) {
+                            throw new Error("Realm not found");
+                        }
+                        realm_id = r.id;
+
                         currentRealmId = realm_id;
                         localStorage.setItem('authenc_realm_id', currentRealmId);
                     } catch (e) {
@@ -976,16 +973,15 @@
 
                     try {
                         let resolvedId = realm_id;
-                        if (realm !== 'master') {
-                            const realmRes = await fetch(`${API_BASE}/auth/realms`, {
-                                headers: { 'Authorization': `Bearer ${token}` }
-                            });
-                            if (!realmRes.ok) throw new Error("Failed to fetch realms");
-                            const realms = await realmRes.json();
-                            const r = realms.find(x => x.name === realm);
-                            if (!r) throw new Error("Realm not found");
-                            resolvedId = r.id;
-                        }
+                        const realmRes = await fetch(`${API_BASE}/auth/realms`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        if (!realmRes.ok) throw new Error("Failed to fetch realms");
+                        const realms = await realmRes.json();
+                        const r = realms.find(x => x.name === realm);
+                        if (!r) throw new Error("Realm not found");
+                        resolvedId = r.id;
+
                         currentRealmId = resolvedId;
                         localStorage.setItem('authenc_realm_id', currentRealmId);
                     } catch (e) {
