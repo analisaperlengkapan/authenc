@@ -34,6 +34,7 @@ pub fn create_role_routes() -> Router<Arc<AppState>> {
 
 /// Get all roles in the specified realm
 pub async fn get_roles(
+    AuthBearer(auth): AuthBearer,
     State(state): State<Arc<AppState>>,
     Path(realm): Path<String>,
 ) -> Result<Json<Vec<Role>>, StatusCode> {

@@ -751,19 +751,27 @@
                             const realmRes = await fetch(`${API_BASE}/auth/realms`, {
                                 headers: { 'Authorization': `Bearer ${token}` }
                             });
-                            if (realmRes.ok) {
-                                const realms = await realmRes.json();
-                                const r = realms.find(x => x.name === realm);
-                                if (r) {
-                                    realm_id = r.id;
-                                }
+                            if (!realmRes.ok) {
+                                throw new Error("Failed to fetch realms");
                             }
+                            const realms = await realmRes.json();
+                            const r = realms.find(x => x.name === realm);
+                            if (!r) {
+                                throw new Error("Realm not found");
+                            }
+                            realm_id = r.id;
                         }
                         currentRealmId = realm_id;
                         localStorage.setItem('authenc_realm_id', currentRealmId);
                     } catch (e) {
                         console.error('Failed to resolve realm ID', e);
-                        currentRealmId = realm;
+                        errorDiv.textContent = 'Failed to resolve realm UUID: ' + e.message;
+                        errorDiv.style.display = 'block';
+                        // clear auth state since we failed
+                        localStorage.removeItem('authenc_token');
+                        localStorage.removeItem('authenc_user');
+                        localStorage.removeItem('authenc_realm');
+                        return;
                     }
 
                     showDashboard();
@@ -907,16 +915,11 @@
                 let realm_id = realm;
                 if (realm === 'master') {
                     realm_id = MASTER_REALM_UUID;
-                } else {
-                    const realmRes = await fetch(`${API_BASE}/auth/realms`);
-                    if (realmRes.ok) {
-                        const realms = await realmRes.json();
-                        const r = realms.find(x => x.name === realm);
-                        if (r) {
-                            realm_id = r.id;
-                        }
-                    }
                 }
+
+                // Note: The WebAuthn API accepts realm_id as either the UUID or the name string,
+                // but for dashboard subsequent calls we need the UUID. We will fetch the UUID
+                // AFTER WebAuthn login succeeds (when we have a token), matching the standard login flow.
 
                 // 1. Get challenge
                 const challengeRes = await fetch('/api/v1/auth/webauthn/login/challenge', {
@@ -971,8 +974,29 @@
                     localStorage.setItem('authenc_user', currentUser);
                     localStorage.setItem('authenc_realm', currentRealm);
 
-                    currentRealmId = realm_id;
-                    localStorage.setItem('authenc_realm_id', currentRealmId);
+                    try {
+                        let resolvedId = realm_id;
+                        if (realm !== 'master') {
+                            const realmRes = await fetch(`${API_BASE}/auth/realms`, {
+                                headers: { 'Authorization': `Bearer ${token}` }
+                            });
+                            if (!realmRes.ok) throw new Error("Failed to fetch realms");
+                            const realms = await realmRes.json();
+                            const r = realms.find(x => x.name === realm);
+                            if (!r) throw new Error("Realm not found");
+                            resolvedId = r.id;
+                        }
+                        currentRealmId = resolvedId;
+                        localStorage.setItem('authenc_realm_id', currentRealmId);
+                    } catch (e) {
+                        console.error('Failed to resolve realm ID', e);
+                        errorDiv.textContent = 'Failed to resolve realm UUID: ' + e.message;
+                        errorDiv.style.display = 'block';
+                        localStorage.removeItem('authenc_token');
+                        localStorage.removeItem('authenc_user');
+                        localStorage.removeItem('authenc_realm');
+                        return;
+                    }
 
                     showDashboard();
                 } else {

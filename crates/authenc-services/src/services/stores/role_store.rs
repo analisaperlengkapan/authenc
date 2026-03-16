@@ -95,4 +95,26 @@ impl RoleStoreTrait for RoleStore {
     fn add_role(&self, role: Role) {
         self.add_role(role)
     }
+
+    fn update_role(&self, role: Role) -> Result<(), String> {
+        let realm_id = role.realm_id.unwrap_or_default().to_string();
+        let name = role.name.clone();
+        if self.update_role(&realm_id, &name, role) {
+            Ok(())
+        } else {
+            Err("Role not found".to_string())
+        }
+    }
+
+    fn delete_by_name(&self, name: &str, realm_id: &str) -> Result<(), String> {
+        if self.delete_by_name(name, realm_id) {
+            Ok(())
+        } else {
+            Err("Role not found".to_string())
+        }
+    }
+
+    fn get_by_realm(&self, realm_id: &str) -> Vec<Role> {
+        self.get_by_realm(realm_id)
+    }
 }

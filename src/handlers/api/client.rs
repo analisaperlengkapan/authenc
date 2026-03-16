@@ -245,6 +245,7 @@ pub async fn update_client(
     if let Some(enabled) = req.enabled {
         client.enabled = enabled;
     }
+    client.updated_at = chrono::Utc::now();
 
     if state
         .oidc_client_store

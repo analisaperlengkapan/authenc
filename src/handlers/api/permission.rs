@@ -31,7 +31,11 @@ pub async fn get_permissions(
     Path(realm): Path<String>,
 ) -> Result<Json<Vec<Permission>>, StatusCode> {
     // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    let realm_id = match uuid::Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+    };
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -63,7 +67,11 @@ pub async fn create_permission(
     Json(req): Json<CreatePermissionRequest>,
 ) -> Result<StatusCode, StatusCode> {
     // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    let realm_id = match uuid::Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+    };
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -124,7 +132,11 @@ pub async fn delete_permission(
     Path((realm, name)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
     // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    let realm_id = match uuid::Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+    };
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
