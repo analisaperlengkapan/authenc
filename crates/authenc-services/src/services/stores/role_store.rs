@@ -55,7 +55,7 @@ impl RoleStore {
     }
 
     /// Delete role by realm and name
-    pub fn delete_by_name(&self, realm_id: &str, name: &str) -> bool {
+    pub fn delete_by_name(&self, name: &str, realm_id: &str) -> bool {
         let mut roles = self.roles.write().unwrap();
         let vec = Arc::make_mut(&mut roles);
         let len_before = vec.len();
@@ -107,7 +107,7 @@ impl RoleStoreTrait for RoleStore {
     }
 
     fn delete_by_name(&self, name: &str, realm_id: &str) -> Result<(), String> {
-        if self.delete_by_name(realm_id, name) {
+        if self.delete_by_name(name, realm_id) {
             Ok(())
         } else {
             Err("Role not found".to_string())

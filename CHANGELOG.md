@@ -65,6 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docker Support**: Containerized deployment with multi-stage builds
 
 ### Changed
+- **[BREAKING] API Path Parameters:** All Realm-scoped API endpoints (Users, Groups, Roles, Permissions, Clients, User Roles) now strictly enforce that the `{realm}` path parameter is a valid UUID (`Uuid::parse_str`), rather than a realm name string. This guarantees exact and unambiguous multi-tenant data isolation. API consumers previously passing realm names (e.g., `master`) in the URL path will now receive a `400 Bad Request` and must migrate to passing the exact Realm UUID.
+- **Breaking API Change:** All Realm-scoped API handlers (Users, Groups, Roles, Permissions, Clients, User Roles) now strictly expect the  path parameter to be a UUID instead of a realm name. This ensures exact, unambiguous multi-tenant data isolation. Integrations passing realm names (e.g. ) in the URL path will now receive a  and must be updated to pass the Realm UUID instead.
 - **Framework Migration**: Complete migration from Actix-web to Axum framework
 - **Cryptography Upgrade**: Replaced RSA with Ed25519 for all JWT operations
 - **Build Optimization**: Performance-optimized release builds with LTO and codegen optimization
