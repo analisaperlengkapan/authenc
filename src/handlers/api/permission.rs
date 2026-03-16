@@ -143,7 +143,7 @@ pub async fn delete_permission(
     };
 
     // Get the permission before deleting for event representation
-    let permission = match state.permission_store.get_by_name(&name) {
+    let permission = match state.permission_store.get_by_name(&realm_obj.id.to_string(), &name) {
         Some(p) => p,
         None => return Err(StatusCode::NOT_FOUND),
     };

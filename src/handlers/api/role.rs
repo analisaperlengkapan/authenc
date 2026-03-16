@@ -357,7 +357,7 @@ pub async fn assign_permission_to_role(
     };
 
     // Get permission by name
-    let permission_obj = match state.permission_store.get_by_name(&permission) {
+    let permission_obj = match state.permission_store.get_by_name(&realm_obj.id.to_string(), &permission) {
         Some(p) => p,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -439,7 +439,7 @@ pub async fn unassign_permission_from_role(
     };
 
     // Get permission by name
-    let permission_obj = match state.permission_store.get_by_name(&permission) {
+    let permission_obj = match state.permission_store.get_by_name(&realm_obj.id.to_string(), &permission) {
         Some(p) => p,
         None => return Err(StatusCode::NOT_FOUND),
     };

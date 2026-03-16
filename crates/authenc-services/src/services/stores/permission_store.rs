@@ -60,12 +60,12 @@ impl PermissionStore {
     }
 
     /// Get permission by name
-    pub fn get_by_name(&self, name: &str) -> Option<Permission> {
+    pub fn get_by_name(&self, realm_id: &str, name: &str) -> Option<Permission> {
         self.permissions
             .read()
             .unwrap()
             .iter()
-            .find(|p| p.name == name)
+            .find(|p| p.realm_id.to_string() == realm_id && p.name == name)
             .cloned()
     }
 
