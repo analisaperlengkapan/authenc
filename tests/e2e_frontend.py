@@ -121,15 +121,27 @@ def test_groups_ui():
                 ) # POST/PUT mock
             ))
 
-            page.route("**/api/v1/admin/identity-providers*", lambda route: route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps([
-                    {"id": "prov1", "name": "Google Login", "provider_type": "OIDC", "enabled": True}
-                ]) if route.request.method == "GET" else json.dumps(
-                    {"id": "prov2", "name": "Test Provider", "provider_type": "LDAP", "enabled": True}
-                ) # POST/PUT mock
-            ))
+            def identity_providers_handler(route):
+                if route.request.method == "DELETE":
+                    route.fulfill(status=204)
+                elif route.request.method == "GET":
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps([
+                            {"id": "prov1", "name": "Google Login", "provider_type": "OIDC", "enabled": True}
+                        ])
+                    )
+                else:
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps(
+                            {"id": "prov2", "name": "Test Provider", "provider_type": "LDAP", "enabled": True}
+                        )
+                    )
+
+            page.route("**/api/v1/admin/identity-providers*", identity_providers_handler)
 
             page.route("**/api/v1/auth/realms/*/audit*", lambda route: route.fulfill(
                 status=200,

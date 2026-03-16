@@ -2553,6 +2553,7 @@
             document.getElementById('edit-provider-name').value = '';
             document.getElementById('edit-provider-display-name').value = '';
             document.getElementById('edit-provider-type').value = 'OIDC';
+            document.getElementById('edit-provider-type').disabled = false;
             document.getElementById('edit-provider-config').value = '{\n  "client_id": "",\n  "client_secret": ""\n}';
             document.getElementById('edit-provider-enabled').checked = true;
             document.getElementById('edit-provider-error').style.display = 'none';
@@ -2568,7 +2569,8 @@
             document.getElementById('edit-provider-name').value = provider.name;
             document.getElementById('edit-provider-display-name').value = provider.display_name || provider.name;
             document.getElementById('edit-provider-type').value = provider.provider_type;
-            document.getElementById('edit-provider-config').value = JSON.stringify(provider.config, null, 2);
+            document.getElementById('edit-provider-type').disabled = true; // Cannot edit type once created
+            document.getElementById('edit-provider-config').value = JSON.stringify(provider.config || {}, null, 2);
             document.getElementById('edit-provider-enabled').checked = provider.enabled;
             document.getElementById('edit-provider-error').style.display = 'none';
             document.getElementById('edit-provider-modal').classList.remove('hidden');
