@@ -121,6 +121,28 @@ def test_groups_ui():
                 ) # POST/PUT mock
             ))
 
+            def identity_providers_handler(route):
+                if route.request.method == "DELETE":
+                    route.fulfill(status=204)
+                elif route.request.method == "GET":
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps([
+                            {"id": "prov1", "name": "Google Login", "provider_type": "OIDC", "enabled": True}
+                        ])
+                    )
+                else:
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps(
+                            {"id": "prov2", "name": "Test Provider", "provider_type": "LDAP", "enabled": True}
+                        )
+                    )
+
+            page.route("**/api/v1/admin/identity-providers*", identity_providers_handler)
+
             page.route("**/api/v1/auth/realms/*/audit*", lambda route: route.fulfill(
                 status=200,
                 content_type="application/json",
@@ -170,7 +192,7 @@ def test_groups_ui():
             page.click("#edit-realm-form button[type='submit']")
 
             # Wait for modal to hide
-            page.wait_for_selector("#edit-realm-modal.hidden", state="hidden")
+            page.wait_for_selector("#edit-realm-modal", state="hidden")
 
             # Save a screenshot for verification
             print("Saving realms screenshot...")
@@ -198,7 +220,7 @@ def test_groups_ui():
             page.click("#edit-group-form button[type='submit']")
 
             # Wait for modal to hide
-            page.wait_for_selector("#edit-group-modal.hidden", state="hidden")
+            page.wait_for_selector("#edit-group-modal", state="hidden")
 
             # 4. Save a screenshot for verification
             print("Saving screenshot...")
@@ -226,7 +248,7 @@ def test_groups_ui():
             page.click("#edit-role-form button[type='submit']")
 
             # Wait for modal to hide
-            page.wait_for_selector("#edit-role-modal.hidden", state="hidden")
+            page.wait_for_selector("#edit-role-modal", state="hidden")
 
             # Save a screenshot for verification
             print("Saving roles screenshot...")
@@ -255,7 +277,7 @@ def test_groups_ui():
             page.click("#link-social-account-form button[type='submit']")
 
             # Wait for modal to hide
-            page.wait_for_selector("#link-social-account-modal.hidden", state="hidden")
+            page.wait_for_selector("#link-social-account-modal", state="hidden")
 
             print("Saving screenshot of social linking UI...")
             page.screenshot(path="social_linking_ui.png", full_page=True)
@@ -263,7 +285,7 @@ def test_groups_ui():
 
             # Close edit user modal
             page.click("#edit-user-modal .secondary")
-            page.wait_for_selector("#edit-user-modal.hidden", state="hidden")
+            page.wait_for_selector("#edit-user-modal", state="hidden")
 
             # 6. Navigate to Clients Tab
             print("Navigating to clients tab...")
@@ -288,14 +310,43 @@ def test_groups_ui():
             page.click("#edit-client-form button[type='submit']")
 
             # Wait for modal to hide
-            page.wait_for_selector("#edit-client-modal.hidden", state="hidden")
+            page.wait_for_selector("#edit-client-modal", state="hidden")
 
             # 8. Save a screenshot for verification
             print("Saving clients UI screenshot...")
             page.screenshot(path="clients_ui.png", full_page=True)
             print("Clients UI screenshot saved to clients_ui.png")
 
-            # 9. Navigate to Audit Logs Tab
+            # 9. Navigate to Providers Tab
+            print("Navigating to providers tab...")
+            page.click("#tab-providers")
+            page.wait_for_selector("#providers-section:not(.hidden)", state="visible")
+
+            # Verify initial provider fetch
+            print("Verifying initial providers fetch...")
+            page.wait_for_selector("#providers-body tr td:has-text('Google Login')")
+
+            # Create Provider
+            print("Creating a provider...")
+            page.click("button:has-text('Create Provider')")
+            page.wait_for_selector("#edit-provider-modal:not(.hidden)", state="visible")
+            page.fill("#edit-provider-name", "Test Provider")
+            page.fill("#edit-provider-display-name", "Test Provider Display")
+            page.select_option("#edit-provider-type", "LDAP")
+
+            # Save provider
+            print("Saving provider...")
+            page.click("#edit-provider-form button[type='submit']")
+
+            # Wait for modal to hide
+            page.wait_for_selector("#edit-provider-modal", state="hidden")
+
+            # Save a screenshot for verification
+            print("Saving providers UI screenshot...")
+            page.screenshot(path="providers_ui.png", full_page=True)
+            print("Providers UI screenshot saved to providers_ui.png")
+
+            # 10. Navigate to Audit Logs Tab
             print("Navigating to audit logs tab...")
             page.click("#tab-audit")
             page.wait_for_selector("#audit-section:not(.hidden)", state="visible")
