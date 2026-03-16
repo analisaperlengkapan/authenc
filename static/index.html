@@ -577,6 +577,7 @@
         let token = localStorage.getItem('authenc_token');
         let currentUser = localStorage.getItem('authenc_user');
         let currentRealm = localStorage.getItem('authenc_realm') || 'master';
+        let currentRealmId = localStorage.getItem('authenc_realm_id') || '00000000-0000-0000-0000-000000000000';
 
         // Init
         const urlParams = new URLSearchParams(window.location.search);
@@ -738,6 +739,31 @@
                     localStorage.setItem('authenc_realm', realm);
                     currentUser = username;
                     currentRealm = realm;
+
+                    // Fetch realm UUID for the given realm
+                    try {
+                        let realm_id = realm;
+                        if (realm === 'master') {
+                            realm_id = "00000000-0000-0000-0000-000000000000";
+                        } else {
+                            const realmRes = await fetch(`${API_BASE}/auth/realms`, {
+                                headers: { 'Authorization': `Bearer ${token}` }
+                            });
+                            if (realmRes.ok) {
+                                const realms = await realmRes.json();
+                                const r = realms.find(x => x.name === realm);
+                                if (r) {
+                                    realm_id = r.id;
+                                }
+                            }
+                        }
+                        currentRealmId = realm_id;
+                        localStorage.setItem('authenc_realm_id', currentRealmId);
+                    } catch (e) {
+                        console.error('Failed to resolve realm ID', e);
+                        currentRealmId = realm;
+                    }
+
                     showDashboard();
                 } else {
                     throw new Error(data.message || data.error || 'Login failed');
@@ -818,13 +844,7 @@
             errorDiv.style.display = 'none';
 
             try {
-                // Try fetching with the realm string name first (might fail if backend requires UUID)
-                // If it fails with 400, try the Master UUID.
-                let url = `${API_BASE}/auth/realms/${currentRealm}/users`;
-                if (currentRealm === 'master') {
-                    // Pre-emptively use UUID for master based on code analysis
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/users`;
 
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -1027,10 +1047,7 @@
             tbody.innerHTML = '';
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/users/${userId}/social`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users/${userId}/social`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/users/${userId}/social`;
 
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -1079,10 +1096,7 @@
             if (!confirm(`Are you sure you want to unlink ${provider} from this user?`)) return;
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/users/${userId}/social/${provider}`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users/${userId}/social/${provider}`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/users/${userId}/social/${provider}`;
 
                 const response = await fetch(url, {
                     method: 'DELETE',
@@ -1133,10 +1147,7 @@
             };
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/users/${userId}/social`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users/${userId}/social`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/users/${userId}/social`;
 
                 const response = await fetch(url, {
                     method: 'POST',
@@ -1215,10 +1226,7 @@
             };
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/users/${id}`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users/${id}`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/users/${id}`;
 
                 const response = await fetch(url, {
                     method: 'PUT',
@@ -1246,10 +1254,7 @@
             if (!confirm("Are you sure you want to delete this user?")) return;
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/users/${id}`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/users/${id}`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/users/${id}`;
 
                 const response = await fetch(url, {
                     method: 'DELETE',
@@ -1308,14 +1313,11 @@
 
             const payload = {
                 name: document.getElementById('edit-role-name').value,
-                description: document.getElementById('edit-role-description').value || undefined
+                description: document.getElementById('edit-role-description').value
             };
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/roles`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/roles`;
 
                 if (isUpdate) {
                     const encodedName = encodeURIComponent(payload.name);
@@ -1349,10 +1351,7 @@
 
             try {
                 const encodedName = encodeURIComponent(name);
-                let url = `${API_BASE}/auth/realms/${currentRealm}/roles/${encodedName}`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles/${encodedName}`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/roles/${encodedName}`;
 
                 const response = await fetch(url, {
                     method: 'DELETE',
@@ -1376,10 +1375,7 @@
             errorDiv.style.display = 'none';
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/clients`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/clients`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/clients`;
 
                 let response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -1408,10 +1404,7 @@
             tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Loading...</td></tr>';
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/roles`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/roles`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/roles`;
 
                 let response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -1622,10 +1615,7 @@
                 }
             }
 
-            let url = `${API_BASE}/auth/realms/${currentRealm}/clients`;
-            if (currentRealm === 'master') {
-                url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/clients`;
-            }
+            let url = `${API_BASE}/auth/realms/${currentRealmId}/clients`;
 
             if (isUpdate) {
                 url += `/${id}`;
@@ -1658,10 +1648,7 @@
             if (!confirm("Are you sure you want to delete this client?")) return;
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/clients/${id}`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/clients/${id}`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/clients/${id}`;
 
                 const response = await fetch(url, {
                     method: 'DELETE',
@@ -1784,10 +1771,7 @@
             errorDiv.style.display = 'none';
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/groups`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/groups`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/groups`;
 
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -1908,22 +1892,14 @@
             const errorDiv = document.getElementById('edit-group-error');
             errorDiv.style.display = 'none';
 
-            let realmId = currentRealm;
-            if (currentRealm === 'master') {
-                realmId = MASTER_REALM_UUID;
-            }
-
             const payload = {
                 name: document.getElementById('edit-group-name').value,
                 description: document.getElementById('edit-group-description').value || null,
-                realm_id: realmId
+                realm_id: currentRealmId
             };
 
             const isUpdate = id !== '';
-            let url = `${API_BASE}/auth/realms/${currentRealm}/groups`;
-            if (currentRealm === 'master') {
-                url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/groups`;
-            }
+            let url = `${API_BASE}/auth/realms/${currentRealmId}/groups`;
             if (isUpdate) {
                 url += `/${id}`;
             }
@@ -1955,10 +1931,7 @@
             if (!confirm("Are you sure you want to delete this group?")) return;
 
             try {
-                let url = `${API_BASE}/auth/realms/${currentRealm}/groups/${id}`;
-                if (currentRealm === 'master') {
-                    url = `${API_BASE}/auth/realms/${MASTER_REALM_UUID}/groups/${id}`;
-                }
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/groups/${id}`;
 
                 const response = await fetch(url, {
                     method: 'DELETE',
