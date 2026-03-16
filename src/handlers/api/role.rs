@@ -24,17 +24,13 @@ pub fn create_role_routes() -> Router<Arc<AppState>> {
         )
         .route(
             "/realms/{realm}/roles/{role}/permissions/{permission}",
-            post(assign_permission_to_role),
-        )
-        .route(
-            "/realms/{realm}/roles/{role}/permissions/{permission}",
-            delete(unassign_permission_from_role),
+            post(assign_permission_to_role).delete(unassign_permission_from_role),
         )
 }
 
 /// Get all roles in the specified realm
 pub async fn get_roles(
-    AuthBearer(auth): AuthBearer,
+    AuthBearer(_auth): AuthBearer,
     State(state): State<Arc<AppState>>,
     Path(realm): Path<String>,
 ) -> Result<Json<Vec<Role>>, StatusCode> {
