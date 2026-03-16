@@ -106,8 +106,8 @@ impl RoleStoreTrait for RoleStore {
         }
     }
 
-    fn delete_by_name(&self, name: &str, realm_id: &str) -> Result<(), String> {
-        if self.delete_by_name(name, realm_id) {
+    fn delete_by_name(&self, realm_id: &str, name: &str) -> Result<(), String> {
+        if self.delete_by_name(realm_id, name) {
             Ok(())
         } else {
             Err("Role not found".to_string())
