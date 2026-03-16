@@ -52,4 +52,14 @@ impl RealmStore {
             .find(|r| r.name == name)
             .cloned()
     }
+
+    /// Get realm by ID
+    pub fn get_by_id(&self, id: &uuid::Uuid) -> Option<Realm> {
+        self.realms
+            .read()
+            .unwrap()
+            .iter()
+            .find(|r| r.id == *id)
+            .cloned()
+    }
 }

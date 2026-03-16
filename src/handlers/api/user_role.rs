@@ -17,11 +17,7 @@ pub fn create_user_role_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route(
             "/realms/{realm}/users/{user_id}/roles/{role}",
-            post(assign_role),
-        )
-        .route(
-            "/realms/{realm}/users/{user_id}/roles/{role}",
-            delete(unassign_role),
+            post(assign_role).delete(unassign_role),
         )
 }
 
@@ -35,13 +31,22 @@ pub async fn assign_role(
     let user_uuid = Uuid::parse_str(&user_id).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Get realm by name
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    let realm_id = match uuid::Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+    };
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
 
-    // Get role by name
-    let role = match state.role_store.get_by_name(&role_name) {
+    // Get role by name within realm
+    let role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == role_name)
+    {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -93,13 +98,22 @@ pub async fn unassign_role(
     let user_uuid = Uuid::parse_str(&user_id).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Get realm by name
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    let realm_id = match uuid::Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(axum::http::StatusCode::BAD_REQUEST),
+    };
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
 
-    // Get role by name
-    let role = match state.role_store.get_by_name(&role_name) {
+    // Get role by name within realm
+    let role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == role_name)
+    {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };

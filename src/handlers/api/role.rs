@@ -17,26 +17,31 @@ use uuid::Uuid;
 /// Create role management routes for a realm
 pub fn create_role_routes() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/realms/{realm}/roles", get(get_roles))
-        .route("/realms/{realm}/roles", post(create_role))
-        .route("/realms/{realm}/roles/{name}", delete(delete_role))
+        .route("/realms/{realm}/roles", get(get_roles).post(create_role))
         .route(
-            "/realms/{realm}/roles/{role}/permissions/{permission}",
-            post(assign_permission_to_role),
+            "/realms/{realm}/roles/{name}",
+            delete(delete_role).put(update_role),
         )
         .route(
             "/realms/{realm}/roles/{role}/permissions/{permission}",
-            delete(unassign_permission_from_role),
+            post(assign_permission_to_role).delete(unassign_permission_from_role),
         )
 }
 
 /// Get all roles in the specified realm
 pub async fn get_roles(
+    AuthBearer(_auth): AuthBearer,
     State(state): State<Arc<AppState>>,
     Path(realm): Path<String>,
 ) -> Result<Json<Vec<Role>>, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to validate it exists
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -69,14 +74,25 @@ pub async fn create_role(
     Path(realm): Path<String>,
     Json(req): Json<CreateRoleRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to get the UUID
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
 
-    // Check if role already exists
-    if state.role_store.get_by_name(&req.name).is_some() {
+    // Check if role already exists in the realm
+    if state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .any(|r| r.name == req.name)
+    {
         return Err(StatusCode::CONFLICT);
     }
 
@@ -131,20 +147,136 @@ pub async fn create_role(
     Ok(StatusCode::CREATED)
 }
 
+#[derive(Deserialize, Clone)]
+/// Request payload for updating an existing role
+pub struct UpdateRoleRequest {
+    /// Optional updated description
+    pub description: Option<String>,
+    /// Whether this is a composite role
+    pub composite: Option<bool>,
+    /// Whether this is a client-specific role
+    pub client_role: Option<bool>,
+    /// Client identifier if this is a client role
+    pub client_id: Option<String>,
+    /// Additional role attributes as JSON
+    pub attributes: Option<serde_json::Value>,
+}
+
+/// Update a role in the specified realm
+pub async fn update_role(
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
+    Path((realm, name)): Path<(String, String)>,
+    Json(req): Json<UpdateRoleRequest>,
+) -> Result<StatusCode, StatusCode> {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to get the UUID
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Get the existing role, specifically validating it belongs to the given realm
+    let mut role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == name)
+    {
+        Some(r) => r,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // Update role fields
+    if let Some(desc) = req.description {
+        role.description = Some(desc);
+    }
+    if let Some(comp) = req.composite {
+        role.composite = comp;
+    }
+    if let Some(cr) = req.client_role {
+        role.client_role = cr;
+    }
+    if let Some(cid) = req.client_id {
+        role.client_id = Some(cid);
+    }
+    if let Some(attrs) = req.attributes {
+        role.attributes = Some(attrs);
+    }
+    role.updated_at = chrono::Utc::now();
+
+    // Persist the update
+    if !state
+        .role_store
+        .update_role(&realm_obj.id.to_string(), &name, role.clone())
+    {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // Fire admin event
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let resource_path = format!("/realms/{}/roles/{}", realm, name);
+    let representation = serde_json::to_string(&role).unwrap_or_default();
+
+    let admin_event = AdminEventBuilder::new(
+        realm_obj.id.to_string(),
+        auth_details,
+        ResourceType::RealmRole,
+        OperationType::Update,
+        resource_path,
+    )
+    .representation(representation)
+    .build();
+
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, true)
+        .await
+    {
+        tracing::error!("Failed to fire admin event for role update: {}", e);
+    }
+
+    Ok(StatusCode::OK)
+}
+
 /// Delete a role from the specified realm
 pub async fn delete_role(
     State(state): State<Arc<AppState>>,
     AuthBearer(auth): AuthBearer,
     Path((realm, name)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to get the UUID
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
 
-    // Get the role before deleting for event representation
-    let role = match state.role_store.get_by_name(&name) {
+    // Get the role before deleting for event representation, ensuring it belongs to the correct realm
+    let role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == name)
+    {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -197,20 +329,31 @@ pub async fn assign_permission_to_role(
     AuthBearer(auth): AuthBearer,
     Path((realm, role_name, permission)): Path<(String, String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to get the UUID
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
 
     // Get role by name
-    let role = match state.role_store.get_by_name(&role_name) {
+    let role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == role_name)
+    {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
 
     // Get permission by name
-    let permission_obj = match state.permission_store.get_by_resource(&permission) {
+    let permission_obj = match state.permission_store.get_by_name(&realm_obj.id.to_string(), &permission) {
         Some(p) => p,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -268,20 +411,31 @@ pub async fn unassign_permission_from_role(
     AuthBearer(auth): AuthBearer,
     Path((realm, role_name, permission)): Path<(String, String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get realm by name to get the UUID
-    let realm_obj = match state.realm_store.get_by_name(&realm) {
+    // Parse realm as UUID
+    let realm_id = match Uuid::parse_str(&realm) {
+        Ok(id) => id,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get realm by ID to get the UUID
+    let realm_obj = match state.realm_store.get_by_id(&realm_id) {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
 
     // Get role by name
-    let role = match state.role_store.get_by_name(&role_name) {
+    let role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == role_name)
+    {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
 
     // Get permission by name
-    let permission_obj = match state.permission_store.get_by_resource(&permission) {
+    let permission_obj = match state.permission_store.get_by_name(&realm_obj.id.to_string(), &permission) {
         Some(p) => p,
         None => return Err(StatusCode::NOT_FOUND),
     };

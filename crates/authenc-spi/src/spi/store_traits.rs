@@ -304,6 +304,15 @@ pub trait RoleStoreTrait: Send + Sync {
 
     /// Add a role
     fn add_role(&self, role: Role);
+
+    /// Update an existing role
+    fn update_role(&self, role: Role) -> Result<(), String>;
+
+    /// Delete a role by name within a realm
+    fn delete_by_name(&self, realm_id: &str, name: &str) -> Result<(), String>;
+
+    /// Get all roles for a specific realm
+    fn get_by_realm(&self, realm_id: &str) -> Vec<Role>;
 }
 
 // ============================================================

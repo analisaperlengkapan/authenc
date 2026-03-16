@@ -65,6 +65,22 @@ impl RoleStore {
         });
         vec.len() < len_before
     }
+
+    /// Update an existing role
+    pub fn update_role(&self, realm_id: &str, name: &str, updated_role: Role) -> bool {
+        let mut roles = self.roles.write().unwrap();
+        let vec = Arc::make_mut(&mut roles);
+
+        if let Some(index) = vec.iter().position(|r| {
+            r.realm_id.map(|id| id.to_string()).as_ref() == Some(&realm_id.to_string())
+                && r.name == name
+        }) {
+            vec[index] = updated_role;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl RoleStoreTrait for RoleStore {
@@ -78,5 +94,27 @@ impl RoleStoreTrait for RoleStore {
 
     fn add_role(&self, role: Role) {
         self.add_role(role)
+    }
+
+    fn update_role(&self, role: Role) -> Result<(), String> {
+        let realm_id = role.realm_id.unwrap_or_default().to_string();
+        let name = role.name.clone();
+        if self.update_role(&realm_id, &name, role) {
+            Ok(())
+        } else {
+            Err("Role not found".to_string())
+        }
+    }
+
+    fn delete_by_name(&self, realm_id: &str, name: &str) -> Result<(), String> {
+        if self.delete_by_name(realm_id, name) {
+            Ok(())
+        } else {
+            Err("Role not found".to_string())
+        }
+    }
+
+    fn get_by_realm(&self, realm_id: &str) -> Vec<Role> {
+        self.get_by_realm(realm_id)
     }
 }
