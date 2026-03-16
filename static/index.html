@@ -684,8 +684,12 @@
             <form id="edit-provider-form">
                 <input type="hidden" id="edit-provider-id">
                 <div class="form-group">
-                    <label for="edit-provider-name">Name</label>
+                    <label for="edit-provider-name">Internal Name</label>
                     <input type="text" id="edit-provider-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-provider-display-name">Display Name</label>
+                    <input type="text" id="edit-provider-display-name" name="display_name" required>
                 </div>
                 <div class="form-group">
                     <label for="edit-provider-type">Provider Type</label>
@@ -2547,6 +2551,7 @@
             document.getElementById('edit-provider-title').textContent = 'Create Provider';
             document.getElementById('edit-provider-id').value = '';
             document.getElementById('edit-provider-name').value = '';
+            document.getElementById('edit-provider-display-name').value = '';
             document.getElementById('edit-provider-type').value = 'OIDC';
             document.getElementById('edit-provider-config').value = '{\n  "client_id": "",\n  "client_secret": ""\n}';
             document.getElementById('edit-provider-enabled').checked = true;
@@ -2561,6 +2566,7 @@
             document.getElementById('edit-provider-title').textContent = 'Edit Provider';
             document.getElementById('edit-provider-id').value = provider.id;
             document.getElementById('edit-provider-name').value = provider.name;
+            document.getElementById('edit-provider-display-name').value = provider.display_name || provider.name;
             document.getElementById('edit-provider-type').value = provider.provider_type;
             document.getElementById('edit-provider-config').value = JSON.stringify(provider.config, null, 2);
             document.getElementById('edit-provider-enabled').checked = provider.enabled;
@@ -2596,13 +2602,14 @@
             if (isUpdate) {
                 payload = {
                     name: document.getElementById('edit-provider-name').value,
+                    display_name: document.getElementById('edit-provider-display-name').value,
                     config: configObj,
                     enabled: document.getElementById('edit-provider-enabled').checked,
                 };
             } else {
                 payload = {
                     name: document.getElementById('edit-provider-name').value,
-                    display_name: document.getElementById('edit-provider-name').value,
+                    display_name: document.getElementById('edit-provider-display-name').value,
                     provider_type: document.getElementById('edit-provider-type').value,
                     config: configObj,
                     realm_id: currentRealmId,

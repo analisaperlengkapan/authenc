@@ -319,6 +319,7 @@ def test_groups_ui():
             page.click("button:has-text('Create Provider')")
             page.wait_for_selector("#edit-provider-modal:not(.hidden)", state="visible")
             page.fill("#edit-provider-name", "Test Provider")
+            page.fill("#edit-provider-display-name", "Test Provider Display")
             page.select_option("#edit-provider-type", "LDAP")
 
             # Save provider
