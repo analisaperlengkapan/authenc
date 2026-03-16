@@ -1992,13 +1992,20 @@
             const errorDiv = document.getElementById('edit-realm-error');
             errorDiv.style.display = 'none';
 
-            const payload = {
-                name: document.getElementById('edit-realm-name').value,
-                description: document.getElementById('edit-realm-description').value || null,
-                enabled: document.getElementById('edit-realm-enabled').checked,
-            };
-
             const isUpdate = id !== '';
+            let payload;
+            if (isUpdate) {
+                payload = {
+                    display_name: document.getElementById('edit-realm-name').value,
+                    description: document.getElementById('edit-realm-description').value || null,
+                };
+            } else {
+                payload = {
+                    name: document.getElementById('edit-realm-name').value,
+                    description: document.getElementById('edit-realm-description').value || null,
+                };
+            }
+
             let url = `${API_BASE}/auth/realms`;
             if (isUpdate) {
                 url += `/${id}`;
@@ -2018,7 +2025,7 @@
                     if (isUpdate) {
                         const enabled = document.getElementById('edit-realm-enabled').checked;
                         const statusUrl = `${API_BASE}/auth/realms/${id}/status`;
-                        const statusRes = await fetch(statusUrl, {
+                        const statusResponse = await fetch(statusUrl, {
                             method: 'PUT',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -2026,8 +2033,10 @@
                             },
                             body: JSON.stringify({ enabled })
                         });
-                        if (!statusRes.ok) {
-                            throw new Error('Failed to update realm status');
+
+                        if (!statusResponse.ok) {
+                            const data = await statusResponse.json().catch(() => ({}));
+                            throw new Error(data.message || data.error || 'Failed to update realm status');
                         }
                     }
 
