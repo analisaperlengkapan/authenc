@@ -571,8 +571,6 @@
         // or we rely on the backend mapping "master" string to UUID if supported (which we suspect it isn't for Users API).
         // Let's assume the user knows the realm UUID or we default to the Zero UUID.
         // Actually, let's try to fetch users from "master" first, and if 400, try the Zero UUID.
-        const MASTER_REALM_UUID = "00000000-0000-0000-0000-000000000000";
-
         // State
         let token = localStorage.getItem('authenc_token');
         let currentUser = localStorage.getItem('authenc_user');
@@ -909,11 +907,6 @@
             }
 
             try {
-                let realm_id = realm;
-                if (realm === 'master') {
-                    realm_id = MASTER_REALM_UUID;
-                }
-
                 // Note: The WebAuthn API accepts realm_id as either the UUID or the name string,
                 // but for dashboard subsequent calls we need the UUID. We will fetch the UUID
                 // AFTER WebAuthn login succeeds (when we have a token), matching the standard login flow.
@@ -922,7 +915,7 @@
                 const challengeRes = await fetch('/api/v1/auth/webauthn/login/challenge', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ realm_id, username })
+                    body: JSON.stringify({ realm_id: realm, username })
                 });
 
                 if (!challengeRes.ok) throw new Error("Failed to get authentication challenge");
@@ -956,7 +949,7 @@
                 const verifyRes = await fetch('/api/v1/auth/webauthn/login/verify', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ realm_id, username, ...authResponse })
+                    body: JSON.stringify({ realm_id: realm, username, ...authResponse })
                 });
 
                 if (!verifyRes.ok) throw new Error("Passkey verification failed");

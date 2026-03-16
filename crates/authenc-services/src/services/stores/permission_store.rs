@@ -59,6 +59,16 @@ impl PermissionStore {
             .cloned()
     }
 
+    /// Get permission by name
+    pub fn get_by_name(&self, name: &str) -> Option<Permission> {
+        self.permissions
+            .read()
+            .unwrap()
+            .iter()
+            .find(|p| p.name == name)
+            .cloned()
+    }
+
     /// Delete permission by realm and name
     pub fn delete_by_name(&self, realm_id: &str, name: &str) -> bool {
         let mut permissions = self.permissions.write().unwrap();

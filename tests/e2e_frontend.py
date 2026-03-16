@@ -25,6 +25,12 @@ def test_groups_ui():
                 body=json.dumps({"access_token": "fake_token", "token_type": "Bearer", "expires_in": 3600})
             ))
 
+            page.route("**/api/v1/auth/realms", lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps([{"id": "00000000-0000-0000-0000-000000000000", "name": "master", "description": "Master Realm"}])
+            ))
+
             page.route("**/api/v1/auth/realms/*/users", lambda route: route.fulfill(
                 status=200,
                 content_type="application/json",
