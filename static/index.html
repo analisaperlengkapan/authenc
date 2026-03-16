@@ -674,8 +674,10 @@
             localStorage.removeItem('authenc_token');
             localStorage.removeItem('authenc_user');
             localStorage.removeItem('authenc_realm');
+            localStorage.removeItem('authenc_realm_id');
             token = null;
             currentUser = null;
+            currentRealmId = '00000000-0000-0000-0000-000000000000';
             showLogin();
         }
 
@@ -959,6 +961,10 @@
                     localStorage.setItem('authenc_token', token);
                     localStorage.setItem('authenc_user', currentUser);
                     localStorage.setItem('authenc_realm', currentRealm);
+
+                    currentRealmId = realm_id;
+                    localStorage.setItem('authenc_realm_id', currentRealmId);
+
                     showDashboard();
                 } else {
                     throw new Error("No access token received.");
