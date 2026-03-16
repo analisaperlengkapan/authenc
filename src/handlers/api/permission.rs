@@ -77,6 +77,11 @@ pub async fn create_permission(
         None => return Err(StatusCode::NOT_FOUND),
     };
 
+    // Check if permission already exists
+    if state.permission_store.get_by_name(&realm_obj.id.to_string(), &req.name).is_some() {
+        return Err(StatusCode::CONFLICT);
+    }
+
     // Create the permission
     let permission = Permission {
         id: Uuid::new_v4(),

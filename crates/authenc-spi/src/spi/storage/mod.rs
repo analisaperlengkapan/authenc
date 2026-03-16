@@ -429,7 +429,7 @@ impl RoleStorageProvider for DefaultRoleStorageProvider {
 
         if let Some(r) = role {
             let realm_id = r.realm_id.unwrap_or_default().to_string();
-            if self.role_store.delete_by_name(&realm_id, &r.name).is_ok() {
+            if self.role_store.delete_by_name(&r.name, &realm_id).is_ok() {
                 return Ok(true);
             }
         }
