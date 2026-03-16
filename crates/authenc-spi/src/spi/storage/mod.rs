@@ -416,8 +416,11 @@ impl RoleStorageProvider for DefaultRoleStorageProvider {
         Ok(role)
     }
 
-    async fn update_role(&self, _role: Role) -> Result<Role> {
-        Err(Error::validation("Role update not implemented".to_string()))
+    async fn update_role(&self, role: Role) -> Result<Role> {
+        if let Err(e) = self.role_store.update_role(role.clone()) {
+            return Err(Error::validation(format!("Failed to update role: {}", e)));
+        }
+        Ok(role)
     }
 
     async fn delete_role(&self, _role_id: Uuid) -> Result<bool> {

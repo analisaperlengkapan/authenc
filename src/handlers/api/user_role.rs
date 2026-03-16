@@ -17,11 +17,7 @@ pub fn create_user_role_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route(
             "/realms/{realm}/users/{user_id}/roles/{role}",
-            post(assign_role),
-        )
-        .route(
-            "/realms/{realm}/users/{user_id}/roles/{role}",
-            delete(unassign_role),
+            post(assign_role).delete(unassign_role),
         )
 }
 
