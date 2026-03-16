@@ -288,7 +288,7 @@ pub async fn delete_role(
     // Delete the role
     if !state
         .role_store
-        .delete_by_name(&realm_obj.id.to_string(), &name)
+        .delete_by_name(&name, &realm_obj.id.to_string())
     {
         return Err(StatusCode::NOT_FOUND);
     }
