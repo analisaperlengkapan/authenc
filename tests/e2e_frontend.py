@@ -121,6 +121,17 @@ def test_groups_ui():
                 ) # POST/PUT mock
             ))
 
+            page.route("**/api/v1/auth/realms/*/audit*", lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "total": 1,
+                    "logs": [
+                        {"timestamp": "2023-01-01T00:00:00Z", "event": "user_login", "user_id": "test_user", "status": "success", "detail": "User logged in successfully"}
+                    ]
+                })
+            ))
+
             page.add_init_script("localStorage.clear();")
 
             url = "http://localhost:8000/index.html"
@@ -283,6 +294,20 @@ def test_groups_ui():
             print("Saving clients UI screenshot...")
             page.screenshot(path="clients_ui.png", full_page=True)
             print("Clients UI screenshot saved to clients_ui.png")
+
+            # 9. Navigate to Audit Logs Tab
+            print("Navigating to audit logs tab...")
+            page.click("#tab-audit")
+            page.wait_for_selector("#audit-section:not(.hidden)", state="visible")
+
+            # Verify initial audit logs fetch
+            print("Verifying initial audit logs fetch...")
+            page.wait_for_selector("#audit-body tr td:has-text('user_login')")
+
+            # Save a screenshot for verification
+            print("Saving audit logs UI screenshot...")
+            page.screenshot(path="audit_ui.png", full_page=True)
+            print("Audit Logs UI screenshot saved to audit_ui.png")
 
             browser.close()
     finally:

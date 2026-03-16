@@ -275,6 +275,7 @@
                 <button id="tab-groups" class="tab-button" onclick="switchTab('groups')">Groups</button>
                 <button id="tab-roles" class="tab-button" onclick="switchTab('roles')">Roles</button>
                 <button id="tab-clients" class="tab-button" onclick="switchTab('clients')">Clients</button>
+                <button id="tab-audit" class="tab-button" onclick="switchTab('audit')">Audit Logs</button>
             </div>
 
             <div id="realms-section">
@@ -415,6 +416,35 @@
                         <tbody id="clients-body">
                             <tr>
                                 <td colspan="4" style="text-align: center;">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="audit-section" class="hidden">
+                <div style="margin-bottom: 2rem;">
+                    <h3>Audit Logs</h3>
+                    <p style="color: var(--text-light);">View audit logs for realm: <strong id="current-realm-audit">master</strong></p>
+                    <div style="display: flex; gap: 1rem;">
+                        <button onclick="fetchAuditLogs()" style="width: auto;">Refresh List</button>
+                    </div>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table id="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Event</th>
+                                <th>Actor ID</th>
+                                <th>Status</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-body">
+                            <tr>
+                                <td colspan="5" style="text-align: center;">Loading...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -674,6 +704,7 @@
             document.getElementById('current-realm-groups').textContent = currentRealm;
             document.getElementById('current-realm-roles').textContent = currentRealm;
             document.getElementById('current-realm-clients').textContent = currentRealm;
+            document.getElementById('current-realm-audit').textContent = currentRealm;
             switchTab('realms');
         }
 
@@ -683,11 +714,13 @@
             document.getElementById('tab-groups').classList.remove('active');
             document.getElementById('tab-roles').classList.remove('active');
             document.getElementById('tab-clients').classList.remove('active');
+            document.getElementById('tab-audit').classList.remove('active');
             document.getElementById('realms-section').classList.add('hidden');
             document.getElementById('users-section').classList.add('hidden');
             document.getElementById('groups-section').classList.add('hidden');
             document.getElementById('roles-section').classList.add('hidden');
             document.getElementById('clients-section').classList.add('hidden');
+            document.getElementById('audit-section').classList.add('hidden');
 
             if (tabName === 'realms') {
                 document.getElementById('tab-realms').classList.add('active');
@@ -709,6 +742,10 @@
                 document.getElementById('tab-clients').classList.add('active');
                 document.getElementById('clients-section').classList.remove('hidden');
                 fetchClients();
+            } else if (tabName === 'audit') {
+                document.getElementById('tab-audit').classList.add('active');
+                document.getElementById('audit-section').classList.remove('hidden');
+                fetchAuditLogs();
             }
         }
 
@@ -2259,6 +2296,86 @@
             } catch (err) {
                 alert(err.message);
             }
+        }
+
+        async function fetchAuditLogs() {
+            const tbody = document.getElementById('audit-body');
+            const errorDiv = document.getElementById('dashboard-error');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading...</td></tr>';
+            errorDiv.style.display = 'none';
+
+            try {
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/audit?limit=100`;
+
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        logout();
+                        throw new Error("Session expired");
+                    }
+                    throw new Error(`Failed to fetch audit logs: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                renderAuditLogs(data.logs || []);
+
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--error);">Failed to load data</td></tr>';
+            }
+        }
+
+        function renderAuditLogs(logs) {
+            const tbody = document.getElementById('audit-body');
+            tbody.innerHTML = '';
+
+            if (logs.length === 0) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 5;
+                td.style.textAlign = 'center';
+                td.textContent = 'No audit logs found';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+
+            logs.forEach(log => {
+                const tr = document.createElement('tr');
+
+                const tdTime = document.createElement('td');
+                tdTime.textContent = new Date(log.timestamp).toLocaleString();
+                tr.appendChild(tdTime);
+
+                const tdEvent = document.createElement('td');
+                tdEvent.textContent = log.event;
+                tr.appendChild(tdEvent);
+
+                const tdActor = document.createElement('td');
+                tdActor.style.fontFamily = 'monospace';
+                tdActor.style.fontSize = '0.9em';
+                tdActor.textContent = log.user_id || log.client_id || '-';
+                tr.appendChild(tdActor);
+
+                const tdStatus = document.createElement('td');
+                const spanStatus = document.createElement('span');
+                spanStatus.className = `badge ${log.status === 'success' ? 'badge-success' : 'badge-error'}`;
+                spanStatus.textContent = log.status;
+                tdStatus.appendChild(spanStatus);
+                tr.appendChild(tdStatus);
+
+                const tdDetails = document.createElement('td');
+                tdDetails.style.fontSize = '0.9em';
+                tdDetails.style.color = 'var(--text-light)';
+                tdDetails.textContent = log.detail || '-';
+                tr.appendChild(tdDetails);
+
+                tbody.appendChild(tr);
+            });
         }
     </script>
 </body>
