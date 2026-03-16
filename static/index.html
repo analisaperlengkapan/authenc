@@ -965,7 +965,7 @@
                     localStorage.setItem('authenc_realm', currentRealm);
 
                     try {
-                        let resolvedId = realm;
+                        let resolvedId = realm_id;
                         const realmRes = await fetch(`${API_BASE}/auth/realms`, {
                             headers: { 'Authorization': `Bearer ${token}` }
                         });

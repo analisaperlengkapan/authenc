@@ -40,8 +40,13 @@ pub async fn assign_role(
         None => return Err(StatusCode::NOT_FOUND),
     };
 
-    // Get role by name
-    let role = match state.role_store.get_by_name(&role_name) {
+    // Get role by name within realm
+    let role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == role_name)
+    {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -102,8 +107,13 @@ pub async fn unassign_role(
         None => return Err(StatusCode::NOT_FOUND),
     };
 
-    // Get role by name
-    let role = match state.role_store.get_by_name(&role_name) {
+    // Get role by name within realm
+    let role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == role_name)
+    {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
