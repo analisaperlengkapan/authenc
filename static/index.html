@@ -907,6 +907,15 @@
                 let realm_id = realm;
                 if (realm === 'master') {
                     realm_id = MASTER_REALM_UUID;
+                } else {
+                    const realmRes = await fetch(`${API_BASE}/auth/realms`);
+                    if (realmRes.ok) {
+                        const realms = await realmRes.json();
+                        const r = realms.find(x => x.name === realm);
+                        if (r) {
+                            realm_id = r.id;
+                        }
+                    }
                 }
 
                 // 1. Get challenge
