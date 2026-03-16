@@ -25,11 +25,27 @@ def test_groups_ui():
                 body=json.dumps({"access_token": "fake_token", "token_type": "Bearer", "expires_in": 3600})
             ))
 
-            page.route("**/api/v1/auth/realms", lambda route: route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps([{"id": "00000000-0000-0000-0000-000000000000", "name": "master", "description": "Master Realm"}])
-            ))
+            def realms_handler(route):
+                if route.request.method == "GET":
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps([
+                            {"id": "00000000-0000-0000-0000-000000000000", "name": "master", "description": "Master Realm", "enabled": True}
+                        ])
+                    )
+                else:
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps(
+                            {"id": "test-realm-id", "name": "TestRealm", "description": "Test realm", "enabled": True}
+                        )
+                    )
+
+            page.route("**/api/v1/auth/realms", realms_handler)
+            page.route("**/api/v1/auth/realms/*/status", lambda route: route.fulfill(status=200))
+            page.route("**/api/v1/auth/realms/*", lambda route: route.fulfill(status=200))
 
             page.route("**/api/v1/auth/realms/*/users", lambda route: route.fulfill(
                 status=200,
@@ -122,7 +138,35 @@ def test_groups_ui():
             print("Waiting for dashboard...")
             page.wait_for_selector("#dashboard-view:not(.hidden)", state="visible")
 
-            # 2. Navigate to Groups Tab
+            # 2. Navigate to Realms Tab
+            print("Navigating to realms tab...")
+            page.click("#tab-realms")
+            page.wait_for_selector("#realms-section:not(.hidden)", state="visible")
+
+            # Verify initial realm fetch
+            print("Verifying initial realms fetch...")
+            page.wait_for_selector("#realms-body tr td:has-text('master')")
+
+            # Create Realm
+            print("Creating a realm...")
+            page.click("button:has-text('Create Realm')")
+            page.wait_for_selector("#edit-realm-modal:not(.hidden)", state="visible")
+            page.fill("#edit-realm-name", "TestRealm")
+            page.fill("#edit-realm-description", "A test realm")
+
+            # Save realm
+            print("Saving realm...")
+            page.click("#edit-realm-form button[type='submit']")
+
+            # Wait for modal to hide
+            page.wait_for_selector("#edit-realm-modal.hidden", state="hidden")
+
+            # Save a screenshot for verification
+            print("Saving realms screenshot...")
+            page.screenshot(path="realms_ui.png", full_page=True)
+            print("Realms UI screenshot saved to realms_ui.png")
+
+            # 3. Navigate to Groups Tab
             print("Navigating to groups tab...")
             page.click("#tab-groups")
             page.wait_for_selector("#groups-section:not(.hidden)", state="visible")

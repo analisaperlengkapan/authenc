@@ -270,13 +270,44 @@
             </div>
 
             <div class="tab-buttons">
-                <button id="tab-users" class="tab-button active" onclick="switchTab('users')">Users</button>
+                <button id="tab-realms" class="tab-button active" onclick="switchTab('realms')">Realms</button>
+                <button id="tab-users" class="tab-button" onclick="switchTab('users')">Users</button>
                 <button id="tab-groups" class="tab-button" onclick="switchTab('groups')">Groups</button>
                 <button id="tab-roles" class="tab-button" onclick="switchTab('roles')">Roles</button>
                 <button id="tab-clients" class="tab-button" onclick="switchTab('clients')">Clients</button>
             </div>
 
-            <div id="users-section">
+            <div id="realms-section">
+                <div style="margin-bottom: 2rem;">
+                    <h3>Realms</h3>
+                    <p style="color: var(--text-light);">Manage realms (tenants) for the system.</p>
+                    <div style="display: flex; gap: 1rem;">
+                        <button onclick="fetchRealms()" style="width: auto;">Refresh List</button>
+                        <button onclick="openCreateRealmModal()" style="width: auto; background-color: var(--success);">Create Realm</button>
+                    </div>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table id="realms-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Description</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="realms-body">
+                            <tr>
+                                <td colspan="5" style="text-align: center;">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="users-section" class="hidden">
                 <div style="margin-bottom: 2rem;">
                     <h3>Users</h3>
                     <p style="color: var(--text-light);">Manage users for realm: <strong id="current-realm">master</strong></p>
@@ -488,6 +519,30 @@
         </div>
     </div>
 
+    <div id="edit-realm-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div class="card" style="max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;">
+            <h2 id="edit-realm-title" style="text-align: center;">Create Realm</h2>
+            <form id="edit-realm-form">
+                <input type="hidden" id="edit-realm-id">
+                <div class="form-group">
+                    <label for="edit-realm-name">Name</label>
+                    <input type="text" id="edit-realm-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-realm-description">Description</label>
+                    <input type="text" id="edit-realm-description" name="description">
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="edit-realm-enabled" name="enabled" style="width: auto;">
+                    <label for="edit-realm-enabled" style="margin: 0;">Enabled</label>
+                </div>
+                <button type="submit">Save Realm</button>
+                <button type="button" class="secondary" onclick="closeEditRealmModal()">Cancel</button>
+            </form>
+            <div id="edit-realm-error" class="error-message"></div>
+        </div>
+    </div>
+
     <div id="edit-group-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
         <div class="card" style="max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;">
             <h2 id="edit-group-title" style="text-align: center;">Create Group</h2>
@@ -619,20 +674,26 @@
             document.getElementById('current-realm-groups').textContent = currentRealm;
             document.getElementById('current-realm-roles').textContent = currentRealm;
             document.getElementById('current-realm-clients').textContent = currentRealm;
-            switchTab('users');
+            switchTab('realms');
         }
 
         function switchTab(tabName) {
+            document.getElementById('tab-realms').classList.remove('active');
             document.getElementById('tab-users').classList.remove('active');
             document.getElementById('tab-groups').classList.remove('active');
             document.getElementById('tab-roles').classList.remove('active');
             document.getElementById('tab-clients').classList.remove('active');
+            document.getElementById('realms-section').classList.add('hidden');
             document.getElementById('users-section').classList.add('hidden');
             document.getElementById('groups-section').classList.add('hidden');
             document.getElementById('roles-section').classList.add('hidden');
             document.getElementById('clients-section').classList.add('hidden');
 
-            if (tabName === 'users') {
+            if (tabName === 'realms') {
+                document.getElementById('tab-realms').classList.add('active');
+                document.getElementById('realms-section').classList.remove('hidden');
+                fetchRealms();
+            } else if (tabName === 'users') {
                 document.getElementById('tab-users').classList.add('active');
                 document.getElementById('users-section').classList.remove('hidden');
                 fetchUsers();
@@ -1790,6 +1851,215 @@
 
                 tbody.appendChild(tr);
             });
+        }
+
+        async function fetchRealms() {
+            const tbody = document.getElementById('realms-body');
+            const errorDiv = document.getElementById('dashboard-error');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading...</td></tr>';
+            errorDiv.style.display = 'none';
+
+            try {
+                let url = `${API_BASE}/auth/realms`;
+
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        logout();
+                        throw new Error("Session expired");
+                    }
+                    throw new Error(`Failed to fetch realms: ${response.statusText}`);
+                }
+
+                const realms = await response.json();
+                renderRealms(realms);
+
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--error);">Failed to load data</td></tr>';
+            }
+        }
+
+        function renderRealms(realms) {
+            const tbody = document.getElementById('realms-body');
+            tbody.innerHTML = '';
+
+            if (realms.length === 0) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 5;
+                td.style.textAlign = 'center';
+                td.textContent = 'No realms found';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+
+            realms.forEach(realm => {
+                const tr = document.createElement('tr');
+
+                const tdId = document.createElement('td');
+                tdId.style.fontFamily = 'monospace';
+                tdId.style.fontSize = '0.9em';
+                tdId.textContent = realm.id;
+                tr.appendChild(tdId);
+
+                const tdName = document.createElement('td');
+                tdName.textContent = realm.name;
+                tr.appendChild(tdName);
+
+                const tdDescription = document.createElement('td');
+                tdDescription.textContent = realm.description || '-';
+                tr.appendChild(tdDescription);
+
+                const tdStatus = document.createElement('td');
+                const spanStatus = document.createElement('span');
+                spanStatus.className = `badge ${realm.enabled ? 'badge-success' : 'badge-error'}`;
+                spanStatus.textContent = realm.enabled ? 'Enabled' : 'Disabled';
+                tdStatus.appendChild(spanStatus);
+                tr.appendChild(tdStatus);
+
+                const tdActions = document.createElement('td');
+
+                const btnEdit = document.createElement('button');
+                btnEdit.style.width = 'auto';
+                btnEdit.style.padding = '0.25rem 0.5rem';
+                btnEdit.style.fontSize = '0.8rem';
+                btnEdit.style.marginRight = '0.5rem';
+                btnEdit.textContent = 'Edit';
+                btnEdit.onclick = function() {
+                    openEditRealmModal(realm);
+                };
+                tdActions.appendChild(btnEdit);
+
+                if (realm.name !== 'master') {
+                    const btnDelete = document.createElement('button');
+                    btnDelete.style.width = 'auto';
+                    btnDelete.style.padding = '0.25rem 0.5rem';
+                    btnDelete.style.fontSize = '0.8rem';
+                    btnDelete.style.backgroundColor = 'var(--error)';
+                    btnDelete.textContent = 'Delete';
+                    btnDelete.onclick = function() {
+                        deleteRealm(realm.id);
+                    };
+                    tdActions.appendChild(btnDelete);
+                }
+
+                tr.appendChild(tdActions);
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openCreateRealmModal() {
+            document.getElementById('edit-realm-title').textContent = 'Create Realm';
+            document.getElementById('edit-realm-id').value = '';
+            document.getElementById('edit-realm-name').value = '';
+            document.getElementById('edit-realm-description').value = '';
+            document.getElementById('edit-realm-enabled').checked = true;
+            document.getElementById('edit-realm-error').style.display = 'none';
+            document.getElementById('edit-realm-modal').classList.remove('hidden');
+            document.getElementById('edit-realm-modal').style.display = 'flex';
+            document.getElementById('edit-realm-modal').style.alignItems = 'center';
+            document.getElementById('edit-realm-modal').style.justifyContent = 'center';
+        }
+
+        function openEditRealmModal(realm) {
+            document.getElementById('edit-realm-title').textContent = 'Edit Realm';
+            document.getElementById('edit-realm-id').value = realm.id;
+            document.getElementById('edit-realm-name').value = realm.name;
+            document.getElementById('edit-realm-description').value = realm.description || '';
+            document.getElementById('edit-realm-enabled').checked = realm.enabled;
+            document.getElementById('edit-realm-error').style.display = 'none';
+            document.getElementById('edit-realm-modal').classList.remove('hidden');
+            document.getElementById('edit-realm-modal').style.display = 'flex';
+            document.getElementById('edit-realm-modal').style.alignItems = 'center';
+            document.getElementById('edit-realm-modal').style.justifyContent = 'center';
+        }
+
+        function closeEditRealmModal() {
+            document.getElementById('edit-realm-modal').classList.add('hidden');
+            document.getElementById('edit-realm-modal').style.display = 'none';
+        }
+
+        document.getElementById('edit-realm-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-realm-id').value;
+            const errorDiv = document.getElementById('edit-realm-error');
+            errorDiv.style.display = 'none';
+
+            const payload = {
+                name: document.getElementById('edit-realm-name').value,
+                description: document.getElementById('edit-realm-description').value || null,
+            };
+
+            const isUpdate = id !== '';
+            let url = `${API_BASE}/auth/realms`;
+            if (isUpdate) {
+                url += `/${id}`;
+            }
+
+            try {
+                const response = await fetch(url, {
+                    method: isUpdate ? 'PUT' : 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    if (isUpdate) {
+                        const enabled = document.getElementById('edit-realm-enabled').checked;
+                        const statusUrl = `${API_BASE}/auth/realms/${id}/status`;
+                        await fetch(statusUrl, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({ enabled })
+                        });
+                    }
+
+                    closeEditRealmModal();
+                    fetchRealms();
+                } else {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.message || data.error || (isUpdate ? 'Update failed' : 'Creation failed'));
+                }
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+            }
+        });
+
+        async function deleteRealm(id) {
+            if (!confirm("Are you sure you want to delete this realm?")) return;
+
+            try {
+                let url = `${API_BASE}/auth/realms/${id}`;
+
+                const response = await fetch(url, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    fetchRealms();
+                } else {
+                    throw new Error('Delete failed');
+                }
+            } catch (err) {
+                alert(err.message);
+            }
         }
 
         async function fetchGroups() {
