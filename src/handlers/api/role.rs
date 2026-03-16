@@ -89,8 +89,13 @@ pub async fn create_role(
         None => return Err(StatusCode::NOT_FOUND),
     };
 
-    // Check if role already exists
-    if state.role_store.get_by_name(&req.name).is_some() {
+    // Check if role already exists in the realm
+    if state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .any(|r| r.name == req.name)
+    {
         return Err(StatusCode::CONFLICT);
     }
 
@@ -268,8 +273,13 @@ pub async fn delete_role(
         None => return Err(StatusCode::NOT_FOUND),
     };
 
-    // Get the role before deleting for event representation
-    let role = match state.role_store.get_by_name(&name) {
+    // Get the role before deleting for event representation, ensuring it belongs to the correct realm
+    let role = match state
+        .role_store
+        .get_by_realm(&realm_obj.id.to_string())
+        .into_iter()
+        .find(|r| r.name == name)
+    {
         Some(r) => r,
         None => return Err(StatusCode::NOT_FOUND),
     };
