@@ -423,7 +423,16 @@ impl RoleStorageProvider for DefaultRoleStorageProvider {
         Ok(role)
     }
 
-    async fn delete_role(&self, _role_id: Uuid) -> Result<bool> {
+    async fn delete_role(&self, role_id: Uuid) -> Result<bool> {
+        // Find the role first to get its name and realm_id
+        let role = self.role_store.get_all().iter().find(|r| r.id == role_id).cloned();
+
+        if let Some(r) = role {
+            let realm_id = r.realm_id.unwrap_or_default().to_string();
+            if self.role_store.delete_by_name(&r.name, &realm_id).is_ok() {
+                return Ok(true);
+            }
+        }
         Ok(false)
     }
 }
