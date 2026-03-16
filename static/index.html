@@ -1995,6 +1995,7 @@
             const payload = {
                 name: document.getElementById('edit-realm-name').value,
                 description: document.getElementById('edit-realm-description').value || null,
+                enabled: document.getElementById('edit-realm-enabled').checked,
             };
 
             const isUpdate = id !== '';
