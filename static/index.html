@@ -2018,7 +2018,7 @@
                     if (isUpdate) {
                         const enabled = document.getElementById('edit-realm-enabled').checked;
                         const statusUrl = `${API_BASE}/auth/realms/${id}/status`;
-                        await fetch(statusUrl, {
+                        const statusRes = await fetch(statusUrl, {
                             method: 'PUT',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -2026,6 +2026,9 @@
                             },
                             body: JSON.stringify({ enabled })
                         });
+                        if (!statusRes.ok) {
+                            throw new Error('Failed to update realm status');
+                        }
                     }
 
                     closeEditRealmModal();
