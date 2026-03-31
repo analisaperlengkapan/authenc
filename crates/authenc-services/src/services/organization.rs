@@ -54,6 +54,7 @@ use uuid::Uuid;
 
 /// Organization roles
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum OrganizationRole {
     /// Owner of the organization with full administrative privileges
     Owner,

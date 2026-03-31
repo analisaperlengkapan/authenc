@@ -1327,7 +1327,7 @@ pub mod organizations {
             UPDATE organizations
             SET name = $2, display_name = $3, description = $4, domain = $5,
                 logo_url = $6, website_url = $7, enabled = $8, updated_at = $9
-            WHERE id = $1
+            WHERE id = $1 AND deleted_at IS NULL
         "#;
 
         db.execute(
