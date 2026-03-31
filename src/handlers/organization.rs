@@ -201,6 +201,11 @@ pub async fn add_member(
         return Err(AuthencError::forbidden("Only organization owners or admins can add members"));
     }
 
+    // Only owners can assign the owner role
+    if matches!(role, OrganizationRole::Owner) && !is_owner {
+        return Err(AuthencError::forbidden("Only organization owners can assign the owner role"));
+    }
+
     match service
         .add_member(&id, &request.user_id, role, Some(invited_by))
         .await
@@ -310,6 +315,11 @@ pub async fn create_invitation(
     let is_admin = service.has_role(&id, &invited_by, &OrganizationRole::Admin).await.unwrap_or(false);
     if !is_owner && !is_admin {
         return Err(AuthencError::forbidden("Only organization owners or admins can create invitations"));
+    }
+
+    // Only owners can create invitations with the owner role
+    if matches!(role, OrganizationRole::Owner) && !is_owner {
+        return Err(AuthencError::forbidden("Only organization owners can assign the owner role"));
     }
 
     match service

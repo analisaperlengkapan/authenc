@@ -412,6 +412,11 @@ impl OrganizationService {
             ));
         }
 
+        // Mark invitation as accepted first to prevent race conditions
+        // where concurrent requests could both see the invitation as unaccepted
+        self.mark_invitation_accepted(&invitation.id, user_id)
+            .await?;
+
         // Add user to organization
         self.add_member(
             &invitation.organization_id,
@@ -420,10 +425,6 @@ impl OrganizationService {
             Some(invitation.invited_by),
         )
         .await?;
-
-        // Mark invitation as accepted
-        self.mark_invitation_accepted(&invitation.id, user_id)
-            .await?;
 
         // Get organization details
         self.get_organization(&invitation.organization_id)
