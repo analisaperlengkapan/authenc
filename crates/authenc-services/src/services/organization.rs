@@ -440,6 +440,14 @@ impl OrganizationService {
         invited_by: Uuid,
         expires_in_days: u32,
     ) -> Result<OrganizationInvitation> {
+        // Validate expires_in_days to prevent chrono DateTime overflow panic.
+        // Cap at 365 days (1 year) which is a reasonable maximum for invitations.
+        if expires_in_days == 0 || expires_in_days > 365 {
+            return Err(AuthencError::validation(
+                "expires_in_days must be between 1 and 365",
+            ));
+        }
+
         let mut invitation = OrganizationInvitation {
             id: Uuid::new_v4(),
             organization_id: *organization_id,
