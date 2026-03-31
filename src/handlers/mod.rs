@@ -63,7 +63,8 @@ pub mod federation;
 /// SPI management handlers for enterprise features
 pub mod spi;
 // pub mod oauth2; // Commented out - already declared above
-// pub mod organization;
+/// Organization management handlers
+pub mod organization;
 /// SAML authentication handlers
 pub mod saml;
 /// Social login handlers
@@ -312,15 +313,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/realms",
             api::authenticators::create_authenticator_routes().with_state(state.clone()),
         )
-        // Temporarily disabled organization routes due to Axum migration
-        // .nest(
-        //     "/api/v1/organizations",
-        //     organization::create_organization_routes(),
-        // )
+        // Organization routes
+        .nest(
+            "/api/v1/organizations",
+            organization::create_organization_routes().with_state(state.clone()),
+        )
         // Device management routes
         .nest("/api/v1/devices", device::create_device_routes().with_state(state.clone()))
-        // Temporarily disabled SAML routes due to Axum migration
-        // .nest("/saml", saml::create_saml_routes())
+        // SAML routes
+        .nest("/saml", saml::create_saml_routes().with_state((*state.database).clone()))
         .nest(
             "/oid4vc",
             oid4vc::create_oid4vc_router().with_state(state.clone()),

@@ -213,11 +213,37 @@ impl OrganizationService {
     /// Update organization
     pub async fn update_organization(
         &self,
-        _organization_id: &Uuid,
-        _updates: &OrganizationUpdate,
+        organization_id: &Uuid,
+        updates: &OrganizationUpdate,
     ) -> Result<()> {
-        // In production, update in database
-        Ok(())
+        let mut org = self.get_organization(organization_id)
+            .await?
+            .ok_or_else(|| AuthencError::resource_not_found("Organization not found"))?;
+
+        if let Some(display_name) = &updates.display_name {
+            org.display_name = Some(display_name.clone());
+        }
+        if let Some(description) = &updates.description {
+            org.description = Some(description.clone());
+        }
+        if let Some(domain) = &updates.domain {
+            org.domain = Some(domain.clone());
+        }
+        if let Some(logo_url) = &updates.logo_url {
+            org.logo_url = Some(logo_url.clone());
+        }
+        if let Some(website) = &updates.website {
+            org.website_url = Some(website.clone());
+        }
+        if let Some(enabled) = updates.enabled {
+            org.enabled = enabled;
+        }
+
+        org.updated_at = chrono::Utc::now();
+
+        authenc_database::database::operations::organizations::update_organization(&self.db, &org)
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to update organization: {}", e)))
     }
 
     /// Delete organization
@@ -266,11 +292,21 @@ impl OrganizationService {
     /// Update member role
     pub async fn update_member_role(
         &self,
-        _organization_id: &Uuid,
-        _user_id: &Uuid,
-        _new_role: OrganizationRole,
+        organization_id: &Uuid,
+        user_id: &Uuid,
+        new_role: OrganizationRole,
     ) -> Result<()> {
-        // In production, update in database
+        let role_str = new_role.as_str();
+        // The database operation expects &str for role
+        let query = r#"
+            UPDATE organization_members
+            SET role = $3, updated_at = NOW()
+            WHERE organization_id = $1 AND user_id = $2
+        "#;
+
+        self.db.execute(query, &[organization_id, user_id, &role_str])
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to update member role: {}", e)))?;
         Ok(())
     }
 
@@ -285,20 +321,23 @@ impl OrganizationService {
     }
 
     /// Check if user is member of organization
-    pub async fn is_member(&self, _organization_id: &Uuid, _user_id: &Uuid) -> Result<bool> {
-        // In production, check in database
-        Ok(false)
+    pub async fn is_member(&self, organization_id: &Uuid, user_id: &Uuid) -> Result<bool> {
+        let members = self.get_members(organization_id).await?;
+        Ok(members.iter().any(|m| m.user_id == *user_id))
     }
 
     /// Check if user has role in organization
     pub async fn has_role(
         &self,
-        _organization_id: &Uuid,
-        _user_id: &Uuid,
-        _role: &OrganizationRole,
+        organization_id: &Uuid,
+        user_id: &Uuid,
+        role: &OrganizationRole,
     ) -> Result<bool> {
-        // In production, check in database
-        Ok(false)
+        let members = self.get_members(organization_id).await?;
+        let role_str = role.as_str();
+        Ok(members
+            .iter()
+            .any(|m| m.user_id == *user_id && m.role == role_str))
     }
 
     /// Create invitation

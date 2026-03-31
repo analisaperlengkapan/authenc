@@ -44,6 +44,7 @@ pub mod observability;
 pub mod compliance_mode;
 pub mod compliance;
 pub mod federation;
+pub mod organization;
 
 pub use admin::AdminManager;
 pub use auth_flow::AuthenticationManager as AuthFlowManager;

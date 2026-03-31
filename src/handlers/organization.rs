@@ -1,7 +1,6 @@
-use authenc_database::database::Database;
 use crate::app::AppState;
 use crate::error::{AuthencError, Result};
-use authenc_services::services::organization::{OrganizationService, OrganizationUpdate};
+use authenc_services::services::organization::{OrganizationService, OrganizationUpdate, OrganizationRole};
 use axum::{
     extract::{Path, Query, State},
     response::Json,
@@ -11,7 +10,6 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::app::AppState;
 
 /// Create organization routes
 pub fn create_organization_routes() -> Router<Arc<AppState>> {
@@ -42,10 +40,10 @@ pub struct CreateOrganizationRequest {
 
 /// Create organization handler
 pub async fn create_organization(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<CreateOrganizationRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     // In production, get user ID from authentication context
     let created_by = Uuid::new_v4();
@@ -63,19 +61,18 @@ pub async fn create_organization(
             "success": true,
             "organization": organization
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
 /// List organizations handler
 pub async fn list_organizations(
-    State(db): State<Database>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
+    State(_state): State<Arc<AppState>>,
+    Query(_params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
-
     // In production, implement pagination and filtering
-    let organizations: Vec<serde_json::Value> = vec![]; // service.list_organizations().await?;
+    // For now, return empty or implement a simple list if DB supports it
+    let organizations: Vec<serde_json::Value> = vec![];
 
     Ok(Json(serde_json::json!({
         "success": true,
@@ -85,10 +82,10 @@ pub async fn list_organizations(
 
 /// Get organization handler
 pub async fn get_organization(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     match service.get_organization(&id).await {
         Ok(Some(organization)) => Ok(Json(serde_json::json!({
@@ -96,56 +93,56 @@ pub async fn get_organization(
             "organization": organization
         }))),
         Ok(None) => Err(AuthencError::resource_not_found("Resource not found")),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
 /// Update organization handler
 pub async fn update_organization(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(updates): Json<OrganizationUpdate>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     match service.update_organization(&id, &updates).await {
         Ok(_) => Ok(Json(serde_json::json!({
             "success": true,
             "message": "Organization updated successfully"
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
 /// Delete organization handler
 pub async fn delete_organization(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     match service.delete_organization(&id).await {
         Ok(_) => Ok(Json(serde_json::json!({
             "success": true,
             "message": "Organization deleted successfully"
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
 /// Get organization members handler
 pub async fn get_members(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     match service.get_members(&id).await {
         Ok(members) => Ok(Json(serde_json::json!({
             "success": true,
             "members": members
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
@@ -158,17 +155,17 @@ pub struct AddMemberRequest {
 
 /// Add member handler
 pub async fn add_member(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(request): Json<AddMemberRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     let role = match request.role.as_str() {
-        "owner" => crate::services::organization::OrganizationRole::Owner,
-        "admin" => crate::services::organization::OrganizationRole::Admin,
-        "member" => crate::services::organization::OrganizationRole::Member,
-        "guest" => crate::services::organization::OrganizationRole::Guest,
+        "owner" => OrganizationRole::Owner,
+        "admin" => OrganizationRole::Admin,
+        "member" => OrganizationRole::Member,
+        "guest" => OrganizationRole::Guest,
         _ => return Err(AuthencError::validation("Bad request")),
     };
 
@@ -183,23 +180,23 @@ pub async fn add_member(
             "success": true,
             "message": "Member added successfully"
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
 /// Remove member handler
 pub async fn remove_member(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     match service.remove_member(&id, &user_id).await {
         Ok(_) => Ok(Json(serde_json::json!({
             "success": true,
             "message": "Member removed successfully"
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
@@ -211,17 +208,17 @@ pub struct UpdateMemberRoleRequest {
 
 /// Update member role handler
 pub async fn update_member_role(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
     Json(request): Json<UpdateMemberRoleRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     let role = match request.role.as_str() {
-        "owner" => crate::services::organization::OrganizationRole::Owner,
-        "admin" => crate::services::organization::OrganizationRole::Admin,
-        "member" => crate::services::organization::OrganizationRole::Member,
-        "guest" => crate::services::organization::OrganizationRole::Guest,
+        "owner" => OrganizationRole::Owner,
+        "admin" => OrganizationRole::Admin,
+        "member" => OrganizationRole::Member,
+        "guest" => OrganizationRole::Guest,
         _ => return Err(AuthencError::validation("Bad request")),
     };
 
@@ -230,7 +227,7 @@ pub async fn update_member_role(
             "success": true,
             "message": "Member role updated successfully"
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
@@ -244,17 +241,17 @@ pub struct CreateInvitationRequest {
 
 /// Create invitation handler
 pub async fn create_invitation(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(request): Json<CreateInvitationRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     let role = match request.role.as_str() {
-        "owner" => crate::services::organization::OrganizationRole::Owner,
-        "admin" => crate::services::organization::OrganizationRole::Admin,
-        "member" => crate::services::organization::OrganizationRole::Member,
-        "guest" => crate::services::organization::OrganizationRole::Guest,
+        "owner" => OrganizationRole::Owner,
+        "admin" => OrganizationRole::Admin,
+        "member" => OrganizationRole::Member,
+        "guest" => OrganizationRole::Guest,
         _ => return Err(AuthencError::validation("Bad request")),
     };
 
@@ -275,7 +272,7 @@ pub async fn create_invitation(
             "success": true,
             "invitation": invitation
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
@@ -287,10 +284,10 @@ pub struct AcceptInvitationRequest {
 
 /// Accept invitation handler
 pub async fn accept_invitation(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<AcceptInvitationRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     // In production, get user_id from authentication context
     let user_id = Uuid::new_v4();
@@ -301,55 +298,55 @@ pub async fn accept_invitation(
             "organization": organization,
             "message": "Successfully joined organization"
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
 /// Get organization settings handler
 pub async fn get_settings(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     match service.get_settings(&id).await {
         Ok(settings) => Ok(Json(serde_json::json!({
             "success": true,
             "settings": settings
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
 /// Update organization settings handler
 pub async fn update_settings(
-    State(db): State<Database>,
-    Path(id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    Path(_id): Path<Uuid>,
     Json(settings): Json<crate::services::organization::OrganizationSettings>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     match service.update_settings(&settings).await {
         Ok(_) => Ok(Json(serde_json::json!({
             "success": true,
             "message": "Settings updated successfully"
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
 
 /// Get user's organizations handler
 pub async fn get_user_organizations(
-    State(db): State<Database>,
+    State(state): State<Arc<AppState>>,
     Path(user_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    let service = OrganizationService::new(Arc::new(db));
+    let service = OrganizationService::new(state.database.clone());
 
     match service.get_user_organizations(&user_id).await {
         Ok(organizations) => Ok(Json(serde_json::json!({
             "success": true,
             "organizations": organizations
         }))),
-        Err(_) => Err(AuthencError::internal("Internal server error")),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
