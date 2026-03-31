@@ -287,42 +287,115 @@ impl OrganizationService {
     }
 
     /// Update organization
+    ///
+    /// Uses a transaction with SELECT ... FOR UPDATE to prevent lost updates
+    /// from concurrent modifications.
     pub async fn update_organization(
         &self,
         organization_id: &Uuid,
         updates: &OrganizationUpdate,
     ) -> Result<()> {
-        let mut org = self.get_organization(organization_id)
-            .await?
-            .ok_or_else(|| AuthencError::resource_not_found("Organization not found"))?;
+        let org_id = *organization_id;
+        let updates_name = updates.name.clone();
+        let updates_display_name = updates.display_name.clone();
+        let updates_description = updates.description.clone();
+        let updates_domain = updates.domain.clone();
+        let updates_logo_url = updates.logo_url.clone();
+        let updates_website = updates.website.clone();
+        let updates_enabled = updates.enabled;
 
-        if let Some(name) = &updates.name {
-            org.name = name.clone();
-        }
-        if let Some(display_name) = &updates.display_name {
-            org.display_name = Some(display_name.clone());
-        }
-        if let Some(description) = &updates.description {
-            org.description = Some(description.clone());
-        }
-        if let Some(domain) = &updates.domain {
-            org.domain = Some(domain.clone());
-        }
-        if let Some(logo_url) = &updates.logo_url {
-            org.logo_url = Some(logo_url.clone());
-        }
-        if let Some(website) = &updates.website {
-            org.website_url = Some(website.clone());
-        }
-        if let Some(enabled) = updates.enabled {
-            org.enabled = enabled;
-        }
+        self.db
+            .with_transaction(move |client| {
+                Box::pin(async move {
+                    // Lock the row to prevent concurrent modifications
+                    let row = client
+                        .query_opt(
+                            r#"SELECT
+                                id, name, display_name, description, domain,
+                                logo_url, website_url, owner_id, realm_id,
+                                enabled, created_at, updated_at, deleted_at
+                            FROM organizations
+                            WHERE id = $1 AND deleted_at IS NULL
+                            FOR UPDATE"#,
+                            &[&org_id],
+                        )
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to lock organization: {}",
+                                e
+                            ))
+                        })?;
 
-        org.updated_at = chrono::Utc::now();
+                    let row = row.ok_or_else(|| {
+                        AuthencError::resource_not_found("Organization not found")
+                    })?;
 
-        authenc_database::database::operations::organizations::update_organization(&self.db, &org)
+                    let mut org: Organization = row.try_into().map_err(|e: AuthencError| {
+                        AuthencError::database(format!(
+                            "Failed to parse organization row: {}",
+                            e
+                        ))
+                    })?;
+
+                    if let Some(name) = &updates_name {
+                        org.name = name.clone();
+                    }
+                    if let Some(display_name) = &updates_display_name {
+                        org.display_name = Some(display_name.clone());
+                    }
+                    if let Some(description) = &updates_description {
+                        org.description = Some(description.clone());
+                    }
+                    if let Some(domain) = &updates_domain {
+                        org.domain = Some(domain.clone());
+                    }
+                    if let Some(logo_url) = &updates_logo_url {
+                        org.logo_url = Some(logo_url.clone());
+                    }
+                    if let Some(website) = &updates_website {
+                        org.website_url = Some(website.clone());
+                    }
+                    if let Some(enabled) = updates_enabled {
+                        org.enabled = enabled;
+                    }
+
+                    let now = chrono::Utc::now();
+
+                    let update_query = r#"
+                        UPDATE organizations
+                        SET name = $2, display_name = $3, description = $4, domain = $5,
+                            logo_url = $6, website_url = $7, enabled = $8, updated_at = $9
+                        WHERE id = $1 AND deleted_at IS NULL
+                    "#;
+
+                    client
+                        .execute(
+                            update_query,
+                            &[
+                                &org.id,
+                                &org.name,
+                                &org.display_name,
+                                &org.description,
+                                &org.domain,
+                                &org.logo_url,
+                                &org.website_url,
+                                &org.enabled,
+                                &now,
+                            ],
+                        )
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to update organization: {}",
+                                e
+                            ))
+                        })?;
+
+                    Ok(())
+                })
+            })
             .await
-            .map_err(|e| AuthencError::database(format!("Failed to update organization: {}", e)))
     }
 
     /// Delete organization
@@ -775,25 +848,8 @@ impl OrganizationService {
         current_owner: &Uuid,
         new_owner: &Uuid,
     ) -> Result<()> {
-        // Verify current user is owner
-        if !self
-            .has_role(organization_id, current_owner, &OrganizationRole::Owner)
-            .await?
-        {
-            return Err(AuthencError::forbidden("Only owner can transfer ownership"));
-        }
-
-        // Verify new owner is a member of the organization
-        if !self.is_member(organization_id, new_owner).await? {
-            return Err(AuthencError::validation(
-                "New owner must be a member of the organization",
-            ));
-        }
-
-        // Use a transaction to ensure all three updates are atomic:
-        // 1. Demote current owner to Admin
-        // 2. Promote new owner to Owner
-        // 3. Update organizations.owner_id
+        // Use a transaction with SELECT ... FOR UPDATE to ensure all checks
+        // and updates are atomic, preventing TOCTOU races.
         let org_id = *organization_id;
         let old_owner = *current_owner;
         let new_own = *new_owner;
@@ -803,8 +859,60 @@ impl OrganizationService {
         self.db
             .with_transaction(move |client| {
                 Box::pin(async move {
+                    // Verify current user is owner (with row lock)
+                    let owner_row = client
+                        .query_opt(
+                            r#"SELECT role FROM organization_members
+                               WHERE organization_id = $1 AND user_id = $2
+                               FOR UPDATE"#,
+                            &[&org_id, &old_owner],
+                        )
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to verify current owner: {}",
+                                e
+                            ))
+                        })?;
+                    match owner_row {
+                        None => {
+                            return Err(AuthencError::resource_not_found(
+                                "Current owner not found in organization",
+                            ));
+                        }
+                        Some(row) => {
+                            let role: String = row.get(0);
+                            if role != "owner" {
+                                return Err(AuthencError::forbidden(
+                                    "Only owner can transfer ownership",
+                                ));
+                            }
+                        }
+                    }
+
+                    // Verify new owner is a member (with row lock)
+                    let new_owner_row = client
+                        .query_opt(
+                            r#"SELECT role FROM organization_members
+                               WHERE organization_id = $1 AND user_id = $2
+                               FOR UPDATE"#,
+                            &[&org_id, &new_own],
+                        )
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to verify new owner membership: {}",
+                                e
+                            ))
+                        })?;
+                    if new_owner_row.is_none() {
+                        return Err(AuthencError::validation(
+                            "New owner must be a member of the organization",
+                        ));
+                    }
+
                     // Demote current owner to Admin
-                    let rows = client
+                    client
                         .execute(
                             r#"UPDATE organization_members
                                SET role = $3, updated_at = NOW()
@@ -818,14 +926,9 @@ impl OrganizationService {
                                 e
                             ))
                         })?;
-                    if rows == 0 {
-                        return Err(AuthencError::resource_not_found(
-                            "Current owner not found in organization",
-                        ));
-                    }
 
                     // Promote new owner to Owner
-                    let rows = client
+                    client
                         .execute(
                             r#"UPDATE organization_members
                                SET role = $3, updated_at = NOW()
@@ -839,11 +942,6 @@ impl OrganizationService {
                                 e
                             ))
                         })?;
-                    if rows == 0 {
-                        return Err(AuthencError::resource_not_found(
-                            "New owner not found in organization",
-                        ));
-                    }
 
                     // Update organizations.owner_id
                     client

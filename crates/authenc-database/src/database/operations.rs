@@ -1250,37 +1250,6 @@ pub mod organizations {
         }
     }
 
-    /// Accept organization invitation
-    pub async fn accept_invitation(db: &Database, token_hash: &str, user_id: Uuid) -> Result<()> {
-        let now = Utc::now();
-
-        // First get the invitation
-        let invitation = get_invitation_by_token(db, token_hash)
-            .await?
-            .ok_or_else(|| AuthencError::resource_not_found("Invitation not found or expired"))?;
-
-        // Mark invitation as accepted
-        let update_query = r#"
-            UPDATE organization_invitations
-            SET accepted_at = $2, accepted_by = $3
-            WHERE token_hash = $1
-        "#;
-        db.execute(update_query, &[&token_hash, &now, &user_id])
-            .await?;
-
-        // Add user as organization member
-        add_member(
-            db,
-            invitation.organization_id,
-            user_id,
-            &invitation.role,
-            Some(invitation.invited_by),
-        )
-        .await?;
-
-        Ok(())
-    }
-
     /// Get organization by domain
     pub async fn get_organization_by_domain(
         db: &Database,

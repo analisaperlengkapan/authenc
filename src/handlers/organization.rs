@@ -155,9 +155,17 @@ pub async fn delete_organization(
 /// Get organization members handler
 pub async fn get_members(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
+
+    let caller_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    if !service.is_member(&id, &caller_id).await? {
+        return Err(AuthencError::forbidden("Only organization members can view the member list"));
+    }
 
     match service.get_members(&id).await {
         Ok(members) => Ok(Json(serde_json::json!({
@@ -388,9 +396,17 @@ pub async fn accept_invitation(
 /// Get organization settings handler
 pub async fn get_settings(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
+
+    let caller_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    if !service.is_member(&id, &caller_id).await? {
+        return Err(AuthencError::forbidden("Only organization members can view settings"));
+    }
 
     match service.get_settings(&id).await {
         Ok(settings) => Ok(Json(serde_json::json!({
@@ -435,8 +451,17 @@ pub async fn update_settings(
 /// Get user's organizations handler
 pub async fn get_user_organizations(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(user_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
+    let caller_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    // Users can only query their own organizations
+    if caller_id != user_id {
+        return Err(AuthencError::forbidden("You can only view your own organizations"));
+    }
+
     let service = OrganizationService::new(state.database.clone());
 
     match service.get_user_organizations(&user_id).await {
