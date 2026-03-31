@@ -185,6 +185,12 @@ pub async fn add_member(
     let invited_by = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
+    let is_owner = service.has_role(&id, &invited_by, &OrganizationRole::Owner).await.unwrap_or(false);
+    let is_admin = service.has_role(&id, &invited_by, &OrganizationRole::Admin).await.unwrap_or(false);
+    if !is_owner && !is_admin {
+        return Err(AuthencError::forbidden("Only organization owners or admins can add members"));
+    }
+
     match service
         .add_member(&id, &request.user_id, role, Some(invited_by))
         .await
@@ -289,6 +295,12 @@ pub async fn create_invitation(
 
     let invited_by = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    let is_owner = service.has_role(&id, &invited_by, &OrganizationRole::Owner).await.unwrap_or(false);
+    let is_admin = service.has_role(&id, &invited_by, &OrganizationRole::Admin).await.unwrap_or(false);
+    if !is_owner && !is_admin {
+        return Err(AuthencError::forbidden("Only organization owners or admins can create invitations"));
+    }
 
     match service
         .create_invitation(
