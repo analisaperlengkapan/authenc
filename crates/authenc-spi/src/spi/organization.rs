@@ -77,6 +77,8 @@ pub enum OrganizationRole {
     Admin,
     /// Regular member
     Member,
+    /// Guest with limited access
+    Guest,
 }
 
 impl OrganizationRole {
@@ -86,6 +88,7 @@ impl OrganizationRole {
             OrganizationRole::Owner => "owner",
             OrganizationRole::Admin => "admin",
             OrganizationRole::Member => "member",
+            OrganizationRole::Guest => "guest",
         }
     }
 
@@ -95,6 +98,7 @@ impl OrganizationRole {
             "owner" => Some(OrganizationRole::Owner),
             "admin" => Some(OrganizationRole::Admin),
             "member" => Some(OrganizationRole::Member),
+            "guest" => Some(OrganizationRole::Guest),
             _ => None,
         }
     }

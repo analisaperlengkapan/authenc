@@ -563,7 +563,10 @@ impl OrganizationService {
             email: invitation.email.clone(),
             role: invitation.role.as_str().to_string(),
             invited_by: invitation.invited_by,
-            token_hash: invitation.token.clone(), // Note: caller should hash the token
+            token_hash: {
+                use sha2::{Digest, Sha256};
+                format!("{:x}", Sha256::digest(invitation.token.as_bytes()))
+            },
             expires_at: invitation.expires_at,
             accepted_at: invitation.accepted_at,
             accepted_by: None,
