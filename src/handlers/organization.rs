@@ -2,7 +2,7 @@ use crate::app::AppState;
 use crate::error::{AuthencError, Result};
 use authenc_services::services::organization::{OrganizationService, OrganizationUpdate, OrganizationRole};
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     response::Json,
     routing::{delete, get, post, put},
     Router,
@@ -41,12 +41,13 @@ pub struct CreateOrganizationRequest {
 /// Create organization handler
 pub async fn create_organization(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(request): Json<CreateOrganizationRequest>,
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
 
-    // In production, get user ID from authentication context
-    let created_by = Uuid::new_v4();
+    let created_by = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     match service
         .create_organization(
@@ -157,6 +158,7 @@ pub struct AddMemberRequest {
 /// Add member handler
 pub async fn add_member(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
     Json(request): Json<AddMemberRequest>,
 ) -> Result<Json<serde_json::Value>> {
@@ -170,8 +172,8 @@ pub async fn add_member(
         _ => return Err(AuthencError::validation("Bad request")),
     };
 
-    // In production, get invited_by from authentication context
-    let invited_by = Uuid::new_v4();
+    let invited_by = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     match service
         .add_member(&id, &request.user_id, role, Some(invited_by))
@@ -243,6 +245,7 @@ pub struct CreateInvitationRequest {
 /// Create invitation handler
 pub async fn create_invitation(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
     Json(request): Json<CreateInvitationRequest>,
 ) -> Result<Json<serde_json::Value>> {
@@ -256,8 +259,8 @@ pub async fn create_invitation(
         _ => return Err(AuthencError::validation("Bad request")),
     };
 
-    // In production, get invited_by from authentication context
-    let invited_by = Uuid::new_v4();
+    let invited_by = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     match service
         .create_invitation(
@@ -286,12 +289,13 @@ pub struct AcceptInvitationRequest {
 /// Accept invitation handler
 pub async fn accept_invitation(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Json(request): Json<AcceptInvitationRequest>,
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
 
-    // In production, get user_id from authentication context
-    let user_id = Uuid::new_v4();
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     match service.accept_invitation(&request.token, user_id).await {
         Ok(organization) => Ok(Json(serde_json::json!({
