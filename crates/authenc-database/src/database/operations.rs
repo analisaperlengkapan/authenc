@@ -1140,9 +1140,17 @@ pub mod organizations {
             WHERE id = $1 AND deleted_at IS NULL
         "#;
 
-        let row: tokio_postgres::Row = db.query_one(query, &[&org_id]).await?;
-        // Convert row to Organization
-        Ok(Some(row.try_into()?))
+        match db.query_opt(query, &[&org_id]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get organization by ID: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get organization: {}",
+                    e
+                )))
+            }
+        }
     }
 
     /// Add member to organization
@@ -1230,9 +1238,17 @@ pub mod organizations {
             WHERE token_hash = $1 AND expires_at > NOW() AND accepted_at IS NULL
         "#;
 
-        let row: tokio_postgres::Row = db.query_one(query, &[&token_hash]).await?;
-        // Convert row to OrganizationInvitation
-        Ok(Some(row.try_into()?))
+        match db.query_opt(query, &[&token_hash]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get invitation by token: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get invitation by token: {}",
+                    e
+                )))
+            }
+        }
     }
 
     /// Accept organization invitation
@@ -1273,10 +1289,10 @@ pub mod organizations {
     ) -> Result<Option<Organization>> {
         let query = r#"
             SELECT
-                id, name, display_name, description, domain, logo_url, website,
-                enabled, created_at, updated_at, attributes
+                id, name, display_name, description, domain, logo_url, website_url,
+                enabled, created_at, updated_at, owner_id, realm_id, deleted_at
             FROM organizations
-            WHERE domain = $1
+            WHERE domain = $1 AND deleted_at IS NULL
         "#;
 
         let row = db.query_opt(query, &[&domain]).await.map_err(|e| {
@@ -1285,11 +1301,6 @@ pub mod organizations {
         })?;
 
         if let Some(row) = row {
-            // Convert row to Organization
-            let attributes_json: serde_json::Value = row.get(10);
-            let _attributes: HashMap<String, String> =
-                serde_json::from_value(attributes_json).unwrap_or_default();
-
             Ok(Some(Organization {
                 id: row.get(0),
                 name: row.get(1),

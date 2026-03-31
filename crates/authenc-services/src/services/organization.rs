@@ -176,8 +176,8 @@ impl OrganizationService {
             deleted_at: None,
         };
 
-        // Store organization in database
-        self.store_organization(&organization).await?;
+        // Store organization in database (DB generates the actual ID)
+        let organization = self.store_organization(&organization).await?;
 
         // Add creator as owner
         self.add_member(
@@ -537,11 +537,10 @@ impl OrganizationService {
     }
 
     // Database operations
-    async fn store_organization(&self, organization: &Organization) -> Result<()> {
+    async fn store_organization(&self, organization: &Organization) -> Result<Organization> {
         authenc_database::database::operations::organizations::create_organization(&self.db, organization)
             .await
-            .map_err(|e| AuthencError::database(format!("Failed to store organization: {}", e)))?;
-        Ok(())
+            .map_err(|e| AuthencError::database(format!("Failed to store organization: {}", e)))
     }
 
     async fn store_member(&self, member: &OrganizationMember) -> Result<()> {
