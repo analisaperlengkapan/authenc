@@ -747,6 +747,29 @@ impl OrganizationService {
         self.db
             .with_transaction(move |client| {
                 Box::pin(async move {
+                    // Verify the target organization has not been soft-deleted.
+                    // This prevents consuming the invitation token and adding an
+                    // orphaned member row for a deleted organization.
+                    let org_check_query = r#"
+                        SELECT COUNT(*) FROM organizations
+                        WHERE id = $1 AND deleted_at IS NULL
+                    "#;
+                    let org_row = client
+                        .query_one(org_check_query, &[&inv_org_id])
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to check organization status: {}",
+                                e
+                            ))
+                        })?;
+                    let org_count: i64 = org_row.get(0);
+                    if org_count == 0 {
+                        return Err(AuthencError::resource_not_found(
+                            "Organization not found or has been deleted",
+                        ));
+                    }
+
                     // Mark invitation as accepted with AND accepted_at IS NULL
                     // and AND expires_at > NOW() to prevent race conditions
                     // and guard against accepting expired invitations.
