@@ -493,6 +493,16 @@ impl OrganizationService {
         self.update_member_role(organization_id, new_owner, OrganizationRole::Owner)
             .await?;
 
+        // Update owner_id in the organizations table to keep it consistent
+        let query = r#"
+            UPDATE organizations
+            SET owner_id = $2, updated_at = NOW()
+            WHERE id = $1 AND deleted_at IS NULL
+        "#;
+        self.db.execute(query, &[organization_id, new_owner])
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to update organization owner_id: {}", e)))?;
+
         Ok(())
     }
 

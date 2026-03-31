@@ -289,6 +289,18 @@ pub async fn update_member_role(
         _ => return Err(AuthencError::validation("Bad request")),
     };
 
+    // Prevent demoting the last owner of the organization
+    if !matches!(role, OrganizationRole::Owner) {
+        let target_is_owner = service.has_role(&id, &user_id, &OrganizationRole::Owner).await.unwrap_or(false);
+        if target_is_owner {
+            let members = service.get_members(&id).await.map_err(|e| AuthencError::internal(format!("Internal server error: {}", e)))?;
+            let owner_count = members.iter().filter(|m| m.role == "owner").count();
+            if owner_count <= 1 {
+                return Err(AuthencError::validation("Cannot demote the last owner of an organization"));
+            }
+        }
+    }
+
     match service.update_member_role(&id, &user_id, role).await {
         Ok(_) => Ok(Json(serde_json::json!({
             "success": true,
