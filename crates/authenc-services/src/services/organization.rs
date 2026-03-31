@@ -116,7 +116,8 @@ pub struct OrganizationInvitation {
     pub expires_at: chrono::DateTime<chrono::Utc>,
     /// Timestamp when the invitation was accepted
     pub accepted_at: Option<chrono::DateTime<chrono::Utc>>,
-    /// Unique token for the invitation
+    /// Unique token for the invitation (never serialized in responses)
+    #[serde(skip_serializing)]
     pub token: String,
 }
 
@@ -375,6 +376,161 @@ impl OrganizationService {
         )
         .await
         .map_err(|e| AuthencError::database(format!("Failed to remove member: {}", e)))
+    }
+
+    /// Remove member from organization with atomic last-owner protection.
+    /// Uses a transaction with SELECT ... FOR UPDATE to prevent TOCTOU races.
+    pub async fn remove_member_safe(
+        &self,
+        organization_id: &Uuid,
+        user_id: &Uuid,
+    ) -> Result<()> {
+        let org_id = *organization_id;
+        let uid = *user_id;
+
+        self.db
+            .with_transaction(move |client| {
+                Box::pin(async move {
+                    // Lock the owner rows for this organization to prevent concurrent modifications
+                    let count_query = r#"
+                        SELECT COUNT(*) FROM organization_members
+                        WHERE organization_id = $1 AND role = 'owner'
+                        FOR UPDATE
+                    "#;
+                    let row = client
+                        .query_one(count_query, &[&org_id])
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!("Failed to count owners: {}", e))
+                        })?;
+                    let owner_count: i64 = row.get(0);
+
+                    // Check if the target is an owner
+                    let role_query = r#"
+                        SELECT role FROM organization_members
+                        WHERE organization_id = $1 AND user_id = $2
+                        FOR UPDATE
+                    "#;
+                    let role_row = client
+                        .query_opt(role_query, &[&org_id, &uid])
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!("Failed to get member role: {}", e))
+                        })?;
+
+                    if let Some(row) = role_row {
+                        let role: String = row.get(0);
+                        if role == "owner" && owner_count <= 1 {
+                            return Err(AuthencError::validation(
+                                "Cannot remove the last owner of an organization",
+                            ));
+                        }
+                    }
+
+                    // Perform the removal
+                    let delete_query = r#"
+                        DELETE FROM organization_members
+                        WHERE organization_id = $1 AND user_id = $2
+                    "#;
+                    client
+                        .execute(delete_query, &[&org_id, &uid])
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!("Failed to remove member: {}", e))
+                        })?;
+
+                    Ok(())
+                })
+            })
+            .await
+    }
+
+    /// Update member role with atomic last-owner protection.
+    /// Uses a transaction with SELECT ... FOR UPDATE to prevent TOCTOU races.
+    pub async fn update_member_role_safe(
+        &self,
+        organization_id: &Uuid,
+        user_id: &Uuid,
+        new_role: OrganizationRole,
+    ) -> Result<()> {
+        let org_id = *organization_id;
+        let uid = *user_id;
+        let new_role_str = new_role.as_str().to_string();
+
+        self.db
+            .with_transaction(move |client| {
+                Box::pin(async move {
+                    // Lock the owner rows for this organization to prevent concurrent modifications
+                    let count_query = r#"
+                        SELECT COUNT(*) FROM organization_members
+                        WHERE organization_id = $1 AND role = 'owner'
+                        FOR UPDATE
+                    "#;
+                    let row = client
+                        .query_one(count_query, &[&org_id])
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!("Failed to count owners: {}", e))
+                        })?;
+                    let owner_count: i64 = row.get(0);
+
+                    // Check if the target is currently an owner
+                    let role_query = r#"
+                        SELECT role FROM organization_members
+                        WHERE organization_id = $1 AND user_id = $2
+                        FOR UPDATE
+                    "#;
+                    let role_row = client
+                        .query_opt(role_query, &[&org_id, &uid])
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!("Failed to get member role: {}", e))
+                        })?;
+
+                    match role_row {
+                        None => {
+                            return Err(AuthencError::resource_not_found(
+                                "Member not found in organization",
+                            ));
+                        }
+                        Some(row) => {
+                            let current_role: String = row.get(0);
+                            if current_role == "owner"
+                                && new_role_str != "owner"
+                                && owner_count <= 1
+                            {
+                                return Err(AuthencError::validation(
+                                    "Cannot demote the last owner of an organization",
+                                ));
+                            }
+                        }
+                    }
+
+                    // Perform the role update
+                    let update_query = r#"
+                        UPDATE organization_members
+                        SET role = $3, updated_at = NOW()
+                        WHERE organization_id = $1 AND user_id = $2
+                    "#;
+                    let rows_affected = client
+                        .execute(update_query, &[&org_id, &uid, &new_role_str])
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to update member role: {}",
+                                e
+                            ))
+                        })?;
+                    if rows_affected == 0 {
+                        return Err(AuthencError::resource_not_found(
+                            "Member not found in organization",
+                        ));
+                    }
+
+                    Ok(())
+                })
+            })
+            .await
     }
 
     /// Update member role

@@ -241,16 +241,8 @@ pub async fn remove_member(
         return Err(AuthencError::forbidden("Only organization owners can remove other owners"));
     }
 
-    // Prevent removing the last owner from the organization
-    if target_is_owner {
-        let members = service.get_members(&id).await.map_err(|e| AuthencError::internal(format!("Internal server error: {}", e)))?;
-        let owner_count = members.iter().filter(|m| m.role == "owner").count();
-        if owner_count <= 1 {
-            return Err(AuthencError::validation("Cannot remove the last owner of an organization"));
-        }
-    }
-
-    match service.remove_member(&id, &user_id).await {
+    // Use the transaction-safe removal that atomically checks last-owner constraint
+    match service.remove_member_safe(&id, &user_id).await {
         Ok(_) => Ok(Json(serde_json::json!({
             "success": true,
             "message": "Member removed successfully"
@@ -289,19 +281,8 @@ pub async fn update_member_role(
         _ => return Err(AuthencError::validation("Bad request")),
     };
 
-    // Prevent demoting the last owner of the organization
-    if !matches!(role, OrganizationRole::Owner) {
-        let target_is_owner = service.has_role(&id, &user_id, &OrganizationRole::Owner).await.unwrap_or(false);
-        if target_is_owner {
-            let members = service.get_members(&id).await.map_err(|e| AuthencError::internal(format!("Internal server error: {}", e)))?;
-            let owner_count = members.iter().filter(|m| m.role == "owner").count();
-            if owner_count <= 1 {
-                return Err(AuthencError::validation("Cannot demote the last owner of an organization"));
-            }
-        }
-    }
-
-    match service.update_member_role(&id, &user_id, role).await {
+    // Use the transaction-safe update that atomically checks last-owner constraint
+    match service.update_member_role_safe(&id, &user_id, role).await {
         Ok(_) => Ok(Json(serde_json::json!({
             "success": true,
             "message": "Member role updated successfully"
@@ -361,7 +342,16 @@ pub async fn create_invitation(
     {
         Ok(invitation) => Ok(Json(serde_json::json!({
             "success": true,
-            "invitation": invitation
+            "invitation": {
+                "id": invitation.id,
+                "organization_id": invitation.organization_id,
+                "email": invitation.email,
+                "role": invitation.role,
+                "invited_by": invitation.invited_by,
+                "invited_at": invitation.invited_at,
+                "expires_at": invitation.expires_at,
+            },
+            "token": invitation.token,
         }))),
         Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
