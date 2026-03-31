@@ -748,11 +748,12 @@ impl OrganizationService {
             .with_transaction(move |client| {
                 Box::pin(async move {
                     // Mark invitation as accepted with AND accepted_at IS NULL
-                    // to prevent race conditions.
+                    // and AND expires_at > NOW() to prevent race conditions
+                    // and guard against accepting expired invitations.
                     let accept_query = r#"
                         UPDATE organization_invitations
                         SET accepted_at = NOW(), accepted_by = $2
-                        WHERE id = $1 AND accepted_at IS NULL
+                        WHERE id = $1 AND accepted_at IS NULL AND expires_at > NOW()
                     "#;
                     let rows_affected = client
                         .execute(accept_query, &[&inv_id, &user_id])
@@ -765,7 +766,7 @@ impl OrganizationService {
                         })?;
                     if rows_affected == 0 {
                         return Err(AuthencError::validation(
-                            "Invitation has already been accepted",
+                            "Invitation has already been accepted or has expired",
                         ));
                     }
 
