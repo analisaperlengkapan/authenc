@@ -381,12 +381,24 @@ impl OrganizationService {
     }
 
     /// Accept invitation
-    pub async fn accept_invitation(&self, token: &str, user_id: Uuid) -> Result<Organization> {
+    pub async fn accept_invitation(
+        &self,
+        token: &str,
+        user_id: Uuid,
+        expected_organization_id: &Uuid,
+    ) -> Result<Organization> {
         // Find invitation by token
         let invitation = self
             .get_invitation_by_token(token)
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("Invitation not found or expired"))?;
+
+        // Validate that the invitation belongs to the expected organization
+        if invitation.organization_id != *expected_organization_id {
+            return Err(AuthencError::validation(
+                "Invitation does not belong to the specified organization",
+            ));
+        }
 
         // Check if expired
         if invitation.expires_at < chrono::Utc::now() {

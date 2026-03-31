@@ -348,20 +348,12 @@ pub async fn accept_invitation(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    match service.accept_invitation(&request.token, user_id).await {
-        Ok(organization) => {
-            // Validate that the accepted invitation belongs to the organization in the URL
-            if organization.id != id {
-                return Err(AuthencError::validation(
-                    "Invitation does not belong to the specified organization",
-                ));
-            }
-            Ok(Json(serde_json::json!({
-                "success": true,
-                "organization": organization,
-                "message": "Successfully joined organization"
-            })))
-        }
+    match service.accept_invitation(&request.token, user_id, &id).await {
+        Ok(organization) => Ok(Json(serde_json::json!({
+            "success": true,
+            "organization": organization,
+            "message": "Successfully joined organization"
+        }))),
         Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }
