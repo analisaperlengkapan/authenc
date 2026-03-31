@@ -235,6 +235,21 @@ pub async fn remove_member(
         return Err(AuthencError::forbidden("Only organization owners or admins can remove members"));
     }
 
+    // Prevent removing an owner unless the caller is also an owner
+    let target_is_owner = service.has_role(&id, &user_id, &OrganizationRole::Owner).await.unwrap_or(false);
+    if target_is_owner && !is_owner {
+        return Err(AuthencError::forbidden("Only organization owners can remove other owners"));
+    }
+
+    // Prevent removing the last owner from the organization
+    if target_is_owner {
+        let members = service.get_members(&id).await.map_err(|e| AuthencError::internal(format!("Internal server error: {}", e)))?;
+        let owner_count = members.iter().filter(|m| m.role == "owner").count();
+        if owner_count <= 1 {
+            return Err(AuthencError::validation("Cannot remove the last owner of an organization"));
+        }
+    }
+
     match service.remove_member(&id, &user_id).await {
         Ok(_) => Ok(Json(serde_json::json!({
             "success": true,

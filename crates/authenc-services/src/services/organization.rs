@@ -413,18 +413,30 @@ impl OrganizationService {
         }
 
         // Mark invitation as accepted first to prevent race conditions
-        // where concurrent requests could both see the invitation as unaccepted
+        // where concurrent requests could both see the invitation as unaccepted.
+        // Uses AND accepted_at IS NULL so only the first concurrent request succeeds.
         self.mark_invitation_accepted(&invitation.id, user_id)
             .await?;
 
-        // Add user to organization
-        self.add_member(
+        // Add user to organization. If this fails, we need to roll back the
+        // invitation acceptance so the token is not permanently consumed.
+        if let Err(e) = self.add_member(
             &invitation.organization_id,
             &user_id,
             invitation.role.clone(),
             Some(invitation.invited_by),
         )
-        .await?;
+        .await
+        {
+            // Best-effort rollback: clear accepted_at so the invitation can be retried
+            let rollback_query = r#"
+                UPDATE organization_invitations
+                SET accepted_at = NULL, accepted_by = NULL
+                WHERE id = $1
+            "#;
+            let _ = self.db.execute(rollback_query, &[&invitation.id]).await;
+            return Err(e);
+        }
 
         // Get organization details
         self.get_organization(&invitation.organization_id)
