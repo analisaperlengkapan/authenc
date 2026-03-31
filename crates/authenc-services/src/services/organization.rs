@@ -616,16 +616,20 @@ impl OrganizationService {
     }
 
     async fn mark_invitation_accepted(&self, invitation_id: &Uuid, user_id: Uuid) -> Result<()> {
-        // First get the invitation to get the token_hash
-        // Since we have invitation_id but accept_invitation expects token_hash,
-        // we need to query it first. For now, let's add a direct database update
+        // Use AND accepted_at IS NULL to prevent race conditions:
+        // only the first concurrent request will match and update the row.
         let query = r#"
             UPDATE organization_invitations
             SET accepted_at = NOW(), accepted_by = $2
-            WHERE id = $1
+            WHERE id = $1 AND accepted_at IS NULL
         "#;
 
-        self.db.execute(query, &[invitation_id, &user_id]).await?;
+        let rows_affected = self.db.execute(query, &[invitation_id, &user_id]).await?;
+        if rows_affected == 0 {
+            return Err(AuthencError::validation(
+                "Invitation has already been accepted",
+            ));
+        }
         Ok(())
     }
 }
