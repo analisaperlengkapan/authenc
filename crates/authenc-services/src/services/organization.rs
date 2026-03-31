@@ -455,18 +455,18 @@ impl OrganizationService {
             .with_transaction(move |client| {
                 Box::pin(async move {
                     // Lock the owner rows for this organization to prevent concurrent modifications
-                    let count_query = r#"
-                        SELECT COUNT(*) FROM organization_members
+                    let owner_query = r#"
+                        SELECT id FROM organization_members
                         WHERE organization_id = $1 AND LOWER(role) = 'owner'
                         FOR UPDATE
                     "#;
-                    let row = client
-                        .query_one(count_query, &[&org_id])
+                    let owner_rows = client
+                        .query(owner_query, &[&org_id])
                         .await
                         .map_err(|e| {
                             AuthencError::database(format!("Failed to count owners: {}", e))
                         })?;
-                    let owner_count: i64 = row.get(0);
+                    let owner_count = owner_rows.len() as i64;
 
                     // Check if the target is an owner
                     let role_query = r#"
@@ -529,18 +529,18 @@ impl OrganizationService {
             .with_transaction(move |client| {
                 Box::pin(async move {
                     // Lock the owner rows for this organization to prevent concurrent modifications
-                    let count_query = r#"
-                        SELECT COUNT(*) FROM organization_members
+                    let owner_query = r#"
+                        SELECT id FROM organization_members
                         WHERE organization_id = $1 AND LOWER(role) = 'owner'
                         FOR UPDATE
                     "#;
-                    let row = client
-                        .query_one(count_query, &[&org_id])
+                    let owner_rows = client
+                        .query(owner_query, &[&org_id])
                         .await
                         .map_err(|e| {
                             AuthencError::database(format!("Failed to count owners: {}", e))
                         })?;
-                    let owner_count: i64 = row.get(0);
+                    let owner_count = owner_rows.len() as i64;
 
                     // Check if the target is currently an owner
                     let role_query = r#"
