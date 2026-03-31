@@ -104,10 +104,20 @@ pub async fn get_organization(
 /// Update organization handler
 pub async fn update_organization(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
     Json(updates): Json<OrganizationUpdate>,
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
+
+    let caller_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    let is_owner = service.has_role(&id, &caller_id, &OrganizationRole::Owner).await.unwrap_or(false);
+    let is_admin = service.has_role(&id, &caller_id, &OrganizationRole::Admin).await.unwrap_or(false);
+    if !is_owner && !is_admin {
+        return Err(AuthencError::forbidden("Only organization owners or admins can update organizations"));
+    }
 
     match service.update_organization(&id, &updates).await {
         Ok(_) => Ok(Json(serde_json::json!({
