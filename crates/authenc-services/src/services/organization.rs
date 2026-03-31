@@ -432,12 +432,17 @@ impl OrganizationService {
                         DELETE FROM organization_members
                         WHERE organization_id = $1 AND user_id = $2
                     "#;
-                    client
+                    let rows_affected = client
                         .execute(delete_query, &[&org_id, &uid])
                         .await
                         .map_err(|e| {
                             AuthencError::database(format!("Failed to remove member: {}", e))
                         })?;
+                    if rows_affected == 0 {
+                        return Err(AuthencError::resource_not_found(
+                            "Member not found in organization",
+                        ));
+                    }
 
                     Ok(())
                 })

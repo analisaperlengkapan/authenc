@@ -64,7 +64,7 @@ pub async fn create_organization(
             "success": true,
             "organization": organization
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -80,7 +80,7 @@ pub async fn list_organizations(
             "success": true,
             "organizations": organizations
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -97,7 +97,7 @@ pub async fn get_organization(
             "organization": organization
         }))),
         Ok(None) => Err(AuthencError::resource_not_found("Resource not found")),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -124,7 +124,7 @@ pub async fn update_organization(
             "success": true,
             "message": "Organization updated successfully"
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -148,7 +148,7 @@ pub async fn delete_organization(
             "success": true,
             "message": "Organization deleted successfully"
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -164,7 +164,7 @@ pub async fn get_members(
             "success": true,
             "members": members
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -214,7 +214,7 @@ pub async fn add_member(
             "success": true,
             "message": "Member added successfully"
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -247,7 +247,7 @@ pub async fn remove_member(
             "success": true,
             "message": "Member removed successfully"
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -287,7 +287,7 @@ pub async fn update_member_role(
             "success": true,
             "message": "Member role updated successfully"
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -353,7 +353,7 @@ pub async fn create_invitation(
             },
             "token": invitation.token,
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -381,7 +381,7 @@ pub async fn accept_invitation(
             "organization": organization,
             "message": "Successfully joined organization"
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -397,7 +397,7 @@ pub async fn get_settings(
             "success": true,
             "settings": settings
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -428,7 +428,7 @@ pub async fn update_settings(
             "success": true,
             "message": "Settings updated successfully"
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
 
@@ -444,6 +444,6 @@ pub async fn get_user_organizations(
             "success": true,
             "organizations": organizations
         }))),
-        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+        Err(e) => Err(e),
     }
 }
