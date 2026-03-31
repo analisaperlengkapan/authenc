@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS webauthn_credentials (
 -- Organizations
 CREATE TABLE IF NOT EXISTS organizations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
     description TEXT,
     domain VARCHAR(255),
@@ -490,6 +490,7 @@ CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user_id ON webauthn_credenti
 CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_credential_id ON webauthn_credentials(credential_id);
 
 -- Organization indexes
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_name_unique ON organizations(name) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_organizations_owner_id ON organizations(owner_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_organization_members_org_id ON organization_members(organization_id);
 CREATE INDEX IF NOT EXISTS idx_organization_members_user_id ON organization_members(user_id);
