@@ -36,6 +36,7 @@ pub struct CreateOrganizationRequest {
     pub name: String,
     pub display_name: String,
     pub description: Option<String>,
+    pub domain: Option<String>,
 }
 
 /// Create organization handler
@@ -55,6 +56,7 @@ pub async fn create_organization(
             &request.display_name,
             request.description.as_deref(),
             created_by,
+            request.domain.as_deref(),
         )
         .await
     {
@@ -119,9 +121,17 @@ pub async fn update_organization(
 /// Delete organization handler
 pub async fn delete_organization(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
+
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    if !service.has_role(&id, &user_id, &OrganizationRole::Owner).await.unwrap_or(false) {
+        return Err(AuthencError::forbidden("Only organization owners can delete organizations"));
+    }
 
     match service.delete_organization(&id).await {
         Ok(_) => Ok(Json(serde_json::json!({
@@ -190,9 +200,19 @@ pub async fn add_member(
 /// Remove member handler
 pub async fn remove_member(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
+
+    let caller_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    let is_owner = service.has_role(&id, &caller_id, &OrganizationRole::Owner).await.unwrap_or(false);
+    let is_admin = service.has_role(&id, &caller_id, &OrganizationRole::Admin).await.unwrap_or(false);
+    if !is_owner && !is_admin {
+        return Err(AuthencError::forbidden("Only organization owners or admins can remove members"));
+    }
 
     match service.remove_member(&id, &user_id).await {
         Ok(_) => Ok(Json(serde_json::json!({
@@ -212,10 +232,18 @@ pub struct UpdateMemberRoleRequest {
 /// Update member role handler
 pub async fn update_member_role(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
     Json(request): Json<UpdateMemberRoleRequest>,
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
+
+    let caller_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    if !service.has_role(&id, &caller_id, &OrganizationRole::Owner).await.unwrap_or(false) {
+        return Err(AuthencError::forbidden("Only organization owners can update member roles"));
+    }
 
     let role = match request.role.as_str() {
         "owner" => OrganizationRole::Owner,
@@ -326,9 +354,13 @@ pub async fn get_settings(
 /// Update organization settings handler
 pub async fn update_settings(
     State(state): State<Arc<AppState>>,
-    Path(_id): Path<Uuid>,
+    Path(id): Path<Uuid>,
     Json(settings): Json<crate::services::organization::OrganizationSettings>,
 ) -> Result<Json<serde_json::Value>> {
+    if id != settings.organization_id {
+        return Err(AuthencError::validation("Path organization ID does not match body organization_id"));
+    }
+
     let service = OrganizationService::new(state.database.clone());
 
     match service.update_settings(&settings).await {

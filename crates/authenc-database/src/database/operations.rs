@@ -1453,7 +1453,7 @@ pub mod organizations {
                 o.enabled, o.created_at, o.updated_at, o.owner_id, o.realm_id, o.deleted_at
             FROM organizations o
             JOIN organization_members om ON o.id = om.organization_id
-            WHERE om.user_id = $1
+            WHERE om.user_id = $1 AND o.deleted_at IS NULL
             ORDER BY o.created_at
         "#;
 

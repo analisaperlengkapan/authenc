@@ -159,13 +159,14 @@ impl OrganizationService {
         display_name: &str,
         description: Option<&str>,
         created_by: Uuid,
+        domain: Option<&str>,
     ) -> Result<Organization> {
         let organization = Organization {
             id: Uuid::new_v4(),
             name: name.to_string(),
             display_name: Some(display_name.to_string()),
             description: description.map(|s| s.to_string()),
-            domain: None,
+            domain: domain.map(|s| s.to_string()),
             logo_url: None,
             website_url: None,
             owner_id: created_by,
@@ -227,6 +228,9 @@ impl OrganizationService {
             .await?
             .ok_or_else(|| AuthencError::resource_not_found("Organization not found"))?;
 
+        if let Some(name) = &updates.name {
+            org.name = name.clone();
+        }
         if let Some(display_name) = &updates.display_name {
             org.display_name = Some(display_name.clone());
         }
@@ -616,6 +620,8 @@ impl OrganizationService {
 /// Organization update request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OrganizationUpdate {
+    /// New name for the organization
+    pub name: Option<String>,
     /// New display name for the organization
     pub display_name: Option<String>,
     /// New description for the organization
