@@ -2226,14 +2226,28 @@
             const errorDiv = document.getElementById('edit-organization-error');
             errorDiv.style.display = 'none';
 
+            const isUpdate = id !== '';
+
+            // For create: omit empty optional fields (backend defaults to NULL).
+            // For update: explicitly send null to clear a field, or omit to leave unchanged.
             const payload = {
                 name: document.getElementById('edit-organization-name').value,
                 display_name: document.getElementById('edit-organization-display-name').value,
-                description: document.getElementById('edit-organization-description').value || null,
-                domain: document.getElementById('edit-organization-domain').value || null,
             };
 
-            const isUpdate = id !== '';
+            const descVal = document.getElementById('edit-organization-description').value;
+            const domainVal = document.getElementById('edit-organization-domain').value;
+
+            if (isUpdate) {
+                // Send null to clear, string to set — always include so backend knows intent
+                payload.description = descVal || null;
+                payload.domain = domainVal || null;
+            } else {
+                // For create, only include if non-empty
+                if (descVal) payload.description = descVal;
+                if (domainVal) payload.domain = domainVal;
+            }
+
             let url = `${window.location.origin}/api/v1/organizations/`;
             if (isUpdate) {
                 url += `${id}`;

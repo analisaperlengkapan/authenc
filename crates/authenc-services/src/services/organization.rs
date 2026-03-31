@@ -345,16 +345,17 @@ impl OrganizationService {
                         org.display_name = Some(display_name.clone());
                     }
                     if let Some(description) = &updates_description {
-                        org.description = Some(description.clone());
+                        // Some(None) → clear to NULL, Some(Some(val)) → set value
+                        org.description = description.clone();
                     }
                     if let Some(domain) = &updates_domain {
-                        org.domain = Some(domain.clone());
+                        org.domain = domain.clone();
                     }
                     if let Some(logo_url) = &updates_logo_url {
-                        org.logo_url = Some(logo_url.clone());
+                        org.logo_url = logo_url.clone();
                     }
                     if let Some(website) = &updates_website {
-                        org.website_url = Some(website.clone());
+                        org.website_url = website.clone();
                     }
                     if let Some(enabled) = updates_enabled {
                         org.enabled = enabled;
@@ -1116,20 +1117,31 @@ impl OrganizationService {
 }
 
 /// Organization update request
+///
+/// For optional/clearable string fields (`description`, `domain`, `logo_url`,
+/// `website`), the type is `Option<Option<String>>` so callers can distinguish
+/// three states:
+///   - key absent  → outer `None`  → field is left unchanged
+///   - key: null   → `Some(None)`  → field is cleared to NULL in the database
+///   - key: "val"  → `Some(Some("val"))` → field is set to the new value
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OrganizationUpdate {
     /// New name for the organization
     pub name: Option<String>,
     /// New display name for the organization
     pub display_name: Option<String>,
-    /// New description for the organization
-    pub description: Option<String>,
-    /// New domain for the organization
-    pub domain: Option<String>,
-    /// New logo URL for the organization
-    pub logo_url: Option<String>,
-    /// New website URL for the organization
-    pub website: Option<String>,
+    /// New description for the organization (send null to clear)
+    #[serde(default)]
+    pub description: Option<Option<String>>,
+    /// New domain for the organization (send null to clear)
+    #[serde(default)]
+    pub domain: Option<Option<String>>,
+    /// New logo URL for the organization (send null to clear)
+    #[serde(default)]
+    pub logo_url: Option<Option<String>>,
+    /// New website URL for the organization (send null to clear)
+    #[serde(default)]
+    pub website: Option<Option<String>>,
     /// Whether the organization should be enabled
     pub enabled: Option<bool>,
 }

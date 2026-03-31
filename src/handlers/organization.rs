@@ -93,9 +93,17 @@ pub async fn list_organizations(
 /// Get organization handler
 pub async fn get_organization(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
+
+    let caller_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    if !service.is_member(&id, &caller_id).await? {
+        return Err(AuthencError::forbidden("Only organization members can view organization details"));
+    }
 
     match service.get_organization(&id).await {
         Ok(Some(organization)) => Ok(Json(serde_json::json!({
