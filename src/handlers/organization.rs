@@ -340,6 +340,7 @@ pub struct AcceptInvitationRequest {
 pub async fn accept_invitation(
     State(state): State<Arc<AppState>>,
     Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
+    Path(id): Path<Uuid>,
     Json(request): Json<AcceptInvitationRequest>,
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
@@ -348,11 +349,19 @@ pub async fn accept_invitation(
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
     match service.accept_invitation(&request.token, user_id).await {
-        Ok(organization) => Ok(Json(serde_json::json!({
-            "success": true,
-            "organization": organization,
-            "message": "Successfully joined organization"
-        }))),
+        Ok(organization) => {
+            // Validate that the accepted invitation belongs to the organization in the URL
+            if organization.id != id {
+                return Err(AuthencError::validation(
+                    "Invitation does not belong to the specified organization",
+                ));
+            }
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "organization": organization,
+                "message": "Successfully joined organization"
+            })))
+        }
         Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
     }
 }

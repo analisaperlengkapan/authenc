@@ -1353,14 +1353,19 @@ pub mod organizations {
         Ok(())
     }
 
-    /// Delete organization
+    /// Delete organization (soft delete)
     pub async fn delete_organization(db: &Database, organization_id: &Uuid) -> Result<()> {
-        let query = "DELETE FROM organizations WHERE id = $1";
+        let now = Utc::now();
+        let query = "UPDATE organizations SET deleted_at = $2, updated_at = $2 WHERE id = $1 AND deleted_at IS NULL";
 
-        db.execute(query, &[organization_id]).await.map_err(|e| {
+        let rows_affected = db.execute(query, &[organization_id, &now]).await.map_err(|e| {
             error!("Failed to delete organization: {}", e);
             AuthencError::database("Failed to delete organization")
         })?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
 
         Ok(())
     }
