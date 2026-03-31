@@ -1081,7 +1081,6 @@ pub mod organizations {
     use crate::database::Database;
     use chrono::Utc;
     use log::error;
-    use std::collections::HashMap;
     use uuid::Uuid;
 
     /// Create organization
@@ -1318,7 +1317,7 @@ pub mod organizations {
             WHERE id = $1 AND deleted_at IS NULL
         "#;
 
-        db.execute(
+        let rows_affected = db.execute(
             query,
             &[
                 &org.id,
@@ -1337,6 +1336,10 @@ pub mod organizations {
             error!("Failed to update organization: {}", e);
             AuthencError::database("Failed to update organization")
         })?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
 
         Ok(())
     }
@@ -1367,7 +1370,8 @@ pub mod organizations {
             SELECT om.id, om.organization_id, om.user_id, om.role, om.invited_by,
                    om.invited_at, om.joined_at, om.created_at, om.updated_at
             FROM organization_members om
-            WHERE om.organization_id = $1
+            JOIN organizations o ON om.organization_id = o.id
+            WHERE om.organization_id = $1 AND o.deleted_at IS NULL
             ORDER BY om.joined_at
         "#;
 
@@ -1454,12 +1458,16 @@ pub mod organizations {
     ) -> Result<()> {
         let query = "DELETE FROM organization_members WHERE organization_id = $1 AND user_id = $2";
 
-        db.execute(query, &[organization_id, user_id])
+        let rows_affected = db.execute(query, &[organization_id, user_id])
             .await
             .map_err(|e| {
                 error!("Failed to remove organization member: {}", e);
                 AuthencError::database("Failed to remove organization member")
             })?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Member not found in organization"));
+        }
 
         Ok(())
     }
@@ -1473,16 +1481,20 @@ pub mod organizations {
     ) -> Result<()> {
         let query = r#"
             UPDATE organization_members
-            SET role = $3
+            SET role = $3, updated_at = NOW()
             WHERE organization_id = $1 AND user_id = $2
         "#;
 
-        db.execute(query, &[organization_id, user_id, &role.as_str()])
+        let rows_affected = db.execute(query, &[organization_id, user_id, &role.as_str()])
             .await
             .map_err(|e| {
                 error!("Failed to update member role: {}", e);
                 AuthencError::database("Failed to update member role")
             })?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Member not found in organization"));
+        }
 
         Ok(())
     }

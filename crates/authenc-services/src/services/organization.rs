@@ -4,7 +4,6 @@ use authenc_models::models::organization::{
     Organization, OrganizationInvitation as ModelOrganizationInvitation, OrganizationMember,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -1018,8 +1017,6 @@ pub struct OrganizationUpdate {
     pub website: Option<String>,
     /// Whether the organization should be enabled
     pub enabled: Option<bool>,
-    /// New attributes for the organization
-    pub attributes: Option<HashMap<String, String>>,
 }
 
 #[cfg(test)]
