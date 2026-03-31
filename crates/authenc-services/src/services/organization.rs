@@ -487,23 +487,88 @@ impl OrganizationService {
             return Err(AuthencError::forbidden("Only owner can transfer ownership"));
         }
 
-        // Update member roles
-        self.update_member_role(organization_id, current_owner, OrganizationRole::Admin)
-            .await?;
-        self.update_member_role(organization_id, new_owner, OrganizationRole::Owner)
-            .await?;
+        // Verify new owner is a member of the organization
+        if !self.is_member(organization_id, new_owner).await? {
+            return Err(AuthencError::validation(
+                "New owner must be a member of the organization",
+            ));
+        }
 
-        // Update owner_id in the organizations table to keep it consistent
-        let query = r#"
-            UPDATE organizations
-            SET owner_id = $2, updated_at = NOW()
-            WHERE id = $1 AND deleted_at IS NULL
-        "#;
-        self.db.execute(query, &[organization_id, new_owner])
+        // Use a transaction to ensure all three updates are atomic:
+        // 1. Demote current owner to Admin
+        // 2. Promote new owner to Owner
+        // 3. Update organizations.owner_id
+        let org_id = *organization_id;
+        let old_owner = *current_owner;
+        let new_own = *new_owner;
+        let old_role_str = OrganizationRole::Admin.as_str().to_string();
+        let new_role_str = OrganizationRole::Owner.as_str().to_string();
+
+        self.db
+            .with_transaction(move |client| {
+                Box::pin(async move {
+                    // Demote current owner to Admin
+                    let rows = client
+                        .execute(
+                            r#"UPDATE organization_members
+                               SET role = $3, updated_at = NOW()
+                               WHERE organization_id = $1 AND user_id = $2"#,
+                            &[&org_id, &old_owner, &old_role_str],
+                        )
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to demote current owner: {}",
+                                e
+                            ))
+                        })?;
+                    if rows == 0 {
+                        return Err(AuthencError::resource_not_found(
+                            "Current owner not found in organization",
+                        ));
+                    }
+
+                    // Promote new owner to Owner
+                    let rows = client
+                        .execute(
+                            r#"UPDATE organization_members
+                               SET role = $3, updated_at = NOW()
+                               WHERE organization_id = $1 AND user_id = $2"#,
+                            &[&org_id, &new_own, &new_role_str],
+                        )
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to promote new owner: {}",
+                                e
+                            ))
+                        })?;
+                    if rows == 0 {
+                        return Err(AuthencError::resource_not_found(
+                            "New owner not found in organization",
+                        ));
+                    }
+
+                    // Update organizations.owner_id
+                    client
+                        .execute(
+                            r#"UPDATE organizations
+                               SET owner_id = $2, updated_at = NOW()
+                               WHERE id = $1 AND deleted_at IS NULL"#,
+                            &[&org_id, &new_own],
+                        )
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to update organization owner_id: {}",
+                                e
+                            ))
+                        })?;
+
+                    Ok(())
+                })
+            })
             .await
-            .map_err(|e| AuthencError::database(format!("Failed to update organization owner_id: {}", e)))?;
-
-        Ok(())
     }
 
     /// Add domain to organization for verification

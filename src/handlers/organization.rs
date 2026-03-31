@@ -414,6 +414,7 @@ pub async fn get_settings(
 /// Update organization settings handler
 pub async fn update_settings(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Path(id): Path<Uuid>,
     Json(settings): Json<crate::services::organization::OrganizationSettings>,
 ) -> Result<Json<serde_json::Value>> {
@@ -422,6 +423,15 @@ pub async fn update_settings(
     }
 
     let service = OrganizationService::new(state.database.clone());
+
+    let caller_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    let is_owner = service.has_role(&id, &caller_id, &OrganizationRole::Owner).await.unwrap_or(false);
+    let is_admin = service.has_role(&id, &caller_id, &OrganizationRole::Admin).await.unwrap_or(false);
+    if !is_owner && !is_admin {
+        return Err(AuthencError::forbidden("Only organization owners or admins can update settings"));
+    }
 
     match service.update_settings(&settings).await {
         Ok(_) => Ok(Json(serde_json::json!({
