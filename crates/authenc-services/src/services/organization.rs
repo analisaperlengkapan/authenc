@@ -191,6 +191,13 @@ impl OrganizationService {
         Ok(organization)
     }
 
+    /// List all organizations
+    pub async fn list_organizations(&self) -> Result<Vec<Organization>> {
+        authenc_database::database::operations::organizations::list_all_organizations(&self.db)
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to list organizations: {}", e)))
+    }
+
     /// Get organization by ID
     pub async fn get_organization(&self, organization_id: &Uuid) -> Result<Option<Organization>> {
         authenc_database::database::operations::organizations::get_organization_by_id(
@@ -304,9 +311,12 @@ impl OrganizationService {
             WHERE organization_id = $1 AND user_id = $2
         "#;
 
-        self.db.execute(query, &[organization_id, user_id, &role_str])
+        let rows_affected = self.db.execute(query, &[organization_id, user_id, &role_str])
             .await
             .map_err(|e| AuthencError::database(format!("Failed to update member role: {}", e)))?;
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Member not found in organization"));
+        }
         Ok(())
     }
 

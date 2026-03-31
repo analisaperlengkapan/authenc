@@ -316,7 +316,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Organization routes
         .nest(
             "/api/v1/organizations",
-            organization::create_organization_routes().with_state(state.clone()),
+            organization::create_organization_routes()
+                .layer(axum::middleware::from_fn_with_state(
+                    Arc::new(crate::middleware::auth::AuthState {
+                        jwt_secret: state.config.security.jwt_secret.clone(),
+                    }),
+                    crate::middleware::auth::auth_middleware,
+                ))
+                .with_state(state.clone()),
         )
         // Device management routes
         .nest("/api/v1/devices", device::create_device_routes().with_state(state.clone()))

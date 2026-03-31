@@ -67,17 +67,18 @@ pub async fn create_organization(
 
 /// List organizations handler
 pub async fn list_organizations(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Query(_params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>> {
-    // In production, implement pagination and filtering
-    // For now, return empty or implement a simple list if DB supports it
-    let organizations: Vec<serde_json::Value> = vec![];
+    let service = OrganizationService::new(state.database.clone());
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "organizations": organizations
-    })))
+    match service.list_organizations().await {
+        Ok(organizations) => Ok(Json(serde_json::json!({
+            "success": true,
+            "organizations": organizations
+        }))),
+        Err(e) => Err(AuthencError::internal(format!("Internal server error: {}", e))),
+    }
 }
 
 /// Get organization handler

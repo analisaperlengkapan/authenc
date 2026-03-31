@@ -1393,6 +1393,46 @@ pub mod organizations {
         Ok(members)
     }
 
+    /// List all organizations
+    pub async fn list_all_organizations(
+        db: &Database,
+    ) -> Result<Vec<Organization>> {
+        let query = r#"
+            SELECT
+                id, name, display_name, description, domain, logo_url, website_url,
+                enabled, created_at, updated_at, owner_id, realm_id, deleted_at
+            FROM organizations
+            WHERE deleted_at IS NULL
+            ORDER BY created_at DESC
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[]).await.map_err(|e| {
+            error!("Failed to list organizations: {}", e);
+            AuthencError::database("Failed to list organizations")
+        })?;
+
+        let mut organizations = Vec::new();
+        for row in rows {
+            organizations.push(Organization {
+                id: row.get(0),
+                name: row.get(1),
+                display_name: row.get(2),
+                description: row.get(3),
+                domain: row.get(4),
+                logo_url: row.get(5),
+                website_url: row.get(6),
+                enabled: row.get(7),
+                created_at: row.get(8),
+                updated_at: row.get(9),
+                owner_id: row.get(10),
+                realm_id: row.get(11),
+                deleted_at: row.get(12),
+            });
+        }
+
+        Ok(organizations)
+    }
+
     /// Get user organizations
     pub async fn get_user_organizations(
         db: &Database,
