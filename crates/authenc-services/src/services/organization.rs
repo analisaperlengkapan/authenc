@@ -162,35 +162,111 @@ impl OrganizationService {
         created_by: Uuid,
         domain: Option<&str>,
     ) -> Result<Organization> {
-        let organization = Organization {
-            id: Uuid::new_v4(),
-            name: name.to_string(),
-            display_name: Some(display_name.to_string()),
-            description: description.map(|s| s.to_string()),
-            domain: domain.map(|s| s.to_string()),
-            logo_url: None,
-            website_url: None,
-            owner_id: created_by,
-            realm_id: None,
-            enabled: true,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            deleted_at: None,
-        };
+        let org_name = name.to_string();
+        let org_display_name = display_name.to_string();
+        let org_description = description.map(|s| s.to_string());
+        let org_domain = domain.map(|s| s.to_string());
+        let role_str = OrganizationRole::Owner.as_str().to_string();
 
-        // Store organization in database (DB generates the actual ID)
-        let organization = self.store_organization(&organization).await?;
+        self.db
+            .with_transaction(move |client| {
+                Box::pin(async move {
+                    let now = chrono::Utc::now();
+                    let org_id = Uuid::new_v4();
 
-        // Add creator as owner
-        self.add_member(
-            &organization.id,
-            &created_by,
-            OrganizationRole::Owner,
-            Some(created_by),
-        )
-        .await?;
+                    // Insert organization
+                    let org_query = r#"
+                        INSERT INTO organizations (
+                            id, name, display_name, description, domain,
+                            logo_url, website_url, owner_id, realm_id,
+                            enabled, created_at, updated_at
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                        RETURNING
+                            id, name, display_name, description, domain,
+                            logo_url, website_url, owner_id, realm_id,
+                            enabled, created_at, updated_at, deleted_at
+                    "#;
 
-        Ok(organization)
+                    let row = client
+                        .query_one(
+                            org_query,
+                            &[
+                                &org_id,
+                                &org_name,
+                                &Some(org_display_name),
+                                &org_description,
+                                &org_domain,
+                                &None::<String>,  // logo_url
+                                &None::<String>,  // website_url
+                                &created_by,      // owner_id
+                                &None::<Uuid>,    // realm_id
+                                &true,            // enabled
+                                &now,
+                                &now,
+                            ],
+                        )
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to create organization: {}",
+                                e
+                            ))
+                        })?;
+
+                    let organization = Organization {
+                        id: row.get(0),
+                        name: row.get(1),
+                        display_name: row.get(2),
+                        description: row.get(3),
+                        domain: row.get(4),
+                        logo_url: row.get(5),
+                        website_url: row.get(6),
+                        owner_id: row.get(7),
+                        realm_id: row.get(8),
+                        enabled: row.get(9),
+                        created_at: row.get(10),
+                        updated_at: row.get(11),
+                        deleted_at: row.get(12),
+                    };
+
+                    // Add creator as owner member
+                    let member_id = Uuid::new_v4();
+                    let member_query = r#"
+                        INSERT INTO organization_members (
+                            id, organization_id, user_id, role, invited_by,
+                            invited_at, joined_at, created_at, updated_at
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    "#;
+
+                    client
+                        .execute(
+                            member_query,
+                            &[
+                                &member_id,
+                                &organization.id,
+                                &created_by,
+                                &role_str,
+                                &Some(created_by),
+                                &now,
+                                &now,
+                                &now,
+                                &now,
+                            ],
+                        )
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to add owner member: {}",
+                                e
+                            ))
+                        })?;
+
+                    Ok(organization)
+                })
+            })
+            .await
     }
 
     /// List all organizations
@@ -364,7 +440,7 @@ impl OrganizationService {
         invited_by: Uuid,
         expires_in_days: u32,
     ) -> Result<OrganizationInvitation> {
-        let invitation = OrganizationInvitation {
+        let mut invitation = OrganizationInvitation {
             id: Uuid::new_v4(),
             organization_id: *organization_id,
             email: email.to_string(),
@@ -376,8 +452,9 @@ impl OrganizationService {
             token: self.generate_invitation_token(),
         };
 
-        // Store invitation in database
-        self.store_invitation(&invitation).await?;
+        // Store invitation in database (DB generates the actual ID)
+        let db_id = self.store_invitation(&invitation).await?;
+        invitation.id = db_id;
         Ok(invitation)
     }
 
@@ -659,7 +736,7 @@ impl OrganizationService {
         .await
     }
 
-    async fn store_invitation(&self, invitation: &OrganizationInvitation) -> Result<()> {
+    async fn store_invitation(&self, invitation: &OrganizationInvitation) -> Result<Uuid> {
         // Convert service invitation to model invitation
         let model_invitation = ModelOrganizationInvitation {
             id: invitation.id,

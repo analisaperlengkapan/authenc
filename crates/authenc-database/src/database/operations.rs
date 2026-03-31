@@ -1195,7 +1195,7 @@ pub mod organizations {
     pub async fn create_invitation(
         db: &Database,
         invitation: &OrganizationInvitation,
-    ) -> Result<()> {
+    ) -> Result<Uuid> {
         let invitation_id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -1222,7 +1222,7 @@ pub mod organizations {
         )
         .await?;
 
-        Ok(())
+        Ok(invitation_id)
     }
 
     /// Get invitation by token
