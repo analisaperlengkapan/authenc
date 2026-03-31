@@ -457,7 +457,7 @@ impl OrganizationService {
                     // Lock the owner rows for this organization to prevent concurrent modifications
                     let count_query = r#"
                         SELECT COUNT(*) FROM organization_members
-                        WHERE organization_id = $1 AND role = 'owner'
+                        WHERE organization_id = $1 AND LOWER(role) = 'owner'
                         FOR UPDATE
                     "#;
                     let row = client
@@ -483,7 +483,7 @@ impl OrganizationService {
 
                     if let Some(row) = role_row {
                         let role: String = row.get(0);
-                        if role == "owner" && owner_count <= 1 {
+                        if role.to_lowercase() == "owner" && owner_count <= 1 {
                             return Err(AuthencError::validation(
                                 "Cannot remove the last owner of an organization",
                             ));
@@ -531,7 +531,7 @@ impl OrganizationService {
                     // Lock the owner rows for this organization to prevent concurrent modifications
                     let count_query = r#"
                         SELECT COUNT(*) FROM organization_members
-                        WHERE organization_id = $1 AND role = 'owner'
+                        WHERE organization_id = $1 AND LOWER(role) = 'owner'
                         FOR UPDATE
                     "#;
                     let row = client
@@ -563,7 +563,7 @@ impl OrganizationService {
                         }
                         Some(row) => {
                             let current_role: String = row.get(0);
-                            if current_role == "owner"
+                            if current_role.to_lowercase() == "owner"
                                 && new_role_str != "owner"
                                 && owner_count <= 1
                             {
@@ -906,7 +906,7 @@ impl OrganizationService {
                         }
                         Some(row) => {
                             let role: String = row.get(0);
-                            if role != "owner" {
+                            if role.to_lowercase() != "owner" {
                                 return Err(AuthencError::forbidden(
                                     "Only owner can transfer ownership",
                                 ));

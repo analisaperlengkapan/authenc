@@ -69,13 +69,19 @@ pub async fn create_organization(
 }
 
 /// List organizations handler
+///
+/// Returns only the organizations the authenticated user is a member of.
 pub async fn list_organizations(
     State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
     Query(_params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>> {
+    let caller_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
     let service = OrganizationService::new(state.database.clone());
 
-    match service.list_organizations().await {
+    match service.get_user_organizations(&caller_id).await {
         Ok(organizations) => Ok(Json(serde_json::json!({
             "success": true,
             "organizations": organizations
