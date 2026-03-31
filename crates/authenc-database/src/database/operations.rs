@@ -1289,35 +1289,23 @@ pub mod organizations {
     ) -> Result<Option<Organization>> {
         let query = r#"
             SELECT
-                id, name, display_name, description, domain, logo_url, website_url,
-                enabled, created_at, updated_at, owner_id, realm_id, deleted_at
+                id, name, display_name, description, domain,
+                logo_url, website_url, owner_id, realm_id,
+                enabled, created_at, updated_at, deleted_at
             FROM organizations
             WHERE domain = $1 AND deleted_at IS NULL
         "#;
 
-        let row = db.query_opt(query, &[&domain]).await.map_err(|e| {
-            error!("Failed to get organization by domain: {}", e);
-            AuthencError::database("Failed to get organization by domain")
-        })?;
-
-        if let Some(row) = row {
-            Ok(Some(Organization {
-                id: row.get(0),
-                name: row.get(1),
-                display_name: row.get(2),
-                description: row.get(3),
-                domain: row.get(4),
-                logo_url: row.get(5),
-                website_url: row.get(6),
-                enabled: row.get(7),
-                created_at: row.get(8),
-                updated_at: row.get(9),
-                owner_id: row.get(10),
-                realm_id: row.get(11),
-                deleted_at: row.get(12),
-            }))
-        } else {
-            Ok(None)
+        match db.query_opt(query, &[&domain]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get organization by domain: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get organization by domain: {}",
+                    e
+                )))
+            }
         }
     }
 
@@ -1413,11 +1401,13 @@ pub mod organizations {
     ) -> Result<Vec<Organization>> {
         let query = r#"
             SELECT
-                id, name, display_name, description, domain, logo_url, website_url,
-                enabled, created_at, updated_at, owner_id, realm_id, deleted_at
+                id, name, display_name, description, domain,
+                logo_url, website_url, owner_id, realm_id,
+                enabled, created_at, updated_at, deleted_at
             FROM organizations
             WHERE deleted_at IS NULL
             ORDER BY created_at DESC
+            LIMIT 1000
         "#;
 
         let rows: Vec<tokio_postgres::Row> = db.query(query, &[]).await.map_err(|e| {
@@ -1425,26 +1415,9 @@ pub mod organizations {
             AuthencError::database("Failed to list organizations")
         })?;
 
-        let mut organizations = Vec::new();
-        for row in rows {
-            organizations.push(Organization {
-                id: row.get(0),
-                name: row.get(1),
-                display_name: row.get(2),
-                description: row.get(3),
-                domain: row.get(4),
-                logo_url: row.get(5),
-                website_url: row.get(6),
-                enabled: row.get(7),
-                created_at: row.get(8),
-                updated_at: row.get(9),
-                owner_id: row.get(10),
-                realm_id: row.get(11),
-                deleted_at: row.get(12),
-            });
-        }
-
-        Ok(organizations)
+        rows.into_iter()
+            .map(|row| row.try_into())
+            .collect::<Result<Vec<Organization>>>()
     }
 
     /// Get user organizations
@@ -1454,8 +1427,9 @@ pub mod organizations {
     ) -> Result<Vec<Organization>> {
         let query = r#"
             SELECT
-                o.id, o.name, o.display_name, o.description, o.domain, o.logo_url, o.website_url,
-                o.enabled, o.created_at, o.updated_at, o.owner_id, o.realm_id, o.deleted_at
+                o.id, o.name, o.display_name, o.description, o.domain,
+                o.logo_url, o.website_url, o.owner_id, o.realm_id,
+                o.enabled, o.created_at, o.updated_at, o.deleted_at
             FROM organizations o
             JOIN organization_members om ON o.id = om.organization_id
             WHERE om.user_id = $1 AND o.deleted_at IS NULL
@@ -1467,26 +1441,9 @@ pub mod organizations {
             AuthencError::database("Failed to get user organizations")
         })?;
 
-        let mut organizations = Vec::new();
-        for row in rows {
-            organizations.push(Organization {
-                id: row.get(0),
-                name: row.get(1),
-                display_name: row.get(2),
-                description: row.get(3),
-                domain: row.get(4),
-                logo_url: row.get(5),
-                website_url: row.get(6),
-                enabled: row.get(7),
-                created_at: row.get(8),
-                updated_at: row.get(9),
-                owner_id: row.get(10),
-                realm_id: row.get(11),
-                deleted_at: row.get(12),
-            });
-        }
-
-        Ok(organizations)
+        rows.into_iter()
+            .map(|row| row.try_into())
+            .collect::<Result<Vec<Organization>>>()
     }
 
     /// Remove member from organization

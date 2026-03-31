@@ -413,8 +413,15 @@ impl OrganizationService {
 
     /// Check if user is member of organization
     pub async fn is_member(&self, organization_id: &Uuid, user_id: &Uuid) -> Result<bool> {
-        let members = self.get_members(organization_id).await?;
-        Ok(members.iter().any(|m| m.user_id == *user_id))
+        let query = r#"
+            SELECT COUNT(*) FROM organization_members
+            WHERE organization_id = $1 AND user_id = $2
+        "#;
+        let count: i64 = self.db.query_one(query, &[organization_id, user_id])
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to check membership: {}", e)))?
+            .get(0);
+        Ok(count > 0)
     }
 
     /// Check if user has role in organization
@@ -424,11 +431,16 @@ impl OrganizationService {
         user_id: &Uuid,
         role: &OrganizationRole,
     ) -> Result<bool> {
-        let members = self.get_members(organization_id).await?;
         let role_str = role.as_str();
-        Ok(members
-            .iter()
-            .any(|m| m.user_id == *user_id && m.role == role_str))
+        let query = r#"
+            SELECT COUNT(*) FROM organization_members
+            WHERE organization_id = $1 AND user_id = $2 AND role = $3
+        "#;
+        let count: i64 = self.db.query_one(query, &[organization_id, user_id, &role_str])
+            .await
+            .map_err(|e| AuthencError::database(format!("Failed to check role: {}", e)))?
+            .get(0);
+        Ok(count > 0)
     }
 
     /// Create invitation
@@ -498,31 +510,76 @@ impl OrganizationService {
             ));
         }
 
-        // Mark invitation as accepted first to prevent race conditions
-        // where concurrent requests could both see the invitation as unaccepted.
-        // Uses AND accepted_at IS NULL so only the first concurrent request succeeds.
-        self.mark_invitation_accepted(&invitation.id, user_id)
-            .await?;
+        // Use a transaction to atomically mark the invitation as accepted
+        // and add the user as a member. This prevents the case where the
+        // invitation is consumed but the member is not added.
+        let inv_id = invitation.id;
+        let inv_org_id = invitation.organization_id;
+        let inv_role = invitation.role.as_str().to_string();
+        let inv_invited_by = invitation.invited_by;
 
-        // Add user to organization. If this fails, we need to roll back the
-        // invitation acceptance so the token is not permanently consumed.
-        if let Err(e) = self.add_member(
-            &invitation.organization_id,
-            &user_id,
-            invitation.role.clone(),
-            Some(invitation.invited_by),
-        )
-        .await
-        {
-            // Best-effort rollback: clear accepted_at so the invitation can be retried
-            let rollback_query = r#"
-                UPDATE organization_invitations
-                SET accepted_at = NULL, accepted_by = NULL
-                WHERE id = $1
-            "#;
-            let _ = self.db.execute(rollback_query, &[&invitation.id]).await;
-            return Err(e);
-        }
+        self.db
+            .with_transaction(move |client| {
+                Box::pin(async move {
+                    // Mark invitation as accepted with AND accepted_at IS NULL
+                    // to prevent race conditions.
+                    let accept_query = r#"
+                        UPDATE organization_invitations
+                        SET accepted_at = NOW(), accepted_by = $2
+                        WHERE id = $1 AND accepted_at IS NULL
+                    "#;
+                    let rows_affected = client
+                        .execute(accept_query, &[&inv_id, &user_id])
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to mark invitation accepted: {}",
+                                e
+                            ))
+                        })?;
+                    if rows_affected == 0 {
+                        return Err(AuthencError::validation(
+                            "Invitation has already been accepted",
+                        ));
+                    }
+
+                    // Add user as organization member
+                    let member_id = Uuid::new_v4();
+                    let now = chrono::Utc::now();
+                    let member_query = r#"
+                        INSERT INTO organization_members (
+                            id, organization_id, user_id, role, invited_by,
+                            invited_at, joined_at, created_at, updated_at
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    "#;
+                    client
+                        .execute(
+                            member_query,
+                            &[
+                                &member_id,
+                                &inv_org_id,
+                                &user_id,
+                                &inv_role,
+                                &Some(inv_invited_by),
+                                &now,
+                                &now,
+                                &now,
+                                &now,
+                            ],
+                        )
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to add member: {}",
+                                e
+                            ))
+                        })?;
+
+                    Ok(())
+                })
+            })
+            .await?;
 
         // Get organization details
         self.get_organization(&invitation.organization_id)
@@ -727,12 +784,6 @@ impl OrganizationService {
     }
 
     // Database operations
-    async fn store_organization(&self, organization: &Organization) -> Result<Organization> {
-        authenc_database::database::operations::organizations::create_organization(&self.db, organization)
-            .await
-            .map_err(|e| AuthencError::database(format!("Failed to store organization: {}", e)))
-    }
-
     async fn store_member(&self, member: &OrganizationMember) -> Result<()> {
         authenc_database::database::operations::organizations::add_member(
             &self.db,
@@ -786,24 +837,6 @@ impl OrganizationService {
             accepted_at: inv.accepted_at,
             token: token.to_string(),
         }))
-    }
-
-    async fn mark_invitation_accepted(&self, invitation_id: &Uuid, user_id: Uuid) -> Result<()> {
-        // Use AND accepted_at IS NULL to prevent race conditions:
-        // only the first concurrent request will match and update the row.
-        let query = r#"
-            UPDATE organization_invitations
-            SET accepted_at = NOW(), accepted_by = $2
-            WHERE id = $1 AND accepted_at IS NULL
-        "#;
-
-        let rows_affected = self.db.execute(query, &[invitation_id, &user_id]).await?;
-        if rows_affected == 0 {
-            return Err(AuthencError::validation(
-                "Invitation has already been accepted",
-            ));
-        }
-        Ok(())
     }
 }
 
