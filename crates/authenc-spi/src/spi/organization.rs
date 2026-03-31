@@ -83,18 +83,18 @@ impl OrganizationRole {
     /// Convert the role to its string representation
     pub fn as_str(&self) -> &'static str {
         match self {
-            OrganizationRole::Owner => "OWNER",
-            OrganizationRole::Admin => "ADMIN",
-            OrganizationRole::Member => "MEMBER",
+            OrganizationRole::Owner => "owner",
+            OrganizationRole::Admin => "admin",
+            OrganizationRole::Member => "member",
         }
     }
 
     /// Convert string to OrganizationRole
     pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "OWNER" => Some(OrganizationRole::Owner),
-            "ADMIN" => Some(OrganizationRole::Admin),
-            "MEMBER" => Some(OrganizationRole::Member),
+        match s.to_lowercase().as_str() {
+            "owner" => Some(OrganizationRole::Owner),
+            "admin" => Some(OrganizationRole::Admin),
+            "member" => Some(OrganizationRole::Member),
             _ => None,
         }
     }

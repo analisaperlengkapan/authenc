@@ -1360,7 +1360,8 @@ pub mod organizations {
         organization_id: &Uuid,
     ) -> Result<Vec<OrganizationMember>> {
         let query = r#"
-            SELECT om.user_id, om.organization_id, om.role, om.joined_at, om.invited_by
+            SELECT om.id, om.organization_id, om.user_id, om.role, om.invited_by,
+                   om.invited_at, om.joined_at, om.created_at, om.updated_at
             FROM organization_members om
             WHERE om.organization_id = $1
             ORDER BY om.joined_at
@@ -1378,10 +1379,7 @@ pub mod organizations {
                 id: row.get(0),
                 organization_id: row.get(1),
                 user_id: row.get(2),
-                role: OrganizationRole::parse(&row.get::<_, String>(3))
-                    .unwrap_or(OrganizationRole::Member)
-                    .as_str()
-                    .to_string(),
+                role: row.get::<_, String>(3),
                 invited_by: row.get(4),
                 invited_at: row.get(5),
                 joined_at: row.get(6),
