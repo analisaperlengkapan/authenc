@@ -214,21 +214,12 @@ impl OrganizationService {
                             ))
                         })?;
 
-                    let organization = Organization {
-                        id: row.get(0),
-                        name: row.get(1),
-                        display_name: row.get(2),
-                        description: row.get(3),
-                        domain: row.get(4),
-                        logo_url: row.get(5),
-                        website_url: row.get(6),
-                        owner_id: row.get(7),
-                        realm_id: row.get(8),
-                        enabled: row.get(9),
-                        created_at: row.get(10),
-                        updated_at: row.get(11),
-                        deleted_at: row.get(12),
-                    };
+                    let organization: Organization = row.try_into().map_err(|e: AuthencError| {
+                        AuthencError::database(format!(
+                            "Failed to parse organization row: {}",
+                            e
+                        ))
+                    })?;
 
                     // Add creator as owner member
                     let member_id = Uuid::new_v4();
@@ -571,11 +562,12 @@ impl OrganizationService {
         .map_err(|e| AuthencError::database(format!("Failed to get members: {}", e)))
     }
 
-    /// Check if user is member of organization
+    /// Check if user is member of organization (excludes soft-deleted orgs)
     pub async fn is_member(&self, organization_id: &Uuid, user_id: &Uuid) -> Result<bool> {
         let query = r#"
-            SELECT COUNT(*) FROM organization_members
-            WHERE organization_id = $1 AND user_id = $2
+            SELECT COUNT(*) FROM organization_members om
+            JOIN organizations o ON om.organization_id = o.id
+            WHERE om.organization_id = $1 AND om.user_id = $2 AND o.deleted_at IS NULL
         "#;
         let count: i64 = self.db.query_one(query, &[organization_id, user_id])
             .await
@@ -584,7 +576,7 @@ impl OrganizationService {
         Ok(count > 0)
     }
 
-    /// Check if user has role in organization
+    /// Check if user has role in organization (excludes soft-deleted orgs)
     pub async fn has_role(
         &self,
         organization_id: &Uuid,
@@ -593,8 +585,9 @@ impl OrganizationService {
     ) -> Result<bool> {
         let role_str = role.as_str();
         let query = r#"
-            SELECT COUNT(*) FROM organization_members
-            WHERE organization_id = $1 AND user_id = $2 AND role = $3
+            SELECT COUNT(*) FROM organization_members om
+            JOIN organizations o ON om.organization_id = o.id
+            WHERE om.organization_id = $1 AND om.user_id = $2 AND om.role = $3 AND o.deleted_at IS NULL
         "#;
         let count: i64 = self.db.query_one(query, &[organization_id, user_id, &role_str])
             .await
