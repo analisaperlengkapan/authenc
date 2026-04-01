@@ -1225,6 +1225,9 @@ pub mod organizations {
     }
 
     /// Get invitation by token
+    ///
+    /// Returns the invitation regardless of expiry/accepted status so
+    /// the service layer can provide specific error messages.
     pub async fn get_invitation_by_token(
         db: &Database,
         token_hash: &str,
@@ -1234,7 +1237,7 @@ pub mod organizations {
                 id, organization_id, email, role, invited_by,
                 token_hash, expires_at, accepted_at, accepted_by, created_at
             FROM organization_invitations
-            WHERE token_hash = $1 AND expires_at > NOW() AND accepted_at IS NULL
+            WHERE token_hash = $1
         "#;
 
         match db.query_opt(query, &[&token_hash]).await {
@@ -1492,12 +1495,20 @@ pub mod organizations {
     }
 
     /// Add domain to organization
+    ///
+    /// Verifies the organization has not been soft-deleted before adding.
     pub async fn add_domain(
         db: &Database,
         organization_id: Uuid,
         domain: &str,
         verification_method: &str,
     ) -> Result<OrganizationDomain> {
+        // Verify the organization has not been soft-deleted
+        let org_check = get_organization_by_id(db, organization_id).await?;
+        if org_check.is_none() {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
+
         let domain_id = Uuid::new_v4();
         let verification_token = Uuid::new_v4().to_string();
         let now = Utc::now();
@@ -1546,36 +1557,48 @@ pub mod organizations {
     }
 
     /// Verify organization domain
+    ///
+    /// Only verifies domains belonging to non-deleted organizations.
     pub async fn verify_domain(db: &Database, domain_id: Uuid) -> Result<()> {
         let now = Utc::now();
 
         let query = r#"
-            UPDATE organization_domains
+            UPDATE organization_domains od
             SET verified = true, verified_at = $2, updated_at = $3
-            WHERE id = $1
+            FROM organizations o
+            WHERE od.id = $1
+              AND od.organization_id = o.id
+              AND o.deleted_at IS NULL
         "#;
 
-        db.execute(query, &[&domain_id, &now, &now])
+        let rows_affected = db.execute(query, &[&domain_id, &now, &now])
             .await
             .map_err(|e| {
                 error!("Failed to verify domain: {}", e);
                 AuthencError::database("Failed to verify domain")
             })?;
 
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found(
+                "Domain not found or organization has been deleted",
+            ));
+        }
+
         Ok(())
     }
 
-    /// Get organization domains
+    /// Get organization domains (excludes soft-deleted organizations)
     pub async fn get_domains(
         db: &Database,
         organization_id: Uuid,
     ) -> Result<Vec<OrganizationDomain>> {
         let query = r#"
-            SELECT id, organization_id, domain, verified, verification_token,
-                   verification_method, verified_at, created_at, updated_at
-            FROM organization_domains
-            WHERE organization_id = $1
-            ORDER BY created_at DESC
+            SELECT od.id, od.organization_id, od.domain, od.verified, od.verification_token,
+                   od.verification_method, od.verified_at, od.created_at, od.updated_at
+            FROM organization_domains od
+            JOIN organizations o ON od.organization_id = o.id
+            WHERE od.organization_id = $1 AND o.deleted_at IS NULL
+            ORDER BY od.created_at DESC
         "#;
 
         let rows: Vec<tokio_postgres::Row> =

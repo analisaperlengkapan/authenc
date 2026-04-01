@@ -264,7 +264,6 @@ impl OrganizationService {
     pub async fn list_organizations(&self) -> Result<Vec<Organization>> {
         authenc_database::database::operations::organizations::list_all_organizations(&self.db)
             .await
-            .map_err(|e| AuthencError::database(format!("Failed to list organizations: {}", e)))
     }
 
     /// Get organization by ID
@@ -274,16 +273,12 @@ impl OrganizationService {
             *organization_id,
         )
         .await
-        .map_err(|e| AuthencError::database(format!("Failed to get organization: {}", e)))
     }
 
     /// Get organization by domain
     pub async fn get_organization_by_domain(&self, domain: &str) -> Result<Option<Organization>> {
         authenc_database::database::operations::organizations::get_organization_by_domain(&self.db, domain)
             .await
-            .map_err(|e| {
-                AuthencError::database(format!("Failed to get organization by domain: {}", e))
-            })
     }
 
     /// Update organization
@@ -403,7 +398,6 @@ impl OrganizationService {
     pub async fn delete_organization(&self, organization_id: &Uuid) -> Result<()> {
         authenc_database::database::operations::organizations::delete_organization(&self.db, organization_id)
             .await
-            .map_err(|e| AuthencError::database(format!("Failed to delete organization: {}", e)))
     }
 
     /// Add member to organization
@@ -439,7 +433,6 @@ impl OrganizationService {
             user_id,
         )
         .await
-        .map_err(|e| AuthencError::database(format!("Failed to remove member: {}", e)))
     }
 
     /// Remove member from organization with atomic last-owner protection.
@@ -636,7 +629,6 @@ impl OrganizationService {
             organization_id,
         )
         .await
-        .map_err(|e| AuthencError::database(format!("Failed to get members: {}", e)))
     }
 
     /// Check if user is member of organization (excludes soft-deleted orgs)
@@ -719,7 +711,7 @@ impl OrganizationService {
         let invitation = self
             .get_invitation_by_token(token)
             .await?
-            .ok_or_else(|| AuthencError::resource_not_found("Invitation not found or expired"))?;
+            .ok_or_else(|| AuthencError::resource_not_found("Invitation not found"))?;
 
         // Validate that the invitation belongs to the expected organization
         if invitation.organization_id != *expected_organization_id {
@@ -866,7 +858,6 @@ impl OrganizationService {
     pub async fn get_user_organizations(&self, user_id: &Uuid) -> Result<Vec<Organization>> {
         authenc_database::database::operations::organizations::get_user_organizations(&self.db, user_id)
             .await
-            .map_err(|e| AuthencError::database(format!("Failed to get user organizations: {}", e)))
     }
 
     /// Transfer organization ownership
