@@ -364,7 +364,11 @@ pub async fn update_role(
         Ok(role) => Ok(Json(role)),
         Err(e) => {
             eprintln!("Failed to update role: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            if e.contains("not found") {
+                Err(StatusCode::NOT_FOUND)
+            } else {
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
         }
     }
 }

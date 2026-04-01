@@ -1271,16 +1271,14 @@ impl AdminService for AdminManager {
     ) -> Result<RoleResponse, String> {
         let now = Utc::now();
         let attr_json = serde_json::to_string(&request.attributes).unwrap_or_default();
-        let query = r#"
+        let update_query = r#"
             UPDATE roles
             SET name = $2, description = $3, composite = $4, client_role = $5,
                 attributes = $6, updated_at = $7
             WHERE id = $1 AND deleted_at IS NULL
-            RETURNING id, name, description, realm_id, composite, client_role,
-                      client_id, attributes, created_at, updated_at
         "#;
 
-        match self.db.query_one::<tokio_postgres::Row>(query, &[
+        let affected = self.db.execute(update_query, &[
             role_id,
             &request.name,
             &Some(request.description.clone()),
@@ -1288,23 +1286,14 @@ impl AdminService for AdminManager {
             &request.client_role,
             &Some(attr_json),
             &now
-        ]).await {
-            Ok(row) => Ok(RoleResponse {
-                id: row.get(0),
-                name: row.get(1),
-                description: row.get::<_, Option<String>>(2).unwrap_or_default(),
-                realm_id: row.get::<_, Option<Uuid>>(3).unwrap_or(Uuid::nil()),
-                composite: row.get(4),
-                client_role: row.get(5),
-                container_id: row.get(6),
-                attributes: row.get::<_, Option<String>>(7)
-                    .and_then(|s: String| serde_json::from_str::<serde_json::Value>(&s).ok())
-                    .and_then(|v| v.as_object().cloned())
-                    .map(|o| o.iter().map(|(k, v)| (k.clone(), v.as_array().map(|a| a.iter().map(|s| s.as_str().unwrap_or_default().to_string()).collect()).unwrap_or_default())).collect())
-                    .unwrap_or_default(),
-            }),
-            Err(e) => Err(format!("Failed to update role: {}", e)),
+        ]).await.map_err(|e| format!("Failed to update role: {}", e))?;
+
+        if affected == 0 {
+            return Err(format!("Role with ID {} not found", role_id));
         }
+
+        // Fetch the updated role
+        self.get_role(role_id).await
     }
 
     async fn delete_role(&self, role_id: &Uuid) -> Result<(), String> {
