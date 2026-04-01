@@ -333,8 +333,8 @@ impl OrganizationService {
         }
 
         let org_id = *organization_id;
-        let updates_name = updates.name.clone();
-        let updates_display_name = updates.display_name.clone();
+        let updates_name = updates.name.as_ref().map(|n| n.trim().to_string());
+        let updates_display_name = updates.display_name.as_ref().map(|d| d.trim().to_string());
         let updates_description = updates.description.clone();
         let updates_domain = updates.domain.clone();
         let updates_logo_url = updates.logo_url.clone();
