@@ -806,15 +806,20 @@ impl OrganizationService {
         self.db
             .with_transaction(move |client| {
                 Box::pin(async move {
-                    // Verify the target organization has not been soft-deleted.
-                    // This prevents consuming the invitation token and adding an
-                    // orphaned member row for a deleted organization.
-                    let org_check_query = r#"
-                        SELECT COUNT(*) FROM organizations
+                    // Verify the target organization has not been soft-deleted
+                    // and fetch its details within the same transaction to avoid
+                    // a post-commit race where the org could be deleted between
+                    // the transaction commit and a separate read.
+                    let org_query = r#"
+                        SELECT
+                            id, name, display_name, description, domain,
+                            logo_url, website_url, owner_id, realm_id,
+                            enabled, created_at, updated_at, deleted_at
+                        FROM organizations
                         WHERE id = $1 AND deleted_at IS NULL
                     "#;
                     let org_row = client
-                        .query_one(org_check_query, &[&inv_org_id])
+                        .query_opt(org_query, &[&inv_org_id])
                         .await
                         .map_err(|e| {
                             AuthencError::database(format!(
@@ -822,12 +827,17 @@ impl OrganizationService {
                                 e
                             ))
                         })?;
-                    let org_count: i64 = org_row.get(0);
-                    if org_count == 0 {
-                        return Err(AuthencError::resource_not_found(
+                    let org_row = org_row.ok_or_else(|| {
+                        AuthencError::resource_not_found(
                             "Organization not found or has been deleted",
-                        ));
-                    }
+                        )
+                    })?;
+                    let organization: Organization = org_row.try_into().map_err(|e: AuthencError| {
+                        AuthencError::database(format!(
+                            "Failed to parse organization row: {}",
+                            e
+                        ))
+                    })?;
 
                     // Mark invitation as accepted with AND accepted_at IS NULL
                     // and AND expires_at > NOW() to prevent race conditions
@@ -905,15 +915,10 @@ impl OrganizationService {
                             ))
                         })?;
 
-                    Ok(())
+                    Ok(organization)
                 })
             })
-            .await?;
-
-        // Get organization details
-        self.get_organization(&invitation.organization_id)
-            .await?
-            .ok_or_else(|| AuthencError::resource_not_found("Organization not found"))
+            .await
     }
 
     /// Get organization settings

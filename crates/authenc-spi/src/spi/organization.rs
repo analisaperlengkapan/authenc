@@ -70,6 +70,7 @@ pub struct OrganizationMemberModel {
 
 /// Organization roles
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum OrganizationRole {
     /// Organization owner with full access
     Owner,
