@@ -1266,10 +1266,23 @@ pub mod organizations {
                     .await
                     .map_err(|e| {
                         error!("Failed to create invitation: {}", e);
-                        AuthencError::database(format!(
-                            "Failed to create invitation: {}",
-                            e
-                        ))
+                        // Detect unique constraint violation from the partial unique index
+                        // (idx_organization_invitations_pending_unique) which means a
+                        // non-expired, non-accepted invitation already exists for this org+email.
+                        let err_str = e.to_string();
+                        if err_str.contains("idx_organization_invitations_pending_unique")
+                            || err_str.contains("duplicate key")
+                                && err_str.contains("organization_invitations")
+                        {
+                            AuthencError::validation(
+                                "An invitation is already pending for this email address",
+                            )
+                        } else {
+                            AuthencError::database(format!(
+                                "Failed to create invitation: {}",
+                                e
+                            ))
+                        }
                     })?;
 
                 Ok(invitation_id)

@@ -708,6 +708,9 @@ BEGIN
     DELETE FROM organization_identity_providers WHERE organization_id IN (
         SELECT id FROM organizations WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'
     );
+
+    -- Hard-delete the organization rows themselves after cleaning up children
+    DELETE FROM organizations WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days';
 END;
 $$ LANGUAGE plpgsql;
 
