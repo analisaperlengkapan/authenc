@@ -351,6 +351,11 @@ impl OrganizationService {
                     "Organization display name cannot be empty",
                 ));
             }
+            if trimmed.len() > 255 {
+                return Err(AuthencError::validation(
+                    "Organization display name cannot exceed 255 characters",
+                ));
+            }
         }
 
         let org_id = *organization_id;

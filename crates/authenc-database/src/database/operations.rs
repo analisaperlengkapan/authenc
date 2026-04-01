@@ -1158,7 +1158,8 @@ pub mod organizations {
 
     /// Add member to organization
     ///
-    /// Verifies the organization has not been soft-deleted before adding.
+    /// Atomically verifies the organization has not been soft-deleted before adding
+    /// by using a subquery in the INSERT statement, avoiding TOCTOU races.
     pub async fn add_member(
         db: &Database,
         org_id: Uuid,
@@ -1166,24 +1167,22 @@ pub mod organizations {
         role: &str,
         invited_by: Option<Uuid>,
     ) -> Result<()> {
-        // Verify the organization has not been soft-deleted
-        let org_check = get_organization_by_id(db, org_id).await?;
-        if org_check.is_none() {
-            return Err(AuthencError::resource_not_found("Organization not found"));
-        }
-
         let member_id = Uuid::new_v4();
         let now = Utc::now();
 
+        // Use INSERT ... SELECT to atomically check that the organization
+        // exists and is not soft-deleted in the same statement.
         let query = r#"
             INSERT INTO organization_members (
                 id, organization_id, user_id, role, invited_by,
                 invited_at, joined_at, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
+            FROM organizations
+            WHERE id = $2 AND deleted_at IS NULL
         "#;
 
-        db.execute(
+        let rows_affected = db.execute(
             query,
             &[
                 &member_id,
@@ -1198,6 +1197,10 @@ pub mod organizations {
             ],
         )
         .await?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
 
         Ok(())
     }
@@ -1550,35 +1553,34 @@ pub mod organizations {
 
     /// Add domain to organization
     ///
-    /// Verifies the organization has not been soft-deleted before adding.
+    /// Atomically verifies the organization has not been soft-deleted before adding
+    /// by using a subquery in the INSERT statement, avoiding TOCTOU races.
     pub async fn add_domain(
         db: &Database,
         organization_id: Uuid,
         domain: &str,
         verification_method: &str,
     ) -> Result<OrganizationDomain> {
-        // Verify the organization has not been soft-deleted
-        let org_check = get_organization_by_id(db, organization_id).await?;
-        if org_check.is_none() {
-            return Err(AuthencError::resource_not_found("Organization not found"));
-        }
-
         let domain_id = Uuid::new_v4();
         let verification_token = Uuid::new_v4().to_string();
         let now = Utc::now();
 
+        // Use INSERT ... SELECT to atomically check that the organization
+        // exists and is not soft-deleted in the same statement.
         let query = r#"
             INSERT INTO organization_domains (
                 id, organization_id, domain, verified, verification_token,
                 verification_method, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8
+            FROM organizations
+            WHERE id = $2 AND deleted_at IS NULL
             RETURNING id, organization_id, domain, verified, verification_token,
                       verification_method, verified_at, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db
-            .query_one(
+        let row = db
+            .query_opt(
                 query,
                 &[
                     &domain_id,
@@ -1596,6 +1598,10 @@ pub mod organizations {
                 error!("Failed to add organization domain: {}", e);
                 AuthencError::database("Failed to add organization domain")
             })?;
+
+        let row = row.ok_or_else(|| {
+            AuthencError::resource_not_found("Organization not found")
+        })?;
 
         Ok(OrganizationDomain {
             id: row.get(0),
@@ -1681,32 +1687,32 @@ pub mod organizations {
 
     /// Link identity provider to organization
     ///
-    /// Verifies the organization has not been soft-deleted before linking.
+    /// Atomically verifies the organization has not been soft-deleted before linking
+    /// by using a subquery in the INSERT statement, avoiding TOCTOU races.
     pub async fn link_identity_provider(
         db: &Database,
         organization_id: Uuid,
         identity_provider_id: Uuid,
         priority: i32,
     ) -> Result<()> {
-        // Verify the organization has not been soft-deleted
-        let org_check = get_organization_by_id(db, organization_id).await?;
-        if org_check.is_none() {
-            return Err(AuthencError::resource_not_found("Organization not found"));
-        }
-
         let id = Uuid::new_v4();
         let now = Utc::now();
 
+        // Use INSERT ... SELECT to atomically check that the organization
+        // exists and is not soft-deleted in the same statement.
+        // ON CONFLICT handles the upsert for priority updates.
         let query = r#"
             INSERT INTO organization_identity_providers (
                 id, organization_id, identity_provider_id, priority, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
+            SELECT $1, $2, $3, $4, $5, $6
+            FROM organizations
+            WHERE id = $2 AND deleted_at IS NULL
             ON CONFLICT (organization_id, identity_provider_id)
             DO UPDATE SET priority = $4, updated_at = $6
         "#;
 
-        db.execute(
+        let rows_affected = db.execute(
             query,
             &[
                 &id,
@@ -1723,26 +1729,31 @@ pub mod organizations {
             AuthencError::database("Failed to link identity provider")
         })?;
 
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
+
         Ok(())
     }
 
     /// Unlink identity provider from organization
     ///
-    /// Verifies the organization has not been soft-deleted before unlinking.
+    /// Atomically verifies the organization has not been soft-deleted before unlinking
+    /// by joining with the organizations table in the DELETE statement.
     pub async fn unlink_identity_provider(
         db: &Database,
         organization_id: Uuid,
         identity_provider_id: Uuid,
     ) -> Result<()> {
-        // Verify the organization has not been soft-deleted
-        let org_check = get_organization_by_id(db, organization_id).await?;
-        if org_check.is_none() {
-            return Err(AuthencError::resource_not_found("Organization not found"));
-        }
-
+        // Use DELETE ... USING to atomically check that the organization
+        // exists and is not soft-deleted in the same statement.
         let query = r#"
-            DELETE FROM organization_identity_providers
-            WHERE organization_id = $1 AND identity_provider_id = $2
+            DELETE FROM organization_identity_providers oip
+            USING organizations o
+            WHERE oip.organization_id = $1
+              AND oip.identity_provider_id = $2
+              AND oip.organization_id = o.id
+              AND o.deleted_at IS NULL
         "#;
 
         db.execute(query, &[&organization_id, &identity_provider_id])
