@@ -852,6 +852,26 @@ impl OrganizationService {
                         ));
                     }
 
+                    // Check if user is already a member of this organization
+                    let existing_member_query = r#"
+                        SELECT id FROM organization_members
+                        WHERE organization_id = $1 AND user_id = $2
+                    "#;
+                    let existing = client
+                        .query_opt(existing_member_query, &[&inv_org_id, &user_id])
+                        .await
+                        .map_err(|e| {
+                            AuthencError::database(format!(
+                                "Failed to check existing membership: {}",
+                                e
+                            ))
+                        })?;
+                    if existing.is_some() {
+                        return Err(AuthencError::validation(
+                            "You are already a member of this organization",
+                        ));
+                    }
+
                     // Add user as organization member
                     let member_id = Uuid::new_v4();
                     let now = chrono::Utc::now();

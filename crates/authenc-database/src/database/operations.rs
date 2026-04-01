@@ -1203,12 +1203,29 @@ pub mod organizations {
     }
 
     /// Create organization invitation
+    ///
+    /// Deletes any existing expired-and-unaccepted invitation for the same
+    /// org+email before inserting, so the partial unique index
+    /// (`WHERE accepted_at IS NULL`) does not block re-invitations.
     pub async fn create_invitation(
         db: &Database,
         invitation: &OrganizationInvitation,
     ) -> Result<Uuid> {
         let invitation_id = Uuid::new_v4();
         let now = Utc::now();
+
+        // Remove stale (expired, not accepted) invitation for the same org+email
+        // so the partial unique index allows the new row.
+        let cleanup_query = r#"
+            DELETE FROM organization_invitations
+            WHERE organization_id = $1 AND email = $2
+              AND accepted_at IS NULL AND expires_at <= NOW()
+        "#;
+        db.execute(
+            cleanup_query,
+            &[&invitation.organization_id, &invitation.email],
+        )
+        .await?;
 
         let query = r#"
             INSERT INTO organization_invitations (

@@ -150,9 +150,16 @@ CREATE TABLE IF NOT EXISTS organization_invitations (
     expires_at TIMESTAMPTZ NOT NULL,
     accepted_at TIMESTAMPTZ,
     accepted_by UUID REFERENCES users(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(organization_id, email)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Allow re-invitations: only one non-accepted invitation per org+email.
+-- Once an invitation is accepted (accepted_at IS NOT NULL), a new one can be created.
+-- Expired-but-unaccepted invitations are cleaned up by the service layer before
+-- creating a new invitation (see create_invitation).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_invitations_pending_unique
+    ON organization_invitations(organization_id, email)
+    WHERE accepted_at IS NULL;
 
 -- Organization domains for verification
 CREATE TABLE IF NOT EXISTS organization_domains (
