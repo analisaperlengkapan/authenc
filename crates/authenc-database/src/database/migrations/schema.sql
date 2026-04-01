@@ -517,7 +517,7 @@ CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user_id ON webauthn_credenti
 CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_credential_id ON webauthn_credentials(credential_id);
 
 -- Organization indexes
-CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_name_unique ON organizations(COALESCE(realm_id, '00000000-0000-0000-0000-000000000000'::uuid), name) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_name_unique ON organizations(COALESCE(realm_id, 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid), name) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_organizations_owner_id ON organizations(owner_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_organization_members_org_id ON organization_members(organization_id);
 CREATE INDEX IF NOT EXISTS idx_organization_members_user_id ON organization_members(user_id);
