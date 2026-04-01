@@ -182,7 +182,7 @@ impl OrganizationService {
         }
 
         let org_name = trimmed_name.to_string();
-        let org_display_name = display_name.to_string();
+        let org_display_name = trimmed_display.to_string();
         let org_description = description.map(|s| s.to_string());
         let org_domain = domain.map(|s| s.to_string());
         let role_str = OrganizationRole::Owner.as_str().to_string();

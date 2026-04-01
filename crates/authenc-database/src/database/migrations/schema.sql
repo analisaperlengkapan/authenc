@@ -525,7 +525,6 @@ CREATE INDEX IF NOT EXISTS idx_organization_invitations_org_id ON organization_i
 CREATE INDEX IF NOT EXISTS idx_organization_invitations_token ON organization_invitations(token_hash);
 CREATE INDEX IF NOT EXISTS idx_organization_domains_org_id ON organization_domains(organization_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_domains_domain_unique ON organization_domains(domain);
-CREATE INDEX IF NOT EXISTS idx_organization_domains_domain ON organization_domains(domain);
 CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_org_id ON organization_identity_providers(organization_id);
 CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_idp_id ON organization_identity_providers(identity_provider_id);
 
