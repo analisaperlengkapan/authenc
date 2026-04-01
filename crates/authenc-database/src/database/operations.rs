@@ -1153,6 +1153,8 @@ pub mod organizations {
     }
 
     /// Add member to organization
+    ///
+    /// Verifies the organization has not been soft-deleted before adding.
     pub async fn add_member(
         db: &Database,
         org_id: Uuid,
@@ -1160,6 +1162,12 @@ pub mod organizations {
         role: &str,
         invited_by: Option<Uuid>,
     ) -> Result<()> {
+        // Verify the organization has not been soft-deleted
+        let org_check = get_organization_by_id(db, org_id).await?;
+        if org_check.is_none() {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
+
         let member_id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -1353,22 +1361,9 @@ pub mod organizations {
                 AuthencError::database("Failed to get organization members")
             })?;
 
-        let mut members = Vec::new();
-        for row in rows {
-            members.push(OrganizationMember {
-                id: row.get(0),
-                organization_id: row.get(1),
-                user_id: row.get(2),
-                role: row.get::<_, String>(3),
-                invited_by: row.get(4),
-                invited_at: row.get(5),
-                joined_at: row.get(6),
-                created_at: row.get(7),
-                updated_at: row.get(8),
-            });
-        }
-
-        Ok(members)
+        rows.into_iter()
+            .map(|row| row.try_into())
+            .collect::<Result<Vec<OrganizationMember>>>()
     }
 
     /// List all organizations
