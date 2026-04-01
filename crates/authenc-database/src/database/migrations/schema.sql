@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS organization_domains (
     verification_method VARCHAR(50) NOT NULL DEFAULT 'dns',
     verified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- NOTE: organization_identity_providers table is defined after identity_providers (see IDENTITY BROKERING section)
