@@ -190,11 +190,15 @@ impl OrganizationService {
             ));
         }
 
-        // Validate display name
         let trimmed_display = display_name.trim();
         if trimmed_display.is_empty() {
             return Err(AuthencError::validation(
                 "Organization display name cannot be empty",
+            ));
+        }
+        if trimmed_display.len() > 255 {
+            return Err(AuthencError::validation(
+                "Organization display name cannot exceed 255 characters",
             ));
         }
 
