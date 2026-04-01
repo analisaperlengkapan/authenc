@@ -180,6 +180,31 @@ CREATE TABLE IF NOT EXISTS organization_invitations (
     UNIQUE(organization_id, email)
 );
 
+-- Organization domains for verification
+CREATE TABLE IF NOT EXISTS organization_domains (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    domain VARCHAR(255) NOT NULL,
+    verified BOOLEAN NOT NULL DEFAULT false,
+    verification_token VARCHAR(255),
+    verification_method VARCHAR(50) NOT NULL DEFAULT 'dns',
+    verified_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(organization_id, domain)
+);
+
+-- Organization identity provider links
+CREATE TABLE IF NOT EXISTS organization_identity_providers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    identity_provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
+    priority INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(organization_id, identity_provider_id)
+);
+
 -- ============================================================================
 -- OAUTH2 TABLES
 -- ============================================================================
@@ -232,7 +257,8 @@ CREATE TABLE IF NOT EXISTS oauth2_access_tokens (
     revoked BOOLEAN NOT NULL DEFAULT false,
     revoked_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_used_at TIMESTAMPTZ
+    last_used_at TIMESTAMPTZ,
+    session_id VARCHAR(255)
 );
 
 -- ============================================================================
@@ -373,7 +399,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     location_data JSONB,
     error_message TEXT,
     request_id VARCHAR(100),
-    correlation_id VARCHAR(100)
+    correlation_id VARCHAR(100),
+    realm_id UUID REFERENCES realms(id) ON DELETE SET NULL
 );
 
 -- User events table (login, logout, registration, etc.)
@@ -496,6 +523,10 @@ CREATE INDEX IF NOT EXISTS idx_organization_members_org_id ON organization_membe
 CREATE INDEX IF NOT EXISTS idx_organization_members_user_id ON organization_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_organization_invitations_org_id ON organization_invitations(organization_id);
 CREATE INDEX IF NOT EXISTS idx_organization_invitations_token ON organization_invitations(token_hash);
+CREATE INDEX IF NOT EXISTS idx_organization_domains_org_id ON organization_domains(organization_id);
+CREATE INDEX IF NOT EXISTS idx_organization_domains_domain ON organization_domains(domain);
+CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_org_id ON organization_identity_providers(organization_id);
+CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_idp_id ON organization_identity_providers(identity_provider_id);
 
 -- OAuth2 indexes
 CREATE INDEX IF NOT EXISTS idx_oauth2_clients_client_id ON oauth2_clients(client_id) WHERE deleted_at IS NULL;
@@ -590,6 +621,8 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECU
 CREATE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_organizations_updated_at BEFORE UPDATE ON organizations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_organization_members_updated_at BEFORE UPDATE ON organization_members FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_organization_domains_updated_at BEFORE UPDATE ON organization_domains FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_organization_identity_providers_updated_at BEFORE UPDATE ON organization_identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_oauth2_clients_updated_at BEFORE UPDATE ON oauth2_clients FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_saml_service_providers_updated_at BEFORE UPDATE ON saml_service_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_saml_identity_providers_updated_at BEFORE UPDATE ON saml_identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

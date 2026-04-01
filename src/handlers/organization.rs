@@ -251,6 +251,11 @@ pub async fn remove_member(
     let caller_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
+    // Prevent self-removal through the admin endpoint
+    if caller_id == user_id {
+        return Err(AuthencError::validation("Cannot remove yourself. Transfer ownership first or use the leave endpoint"));
+    }
+
     let is_owner = service.has_role(&id, &caller_id, &OrganizationRole::Owner).await?;
     let is_admin = service.has_role(&id, &caller_id, &OrganizationRole::Admin).await?;
     if !is_owner && !is_admin {
@@ -293,6 +298,11 @@ pub async fn update_member_role(
 
     if !service.has_role(&id, &caller_id, &OrganizationRole::Owner).await? {
         return Err(AuthencError::forbidden("Only organization owners can update member roles"));
+    }
+
+    // Prevent owners from demoting themselves (use transfer_ownership instead)
+    if caller_id == user_id {
+        return Err(AuthencError::validation("Cannot change your own role. Use ownership transfer instead"));
     }
 
     let role = match request.role.to_lowercase().as_str() {

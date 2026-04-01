@@ -475,12 +475,19 @@ impl OrganizationService {
                             AuthencError::database(format!("Failed to get member role: {}", e))
                         })?;
 
-                    if let Some(row) = role_row {
-                        let role: String = row.get(0);
-                        if role.to_lowercase() == "owner" && owner_count <= 1 {
-                            return Err(AuthencError::validation(
-                                "Cannot remove the last owner of an organization",
+                    match role_row {
+                        None => {
+                            return Err(AuthencError::resource_not_found(
+                                "Member not found in organization",
                             ));
+                        }
+                        Some(row) => {
+                            let role: String = row.get(0);
+                            if role.to_lowercase() == "owner" && owner_count <= 1 {
+                                return Err(AuthencError::validation(
+                                    "Cannot remove the last owner of an organization",
+                                ));
+                            }
                         }
                     }
 
@@ -679,6 +686,14 @@ impl OrganizationService {
         if expires_in_days == 0 || expires_in_days > 365 {
             return Err(AuthencError::validation(
                 "expires_in_days must be between 1 and 365",
+            ));
+        }
+
+        // Verify the organization exists and is not soft-deleted
+        let org = self.get_organization(organization_id).await?;
+        if org.is_none() {
+            return Err(AuthencError::resource_not_found(
+                "Organization not found or has been deleted",
             ));
         }
 
