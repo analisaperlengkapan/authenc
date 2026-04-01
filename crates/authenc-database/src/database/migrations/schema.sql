@@ -9,20 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================================================
 
 -- Realms (multi-tenancy support)
-CREA-- Admin events table (admin actions)
-CREATE TABLE IF NOT EXISTS admin_events (
-    id VARCHAR(36) PRIMARY KEY,
-    time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    realm_id VARCHAR(36) NOT NULL,
-    auth_user_id VARCHAR(36),
-    auth_ip_address INET,
-    auth_user_agent TEXT,
-    resource_type VARCHAR(50) NOT NULL,
-    operation_type VARCHAR(50) NOT NULL,
-    resource_path TEXT,
-    representation TEXT,
-    error TEXT
-);ISTS realms (
+CREATE TABLE IF NOT EXISTS realms (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL UNIQUE,
     display_name VARCHAR(255),
