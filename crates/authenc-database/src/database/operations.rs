@@ -1621,12 +1621,20 @@ pub mod organizations {
     }
 
     /// Link identity provider to organization
+    ///
+    /// Verifies the organization has not been soft-deleted before linking.
     pub async fn link_identity_provider(
         db: &Database,
         organization_id: Uuid,
         identity_provider_id: Uuid,
         priority: i32,
     ) -> Result<()> {
+        // Verify the organization has not been soft-deleted
+        let org_check = get_organization_by_id(db, organization_id).await?;
+        if org_check.is_none() {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
+
         let id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -1660,11 +1668,19 @@ pub mod organizations {
     }
 
     /// Unlink identity provider from organization
+    ///
+    /// Verifies the organization has not been soft-deleted before unlinking.
     pub async fn unlink_identity_provider(
         db: &Database,
         organization_id: Uuid,
         identity_provider_id: Uuid,
     ) -> Result<()> {
+        // Verify the organization has not been soft-deleted
+        let org_check = get_organization_by_id(db, organization_id).await?;
+        if org_check.is_none() {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
+
         let query = r#"
             DELETE FROM organization_identity_providers
             WHERE organization_id = $1 AND identity_provider_id = $2
