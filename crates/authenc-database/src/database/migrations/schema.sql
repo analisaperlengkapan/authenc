@@ -517,13 +517,14 @@ CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user_id ON webauthn_credenti
 CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_credential_id ON webauthn_credentials(credential_id);
 
 -- Organization indexes
-CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_name_unique ON organizations(name) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_name_unique ON organizations(COALESCE(realm_id, '00000000-0000-0000-0000-000000000000'::uuid), name) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_organizations_owner_id ON organizations(owner_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_organization_members_org_id ON organization_members(organization_id);
 CREATE INDEX IF NOT EXISTS idx_organization_members_user_id ON organization_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_organization_invitations_org_id ON organization_invitations(organization_id);
 CREATE INDEX IF NOT EXISTS idx_organization_invitations_token ON organization_invitations(token_hash);
 CREATE INDEX IF NOT EXISTS idx_organization_domains_org_id ON organization_domains(organization_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_domains_domain_unique ON organization_domains(domain);
 CREATE INDEX IF NOT EXISTS idx_organization_domains_domain ON organization_domains(domain);
 CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_org_id ON organization_identity_providers(organization_id);
 CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_idp_id ON organization_identity_providers(identity_provider_id);
@@ -692,6 +693,20 @@ BEGIN
 
     -- Clean up old audit logs (keep last 90 days)
     DELETE FROM audit_logs WHERE timestamp < NOW() - INTERVAL '90 days';
+
+    -- Clean up orphaned records for soft-deleted organizations (deleted > 30 days ago)
+    DELETE FROM organization_members WHERE organization_id IN (
+        SELECT id FROM organizations WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'
+    );
+    DELETE FROM organization_invitations WHERE organization_id IN (
+        SELECT id FROM organizations WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'
+    );
+    DELETE FROM organization_domains WHERE organization_id IN (
+        SELECT id FROM organizations WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'
+    );
+    DELETE FROM organization_identity_providers WHERE organization_id IN (
+        SELECT id FROM organizations WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'
+    );
 END;
 $$ LANGUAGE plpgsql;
 

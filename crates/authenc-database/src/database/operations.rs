@@ -1083,7 +1083,11 @@ pub mod organizations {
     use log::error;
     use uuid::Uuid;
 
-    /// Create organization
+    /// Create organization (inserts org row only — does NOT add an owner member).
+    ///
+    /// **Prefer `OrganizationService::create_organization`** which wraps both the
+    /// org INSERT and the owner-member INSERT in a single transaction.
+    /// This function is retained for low-level / migration use only.
     pub async fn create_organization(db: &Database, org: &Organization) -> Result<Organization> {
         let org_id = Uuid::new_v4();
         let now = Utc::now();

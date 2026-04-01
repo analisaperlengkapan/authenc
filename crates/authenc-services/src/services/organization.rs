@@ -162,7 +162,26 @@ impl OrganizationService {
         created_by: Uuid,
         domain: Option<&str>,
     ) -> Result<Organization> {
-        let org_name = name.to_string();
+        // Validate organization name
+        let trimmed_name = name.trim();
+        if trimmed_name.is_empty() {
+            return Err(AuthencError::validation("Organization name cannot be empty"));
+        }
+        if trimmed_name.len() > 255 {
+            return Err(AuthencError::validation(
+                "Organization name cannot exceed 255 characters",
+            ));
+        }
+
+        // Validate display name
+        let trimmed_display = display_name.trim();
+        if trimmed_display.is_empty() {
+            return Err(AuthencError::validation(
+                "Organization display name cannot be empty",
+            ));
+        }
+
+        let org_name = trimmed_name.to_string();
         let org_display_name = display_name.to_string();
         let org_description = description.map(|s| s.to_string());
         let org_domain = domain.map(|s| s.to_string());
@@ -290,6 +309,29 @@ impl OrganizationService {
         organization_id: &Uuid,
         updates: &OrganizationUpdate,
     ) -> Result<()> {
+        // Validate name if provided
+        if let Some(ref name) = updates.name {
+            let trimmed = name.trim();
+            if trimmed.is_empty() {
+                return Err(AuthencError::validation("Organization name cannot be empty"));
+            }
+            if trimmed.len() > 255 {
+                return Err(AuthencError::validation(
+                    "Organization name cannot exceed 255 characters",
+                ));
+            }
+        }
+
+        // Validate display_name if provided
+        if let Some(ref display_name) = updates.display_name {
+            let trimmed = display_name.trim();
+            if trimmed.is_empty() {
+                return Err(AuthencError::validation(
+                    "Organization display name cannot be empty",
+                ));
+            }
+        }
+
         let org_id = *organization_id;
         let updates_name = updates.name.clone();
         let updates_display_name = updates.display_name.clone();
@@ -681,6 +723,12 @@ impl OrganizationService {
         invited_by: Uuid,
         expires_in_days: u32,
     ) -> Result<OrganizationInvitation> {
+        // Validate email format (basic check)
+        let trimmed_email = email.trim();
+        if trimmed_email.is_empty() || !trimmed_email.contains('@') || !trimmed_email.contains('.') {
+            return Err(AuthencError::validation("Invalid email address"));
+        }
+
         // Validate expires_in_days to prevent chrono DateTime overflow panic.
         // Cap at 365 days (1 year) which is a reasonable maximum for invitations.
         if expires_in_days == 0 || expires_in_days > 365 {
@@ -700,7 +748,7 @@ impl OrganizationService {
         let mut invitation = OrganizationInvitation {
             id: Uuid::new_v4(),
             organization_id: *organization_id,
-            email: email.to_string(),
+            email: trimmed_email.to_string(),
             role,
             invited_by,
             invited_at: chrono::Utc::now(),
