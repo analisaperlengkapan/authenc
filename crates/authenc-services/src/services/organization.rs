@@ -603,6 +603,9 @@ impl OrganizationService {
     }
 
     /// Update member role
+    ///
+    /// NOTE: This method does NOT enforce the last-owner constraint.
+    /// Prefer `update_member_role_safe` for handler-level calls.
     pub async fn update_member_role(
         &self,
         organization_id: &Uuid,
@@ -661,7 +664,7 @@ impl OrganizationService {
         let query = r#"
             SELECT COUNT(*) FROM organization_members om
             JOIN organizations o ON om.organization_id = o.id
-            WHERE om.organization_id = $1 AND om.user_id = $2 AND om.role = $3 AND o.deleted_at IS NULL
+            WHERE om.organization_id = $1 AND om.user_id = $2 AND LOWER(om.role) = $3 AND o.deleted_at IS NULL
         "#;
         let count: i64 = self.db.query_one(query, &[organization_id, user_id, &role_str])
             .await

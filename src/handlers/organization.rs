@@ -206,12 +206,12 @@ pub async fn add_member(
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
 
-    let role = match request.role.as_str() {
+    let role = match request.role.to_lowercase().as_str() {
         "owner" => OrganizationRole::Owner,
         "admin" => OrganizationRole::Admin,
         "member" => OrganizationRole::Member,
         "guest" => OrganizationRole::Guest,
-        _ => return Err(AuthencError::validation("Bad request")),
+        _ => return Err(AuthencError::validation("Invalid role. Must be one of: owner, admin, member, guest")),
     };
 
     let invited_by = Uuid::parse_str(&auth_user.id)
@@ -295,12 +295,12 @@ pub async fn update_member_role(
         return Err(AuthencError::forbidden("Only organization owners can update member roles"));
     }
 
-    let role = match request.role.as_str() {
+    let role = match request.role.to_lowercase().as_str() {
         "owner" => OrganizationRole::Owner,
         "admin" => OrganizationRole::Admin,
         "member" => OrganizationRole::Member,
         "guest" => OrganizationRole::Guest,
-        _ => return Err(AuthencError::validation("Bad request")),
+        _ => return Err(AuthencError::validation("Invalid role. Must be one of: owner, admin, member, guest")),
     };
 
     // Use the transaction-safe update that atomically checks last-owner constraint
@@ -330,12 +330,12 @@ pub async fn create_invitation(
 ) -> Result<Json<serde_json::Value>> {
     let service = OrganizationService::new(state.database.clone());
 
-    let role = match request.role.as_str() {
+    let role = match request.role.to_lowercase().as_str() {
         "owner" => OrganizationRole::Owner,
         "admin" => OrganizationRole::Admin,
         "member" => OrganizationRole::Member,
         "guest" => OrganizationRole::Guest,
-        _ => return Err(AuthencError::validation("Bad request")),
+        _ => return Err(AuthencError::validation("Invalid role. Must be one of: owner, admin, member, guest")),
     };
 
     let invited_by = Uuid::parse_str(&auth_user.id)
