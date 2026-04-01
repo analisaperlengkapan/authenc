@@ -165,7 +165,6 @@ CREATE TABLE IF NOT EXISTS organization_domains (
     verified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(organization_id, domain)
 );
 
 -- NOTE: organization_identity_providers table is defined after identity_providers (see IDENTITY BROKERING section)
