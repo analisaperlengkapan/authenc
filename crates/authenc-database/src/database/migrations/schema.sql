@@ -490,8 +490,7 @@ CREATE INDEX IF NOT EXISTS idx_organization_invitations_org_id ON organization_i
 CREATE INDEX IF NOT EXISTS idx_organization_invitations_token ON organization_invitations(token_hash);
 CREATE INDEX IF NOT EXISTS idx_organization_domains_org_id ON organization_domains(organization_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_domains_domain_unique ON organization_domains(domain);
-CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_org_id ON organization_identity_providers(organization_id);
-CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_idp_id ON organization_identity_providers(identity_provider_id);
+-- NOTE: organization_identity_providers indexes are defined after the table (see IDENTITY BROKERING section)
 
 -- OAuth2 indexes
 CREATE INDEX IF NOT EXISTS idx_oauth2_clients_client_id ON oauth2_clients(client_id) WHERE deleted_at IS NULL;
@@ -507,16 +506,8 @@ CREATE INDEX IF NOT EXISTS idx_saml_idp_entity_id ON saml_identity_providers(ent
 CREATE INDEX IF NOT EXISTS idx_saml_sessions_user_id ON saml_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_saml_sessions_expires ON saml_sessions(expires_at);
 
--- Federated identities indexes
-CREATE INDEX IF NOT EXISTS idx_federated_identities_user_id ON federated_identities(user_id);
-CREATE INDEX IF NOT EXISTS idx_federated_identities_provider_id ON federated_identities(identity_provider_id);
-CREATE INDEX IF NOT EXISTS idx_federated_identities_external_id ON federated_identities(identity_provider_id, external_id);
-
--- Identity provider indexes
-CREATE INDEX IF NOT EXISTS idx_identity_providers_realm_id ON identity_providers(realm_id) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_identity_providers_type ON identity_providers(provider_type) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_identity_providers_enabled ON identity_providers(enabled) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_identity_provider_mappers_provider_id ON identity_provider_mappers(identity_provider_id);
+-- NOTE: federated_identities indexes are defined after the table (see IDENTITY BROKERING section)
+-- NOTE: identity_providers and identity_provider_mappers indexes are defined after the tables (see IDENTITY BROKERING section)
 
 -- Session indexes
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
@@ -659,6 +650,17 @@ CREATE TRIGGER update_identity_providers_updated_at BEFORE UPDATE ON identity_pr
 CREATE TRIGGER update_identity_provider_mappers_updated_at BEFORE UPDATE ON identity_provider_mappers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_federated_identities_updated_at BEFORE UPDATE ON federated_identities FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_organization_identity_providers_updated_at BEFORE UPDATE ON organization_identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Indexes for identity brokering tables (defined here after the tables)
+CREATE INDEX IF NOT EXISTS idx_identity_providers_realm_id ON identity_providers(realm_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_identity_providers_type ON identity_providers(provider_type) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_identity_providers_enabled ON identity_providers(enabled) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_identity_provider_mappers_provider_id ON identity_provider_mappers(identity_provider_id);
+CREATE INDEX IF NOT EXISTS idx_federated_identities_user_id ON federated_identities(user_id);
+CREATE INDEX IF NOT EXISTS idx_federated_identities_provider_id ON federated_identities(identity_provider_id);
+CREATE INDEX IF NOT EXISTS idx_federated_identities_external_id ON federated_identities(identity_provider_id, external_id);
+CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_org_id ON organization_identity_providers(organization_id);
+CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_idp_id ON organization_identity_providers(identity_provider_id);
 
 -- Update triggers for resource management
 CREATE TRIGGER update_resource_servers_updated_at BEFORE UPDATE ON resource_servers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
