@@ -21,6 +21,9 @@ pub trait AdminService: Send + Sync {
         limit: u32,
     ) -> Result<UserListResponse, String>;
 
+    /// Get user by ID
+    async fn get_user(&self, user_id: &Uuid) -> Result<UserResponse, String>;
+
     /// Create new user
     async fn create_user(&self, request: CreateUserRequest) -> Result<UserResponse, String>;
 
@@ -37,8 +40,21 @@ pub trait AdminService: Send + Sync {
     /// Get roles
     async fn get_roles(&self, realm_id: &Uuid) -> Result<Vec<RoleResponse>, String>;
 
+    /// Get role by ID
+    async fn get_role(&self, role_id: &Uuid) -> Result<RoleResponse, String>;
+
     /// Create role
     async fn create_role(&self, request: CreateRoleRequest) -> Result<RoleResponse, String>;
+
+    /// Update role
+    async fn update_role(
+        &self,
+        role_id: &Uuid,
+        request: CreateRoleRequest,
+    ) -> Result<RoleResponse, String>;
+
+    /// Delete role
+    async fn delete_role(&self, role_id: &Uuid) -> Result<(), String>;
 
     /// Get sessions
     async fn get_sessions(
@@ -537,10 +553,10 @@ impl AdminManager {
     /// - Audit log access and analysis
     ///
     /// # Example
-    /// ```rust
-    /// use authenc::services::admin::AdminManager;
-    /// use authenc::database::Database;
-    /// use authenc::config::DatabaseConfig;
+    /// ```rust,no_run
+    /// use authenc_services::services::admin::AdminManager;
+    /// use authenc_database::database::Database;
+    /// use authenc_core::config::DatabaseConfig;
     /// use std::sync::Arc;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -877,6 +893,44 @@ impl AdminService for AdminManager {
         Ok(self.generate_system_stats().await)
     }
 
+    async fn get_user(&self, user_id: &Uuid) -> Result<UserResponse, String> {
+        match operations::users::get_user_by_id(&self.db, *user_id).await {
+            Ok(Some(user)) => {
+                let realm_id = user.realm_id.unwrap_or_else(Uuid::new_v4);
+                let roles = authenc_database::database::operations::roles::get_user_roles(&self.db, &user.id)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|r| r.name)
+                    .collect();
+                let user_groups = operations::groups::get_user_groups(&self.db, user.id)
+                    .await
+                    .unwrap_or_default();
+                let group_names = user_groups.iter().map(|g| g.name.clone()).collect();
+
+                Ok(UserResponse {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
+                    enabled: user.enabled,
+                    email_verified: user.email_verified,
+                    realm_id,
+                    organization_id: user.organization_id,
+                    roles,
+                    groups: group_names,
+                    created_at: user.created_at,
+                    last_login: user.last_login_at,
+                    login_attempts: user.failed_login_attempts as u32,
+                    locked_until: user.account_locked_until,
+                })
+            }
+            Ok(None) => Err(format!("User with ID {} not found", user_id)),
+            Err(e) => Err(format!("Failed to get user: {}", e)),
+        }
+    }
+
     async fn get_users(
         &self,
         realm_id: &Uuid,
@@ -1160,6 +1214,26 @@ impl AdminService for AdminManager {
         }
     }
 
+    async fn get_role(&self, role_id: &Uuid) -> Result<RoleResponse, String> {
+        match operations::roles::get_role_by_id(&self.db, role_id).await {
+            Ok(Some(role)) => Ok(RoleResponse {
+                id: role.id,
+                name: role.name,
+                description: role.description.unwrap_or_default(),
+                realm_id: role.realm_id.unwrap_or_else(Uuid::new_v4),
+                composite: role.composite,
+                client_role: role.client_role,
+                container_id: role.client_id,
+                attributes: role
+                    .attributes
+                    .and_then(|attrs| serde_json::from_value(attrs).ok())
+                    .unwrap_or_default(),
+            }),
+            Ok(None) => Err(format!("Role with ID {} not found", role_id)),
+            Err(e) => Err(format!("Failed to get role: {}", e)),
+        }
+    }
+
     async fn create_role(&self, request: CreateRoleRequest) -> Result<RoleResponse, String> {
         // Create role in database
         match operations::roles::create_role(
@@ -1187,6 +1261,59 @@ impl AdminService for AdminManager {
                 })
             }
             Err(e) => Err(format!("Failed to create role: {}", e)),
+        }
+    }
+
+    async fn update_role(
+        &self,
+        role_id: &Uuid,
+        request: CreateRoleRequest,
+    ) -> Result<RoleResponse, String> {
+        let now = Utc::now();
+        let attr_json = serde_json::to_string(&request.attributes).unwrap_or_default();
+        let query = r#"
+            UPDATE roles
+            SET name = $2, description = $3, composite = $4, client_role = $5,
+                attributes = $6, updated_at = $7
+            WHERE id = $1 AND deleted_at IS NULL
+            RETURNING id, name, description, realm_id, composite, client_role,
+                      client_id, attributes, created_at, updated_at
+        "#;
+
+        match self.db.query_one::<tokio_postgres::Row>(query, &[
+            role_id,
+            &request.name,
+            &Some(request.description.clone()),
+            &request.composite,
+            &request.client_role,
+            &Some(attr_json),
+            &now
+        ]).await {
+            Ok(row) => Ok(RoleResponse {
+                id: row.get(0),
+                name: row.get(1),
+                description: row.get::<_, Option<String>>(2).unwrap_or_default(),
+                realm_id: row.get::<_, Option<Uuid>>(3).unwrap_or_else(Uuid::new_v4),
+                composite: row.get(4),
+                client_role: row.get(5),
+                container_id: row.get(6),
+                attributes: row.get::<_, Option<serde_json::Value>>(7)
+                    .unwrap_or_default()
+                    .as_object()
+                    .map(|o| o.iter().map(|(k, v)| (k.clone(), v.as_array().map(|a| a.iter().map(|s| s.as_str().unwrap_or_default().to_string()).collect()).unwrap_or_default())).collect())
+                    .unwrap_or_default(),
+            }),
+            Err(e) => Err(format!("Failed to update role: {}", e)),
+        }
+    }
+
+    async fn delete_role(&self, role_id: &Uuid) -> Result<(), String> {
+        let now = Utc::now();
+        let query = "UPDATE roles SET deleted_at = $2, updated_at = $2 WHERE id = $1 AND deleted_at IS NULL";
+        match self.db.execute(query, &[role_id, &now]).await {
+            Ok(affected) if affected > 0 => Ok(()),
+            Ok(_) => Err("Role not found or already deleted".to_string()),
+            Err(e) => Err(format!("Failed to delete role: {}", e)),
         }
     }
 

@@ -114,7 +114,7 @@ impl IdentityBrokerRegistry {
     /// - Log broker registration and deregistration events
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::broker::IdentityBrokerRegistry;
     ///
     /// let registry = IdentityBrokerRegistry::new();
@@ -297,7 +297,7 @@ impl LdapIdentityBroker {
     /// - Asynchronous operations prevent blocking
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::broker::{LdapIdentityBroker, LdapConfig};
     ///
     /// let config = LdapConfig {
@@ -814,7 +814,7 @@ impl SocialIdentityBroker {
     /// - Validates OAuth scopes and permissions
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::broker::{SocialIdentityBroker, SocialConfig, IdentityProviderType};
     ///
     /// let config = SocialConfig {

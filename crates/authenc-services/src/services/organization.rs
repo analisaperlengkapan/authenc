@@ -713,10 +713,10 @@ impl OrganizationService {
             JOIN organizations o ON om.organization_id = o.id
             WHERE om.organization_id = $1 AND om.user_id = $2 AND o.deleted_at IS NULL
         "#;
-        let count: i64 = self.db.query_one(query, &[organization_id, user_id])
+        let row: tokio_postgres::Row = self.db.query_one::<tokio_postgres::Row>(query, &[organization_id, user_id])
             .await
-            .map_err(|e| AuthencError::database(format!("Failed to check membership: {}", e)))?
-            .get(0);
+            .map_err(|e| AuthencError::database(format!("Failed to check membership: {}", e)))?;
+        let count: i64 = row.get(0);
         Ok(count > 0)
     }
 
@@ -733,10 +733,10 @@ impl OrganizationService {
             JOIN organizations o ON om.organization_id = o.id
             WHERE om.organization_id = $1 AND om.user_id = $2 AND LOWER(om.role) = $3 AND o.deleted_at IS NULL
         "#;
-        let count: i64 = self.db.query_one(query, &[organization_id, user_id, &role_str])
+        let row: tokio_postgres::Row = self.db.query_one::<tokio_postgres::Row>(query, &[organization_id, user_id, &role_str])
             .await
-            .map_err(|e| AuthencError::database(format!("Failed to check role: {}", e)))?
-            .get(0);
+            .map_err(|e| AuthencError::database(format!("Failed to check role: {}", e)))?;
+        let count: i64 = row.get(0);
         Ok(count > 0)
     }
 

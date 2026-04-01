@@ -72,14 +72,53 @@ impl AdminService for MockAdminService {
         _realm_id: &Uuid,
         _page: u32,
         _limit: u32,
-    ) -> std::result::Result<crate::services::admin::UserListResponse, String> {
+    ) -> std::result::Result<authenc_services::services::admin::UserListResponse, String> {
         Err("Not implemented".to_string())
+    }
+
+    async fn get_user(&self, user_id: &Uuid) -> std::result::Result<authenc_services::services::admin::UserResponse, String> {
+        use authenc_database::database::operations::{groups, roles, users};
+        match users::get_user_by_id(&self.db, *user_id).await {
+            Ok(Some(user)) => {
+                let realm_id = user.realm_id.unwrap_or_else(Uuid::new_v4);
+                let user_roles = roles::get_user_roles(&self.db, &user.id)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|r| r.name)
+                    .collect();
+                let user_groups = groups::get_user_groups(&self.db, user.id)
+                    .await
+                    .unwrap_or_default();
+                let group_names = user_groups.iter().map(|g| g.name.clone()).collect();
+
+                Ok(authenc_services::services::admin::UserResponse {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
+                    enabled: user.enabled,
+                    email_verified: user.email_verified,
+                    realm_id,
+                    organization_id: user.organization_id,
+                    roles: user_roles,
+                    groups: group_names,
+                    created_at: user.created_at,
+                    last_login: user.last_login_at,
+                    login_attempts: user.failed_login_attempts as u32,
+                    locked_until: user.account_locked_until,
+                })
+            }
+            Ok(None) => Err(format!("User with ID {} not found", user_id)),
+            Err(e) => Err(format!("Failed to get user: {}", e)),
+        }
     }
 
     async fn create_user(
         &self,
-        request: crate::services::admin::CreateUserRequest,
-    ) -> std::result::Result<crate::services::admin::UserResponse, String> {
+        request: authenc_services::services::admin::CreateUserRequest,
+    ) -> std::result::Result<authenc_services::services::admin::UserResponse, String> {
         // Use the database operations to create user
         use authenc_database::database::operations::{groups, roles, users};
         use authenc_models::models::user::CreateUserRequest as DbCreateUserRequest;
@@ -180,28 +219,217 @@ impl AdminService for MockAdminService {
 
     async fn update_user(
         &self,
-        _user_id: &Uuid,
-        _request: crate::services::admin::UpdateUserRequest,
-    ) -> std::result::Result<crate::services::admin::UserResponse, String> {
-        Err("Not implemented".to_string())
+        user_id: &Uuid,
+        request: authenc_services::services::admin::UpdateUserRequest,
+    ) -> std::result::Result<authenc_services::services::admin::UserResponse, String> {
+        use authenc_database::database::operations::{groups, roles, users};
+        let db_request = authenc_models::models::user::UpdateUserRequest {
+            username: request.username,
+            email: request.email,
+            first_name: request.first_name,
+            last_name: request.last_name,
+            phone_number: request.phone_number,
+            enabled: request.enabled,
+            email_verified: request.email_verified,
+            phone_verified: request.phone_verified,
+            require_password_change: request.require_password_change,
+            attributes: request.attributes,
+        };
+
+        match users::update_user(&self.db, *user_id, &db_request).await {
+            Ok(user) => {
+                let realm_id = user.realm_id.unwrap_or_else(Uuid::new_v4);
+
+                // Handle group updates if provided
+                if let Some(group_names) = &request.groups {
+                    for group_name in group_names {
+                        if let Ok(Some(group)) =
+                            groups::get_group_by_name(&self.db, realm_id, group_name)
+                                .await
+                        {
+                            let _ = groups::add_user_to_group(
+                                &self.db, user.id, group.id, None, None,
+                            )
+                            .await;
+                        }
+                    }
+                }
+
+                let user_roles = roles::get_user_roles(&self.db, &user.id)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|r| r.name)
+                    .collect();
+
+                let user_groups = groups::get_user_groups(&self.db, user.id)
+                    .await
+                    .unwrap_or_default();
+                let group_names = user_groups.iter().map(|g| g.name.clone()).collect();
+
+                Ok(authenc_services::services::admin::UserResponse {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
+                    enabled: user.enabled,
+                    email_verified: user.email_verified,
+                    realm_id,
+                    organization_id: user.organization_id,
+                    roles: user_roles,
+                    groups: group_names,
+                    created_at: user.created_at,
+                    last_login: user.last_login_at,
+                    login_attempts: user.failed_login_attempts as u32,
+                    locked_until: user.account_locked_until,
+                })
+            }
+            Err(e) => Err(format!("Failed to update user: {}", e)),
+        }
     }
 
-    async fn delete_user(&self, _user_id: &Uuid) -> std::result::Result<(), String> {
-        Err("Not implemented".to_string())
+    async fn delete_user(&self, user_id: &Uuid) -> std::result::Result<(), String> {
+        use authenc_database::database::operations::users;
+        match users::delete_user(&self.db, *user_id).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Failed to delete user: {}", e)),
+        }
     }
 
     async fn get_roles(
         &self,
-        _realm_id: &Uuid,
-    ) -> std::result::Result<Vec<crate::services::admin::RoleResponse>, String> {
-        Err("Not implemented".to_string())
+        realm_id: &Uuid,
+    ) -> std::result::Result<Vec<authenc_services::services::admin::RoleResponse>, String> {
+        use authenc_database::database::operations::roles;
+        match roles::list_roles_by_realm(&self.db, realm_id).await {
+            Ok(roles) => {
+                let mut responses = Vec::new();
+                for role in roles {
+                    responses.push(authenc_services::services::admin::RoleResponse {
+                        id: role.id,
+                        name: role.name,
+                        description: role.description.unwrap_or_default(),
+                        realm_id: role.realm_id.unwrap_or_else(Uuid::new_v4),
+                        composite: role.composite,
+                        client_role: role.client_role,
+                        container_id: role.client_id,
+                        attributes: role
+                            .attributes
+                            .and_then(|attrs| serde_json::from_value(attrs).ok())
+                            .unwrap_or_default(),
+                    });
+                }
+                Ok(responses)
+            }
+            Err(e) => Err(format!("Failed to get roles: {}", e)),
+        }
+    }
+
+    async fn get_role(&self, role_id: &Uuid) -> std::result::Result<authenc_services::services::admin::RoleResponse, String> {
+        use authenc_database::database::operations::roles;
+        match roles::get_role_by_id(&self.db, role_id).await {
+            Ok(Some(role)) => Ok(authenc_services::services::admin::RoleResponse {
+                id: role.id,
+                name: role.name,
+                description: role.description.unwrap_or_default(),
+                realm_id: role.realm_id.unwrap_or_else(Uuid::new_v4),
+                composite: role.composite,
+                client_role: role.client_role,
+                container_id: role.client_id,
+                attributes: role
+                    .attributes
+                    .and_then(|attrs| serde_json::from_value(attrs).ok())
+                    .unwrap_or_default(),
+            }),
+            Ok(None) => Err(format!("Role with ID {} not found", role_id)),
+            Err(e) => Err(format!("Failed to get role: {}", e)),
+        }
     }
 
     async fn create_role(
         &self,
-        _request: crate::services::admin::CreateRoleRequest,
-    ) -> std::result::Result<crate::services::admin::RoleResponse, String> {
-        Err("Not implemented".to_string())
+        request: authenc_services::services::admin::CreateRoleRequest,
+    ) -> std::result::Result<authenc_services::services::admin::RoleResponse, String> {
+        use authenc_database::database::operations::roles;
+        match roles::create_role(
+            &self.db,
+            &request.name,
+            Some(&request.description),
+            &request.realm_id,
+        )
+        .await
+        {
+            Ok(role) => {
+                Ok(authenc_services::services::admin::RoleResponse {
+                    id: role.id,
+                    name: role.name,
+                    description: role.description.unwrap_or_default(),
+                    realm_id: role.realm_id.unwrap_or_else(Uuid::new_v4),
+                    composite: role.composite,
+                    client_role: role.client_role,
+                    container_id: role.client_id,
+                    attributes: role
+                        .attributes
+                        .and_then(|attrs| serde_json::from_value(attrs).ok())
+                        .unwrap_or_default(),
+                })
+            }
+            Err(e) => Err(format!("Failed to create role: {}", e)),
+        }
+    }
+
+    async fn update_role(
+        &self,
+        role_id: &Uuid,
+        request: authenc_services::services::admin::CreateRoleRequest,
+    ) -> std::result::Result<authenc_services::services::admin::RoleResponse, String> {
+        let now = chrono::Utc::now();
+        let attr_json = serde_json::to_string(&request.attributes).unwrap_or_default();
+        let query = r#"
+            UPDATE roles
+            SET name = $2, description = $3, composite = $4, client_role = $5,
+                attributes = $6, updated_at = $7
+            WHERE id = $1 AND deleted_at IS NULL
+            RETURNING id, name, description, realm_id, composite, client_role,
+                      client_id, attributes, created_at, updated_at
+        "#;
+
+        match self.db.query_one::<tokio_postgres::Row>(query, &[
+            role_id,
+            &request.name,
+            &Some(request.description.clone()),
+            &request.composite,
+            &request.client_role,
+            &Some(attr_json),
+            &now
+        ]).await {
+            Ok(row) => Ok(authenc_services::services::admin::RoleResponse {
+                id: row.get(0),
+                name: row.get(1),
+                description: row.get::<_, Option<String>>(2).unwrap_or_default(),
+                realm_id: row.get::<_, Option<Uuid>>(3).unwrap_or_else(Uuid::new_v4),
+                composite: row.get(4),
+                client_role: row.get(5),
+                container_id: row.get(6),
+                attributes: row.get::<_, Option<serde_json::Value>>(7)
+                    .unwrap_or_default()
+                    .as_object()
+                    .map(|o| o.iter().map(|(k, v)| (k.clone(), v.as_array().map(|a| a.iter().map(|s| s.as_str().unwrap_or_default().to_string()).collect()).unwrap_or_default())).collect())
+                    .unwrap_or_default(),
+            }),
+            Err(e) => Err(format!("Failed to update role: {}", e)),
+        }
+    }
+
+    async fn delete_role(&self, role_id: &Uuid) -> std::result::Result<(), String> {
+        let now = chrono::Utc::now();
+        let query = "UPDATE roles SET deleted_at = $2, updated_at = $2 WHERE id = $1 AND deleted_at IS NULL";
+        match self.db.execute(query, &[role_id, &now]).await {
+            Ok(affected) if affected > 0 => Ok(()),
+            Ok(_) => Err("Role not found or already deleted".to_string()),
+            Err(e) => Err(format!("Failed to delete role: {}", e)),
+        }
     }
 
     async fn get_sessions(
@@ -209,7 +437,7 @@ impl AdminService for MockAdminService {
         _user_id: Option<Uuid>,
         _page: u32,
         _limit: u32,
-    ) -> std::result::Result<crate::services::admin::SessionListResponse, String> {
+    ) -> std::result::Result<authenc_services::services::admin::SessionListResponse, String> {
         Err("Not implemented".to_string())
     }
 
@@ -219,8 +447,8 @@ impl AdminService for MockAdminService {
 
     async fn get_audit_logs(
         &self,
-        _filter: crate::services::admin::AuditLogFilter,
-    ) -> std::result::Result<crate::services::admin::AuditLogResponse, String> {
+        _filter: authenc_services::services::admin::AuditLogFilter,
+    ) -> std::result::Result<authenc_services::services::admin::AuditLogResponse, String> {
         Err("Not implemented".to_string())
     }
 
@@ -229,43 +457,43 @@ impl AdminService for MockAdminService {
         _realm_id: &Uuid,
         _page: u32,
         _limit: u32,
-    ) -> std::result::Result<Vec<crate::services::admin::PolicyResponse>, String> {
+    ) -> std::result::Result<Vec<authenc_services::services::admin::PolicyResponse>, String> {
         Err("Not implemented".to_string())
     }
 
     async fn create_policy(
         &self,
-        _request: crate::services::admin::CreatePolicyRequest,
-    ) -> std::result::Result<crate::services::admin::PolicyResponse, String> {
+        _request: authenc_services::services::admin::CreatePolicyRequest,
+    ) -> std::result::Result<authenc_services::services::admin::PolicyResponse, String> {
         Err("Not implemented".to_string())
     }
 
     async fn get_zero_trust_dashboard(
         &self,
         _realm_id: &Uuid,
-    ) -> std::result::Result<crate::services::admin::ZeroTrustDashboard, String> {
+    ) -> std::result::Result<authenc_services::services::admin::ZeroTrustDashboard, String> {
         Err("Not implemented".to_string())
     }
 
     async fn get_identity_providers(
         &self,
         _realm_id: &Uuid,
-    ) -> std::result::Result<Vec<crate::services::admin::IdentityProviderResponse>, String> {
+    ) -> std::result::Result<Vec<authenc_services::services::admin::IdentityProviderResponse>, String> {
         Err("Not implemented".to_string())
     }
 
     async fn create_identity_provider(
         &self,
-        _request: crate::services::admin::CreateIdentityProviderRequest,
-    ) -> std::result::Result<crate::services::admin::IdentityProviderResponse, String> {
+        _request: authenc_services::services::admin::CreateIdentityProviderRequest,
+    ) -> std::result::Result<authenc_services::services::admin::IdentityProviderResponse, String> {
         Err("Not implemented".to_string())
     }
 
     async fn update_identity_provider(
         &self,
         _provider_id: &Uuid,
-        _request: crate::services::admin::UpdateIdentityProviderRequest,
-    ) -> std::result::Result<crate::services::admin::IdentityProviderResponse, String> {
+        _request: authenc_services::services::admin::UpdateIdentityProviderRequest,
+    ) -> std::result::Result<authenc_services::services::admin::IdentityProviderResponse, String> {
         Err("Not implemented".to_string())
     }
 
@@ -279,14 +507,14 @@ impl AdminService for MockAdminService {
     async fn get_identity_provider(
         &self,
         _provider_id: &Uuid,
-    ) -> std::result::Result<crate::services::admin::IdentityProviderResponse, String> {
+    ) -> std::result::Result<authenc_services::services::admin::IdentityProviderResponse, String> {
         Err("Not implemented".to_string())
     }
 
     async fn test_identity_provider(
         &self,
         _provider_id: &Uuid,
-    ) -> std::result::Result<crate::services::admin::TestIdentityProviderResponse, String> {
+    ) -> std::result::Result<authenc_services::services::admin::TestIdentityProviderResponse, String> {
         Err("Not implemented".to_string())
     }
 }

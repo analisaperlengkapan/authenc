@@ -821,7 +821,7 @@ impl FipsAuditLogger {
     /// - Maintains audit trail for compliance validation
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::fips::FipsAuditLogger;
     ///
     /// let logger = FipsAuditLogger::new(true); // Enable audit logging

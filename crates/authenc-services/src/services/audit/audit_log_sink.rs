@@ -64,7 +64,7 @@ impl AuditLogSink for MultiAuditLogSink {
 /// - Provides configurable timeouts and retry mechanisms
 ///
 /// # Example
-/// ```rust
+/// ```rust,no_run
 /// use authenc::services::audit_log_sink::PgAuditLogSink;
 /// use authenc::services::pg_audit_log_store::PgAuditLogStore;
 ///

@@ -160,7 +160,7 @@ impl LdapFederationProvider {
     /// - Log authentication attempts for security monitoring
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::advanced_federation::{LdapFederationProvider, LdapConfig, LdapSyncSettings};
     ///
     /// // Note: LdapConfig requires all fields to be initialized

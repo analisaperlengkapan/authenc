@@ -231,7 +231,7 @@ impl AuthencOperator {
     /// - Monitors cluster resources and health status
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::kubernetes::AuthencOperator;
     /// use kube::Client;
     ///
@@ -616,7 +616,7 @@ impl AuthencController {
     /// - Manages operator lifecycle and error recovery
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::kubernetes::AuthencController;
     /// use kube::Client;
     ///

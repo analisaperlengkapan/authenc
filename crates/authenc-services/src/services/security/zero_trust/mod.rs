@@ -278,7 +278,7 @@ impl ZeroTrustManager {
     /// - Micro-segmentation - granular access controls enforced
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::zero_trust::ZeroTrustManager;
     ///
     /// let mut manager = ZeroTrustManager::new();

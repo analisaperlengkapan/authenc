@@ -158,11 +158,22 @@ pub async fn list_users(
 
 /// Get user by ID
 pub async fn get_user(
-    State(_state): State<Arc<AppState>>,
-    Path(_user_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    Path(user_id): Path<Uuid>,
 ) -> Result<Json<UserResponse>, StatusCode> {
-    // Mock response - in real implementation would fetch from service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.get_user(&user_id).await {
+        Ok(user) => Ok(Json(user)),
+        Err(e) => {
+            eprintln!("Failed to get user: {}", e);
+            if e.contains("not found") {
+                Err(StatusCode::NOT_FOUND)
+            } else {
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
 }
 
 /// Create a new user
@@ -216,41 +227,66 @@ pub async fn delete_user(
 
 /// List user sessions
 pub async fn list_sessions(
-    State(_state): State<Arc<AppState>>,
-    Query(_query): Query<ListSessionsQuery>,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ListSessionsQuery>,
 ) -> Result<Json<SessionListResponse>, StatusCode> {
-    // Mock response - in real implementation would fetch from service
-    let response = SessionListResponse {
-        sessions: vec![],
-        total_count: 0,
-        page: 1,
-        limit: 20,
-    };
-    Ok(Json(response))
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    let page = query.page.unwrap_or(1);
+    let limit = query.limit.unwrap_or(20);
+
+    match admin_manager
+        .get_sessions(query.user_id, page, limit)
+        .await
+    {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => {
+            eprintln!("Failed to list sessions: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Terminate user session
 pub async fn terminate_session(
-    State(_state): State<Arc<AppState>>,
-    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    // Mock response - in real implementation would terminate via service
-    Ok(StatusCode::NO_CONTENT)
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.terminate_session(&session_id).await {
+        Ok(_) => Ok(StatusCode::NO_CONTENT),
+        Err(e) => {
+            eprintln!("Failed to terminate session: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// List audit logs
 pub async fn list_audit_logs(
-    State(_state): State<Arc<AppState>>,
-    Query(_query): Query<ListAuditLogsQuery>,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ListAuditLogsQuery>,
 ) -> Result<Json<AuditLogResponse>, StatusCode> {
-    // Mock response - in real implementation would fetch from service
-    let response = AuditLogResponse {
-        logs: vec![],
-        total_count: 0,
-        page: 1,
-        limit: 50,
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    let filter = authenc_services::services::admin::AuditLogFilter {
+        user_id: query.user_id,
+        event_type: query.event_type,
+        realm_id: query.realm_id,
+        from_date: query.from_date,
+        to_date: query.to_date,
+        page: query.page.unwrap_or(1),
+        limit: query.limit.unwrap_or(50),
     };
-    Ok(Json(response))
+
+    match admin_manager.get_audit_logs(filter).await {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => {
+            eprintln!("Failed to list audit logs: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// List roles
@@ -298,30 +334,55 @@ pub async fn create_role(
 
 /// Get role by ID
 pub async fn get_role(
-    State(_state): State<Arc<AppState>>,
-    Path(_role_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    Path(role_id): Path<Uuid>,
 ) -> Result<Json<RoleResponse>, StatusCode> {
-    // Mock response - in real implementation would fetch from service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.get_role(&role_id).await {
+        Ok(role) => Ok(Json(role)),
+        Err(e) => {
+            eprintln!("Failed to get role: {}", e);
+            if e.contains("not found") {
+                Err(StatusCode::NOT_FOUND)
+            } else {
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
 }
 
 /// Update role
 pub async fn update_role(
-    State(_state): State<Arc<AppState>>,
-    Path(_role_id): Path<Uuid>,
-    Json(_request): Json<CreateRoleRequest>,
+    State(state): State<Arc<AppState>>,
+    Path(role_id): Path<Uuid>,
+    Json(request): Json<CreateRoleRequest>,
 ) -> Result<Json<RoleResponse>, StatusCode> {
-    // Mock response - in real implementation would update via service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.update_role(&role_id, request).await {
+        Ok(role) => Ok(Json(role)),
+        Err(e) => {
+            eprintln!("Failed to update role: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Delete role
 pub async fn delete_role(
-    State(_state): State<Arc<AppState>>,
-    Path(_role_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    Path(role_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    // Mock response - in real implementation would delete via service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.delete_role(&role_id).await {
+        Ok(_) => Ok(StatusCode::NO_CONTENT),
+        Err(e) => {
+            eprintln!("Failed to delete role: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// List authorization policies

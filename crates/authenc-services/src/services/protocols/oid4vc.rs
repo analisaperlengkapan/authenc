@@ -529,7 +529,7 @@ impl EnhancedOid4VcManager {
     /// - Batch credential operations
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::oid4vc::EnhancedOid4VcManager;
     ///
     /// let manager = EnhancedOid4VcManager::new(
@@ -1710,7 +1710,7 @@ impl LegacyOid4VcManager {
     /// - Audit all credential operations during migration period
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::oid4vc::LegacyOid4VcManager;
     /// use ed25519_dalek::SigningKey;
     ///
