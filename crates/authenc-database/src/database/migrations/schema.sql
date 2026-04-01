@@ -38,20 +38,7 @@ CREATE TABLE IF NOT EXISTS users (
     login_count INTEGER NOT NULL DEFAULT 0
 );
 
--- Federated identities (links users to external identity providers)
-CREATE TABLE IF NOT EXISTS federated_identities (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    identity_provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
-    external_id VARCHAR(255) NOT NULL, -- External user ID from the identity provider
-    external_username VARCHAR(255), -- External username from the identity provider
-    external_email VARCHAR(255), -- External email from the identity provider
-    external_attributes JSONB, -- Additional attributes from the identity provider
-    last_login_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(identity_provider_id, external_id)
-);
+-- NOTE: federated_identities table is defined after identity_providers (see IDENTITY BROKERING section)
 
 -- ============================================================================
 -- DEVICE MANAGEMENT TABLES
@@ -181,16 +168,7 @@ CREATE TABLE IF NOT EXISTS organization_domains (
     UNIQUE(organization_id, domain)
 );
 
--- Organization identity provider links
-CREATE TABLE IF NOT EXISTS organization_identity_providers (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    identity_provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
-    priority INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(organization_id, identity_provider_id)
-);
+-- NOTE: organization_identity_providers table is defined after identity_providers (see IDENTITY BROKERING section)
 
 -- ============================================================================
 -- OAUTH2 TABLES
@@ -610,7 +588,7 @@ CREATE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices FOR EACH ROW E
 CREATE TRIGGER update_organizations_updated_at BEFORE UPDATE ON organizations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_organization_members_updated_at BEFORE UPDATE ON organization_members FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_organization_domains_updated_at BEFORE UPDATE ON organization_domains FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_organization_identity_providers_updated_at BEFORE UPDATE ON organization_identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- NOTE: organization_identity_providers trigger is defined after the table (see IDENTITY BROKERING section)
 CREATE TRIGGER update_oauth2_clients_updated_at BEFORE UPDATE ON oauth2_clients FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_saml_service_providers_updated_at BEFORE UPDATE ON saml_service_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_saml_identity_providers_updated_at BEFORE UPDATE ON saml_identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -648,10 +626,39 @@ CREATE TABLE IF NOT EXISTS identity_provider_mappers (
     UNIQUE(identity_provider_id, name)
 );
 
--- Update triggers for identity providers
+-- Federated identities (links users to external identity providers)
+-- Defined here (after identity_providers) to avoid forward FK references
+CREATE TABLE IF NOT EXISTS federated_identities (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    identity_provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
+    external_id VARCHAR(255) NOT NULL, -- External user ID from the identity provider
+    external_username VARCHAR(255), -- External username from the identity provider
+    external_email VARCHAR(255), -- External email from the identity provider
+    external_attributes JSONB, -- Additional attributes from the identity provider
+    last_login_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(identity_provider_id, external_id)
+);
+
+-- Organization identity provider links
+-- Defined here (after identity_providers) to avoid forward FK references
+CREATE TABLE IF NOT EXISTS organization_identity_providers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    identity_provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
+    priority INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(organization_id, identity_provider_id)
+);
+
+-- Update triggers for identity brokering tables
 CREATE TRIGGER update_identity_providers_updated_at BEFORE UPDATE ON identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_identity_provider_mappers_updated_at BEFORE UPDATE ON identity_provider_mappers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_federated_identities_updated_at BEFORE UPDATE ON federated_identities FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_organization_identity_providers_updated_at BEFORE UPDATE ON organization_identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Update triggers for resource management
 CREATE TRIGGER update_resource_servers_updated_at BEFORE UPDATE ON resource_servers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
