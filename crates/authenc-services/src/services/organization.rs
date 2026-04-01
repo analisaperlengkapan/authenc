@@ -3,9 +3,26 @@ use authenc_core::error::{AuthencError, Result};
 use authenc_models::models::organization::{
     Organization, OrganizationInvitation as ModelOrganizationInvitation, OrganizationMember,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Custom deserializer for `Option<Option<String>>` that correctly distinguishes
+/// three JSON states:
+///   - key absent       → `None`          (field left unchanged)
+///   - key present, null → `Some(None)`   (field cleared to NULL)
+///   - key present, "v"  → `Some(Some(v))` (field set to new value)
+///
+/// Standard serde collapses absent and null into `None` for `Option<Option<T>>`,
+/// making the "clear" semantic unreachable (see serde-rs/serde#984).
+fn deserialize_double_option<'de, D>(deserializer: D) -> std::result::Result<Option<Option<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // If this function is called, the key was present in the JSON.
+    // Deserialize the inner Option<String>: null → None, "val" → Some("val").
+    Option::<String>::deserialize(deserializer).map(Some)
+}
 
 // Organization represents a tenant/organization in the system
 // Using the model Organization for now
@@ -1234,16 +1251,16 @@ pub struct OrganizationUpdate {
     /// New display name for the organization
     pub display_name: Option<String>,
     /// New description for the organization (send null to clear)
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_double_option")]
     pub description: Option<Option<String>>,
     /// New domain for the organization (send null to clear)
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_double_option")]
     pub domain: Option<Option<String>>,
     /// New logo URL for the organization (send null to clear)
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_double_option")]
     pub logo_url: Option<Option<String>>,
     /// New website URL for the organization (send null to clear)
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_double_option")]
     pub website: Option<Option<String>>,
     /// Whether the organization should be enabled
     pub enabled: Option<bool>,
