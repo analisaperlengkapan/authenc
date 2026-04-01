@@ -897,8 +897,19 @@ impl OrganizationService {
     }
 
     /// Get organization settings
+    ///
+    /// NOTE: Settings persistence is not yet implemented. Returns defaults
+    /// after verifying the organization exists.
     pub async fn get_settings(&self, organization_id: &Uuid) -> Result<OrganizationSettings> {
-        // In production, retrieve from database
+        // Verify the organization exists and is not soft-deleted
+        let org = self.get_organization(organization_id).await?;
+        if org.is_none() {
+            return Err(AuthencError::resource_not_found(
+                "Organization not found or has been deleted",
+            ));
+        }
+
+        // TODO: Retrieve from database once organization_settings table is created
         Ok(OrganizationSettings {
             organization_id: *organization_id,
             allow_public_signup: false,
@@ -912,8 +923,18 @@ impl OrganizationService {
     }
 
     /// Update organization settings
-    pub async fn update_settings(&self, _settings: &OrganizationSettings) -> Result<()> {
-        // In production, update in database
+    ///
+    /// NOTE: Settings persistence is not yet implemented.
+    pub async fn update_settings(&self, settings: &OrganizationSettings) -> Result<()> {
+        // Verify the organization exists and is not soft-deleted
+        let org = self.get_organization(&settings.organization_id).await?;
+        if org.is_none() {
+            return Err(AuthencError::resource_not_found(
+                "Organization not found or has been deleted",
+            ));
+        }
+
+        // TODO: Persist to database once organization_settings table is created
         Ok(())
     }
 
