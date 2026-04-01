@@ -123,6 +123,24 @@ impl TryFrom<tokio_postgres::Row> for OrganizationInvitation {
     }
 }
 
+impl TryFrom<tokio_postgres::Row> for OrganizationMember {
+    type Error = AuthencError;
+
+    fn try_from(row: tokio_postgres::Row) -> Result<Self> {
+        Ok(Self {
+            id: row.try_get("id")?,
+            organization_id: row.try_get("organization_id")?,
+            user_id: row.try_get("user_id")?,
+            role: row.try_get("role")?,
+            invited_by: row.try_get("invited_by")?,
+            invited_at: row.try_get("invited_at")?,
+            joined_at: row.try_get("joined_at")?,
+            created_at: row.try_get("created_at")?,
+            updated_at: row.try_get("updated_at")?,
+        })
+    }
+}
+
 /// Organization creation request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateOrganizationRequest {

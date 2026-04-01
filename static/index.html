@@ -271,12 +271,43 @@
 
             <div class="tab-buttons">
                 <button id="tab-realms" class="tab-button active" onclick="switchTab('realms')">Realms</button>
+                <button id="tab-organizations" class="tab-button" onclick="switchTab('organizations')">Organizations</button>
                 <button id="tab-users" class="tab-button" onclick="switchTab('users')">Users</button>
                 <button id="tab-groups" class="tab-button" onclick="switchTab('groups')">Groups</button>
                 <button id="tab-roles" class="tab-button" onclick="switchTab('roles')">Roles</button>
                 <button id="tab-clients" class="tab-button" onclick="switchTab('clients')">Clients</button>
                 <button id="tab-providers" class="tab-button" onclick="switchTab('providers')">Identity Providers</button>
                 <button id="tab-audit" class="tab-button" onclick="switchTab('audit')">Audit Logs</button>
+            </div>
+
+            <div id="organizations-section" class="hidden">
+                <div style="margin-bottom: 2rem;">
+                    <h3>Organizations</h3>
+                    <p style="color: var(--text-light);">Manage organizations (multi-tenancy) for the system.</p>
+                    <div style="display: flex; gap: 1rem;">
+                        <button onclick="fetchOrganizations()" style="width: auto;">Refresh List</button>
+                        <button onclick="openCreateOrganizationModal()" style="width: auto; background-color: var(--success);">Create Organization</button>
+                    </div>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table id="organizations-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Display Name</th>
+                                <th>Domain</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="organizations-body">
+                            <tr>
+                                <td colspan="5" style="text-align: center;">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div id="realms-section">
@@ -580,6 +611,80 @@
         </div>
     </div>
 
+    <div id="edit-organization-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div class="card" style="max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;">
+            <h2 id="edit-organization-title" style="text-align: center;">Create Organization</h2>
+            <form id="edit-organization-form">
+                <input type="hidden" id="edit-organization-id">
+                <div class="form-group">
+                    <label for="edit-organization-name">Name</label>
+                    <input type="text" id="edit-organization-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-organization-display-name">Display Name</label>
+                    <input type="text" id="edit-organization-display-name" name="display_name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-organization-description">Description</label>
+                    <input type="text" id="edit-organization-description" name="description">
+                </div>
+                <div class="form-group">
+                    <label for="edit-organization-domain">Domain</label>
+                    <input type="text" id="edit-organization-domain" name="domain">
+                </div>
+                <button type="submit">Save Organization</button>
+                <button type="button" class="secondary" onclick="closeEditOrganizationModal()">Cancel</button>
+            </form>
+            <div id="edit-organization-error" class="error-message"></div>
+        </div>
+    </div>
+
+    <div id="org-members-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div class="card" style="max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto;">
+            <h2 id="org-members-title" style="text-align: center;">Organization Members</h2>
+            <div style="margin-bottom: 1rem;">
+                <button onclick="openAddOrgMemberModal()" style="width: auto; background-color: var(--success);">Add Member</button>
+            </div>
+            <table id="org-members-table">
+                <thead>
+                    <tr>
+                        <th>User ID</th>
+                        <th>Role</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="org-members-body">
+                </tbody>
+            </table>
+            <button type="button" class="secondary" onclick="closeOrgMembersModal()">Close</button>
+        </div>
+    </div>
+
+    <div id="add-org-member-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1001;">
+        <div class="card" style="max-width: 400px; width: 100%;">
+            <h2 style="text-align: center;">Add Organization Member</h2>
+            <form id="add-org-member-form">
+                <input type="hidden" id="add-org-member-org-id">
+                <div class="form-group">
+                    <label for="add-org-member-user-id">User ID (UUID)</label>
+                    <input type="text" id="add-org-member-user-id" name="user_id" required>
+                </div>
+                <div class="form-group">
+                    <label for="add-org-member-role">Role</label>
+                    <select id="add-org-member-role" name="role" required style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.25rem;">
+                        <option value="owner">Owner</option>
+                        <option value="admin">Admin</option>
+                        <option value="member" selected>Member</option>
+                        <option value="guest">Guest</option>
+                    </select>
+                </div>
+                <button type="submit">Add Member</button>
+                <button type="button" class="secondary" onclick="closeAddOrgMemberModal()">Cancel</button>
+            </form>
+            <div id="add-org-member-error" class="error-message"></div>
+        </div>
+    </div>
+
     <div id="edit-realm-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
         <div class="card" style="max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;">
             <h2 id="edit-realm-title" style="text-align: center;">Create Realm</h2>
@@ -782,6 +887,7 @@
 
         function switchTab(tabName) {
             document.getElementById('tab-realms').classList.remove('active');
+            document.getElementById('tab-organizations').classList.remove('active');
             document.getElementById('tab-users').classList.remove('active');
             document.getElementById('tab-groups').classList.remove('active');
             document.getElementById('tab-roles').classList.remove('active');
@@ -789,6 +895,7 @@
             document.getElementById('tab-providers').classList.remove('active');
             document.getElementById('tab-audit').classList.remove('active');
             document.getElementById('realms-section').classList.add('hidden');
+            document.getElementById('organizations-section').classList.add('hidden');
             document.getElementById('users-section').classList.add('hidden');
             document.getElementById('groups-section').classList.add('hidden');
             document.getElementById('roles-section').classList.add('hidden');
@@ -800,6 +907,10 @@
                 document.getElementById('tab-realms').classList.add('active');
                 document.getElementById('realms-section').classList.remove('hidden');
                 fetchRealms();
+            } else if (tabName === 'organizations') {
+                document.getElementById('tab-organizations').classList.add('active');
+                document.getElementById('organizations-section').classList.remove('hidden');
+                fetchOrganizations();
             } else if (tabName === 'users') {
                 document.getElementById('tab-users').classList.add('active');
                 document.getElementById('users-section').classList.remove('hidden');
@@ -1966,6 +2077,353 @@
 
                 tbody.appendChild(tr);
             });
+        }
+
+        async function fetchOrganizations() {
+            const tbody = document.getElementById('organizations-body');
+            const errorDiv = document.getElementById('dashboard-error');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading...</td></tr>';
+            errorDiv.style.display = 'none';
+
+            try {
+                let url = `${window.location.origin}/api/v1/organizations/`; // Adjust based on final route
+
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        logout();
+                        throw new Error("Session expired");
+                    }
+                    throw new Error(`Failed to fetch organizations: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                renderOrganizations(data.organizations || []);
+
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--error);">Failed to load data</td></tr>';
+            }
+        }
+
+        function renderOrganizations(organizations) {
+            const tbody = document.getElementById('organizations-body');
+            tbody.innerHTML = '';
+
+            if (organizations.length === 0) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 5;
+                td.style.textAlign = 'center';
+                td.textContent = 'No organizations found';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+
+            organizations.forEach(org => {
+                const tr = document.createElement('tr');
+
+                const tdId = document.createElement('td');
+                tdId.style.fontFamily = 'monospace';
+                tdId.style.fontSize = '0.9em';
+                tdId.textContent = org.id;
+                tr.appendChild(tdId);
+
+                const tdName = document.createElement('td');
+                tdName.textContent = org.name;
+                tr.appendChild(tdName);
+
+                const tdDisplayName = document.createElement('td');
+                tdDisplayName.textContent = org.display_name || '-';
+                tr.appendChild(tdDisplayName);
+
+                const tdDomain = document.createElement('td');
+                tdDomain.textContent = org.domain || '-';
+                tr.appendChild(tdDomain);
+
+                const tdActions = document.createElement('td');
+                tdActions.style.display = 'flex';
+                tdActions.style.gap = '0.5rem';
+
+                const btnMembers = document.createElement('button');
+                btnMembers.style.width = 'auto';
+                btnMembers.style.padding = '0.25rem 0.5rem';
+                btnMembers.style.fontSize = '0.8rem';
+                btnMembers.style.backgroundColor = 'var(--primary)';
+                btnMembers.textContent = 'Members';
+                btnMembers.onclick = function() {
+                    openOrganizationMembersModal(org.id, org.name);
+                };
+                tdActions.appendChild(btnMembers);
+
+                const btnEdit = document.createElement('button');
+                btnEdit.style.width = 'auto';
+                btnEdit.style.padding = '0.25rem 0.5rem';
+                btnEdit.style.fontSize = '0.8rem';
+                btnEdit.textContent = 'Edit';
+                btnEdit.onclick = function() {
+                    openEditOrganizationModal(org);
+                };
+                tdActions.appendChild(btnEdit);
+
+                const btnDelete = document.createElement('button');
+                btnDelete.style.width = 'auto';
+                btnDelete.style.padding = '0.25rem 0.5rem';
+                btnDelete.style.fontSize = '0.8rem';
+                btnDelete.style.backgroundColor = 'var(--error)';
+                btnDelete.textContent = 'Delete';
+                btnDelete.onclick = function() {
+                    deleteOrganization(org.id);
+                };
+                tdActions.appendChild(btnDelete);
+
+                tr.appendChild(tdActions);
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openCreateOrganizationModal() {
+            document.getElementById('edit-organization-title').textContent = 'Create Organization';
+            document.getElementById('edit-organization-id').value = '';
+            document.getElementById('edit-organization-name').value = '';
+            document.getElementById('edit-organization-display-name').value = '';
+            document.getElementById('edit-organization-description').value = '';
+            document.getElementById('edit-organization-domain').value = '';
+            document.getElementById('edit-organization-error').style.display = 'none';
+            document.getElementById('edit-organization-modal').classList.remove('hidden');
+            document.getElementById('edit-organization-modal').style.display = 'flex';
+            document.getElementById('edit-organization-modal').style.alignItems = 'center';
+            document.getElementById('edit-organization-modal').style.justifyContent = 'center';
+        }
+
+        function openEditOrganizationModal(org) {
+            document.getElementById('edit-organization-title').textContent = 'Edit Organization';
+            document.getElementById('edit-organization-id').value = org.id;
+            document.getElementById('edit-organization-name').value = org.name;
+            document.getElementById('edit-organization-display-name').value = org.display_name || '';
+            document.getElementById('edit-organization-description').value = org.description || '';
+            document.getElementById('edit-organization-domain').value = org.domain || '';
+            document.getElementById('edit-organization-error').style.display = 'none';
+            document.getElementById('edit-organization-modal').classList.remove('hidden');
+            document.getElementById('edit-organization-modal').style.display = 'flex';
+            document.getElementById('edit-organization-modal').style.alignItems = 'center';
+            document.getElementById('edit-organization-modal').style.justifyContent = 'center';
+        }
+
+        function closeEditOrganizationModal() {
+            document.getElementById('edit-organization-modal').classList.add('hidden');
+            document.getElementById('edit-organization-modal').style.display = 'none';
+        }
+
+        document.getElementById('edit-organization-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-organization-id').value;
+            const errorDiv = document.getElementById('edit-organization-error');
+            errorDiv.style.display = 'none';
+
+            const isUpdate = id !== '';
+
+            // For create: omit empty optional fields (backend defaults to NULL).
+            // For update: explicitly send null to clear a field, or omit to leave unchanged.
+            const payload = {
+                name: document.getElementById('edit-organization-name').value,
+                display_name: document.getElementById('edit-organization-display-name').value,
+            };
+
+            const descVal = document.getElementById('edit-organization-description').value;
+            const domainVal = document.getElementById('edit-organization-domain').value;
+
+            if (isUpdate) {
+                // Send null to clear, string to set — always include so backend knows intent
+                payload.description = descVal || null;
+                payload.domain = domainVal || null;
+            } else {
+                // For create, only include if non-empty
+                if (descVal) payload.description = descVal;
+                if (domainVal) payload.domain = domainVal;
+            }
+
+            let url = `${window.location.origin}/api/v1/organizations/`;
+            if (isUpdate) {
+                url += `${id}`;
+            }
+
+            try {
+                const response = await fetch(url, {
+                    method: isUpdate ? 'PUT' : 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    closeEditOrganizationModal();
+                    fetchOrganizations();
+                } else {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.message || data.error || (isUpdate ? 'Update failed' : 'Creation failed'));
+                }
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+            }
+        });
+
+        let currentOrgId = null;
+
+        async function openOrganizationMembersModal(orgId, orgName) {
+            currentOrgId = orgId;
+            document.getElementById('org-members-title').textContent = `Members of ${orgName}`;
+            document.getElementById('org-members-modal').classList.remove('hidden');
+            document.getElementById('org-members-modal').style.display = 'flex';
+            document.getElementById('org-members-modal').style.alignItems = 'center';
+            document.getElementById('org-members-modal').style.justifyContent = 'center';
+            fetchOrgMembers(orgId);
+        }
+
+        function closeOrgMembersModal() {
+            document.getElementById('org-members-modal').classList.add('hidden');
+            document.getElementById('org-members-modal').style.display = 'none';
+        }
+
+        async function fetchOrgMembers(orgId) {
+            const tbody = document.getElementById('org-members-body');
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Loading...</td></tr>';
+
+            try {
+                const response = await fetch(`${window.location.origin}/api/v1/organizations/${orgId}/members`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                renderOrgMembers(orgId, data.members || []);
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--error);">Failed to load members</td></tr>';
+            }
+        }
+
+        function renderOrgMembers(orgId, members) {
+            const tbody = document.getElementById('org-members-body');
+            tbody.innerHTML = '';
+
+            if (members.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">No members found</td></tr>';
+                return;
+            }
+
+            members.forEach(member => {
+                const tr = document.createElement('tr');
+
+                const tdUser = document.createElement('td');
+                tdUser.textContent = member.user_id;
+                tr.appendChild(tdUser);
+
+                const tdRole = document.createElement('td');
+                tdRole.textContent = member.role;
+                tr.appendChild(tdRole);
+
+                const tdActions = document.createElement('td');
+                const btnRemove = document.createElement('button');
+                btnRemove.style.width = 'auto';
+                btnRemove.style.padding = '0.25rem 0.5rem';
+                btnRemove.style.backgroundColor = 'var(--error)';
+                btnRemove.style.fontSize = '0.8rem';
+                btnRemove.textContent = 'Remove';
+                btnRemove.onclick = () => removeOrgMember(orgId, member.user_id);
+                tdActions.appendChild(btnRemove);
+                tr.appendChild(tdActions);
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openAddOrgMemberModal() {
+            document.getElementById('add-org-member-org-id').value = currentOrgId;
+            document.getElementById('add-org-member-modal').classList.remove('hidden');
+            document.getElementById('add-org-member-modal').style.display = 'flex';
+            document.getElementById('add-org-member-modal').style.alignItems = 'center';
+            document.getElementById('add-org-member-modal').style.justifyContent = 'center';
+        }
+
+        function closeAddOrgMemberModal() {
+            document.getElementById('add-org-member-modal').classList.add('hidden');
+            document.getElementById('add-org-member-modal').style.display = 'none';
+        }
+
+        document.getElementById('add-org-member-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const orgId = document.getElementById('add-org-member-org-id').value;
+            const payload = {
+                user_id: document.getElementById('add-org-member-user-id').value,
+                role: document.getElementById('add-org-member-role').value
+            };
+
+            try {
+                const response = await fetch(`${window.location.origin}/api/v1/organizations/${orgId}/members`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    closeAddOrgMemberModal();
+                    fetchOrgMembers(orgId);
+                } else {
+                    const data = await response.json();
+                    alert(data.message || "Failed to add member");
+                }
+            } catch (err) {
+                alert(err.message);
+            }
+        });
+
+        async function removeOrgMember(orgId, userId) {
+            if (!confirm("Remove this member?")) return;
+            try {
+                const response = await fetch(`${window.location.origin}/api/v1/organizations/${orgId}/members/${userId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    fetchOrgMembers(orgId);
+                } else {
+                    alert("Failed to remove member");
+                }
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        async function deleteOrganization(id) {
+            if (!confirm("Are you sure you want to delete this organization?")) return;
+
+            try {
+                let url = `${window.location.origin}/api/v1/organizations/${id}`;
+
+                const response = await fetch(url, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    fetchOrganizations();
+                } else {
+                    throw new Error('Delete failed');
+                }
+            } catch (err) {
+                alert(err.message);
+            }
         }
 
         async function fetchRealms() {

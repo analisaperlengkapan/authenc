@@ -70,6 +70,7 @@ pub struct OrganizationMemberModel {
 
 /// Organization roles
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum OrganizationRole {
     /// Organization owner with full access
     Owner,
@@ -77,24 +78,28 @@ pub enum OrganizationRole {
     Admin,
     /// Regular member
     Member,
+    /// Guest with limited access
+    Guest,
 }
 
 impl OrganizationRole {
     /// Convert the role to its string representation
     pub fn as_str(&self) -> &'static str {
         match self {
-            OrganizationRole::Owner => "OWNER",
-            OrganizationRole::Admin => "ADMIN",
-            OrganizationRole::Member => "MEMBER",
+            OrganizationRole::Owner => "owner",
+            OrganizationRole::Admin => "admin",
+            OrganizationRole::Member => "member",
+            OrganizationRole::Guest => "guest",
         }
     }
 
     /// Convert string to OrganizationRole
     pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "OWNER" => Some(OrganizationRole::Owner),
-            "ADMIN" => Some(OrganizationRole::Admin),
-            "MEMBER" => Some(OrganizationRole::Member),
+        match s.to_lowercase().as_str() {
+            "owner" => Some(OrganizationRole::Owner),
+            "admin" => Some(OrganizationRole::Admin),
+            "member" => Some(OrganizationRole::Member),
+            "guest" => Some(OrganizationRole::Guest),
             _ => None,
         }
     }

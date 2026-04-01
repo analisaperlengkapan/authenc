@@ -9,20 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================================================
 
 -- Realms (multi-tenancy support)
-CREA-- Admin events table (admin actions)
-CREATE TABLE IF NOT EXISTS admin_events (
-    id VARCHAR(36) PRIMARY KEY,
-    time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    realm_id VARCHAR(36) NOT NULL,
-    auth_user_id VARCHAR(36),
-    auth_ip_address INET,
-    auth_user_agent TEXT,
-    resource_type VARCHAR(50) NOT NULL,
-    operation_type VARCHAR(50) NOT NULL,
-    resource_path TEXT,
-    representation TEXT,
-    error TEXT
-);ISTS realms (
+CREATE TABLE IF NOT EXISTS realms (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL UNIQUE,
     display_name VARCHAR(255),
@@ -51,20 +38,7 @@ CREATE TABLE IF NOT EXISTS users (
     login_count INTEGER NOT NULL DEFAULT 0
 );
 
--- Federated identities (links users to external identity providers)
-CREATE TABLE IF NOT EXISTS federated_identities (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    identity_provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
-    external_id VARCHAR(255) NOT NULL, -- External user ID from the identity provider
-    external_username VARCHAR(255), -- External username from the identity provider
-    external_email VARCHAR(255), -- External email from the identity provider
-    external_attributes JSONB, -- Additional attributes from the identity provider
-    last_login_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(identity_provider_id, external_id)
-);
+-- NOTE: federated_identities table is defined after identity_providers (see IDENTITY BROKERING section)
 
 -- ============================================================================
 -- DEVICE MANAGEMENT TABLES
@@ -137,7 +111,7 @@ CREATE TABLE IF NOT EXISTS webauthn_credentials (
 -- Organizations
 CREATE TABLE IF NOT EXISTS organizations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
     description TEXT,
     domain VARCHAR(255),
@@ -156,7 +130,7 @@ CREATE TABLE IF NOT EXISTS organization_members (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role VARCHAR(50) NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member')),
+    role VARCHAR(50) NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member', 'guest')),
     invited_by UUID REFERENCES users(id),
     invited_at TIMESTAMPTZ,
     joined_at TIMESTAMPTZ,
@@ -170,15 +144,37 @@ CREATE TABLE IF NOT EXISTS organization_invitations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     email VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member')),
+    role VARCHAR(50) NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member', 'guest')),
     invited_by UUID NOT NULL REFERENCES users(id),
     token_hash VARCHAR(255) NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     accepted_at TIMESTAMPTZ,
     accepted_by UUID REFERENCES users(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(organization_id, email)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Allow re-invitations: only one non-accepted invitation per org+email.
+-- Once an invitation is accepted (accepted_at IS NOT NULL), a new one can be created.
+-- Expired-but-unaccepted invitations are cleaned up by the service layer before
+-- creating a new invitation (see create_invitation).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_invitations_pending_unique
+    ON organization_invitations(organization_id, email)
+    WHERE accepted_at IS NULL;
+
+-- Organization domains for verification
+CREATE TABLE IF NOT EXISTS organization_domains (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    domain VARCHAR(255) NOT NULL,
+    verified BOOLEAN NOT NULL DEFAULT false,
+    verification_token VARCHAR(255),
+    verification_method VARCHAR(50) NOT NULL DEFAULT 'dns',
+    verified_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- NOTE: organization_identity_providers table is defined after identity_providers (see IDENTITY BROKERING section)
 
 -- ============================================================================
 -- OAUTH2 TABLES
@@ -232,7 +228,8 @@ CREATE TABLE IF NOT EXISTS oauth2_access_tokens (
     revoked BOOLEAN NOT NULL DEFAULT false,
     revoked_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_used_at TIMESTAMPTZ
+    last_used_at TIMESTAMPTZ,
+    session_id VARCHAR(255)
 );
 
 -- ============================================================================
@@ -373,7 +370,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     location_data JSONB,
     error_message TEXT,
     request_id VARCHAR(100),
-    correlation_id VARCHAR(100)
+    correlation_id VARCHAR(100),
+    realm_id UUID REFERENCES realms(id) ON DELETE SET NULL
 );
 
 -- User events table (login, logout, registration, etc.)
@@ -490,11 +488,15 @@ CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user_id ON webauthn_credenti
 CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_credential_id ON webauthn_credentials(credential_id);
 
 -- Organization indexes
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_name_unique ON organizations(COALESCE(realm_id, 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid), name) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_organizations_owner_id ON organizations(owner_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_organization_members_org_id ON organization_members(organization_id);
 CREATE INDEX IF NOT EXISTS idx_organization_members_user_id ON organization_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_organization_invitations_org_id ON organization_invitations(organization_id);
 CREATE INDEX IF NOT EXISTS idx_organization_invitations_token ON organization_invitations(token_hash);
+CREATE INDEX IF NOT EXISTS idx_organization_domains_org_id ON organization_domains(organization_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_domains_domain_unique ON organization_domains(domain);
+-- NOTE: organization_identity_providers indexes are defined after the table (see IDENTITY BROKERING section)
 
 -- OAuth2 indexes
 CREATE INDEX IF NOT EXISTS idx_oauth2_clients_client_id ON oauth2_clients(client_id) WHERE deleted_at IS NULL;
@@ -510,16 +512,8 @@ CREATE INDEX IF NOT EXISTS idx_saml_idp_entity_id ON saml_identity_providers(ent
 CREATE INDEX IF NOT EXISTS idx_saml_sessions_user_id ON saml_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_saml_sessions_expires ON saml_sessions(expires_at);
 
--- Federated identities indexes
-CREATE INDEX IF NOT EXISTS idx_federated_identities_user_id ON federated_identities(user_id);
-CREATE INDEX IF NOT EXISTS idx_federated_identities_provider_id ON federated_identities(identity_provider_id);
-CREATE INDEX IF NOT EXISTS idx_federated_identities_external_id ON federated_identities(identity_provider_id, external_id);
-
--- Identity provider indexes
-CREATE INDEX IF NOT EXISTS idx_identity_providers_realm_id ON identity_providers(realm_id) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_identity_providers_type ON identity_providers(provider_type) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_identity_providers_enabled ON identity_providers(enabled) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_identity_provider_mappers_provider_id ON identity_provider_mappers(identity_provider_id);
+-- NOTE: federated_identities indexes are defined after the table (see IDENTITY BROKERING section)
+-- NOTE: identity_providers and identity_provider_mappers indexes are defined after the tables (see IDENTITY BROKERING section)
 
 -- Session indexes
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
@@ -532,6 +526,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type ON audit_logs(event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_status ON audit_logs(status);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_request_id ON audit_logs(request_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_realm_id ON audit_logs(realm_id);
 
 -- Event indexes
 CREATE INDEX IF NOT EXISTS idx_events_time ON events(time DESC);
@@ -589,6 +584,8 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECU
 CREATE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_organizations_updated_at BEFORE UPDATE ON organizations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_organization_members_updated_at BEFORE UPDATE ON organization_members FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_organization_domains_updated_at BEFORE UPDATE ON organization_domains FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- NOTE: organization_identity_providers trigger is defined after the table (see IDENTITY BROKERING section)
 CREATE TRIGGER update_oauth2_clients_updated_at BEFORE UPDATE ON oauth2_clients FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_saml_service_providers_updated_at BEFORE UPDATE ON saml_service_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_saml_identity_providers_updated_at BEFORE UPDATE ON saml_identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -626,10 +623,50 @@ CREATE TABLE IF NOT EXISTS identity_provider_mappers (
     UNIQUE(identity_provider_id, name)
 );
 
--- Update triggers for identity providers
+-- Federated identities (links users to external identity providers)
+-- Defined here (after identity_providers) to avoid forward FK references
+CREATE TABLE IF NOT EXISTS federated_identities (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    identity_provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
+    external_id VARCHAR(255) NOT NULL, -- External user ID from the identity provider
+    external_username VARCHAR(255), -- External username from the identity provider
+    external_email VARCHAR(255), -- External email from the identity provider
+    external_attributes JSONB, -- Additional attributes from the identity provider
+    last_login_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(identity_provider_id, external_id)
+);
+
+-- Organization identity provider links
+-- Defined here (after identity_providers) to avoid forward FK references
+CREATE TABLE IF NOT EXISTS organization_identity_providers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    identity_provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
+    priority INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(organization_id, identity_provider_id)
+);
+
+-- Update triggers for identity brokering tables
 CREATE TRIGGER update_identity_providers_updated_at BEFORE UPDATE ON identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_identity_provider_mappers_updated_at BEFORE UPDATE ON identity_provider_mappers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_federated_identities_updated_at BEFORE UPDATE ON federated_identities FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_organization_identity_providers_updated_at BEFORE UPDATE ON organization_identity_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Indexes for identity brokering tables (defined here after the tables)
+CREATE INDEX IF NOT EXISTS idx_identity_providers_realm_id ON identity_providers(realm_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_identity_providers_type ON identity_providers(provider_type) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_identity_providers_enabled ON identity_providers(enabled) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_identity_provider_mappers_provider_id ON identity_provider_mappers(identity_provider_id);
+CREATE INDEX IF NOT EXISTS idx_federated_identities_user_id ON federated_identities(user_id);
+CREATE INDEX IF NOT EXISTS idx_federated_identities_provider_id ON federated_identities(identity_provider_id);
+CREATE INDEX IF NOT EXISTS idx_federated_identities_external_id ON federated_identities(identity_provider_id, external_id);
+CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_org_id ON organization_identity_providers(organization_id);
+CREATE INDEX IF NOT EXISTS idx_organization_identity_providers_idp_id ON organization_identity_providers(identity_provider_id);
 
 -- Update triggers for resource management
 CREATE TRIGGER update_resource_servers_updated_at BEFORE UPDATE ON resource_servers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -657,6 +694,23 @@ BEGIN
 
     -- Clean up old audit logs (keep last 90 days)
     DELETE FROM audit_logs WHERE timestamp < NOW() - INTERVAL '90 days';
+
+    -- Clean up orphaned records for soft-deleted organizations (deleted > 30 days ago)
+    DELETE FROM organization_members WHERE organization_id IN (
+        SELECT id FROM organizations WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'
+    );
+    DELETE FROM organization_invitations WHERE organization_id IN (
+        SELECT id FROM organizations WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'
+    );
+    DELETE FROM organization_domains WHERE organization_id IN (
+        SELECT id FROM organizations WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'
+    );
+    DELETE FROM organization_identity_providers WHERE organization_id IN (
+        SELECT id FROM organizations WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'
+    );
+
+    -- Hard-delete the organization rows themselves after cleaning up children
+    DELETE FROM organizations WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days';
 END;
 $$ LANGUAGE plpgsql;
 

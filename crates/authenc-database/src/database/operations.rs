@@ -1081,10 +1081,13 @@ pub mod organizations {
     use crate::database::Database;
     use chrono::Utc;
     use log::error;
-    use std::collections::HashMap;
     use uuid::Uuid;
 
-    /// Create organization
+    /// Create organization (inserts org row only — does NOT add an owner member).
+    ///
+    /// **Prefer `OrganizationService::create_organization`** which wraps both the
+    /// org INSERT and the owner-member INSERT in a single transaction.
+    /// This function is retained for low-level / migration use only.
     pub async fn create_organization(db: &Database, org: &Organization) -> Result<Organization> {
         let org_id = Uuid::new_v4();
         let now = Utc::now();
@@ -1140,12 +1143,23 @@ pub mod organizations {
             WHERE id = $1 AND deleted_at IS NULL
         "#;
 
-        let row: tokio_postgres::Row = db.query_one(query, &[&org_id]).await?;
-        // Convert row to Organization
-        Ok(Some(row.try_into()?))
+        match db.query_opt(query, &[&org_id]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get organization by ID: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get organization: {}",
+                    e
+                )))
+            }
+        }
     }
 
     /// Add member to organization
+    ///
+    /// Atomically verifies the organization has not been soft-deleted before adding
+    /// by using a subquery in the INSERT statement, avoiding TOCTOU races.
     pub async fn add_member(
         db: &Database,
         org_id: Uuid,
@@ -1156,15 +1170,19 @@ pub mod organizations {
         let member_id = Uuid::new_v4();
         let now = Utc::now();
 
+        // Use INSERT ... SELECT to atomically check that the organization
+        // exists and is not soft-deleted in the same statement.
         let query = r#"
             INSERT INTO organization_members (
                 id, organization_id, user_id, role, invited_by,
                 invited_at, joined_at, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
+            FROM organizations
+            WHERE id = $2 AND deleted_at IS NULL
         "#;
 
-        db.execute(
+        let rows_affected = db.execute(
             query,
             &[
                 &member_id,
@@ -1180,44 +1198,106 @@ pub mod organizations {
         )
         .await?;
 
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
+
         Ok(())
     }
 
     /// Create organization invitation
+    ///
+    /// Deletes any existing expired-and-unaccepted invitation for the same
+    /// org+email before inserting, so the partial unique index
+    /// (`WHERE accepted_at IS NULL`) does not block re-invitations.
     pub async fn create_invitation(
         db: &Database,
         invitation: &OrganizationInvitation,
-    ) -> Result<()> {
-        let invitation_id = Uuid::new_v4();
-        let now = Utc::now();
+    ) -> Result<Uuid> {
+        let org_id = invitation.organization_id;
+        let email = invitation.email.clone();
+        let role = invitation.role.clone();
+        let invited_by = invitation.invited_by;
+        let token_hash = invitation.token_hash.clone();
+        let expires_at = invitation.expires_at;
 
-        let query = r#"
-            INSERT INTO organization_invitations (
-                id, organization_id, email, role, invited_by,
-                token_hash, expires_at, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        "#;
+        db.with_transaction(move |client| {
+            Box::pin(async move {
+                let invitation_id = Uuid::new_v4();
+                let now = Utc::now();
 
-        db.execute(
-            query,
-            &[
-                &invitation_id,
-                &invitation.organization_id,
-                &invitation.email,
-                &invitation.role,
-                &invitation.invited_by,
-                &invitation.token_hash,
-                &invitation.expires_at,
-                &now,
-            ],
-        )
-        .await?;
+                // Remove stale (expired, not accepted) invitation for the same org+email
+                // so the partial unique index allows the new row.
+                let cleanup_query = r#"
+                    DELETE FROM organization_invitations
+                    WHERE organization_id = $1 AND email = $2
+                      AND accepted_at IS NULL AND expires_at <= NOW()
+                "#;
+                client
+                    .execute(cleanup_query, &[&org_id, &email])
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to cleanup expired invitations: {}", e);
+                        AuthencError::database(format!(
+                            "Failed to cleanup expired invitations: {}",
+                            e
+                        ))
+                    })?;
 
-        Ok(())
+                let query = r#"
+                    INSERT INTO organization_invitations (
+                        id, organization_id, email, role, invited_by,
+                        token_hash, expires_at, created_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                "#;
+
+                client
+                    .execute(
+                        query,
+                        &[
+                            &invitation_id,
+                            &org_id,
+                            &email,
+                            &role,
+                            &invited_by,
+                            &token_hash,
+                            &expires_at,
+                            &now,
+                        ],
+                    )
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to create invitation: {}", e);
+                        // Detect unique constraint violation from the partial unique index
+                        // (idx_organization_invitations_pending_unique) which means a
+                        // non-expired, non-accepted invitation already exists for this org+email.
+                        let err_str = e.to_string();
+                        if err_str.contains("idx_organization_invitations_pending_unique")
+                            || err_str.contains("duplicate key")
+                                && err_str.contains("organization_invitations")
+                        {
+                            AuthencError::validation(
+                                "An invitation is already pending for this email address",
+                            )
+                        } else {
+                            AuthencError::database(format!(
+                                "Failed to create invitation: {}",
+                                e
+                            ))
+                        }
+                    })?;
+
+                Ok(invitation_id)
+            })
+        })
+        .await
     }
 
     /// Get invitation by token
+    ///
+    /// Returns the invitation regardless of expiry/accepted status so
+    /// the service layer can provide specific error messages.
     pub async fn get_invitation_by_token(
         db: &Database,
         token_hash: &str,
@@ -1227,43 +1307,20 @@ pub mod organizations {
                 id, organization_id, email, role, invited_by,
                 token_hash, expires_at, accepted_at, accepted_by, created_at
             FROM organization_invitations
-            WHERE token_hash = $1 AND expires_at > NOW() AND accepted_at IS NULL
-        "#;
-
-        let row: tokio_postgres::Row = db.query_one(query, &[&token_hash]).await?;
-        // Convert row to OrganizationInvitation
-        Ok(Some(row.try_into()?))
-    }
-
-    /// Accept organization invitation
-    pub async fn accept_invitation(db: &Database, token_hash: &str, user_id: Uuid) -> Result<()> {
-        let now = Utc::now();
-
-        // First get the invitation
-        let invitation = get_invitation_by_token(db, token_hash)
-            .await?
-            .ok_or_else(|| AuthencError::resource_not_found("Invitation not found or expired"))?;
-
-        // Mark invitation as accepted
-        let update_query = r#"
-            UPDATE organization_invitations
-            SET accepted_at = $2, accepted_by = $3
             WHERE token_hash = $1
         "#;
-        db.execute(update_query, &[&token_hash, &now, &user_id])
-            .await?;
 
-        // Add user as organization member
-        add_member(
-            db,
-            invitation.organization_id,
-            user_id,
-            &invitation.role,
-            Some(invitation.invited_by),
-        )
-        .await?;
-
-        Ok(())
+        match db.query_opt(query, &[&token_hash]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get invitation by token: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get invitation by token: {}",
+                    e
+                )))
+            }
+        }
     }
 
     /// Get organization by domain
@@ -1273,40 +1330,23 @@ pub mod organizations {
     ) -> Result<Option<Organization>> {
         let query = r#"
             SELECT
-                id, name, display_name, description, domain, logo_url, website,
-                enabled, created_at, updated_at, attributes
+                id, name, display_name, description, domain,
+                logo_url, website_url, owner_id, realm_id,
+                enabled, created_at, updated_at, deleted_at
             FROM organizations
-            WHERE domain = $1
+            WHERE domain = $1 AND deleted_at IS NULL
         "#;
 
-        let row = db.query_opt(query, &[&domain]).await.map_err(|e| {
-            error!("Failed to get organization by domain: {}", e);
-            AuthencError::database("Failed to get organization by domain")
-        })?;
-
-        if let Some(row) = row {
-            // Convert row to Organization
-            let attributes_json: serde_json::Value = row.get(10);
-            let _attributes: HashMap<String, String> =
-                serde_json::from_value(attributes_json).unwrap_or_default();
-
-            Ok(Some(Organization {
-                id: row.get(0),
-                name: row.get(1),
-                display_name: row.get(2),
-                description: row.get(3),
-                domain: row.get(4),
-                logo_url: row.get(5),
-                website_url: row.get(6),
-                enabled: row.get(7),
-                created_at: row.get(8),
-                updated_at: row.get(9),
-                owner_id: row.get(10),
-                realm_id: row.get(11),
-                deleted_at: row.get(12),
-            }))
-        } else {
-            Ok(None)
+        match db.query_opt(query, &[&domain]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get organization by domain: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get organization by domain: {}",
+                    e
+                )))
+            }
         }
     }
 
@@ -1316,10 +1356,10 @@ pub mod organizations {
             UPDATE organizations
             SET name = $2, display_name = $3, description = $4, domain = $5,
                 logo_url = $6, website_url = $7, enabled = $8, updated_at = $9
-            WHERE id = $1
+            WHERE id = $1 AND deleted_at IS NULL
         "#;
 
-        db.execute(
+        let rows_affected = db.execute(
             query,
             &[
                 &org.id,
@@ -1339,17 +1379,26 @@ pub mod organizations {
             AuthencError::database("Failed to update organization")
         })?;
 
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
+
         Ok(())
     }
 
-    /// Delete organization
+    /// Delete organization (soft delete)
     pub async fn delete_organization(db: &Database, organization_id: &Uuid) -> Result<()> {
-        let query = "DELETE FROM organizations WHERE id = $1";
+        let now = Utc::now();
+        let query = "UPDATE organizations SET deleted_at = $2, updated_at = $2 WHERE id = $1 AND deleted_at IS NULL";
 
-        db.execute(query, &[organization_id]).await.map_err(|e| {
+        let rows_affected = db.execute(query, &[organization_id, &now]).await.map_err(|e| {
             error!("Failed to delete organization: {}", e);
             AuthencError::database("Failed to delete organization")
         })?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
 
         Ok(())
     }
@@ -1360,9 +1409,11 @@ pub mod organizations {
         organization_id: &Uuid,
     ) -> Result<Vec<OrganizationMember>> {
         let query = r#"
-            SELECT om.user_id, om.organization_id, om.role, om.joined_at, om.invited_by
+            SELECT om.id, om.organization_id, om.user_id, om.role, om.invited_by,
+                   om.invited_at, om.joined_at, om.created_at, om.updated_at
             FROM organization_members om
-            WHERE om.organization_id = $1
+            JOIN organizations o ON om.organization_id = o.id
+            WHERE om.organization_id = $1 AND o.deleted_at IS NULL
             ORDER BY om.joined_at
         "#;
 
@@ -1372,25 +1423,34 @@ pub mod organizations {
                 AuthencError::database("Failed to get organization members")
             })?;
 
-        let mut members = Vec::new();
-        for row in rows {
-            members.push(OrganizationMember {
-                id: row.get(0),
-                organization_id: row.get(1),
-                user_id: row.get(2),
-                role: OrganizationRole::parse(&row.get::<_, String>(3))
-                    .unwrap_or(OrganizationRole::Member)
-                    .as_str()
-                    .to_string(),
-                invited_by: row.get(4),
-                invited_at: row.get(5),
-                joined_at: row.get(6),
-                created_at: row.get(7),
-                updated_at: row.get(8),
-            });
-        }
+        rows.into_iter()
+            .map(|row| row.try_into())
+            .collect::<Result<Vec<OrganizationMember>>>()
+    }
 
-        Ok(members)
+    /// List all organizations
+    pub async fn list_all_organizations(
+        db: &Database,
+    ) -> Result<Vec<Organization>> {
+        let query = r#"
+            SELECT
+                id, name, display_name, description, domain,
+                logo_url, website_url, owner_id, realm_id,
+                enabled, created_at, updated_at, deleted_at
+            FROM organizations
+            WHERE deleted_at IS NULL
+            ORDER BY created_at DESC
+            LIMIT 1000
+        "#;
+
+        let rows: Vec<tokio_postgres::Row> = db.query(query, &[]).await.map_err(|e| {
+            error!("Failed to list organizations: {}", e);
+            AuthencError::database("Failed to list organizations")
+        })?;
+
+        rows.into_iter()
+            .map(|row| row.try_into())
+            .collect::<Result<Vec<Organization>>>()
     }
 
     /// Get user organizations
@@ -1400,11 +1460,12 @@ pub mod organizations {
     ) -> Result<Vec<Organization>> {
         let query = r#"
             SELECT
-                o.id, o.name, o.display_name, o.description, o.domain, o.logo_url, o.website_url,
-                o.enabled, o.created_at, o.updated_at, o.owner_id, o.realm_id, o.deleted_at
+                o.id, o.name, o.display_name, o.description, o.domain,
+                o.logo_url, o.website_url, o.owner_id, o.realm_id,
+                o.enabled, o.created_at, o.updated_at, o.deleted_at
             FROM organizations o
             JOIN organization_members om ON o.id = om.organization_id
-            WHERE om.user_id = $1
+            WHERE om.user_id = $1 AND o.deleted_at IS NULL
             ORDER BY o.created_at
         "#;
 
@@ -1413,26 +1474,9 @@ pub mod organizations {
             AuthencError::database("Failed to get user organizations")
         })?;
 
-        let mut organizations = Vec::new();
-        for row in rows {
-            organizations.push(Organization {
-                id: row.get(0),
-                name: row.get(1),
-                display_name: row.get(2),
-                description: row.get(3),
-                domain: row.get(4),
-                logo_url: row.get(5),
-                website_url: row.get(6),
-                enabled: row.get(7),
-                created_at: row.get(8),
-                updated_at: row.get(9),
-                owner_id: row.get(10),
-                realm_id: row.get(11),
-                deleted_at: row.get(12),
-            });
-        }
-
-        Ok(organizations)
+        rows.into_iter()
+            .map(|row| row.try_into())
+            .collect::<Result<Vec<Organization>>>()
     }
 
     /// Remove member from organization
@@ -1443,12 +1487,16 @@ pub mod organizations {
     ) -> Result<()> {
         let query = "DELETE FROM organization_members WHERE organization_id = $1 AND user_id = $2";
 
-        db.execute(query, &[organization_id, user_id])
+        let rows_affected = db.execute(query, &[organization_id, user_id])
             .await
             .map_err(|e| {
                 error!("Failed to remove organization member: {}", e);
                 AuthencError::database("Failed to remove organization member")
             })?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Member not found in organization"));
+        }
 
         Ok(())
     }
@@ -1462,16 +1510,20 @@ pub mod organizations {
     ) -> Result<()> {
         let query = r#"
             UPDATE organization_members
-            SET role = $3
+            SET role = $3, updated_at = NOW()
             WHERE organization_id = $1 AND user_id = $2
         "#;
 
-        db.execute(query, &[organization_id, user_id, &role.as_str()])
+        let rows_affected = db.execute(query, &[organization_id, user_id, &role.as_str()])
             .await
             .map_err(|e| {
                 error!("Failed to update member role: {}", e);
                 AuthencError::database("Failed to update member role")
             })?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Member not found in organization"));
+        }
 
         Ok(())
     }
@@ -1500,6 +1552,9 @@ pub mod organizations {
     }
 
     /// Add domain to organization
+    ///
+    /// Atomically verifies the organization has not been soft-deleted before adding
+    /// by using a subquery in the INSERT statement, avoiding TOCTOU races.
     pub async fn add_domain(
         db: &Database,
         organization_id: Uuid,
@@ -1510,18 +1565,22 @@ pub mod organizations {
         let verification_token = Uuid::new_v4().to_string();
         let now = Utc::now();
 
+        // Use INSERT ... SELECT to atomically check that the organization
+        // exists and is not soft-deleted in the same statement.
         let query = r#"
             INSERT INTO organization_domains (
                 id, organization_id, domain, verified, verification_token,
                 verification_method, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8
+            FROM organizations
+            WHERE id = $2 AND deleted_at IS NULL
             RETURNING id, organization_id, domain, verified, verification_token,
                       verification_method, verified_at, created_at, updated_at
         "#;
 
-        let row: tokio_postgres::Row = db
-            .query_one(
+        let row = db
+            .query_opt(
                 query,
                 &[
                     &domain_id,
@@ -1540,6 +1599,10 @@ pub mod organizations {
                 AuthencError::database("Failed to add organization domain")
             })?;
 
+        let row = row.ok_or_else(|| {
+            AuthencError::resource_not_found("Organization not found")
+        })?;
+
         Ok(OrganizationDomain {
             id: row.get(0),
             organization_id: row.get(1),
@@ -1554,36 +1617,48 @@ pub mod organizations {
     }
 
     /// Verify organization domain
+    ///
+    /// Only verifies domains belonging to non-deleted organizations.
     pub async fn verify_domain(db: &Database, domain_id: Uuid) -> Result<()> {
         let now = Utc::now();
 
         let query = r#"
-            UPDATE organization_domains
+            UPDATE organization_domains od
             SET verified = true, verified_at = $2, updated_at = $3
-            WHERE id = $1
+            FROM organizations o
+            WHERE od.id = $1
+              AND od.organization_id = o.id
+              AND o.deleted_at IS NULL
         "#;
 
-        db.execute(query, &[&domain_id, &now, &now])
+        let rows_affected = db.execute(query, &[&domain_id, &now, &now])
             .await
             .map_err(|e| {
                 error!("Failed to verify domain: {}", e);
                 AuthencError::database("Failed to verify domain")
             })?;
 
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found(
+                "Domain not found or organization has been deleted",
+            ));
+        }
+
         Ok(())
     }
 
-    /// Get organization domains
+    /// Get organization domains (excludes soft-deleted organizations)
     pub async fn get_domains(
         db: &Database,
         organization_id: Uuid,
     ) -> Result<Vec<OrganizationDomain>> {
         let query = r#"
-            SELECT id, organization_id, domain, verified, verification_token,
-                   verification_method, verified_at, created_at, updated_at
-            FROM organization_domains
-            WHERE organization_id = $1
-            ORDER BY created_at DESC
+            SELECT od.id, od.organization_id, od.domain, od.verified, od.verification_token,
+                   od.verification_method, od.verified_at, od.created_at, od.updated_at
+            FROM organization_domains od
+            JOIN organizations o ON od.organization_id = o.id
+            WHERE od.organization_id = $1 AND o.deleted_at IS NULL
+            ORDER BY od.created_at DESC
         "#;
 
         let rows: Vec<tokio_postgres::Row> =
@@ -1611,6 +1686,9 @@ pub mod organizations {
     }
 
     /// Link identity provider to organization
+    ///
+    /// Atomically verifies the organization has not been soft-deleted before linking
+    /// by using a subquery in the INSERT statement, avoiding TOCTOU races.
     pub async fn link_identity_provider(
         db: &Database,
         organization_id: Uuid,
@@ -1620,16 +1698,21 @@ pub mod organizations {
         let id = Uuid::new_v4();
         let now = Utc::now();
 
+        // Use INSERT ... SELECT to atomically check that the organization
+        // exists and is not soft-deleted in the same statement.
+        // ON CONFLICT handles the upsert for priority updates.
         let query = r#"
             INSERT INTO organization_identity_providers (
                 id, organization_id, identity_provider_id, priority, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
+            SELECT $1, $2, $3, $4, $5, $6
+            FROM organizations
+            WHERE id = $2 AND deleted_at IS NULL
             ON CONFLICT (organization_id, identity_provider_id)
             DO UPDATE SET priority = $4, updated_at = $6
         "#;
 
-        db.execute(
+        let rows_affected = db.execute(
             query,
             &[
                 &id,
@@ -1646,18 +1729,31 @@ pub mod organizations {
             AuthencError::database("Failed to link identity provider")
         })?;
 
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
+
         Ok(())
     }
 
     /// Unlink identity provider from organization
+    ///
+    /// Atomically verifies the organization has not been soft-deleted before unlinking
+    /// by joining with the organizations table in the DELETE statement.
     pub async fn unlink_identity_provider(
         db: &Database,
         organization_id: Uuid,
         identity_provider_id: Uuid,
     ) -> Result<()> {
+        // Use DELETE ... USING to atomically check that the organization
+        // exists and is not soft-deleted in the same statement.
         let query = r#"
-            DELETE FROM organization_identity_providers
-            WHERE organization_id = $1 AND identity_provider_id = $2
+            DELETE FROM organization_identity_providers oip
+            USING organizations o
+            WHERE oip.organization_id = $1
+              AND oip.identity_provider_id = $2
+              AND oip.organization_id = o.id
+              AND o.deleted_at IS NULL
         "#;
 
         db.execute(query, &[&organization_id, &identity_provider_id])
