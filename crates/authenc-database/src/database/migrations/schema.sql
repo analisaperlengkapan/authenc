@@ -564,6 +564,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type ON audit_logs(event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_status ON audit_logs(status);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_request_id ON audit_logs(request_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_realm_id ON audit_logs(realm_id);
 
 -- Event indexes
 CREATE INDEX IF NOT EXISTS idx_events_time ON events(time DESC);
