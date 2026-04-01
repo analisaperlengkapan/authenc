@@ -53,7 +53,7 @@ impl AdminService for SamlAdminService {
         use authenc_database::database::operations::{groups, roles, users};
         match users::get_user_by_id(&self.db, *user_id).await {
             Ok(Some(user)) => {
-                let realm_id = user.realm_id.unwrap_or_else(uuid::Uuid::new_v4);
+                let realm_id = user.realm_id.unwrap_or(uuid::Uuid::nil());
                 let user_roles = roles::get_user_roles(&self.db, &user.id)
                     .await
                     .unwrap_or_default()
@@ -199,7 +199,7 @@ impl AdminService for SamlAdminService {
 
         match users::update_user(&self.db, *user_id, &db_request).await {
             Ok(user) => {
-                let realm_id = user.realm_id.unwrap_or_else(uuid::Uuid::new_v4);
+                let realm_id = user.realm_id.unwrap_or(uuid::Uuid::nil());
 
                 // Handle group updates if provided
                 if let Some(group_names) = &request.groups {
@@ -271,7 +271,7 @@ impl AdminService for SamlAdminService {
                         id: role.id,
                         name: role.name,
                         description: role.description.unwrap_or_default(),
-                        realm_id: role.realm_id.unwrap_or_else(uuid::Uuid::new_v4),
+                        realm_id: role.realm_id.unwrap_or(uuid::Uuid::nil()),
                         composite: role.composite,
                         client_role: role.client_role,
                         container_id: role.client_id,
@@ -294,7 +294,7 @@ impl AdminService for SamlAdminService {
                 id: role.id,
                 name: role.name,
                 description: role.description.unwrap_or_default(),
-                realm_id: role.realm_id.unwrap_or_else(uuid::Uuid::new_v4),
+                realm_id: role.realm_id.unwrap_or(uuid::Uuid::nil()),
                 composite: role.composite,
                 client_role: role.client_role,
                 container_id: role.client_id,
@@ -326,7 +326,7 @@ impl AdminService for SamlAdminService {
                     id: role.id,
                     name: role.name,
                     description: role.description.unwrap_or_default(),
-                    realm_id: role.realm_id.unwrap_or_else(uuid::Uuid::new_v4),
+                    realm_id: role.realm_id.unwrap_or(uuid::Uuid::nil()),
                     composite: role.composite,
                     client_role: role.client_role,
                     container_id: role.client_id,
@@ -369,7 +369,7 @@ impl AdminService for SamlAdminService {
                 id: row.get(0),
                 name: row.get(1),
                 description: row.get::<_, Option<String>>(2).unwrap_or_default(),
-                realm_id: row.get::<_, Option<uuid::Uuid>>(3).unwrap_or_else(uuid::Uuid::new_v4),
+                realm_id: row.get::<_, Option<uuid::Uuid>>(3).unwrap_or(uuid::Uuid::nil()),
                 composite: row.get(4),
                 client_role: row.get(5),
                 container_id: row.get(6),
