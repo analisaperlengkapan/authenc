@@ -1297,9 +1297,9 @@ impl AdminService for AdminManager {
                 composite: row.get(4),
                 client_role: row.get(5),
                 container_id: row.get(6),
-                attributes: row.get::<_, Option<serde_json::Value>>(7)
-                    .unwrap_or_default()
-                    .as_object()
+                attributes: row.get::<_, Option<String>>(7)
+                    .and_then(|s: String| serde_json::from_str::<serde_json::Value>(&s).ok())
+                    .and_then(|v| v.as_object().cloned())
                     .map(|o| o.iter().map(|(k, v)| (k.clone(), v.as_array().map(|a| a.iter().map(|s| s.as_str().unwrap_or_default().to_string()).collect()).unwrap_or_default())).collect())
                     .unwrap_or_default(),
             }),
