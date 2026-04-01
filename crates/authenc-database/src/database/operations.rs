@@ -1211,46 +1211,71 @@ pub mod organizations {
         db: &Database,
         invitation: &OrganizationInvitation,
     ) -> Result<Uuid> {
-        let invitation_id = Uuid::new_v4();
-        let now = Utc::now();
+        let org_id = invitation.organization_id;
+        let email = invitation.email.clone();
+        let role = invitation.role.clone();
+        let invited_by = invitation.invited_by;
+        let token_hash = invitation.token_hash.clone();
+        let expires_at = invitation.expires_at;
 
-        // Remove stale (expired, not accepted) invitation for the same org+email
-        // so the partial unique index allows the new row.
-        let cleanup_query = r#"
-            DELETE FROM organization_invitations
-            WHERE organization_id = $1 AND email = $2
-              AND accepted_at IS NULL AND expires_at <= NOW()
-        "#;
-        db.execute(
-            cleanup_query,
-            &[&invitation.organization_id, &invitation.email],
-        )
-        .await?;
+        db.with_transaction(move |client| {
+            Box::pin(async move {
+                let invitation_id = Uuid::new_v4();
+                let now = Utc::now();
 
-        let query = r#"
-            INSERT INTO organization_invitations (
-                id, organization_id, email, role, invited_by,
-                token_hash, expires_at, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        "#;
+                // Remove stale (expired, not accepted) invitation for the same org+email
+                // so the partial unique index allows the new row.
+                let cleanup_query = r#"
+                    DELETE FROM organization_invitations
+                    WHERE organization_id = $1 AND email = $2
+                      AND accepted_at IS NULL AND expires_at <= NOW()
+                "#;
+                client
+                    .execute(cleanup_query, &[&org_id, &email])
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to cleanup expired invitations: {}", e);
+                        AuthencError::database(format!(
+                            "Failed to cleanup expired invitations: {}",
+                            e
+                        ))
+                    })?;
 
-        db.execute(
-            query,
-            &[
-                &invitation_id,
-                &invitation.organization_id,
-                &invitation.email,
-                &invitation.role,
-                &invitation.invited_by,
-                &invitation.token_hash,
-                &invitation.expires_at,
-                &now,
-            ],
-        )
-        .await?;
+                let query = r#"
+                    INSERT INTO organization_invitations (
+                        id, organization_id, email, role, invited_by,
+                        token_hash, expires_at, created_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                "#;
 
-        Ok(invitation_id)
+                client
+                    .execute(
+                        query,
+                        &[
+                            &invitation_id,
+                            &org_id,
+                            &email,
+                            &role,
+                            &invited_by,
+                            &token_hash,
+                            &expires_at,
+                            &now,
+                        ],
+                    )
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to create invitation: {}", e);
+                        AuthencError::database(format!(
+                            "Failed to create invitation: {}",
+                            e
+                        ))
+                    })?;
+
+                Ok(invitation_id)
+            })
+        })
+        .await
     }
 
     /// Get invitation by token
