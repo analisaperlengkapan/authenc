@@ -141,20 +141,43 @@ pub async fn saml_auth(
 pub async fn saml_acs(
     State(db): State<Database>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-    _body: String,
+    body: String,
 ) -> std::result::Result<Html<String>, AuthencError> {
     let mut service = SamlService::new(Arc::new(db.clone()));
 
-    let saml_response = if let Some(response) = params.get("SAMLResponse") {
-        response
+    // Parse form-urlencoded POST body (SAML HTTP-POST binding sends
+    // SAMLResponse as application/x-www-form-urlencoded in the body).
+    let form_params: std::collections::HashMap<String, String> = body
+        .split('&')
+        .filter(|s| !s.is_empty())
+        .filter_map(|pair| {
+            let mut parts = pair.splitn(2, '=');
+            let key = parts.next()?;
+            let value = parts.next().unwrap_or("");
+            Some((
+                urlencoding::decode(key).ok()?.into_owned(),
+                urlencoding::decode(value).ok()?.into_owned(),
+            ))
+        })
+        .collect();
+
+    // Try POST body first (standard SAML HTTP-POST binding), then fall
+    // back to query parameters (HTTP-Redirect binding or non-standard).
+    let saml_response = if let Some(response) = form_params.get("SAMLResponse") {
+        response.clone()
+    } else if let Some(response) = params.get("SAMLResponse") {
+        response.clone()
     } else {
-        return Err(AuthencError::validation("Bad request"));
+        return Err(AuthencError::validation("Missing SAMLResponse parameter"));
     };
 
-    let relay_state = params.get("RelayState").map(|s| s.as_str());
+    let relay_state = form_params
+        .get("RelayState")
+        .or_else(|| params.get("RelayState"))
+        .map(|s| s.as_str());
 
     let (issuer, xml) = service
-        .get_issuer_and_xml_from_response(saml_response)
+        .get_issuer_and_xml_from_response(&saml_response)
         .map_err(|e| AuthencError::validation(format!("Failed to parse SAML response: {}", e)))?;
 
     let idp_data = get_identity_provider_by_entity_id(&db, &issuer)

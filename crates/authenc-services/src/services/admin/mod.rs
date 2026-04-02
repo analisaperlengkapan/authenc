@@ -51,6 +51,11 @@ impl From<String> for AdminServiceError {
     }
 }
 
+/// Check if a database error message indicates a unique constraint violation
+fn is_duplicate_key_error(msg: &str) -> bool {
+    msg.contains("duplicate key") || msg.contains("already exists") || msg.contains("unique constraint")
+}
+
 /// Admin service trait
 #[async_trait]
 pub trait AdminService: Send + Sync {
@@ -1185,7 +1190,14 @@ impl AdminService for AdminManager {
                     locked_until: user.account_locked_until,
                 })
             }
-            Err(e) => Err(AdminServiceError::Internal(format!("Failed to create user: {}", e))),
+            Err(e) => {
+                let msg = e.to_string();
+                if is_duplicate_key_error(&msg) {
+                    Err(AdminServiceError::BadRequest(format!("User already exists: {}", msg)))
+                } else {
+                    Err(AdminServiceError::Internal(format!("Failed to create user: {}", e)))
+                }
+            }
         }
     }
 
@@ -1358,6 +1370,8 @@ impl AdminService for AdminManager {
                 let msg = e.to_string();
                 if msg.contains("query returned no rows") || msg.contains("no rows") {
                     Err(AdminServiceError::NotFound(format!("User with ID {} not found", user_id)))
+                } else if is_duplicate_key_error(&msg) {
+                    Err(AdminServiceError::BadRequest(format!("Conflict: {}", msg)))
                 } else {
                     Err(AdminServiceError::Internal(format!("Failed to update user: {}", e)))
                 }
@@ -1478,7 +1492,14 @@ impl AdminService for AdminManager {
 
                 Ok(role_id)
             })
-        }).await.map_err(|e| AdminServiceError::Internal(format!("Failed to create role: {}", e)))?;
+        }).await.map_err(|e| {
+            let msg = e.to_string();
+            if is_duplicate_key_error(&msg) {
+                AdminServiceError::BadRequest(format!("Role already exists: {}", msg))
+            } else {
+                AdminServiceError::Internal(format!("Failed to create role: {}", e))
+            }
+        })?;
 
         // Re-fetch to get the complete role
         self.get_role(&role_id).await
@@ -2504,6 +2525,15 @@ mod tests {
     fn test_admin_service_error_from_string() {
         let err: AdminServiceError = "something broke".to_string().into();
         assert!(matches!(err, AdminServiceError::Internal(ref m) if m == "something broke"));
+    }
+
+    #[test]
+    fn test_is_duplicate_key_error() {
+        assert!(is_duplicate_key_error("ERROR: duplicate key value violates unique constraint"));
+        assert!(is_duplicate_key_error("Key (username)=(alice) already exists."));
+        assert!(is_duplicate_key_error("unique constraint violation on email"));
+        assert!(!is_duplicate_key_error("connection refused"));
+        assert!(!is_duplicate_key_error("query returned no rows"));
     }
 
     // ── UpdateRoleRequest serialization round-trip ──────────────────────
