@@ -663,7 +663,7 @@ impl AdminManager {
         // Define queries
         let total_users_query = self.db.query_raw("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL", &[]);
         let active_users_query = self.db.query_raw(
-            "SELECT COUNT(DISTINCT user_id) FROM user_sessions WHERE last_activity > NOW() - INTERVAL '30 days'",
+            "SELECT COUNT(DISTINCT user_id) FROM user_sessions WHERE last_activity_at > NOW() - INTERVAL '30 days'",
             &[]
         );
         let total_sessions_query = self.db.query_raw("SELECT COUNT(*) FROM user_sessions", &[]);

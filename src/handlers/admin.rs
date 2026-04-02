@@ -162,7 +162,7 @@ pub async fn list_users(
         Ok(response) => Ok(Json(response)),
         Err(e) => {
             eprintln!("Failed to list users: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -194,7 +194,7 @@ pub async fn create_user(
         Ok(user) => Ok(Json(user)),
         Err(e) => {
             eprintln!("Failed to create user: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -211,7 +211,7 @@ pub async fn update_user(
         Ok(user) => Ok(Json(user)),
         Err(e) => {
             eprintln!("Failed to update user: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -227,7 +227,7 @@ pub async fn delete_user(
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
             eprintln!("Failed to delete user: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -249,7 +249,7 @@ pub async fn list_sessions(
         Ok(response) => Ok(Json(response)),
         Err(e) => {
             eprintln!("Failed to list sessions: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -265,7 +265,7 @@ pub async fn terminate_session(
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
             eprintln!("Failed to terminate session: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -291,7 +291,7 @@ pub async fn list_audit_logs(
         Ok(response) => Ok(Json(response)),
         Err(e) => {
             eprintln!("Failed to list audit logs: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -318,7 +318,7 @@ pub async fn list_roles(
         Ok(roles) => Ok(Json(roles)),
         Err(e) => {
             eprintln!("Failed to list roles: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -334,7 +334,7 @@ pub async fn create_role(
         Ok(role) => Ok(Json(role)),
         Err(e) => {
             eprintln!("Failed to create role: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -412,7 +412,7 @@ pub async fn list_policies(
         Ok(policies) => Ok(Json(policies)),
         Err(e) => {
             eprintln!("Failed to list policies: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -428,7 +428,7 @@ pub async fn create_policy(
         Ok(policy) => Ok(Json(policy)),
         Err(e) => {
             eprintln!("Failed to create policy: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -480,7 +480,7 @@ pub async fn list_identity_providers(
         Ok(providers) => Ok(Json(providers)),
         Err(e) => {
             eprintln!("Failed to list identity providers: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -496,7 +496,7 @@ pub async fn get_identity_provider(
         Ok(provider) => Ok(Json(provider)),
         Err(e) => {
             eprintln!("Failed to get identity provider: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -512,7 +512,7 @@ pub async fn create_identity_provider(
         Ok(provider) => Ok(Json(provider)),
         Err(e) => {
             eprintln!("Failed to create identity provider: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -532,7 +532,7 @@ pub async fn update_identity_provider(
         Ok(provider) => Ok(Json(provider)),
         Err(e) => {
             eprintln!("Failed to update identity provider: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -548,7 +548,7 @@ pub async fn delete_identity_provider(
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
             eprintln!("Failed to delete identity provider: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -564,7 +564,7 @@ pub async fn test_identity_provider(
         Ok(result) => Ok(Json(result)),
         Err(e) => {
             eprintln!("Failed to test identity provider: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
