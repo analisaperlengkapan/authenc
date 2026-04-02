@@ -20,6 +20,17 @@ use std::sync::Arc;
 /// Delegates to FederatedAdminService which in turn delegates to AdminManager.
 type SamlAdminService = FederatedAdminService;
 
+/// Escape HTML special characters to prevent XSS when rendering
+/// user-controlled data (e.g. SAML assertion values) into HTML responses.
+fn escape_html(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
+}
+
 /// Create SAML routes
 pub fn create_saml_routes() -> Router<Database> {
     Router::new()
@@ -213,15 +224,15 @@ pub async fn saml_acs(
 <p>Session Index: {}</p>
 <p>Authentication Context: {}</p>
 <p>JIT Provisioned: {}</p>
-<pre>{:?}</pre>
+<pre>{}</pre>
 </body>
 </html>"#,
-                        jit_response.user.username,
+                        escape_html(&jit_response.user.username),
                         jit_response.user.id,
-                        user_info.session_index,
-                        user_info.authn_context_class_ref,
+                        escape_html(&user_info.session_index),
+                        escape_html(&user_info.authn_context_class_ref),
                         jit_response.created,
-                        user_info.attributes
+                        escape_html(&format!("{:?}", user_info.attributes))
                     );
                     Ok(Html(html))
                 }
@@ -235,7 +246,7 @@ pub async fn saml_acs(
 <p>Error: {}</p>
 </body>
 </html>"#,
-                        e
+                        escape_html(&e.to_string())
                     );
                     Ok(Html(html))
                 }
