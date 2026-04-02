@@ -4,8 +4,8 @@ use authenc_services::services::admin::{
     AdminManager, AdminService, AuditLogResponse, CreateIdentityProviderRequest,
     CreatePolicyRequest, CreateRoleRequest, CreateUserRequest, IdentityProviderResponse,
     PolicyResponse, RoleResponse, SecurityEvent, SessionListResponse, SystemStats,
-    TestIdentityProviderResponse, UpdateIdentityProviderRequest, UpdateUserRequest,
-    UserListResponse, UserResponse,
+    TestIdentityProviderResponse, UpdateIdentityProviderRequest, UpdateRoleRequest,
+    UpdateUserRequest, UserListResponse, UserResponse,
 };
 use axum::{
     Router,
@@ -356,7 +356,7 @@ pub async fn get_role(
 pub async fn update_role(
     State(state): State<Arc<AppState>>,
     Path(role_id): Path<Uuid>,
-    Json(request): Json<CreateRoleRequest>,
+    Json(request): Json<UpdateRoleRequest>,
 ) -> Result<Json<RoleResponse>, StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
 
@@ -384,7 +384,11 @@ pub async fn delete_role(
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
             eprintln!("Failed to delete role: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            if e.contains("not found") || e.contains("already deleted") {
+                Err(StatusCode::NOT_FOUND)
+            } else {
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
         }
     }
 }

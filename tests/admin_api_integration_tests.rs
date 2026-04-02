@@ -2,7 +2,7 @@ use authenc::app::AppState;
 use authenc::handlers::create_router;
 use authenc_core::config::AppConfig;
 use authenc_database::database::Database;
-use authenc_services::services::admin::{CreateRoleRequest, CreateUserRequest, UpdateUserRequest};
+use authenc_services::services::admin::{CreateRoleRequest, CreateUserRequest, UpdateRoleRequest, UpdateUserRequest};
 use axum_test::TestServer;
 use serde_json::json;
 use std::sync::Arc;
@@ -158,13 +158,12 @@ async fn test_admin_role_crud_flow() {
     assert_eq!(role_resp.id, role_id);
 
     // 3. Update Role
-    let update_request = CreateRoleRequest {
-        name: "test_admin_role".to_string(), // Name usually remains same or used for lookup
-        description: "Updated description".to_string(),
-        realm_id,
-        composite: true,
-        client_role: false,
-        attributes: std::collections::HashMap::new(),
+    let update_request = UpdateRoleRequest {
+        name: None, // Keep existing name
+        description: Some("Updated description".to_string()),
+        composite: Some(true),
+        client_role: None,
+        attributes: None,
     };
 
     let response = server

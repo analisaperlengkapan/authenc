@@ -50,7 +50,7 @@ pub trait AdminService: Send + Sync {
     async fn update_role(
         &self,
         role_id: &Uuid,
-        request: CreateRoleRequest,
+        request: UpdateRoleRequest,
     ) -> Result<RoleResponse, String>;
 
     /// Delete role
@@ -293,6 +293,21 @@ pub struct CreateRoleRequest {
     pub client_role: bool,
     /// Additional attributes for the role
     pub attributes: std::collections::HashMap<String, Vec<String>>,
+}
+
+/// Update role request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateRoleRequest {
+    /// New name for the role
+    pub name: Option<String>,
+    /// New description for the role
+    pub description: Option<String>,
+    /// Whether this should be a composite role
+    pub composite: Option<bool>,
+    /// Whether this should be a client role
+    pub client_role: Option<bool>,
+    /// Additional attributes for the role
+    pub attributes: Option<std::collections::HashMap<String, Vec<String>>>,
 }
 
 /// Session list response
@@ -1267,10 +1282,19 @@ impl AdminService for AdminManager {
     async fn update_role(
         &self,
         role_id: &Uuid,
-        request: CreateRoleRequest,
+        request: UpdateRoleRequest,
     ) -> Result<RoleResponse, String> {
+        // Fetch existing role to merge with partial update
+        let existing = self.get_role(role_id).await?;
+
+        let name = request.name.unwrap_or(existing.name);
+        let description = request.description.unwrap_or(existing.description);
+        let composite = request.composite.unwrap_or(existing.composite);
+        let client_role = request.client_role.unwrap_or(existing.client_role);
+        let attributes = request.attributes.unwrap_or(existing.attributes);
+
         let now = Utc::now();
-        let attr_json = serde_json::to_string(&request.attributes).unwrap_or_default();
+        let attr_json = serde_json::to_string(&attributes).unwrap_or_default();
         let update_query = r#"
             UPDATE roles
             SET name = $2, description = $3, composite = $4, client_role = $5,
@@ -1280,10 +1304,10 @@ impl AdminService for AdminManager {
 
         let affected = self.db.execute(update_query, &[
             role_id,
-            &request.name,
-            &Some(request.description.clone()),
-            &request.composite,
-            &request.client_role,
+            &name,
+            &Some(description),
+            &composite,
+            &client_role,
             &Some(attr_json),
             &now
         ]).await.map_err(|e| format!("Failed to update role: {}", e))?;

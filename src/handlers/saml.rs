@@ -343,10 +343,19 @@ impl AdminService for SamlAdminService {
     async fn update_role(
         &self,
         role_id: &uuid::Uuid,
-        request: authenc_services::services::admin::CreateRoleRequest,
+        request: authenc_services::services::admin::UpdateRoleRequest,
     ) -> Result<authenc_services::services::admin::RoleResponse, String> {
+        // Fetch existing role to merge with partial update
+        let existing = self.get_role(role_id).await?;
+
+        let name = request.name.unwrap_or(existing.name);
+        let description = request.description.unwrap_or(existing.description);
+        let composite = request.composite.unwrap_or(existing.composite);
+        let client_role = request.client_role.unwrap_or(existing.client_role);
+        let attributes = request.attributes.unwrap_or(existing.attributes);
+
         let now = chrono::Utc::now();
-        let attr_json = serde_json::to_string(&request.attributes).unwrap_or_default();
+        let attr_json = serde_json::to_string(&attributes).unwrap_or_default();
         let update_query = r#"
             UPDATE roles
             SET name = $2, description = $3, composite = $4, client_role = $5,
@@ -356,10 +365,10 @@ impl AdminService for SamlAdminService {
 
         let affected = self.db.execute(update_query, &[
             role_id,
-            &request.name,
-            &Some(request.description.clone()),
-            &request.composite,
-            &request.client_role,
+            &name,
+            &Some(description),
+            &composite,
+            &client_role,
             &Some(attr_json),
             &now
         ]).await.map_err(|e| format!("Failed to update role: {}", e))?;
