@@ -610,7 +610,7 @@ impl AdminManager {
         );
         let total_sessions_query = self.db.query_raw("SELECT COUNT(*) FROM user_sessions", &[]);
         let active_sessions_query = self.db.query_raw(
-            "SELECT COUNT(*) FROM user_sessions WHERE expires_at > NOW() AND revoked = false",
+            "SELECT COUNT(*) FROM user_sessions WHERE expires_at > NOW() AND terminated = false",
             &[],
         );
         let total_realms_query = self.db.query_raw("SELECT COUNT(*) FROM realms WHERE enabled = true", &[]);
@@ -846,7 +846,7 @@ impl AdminManager {
         // 5. Adaptive Controls Stats
         // We'll run a few separate counts, filtering by realm_id
         // user_sessions has realm_id
-        let active_sessions_query = "SELECT COUNT(*)::bigint FROM user_sessions WHERE realm_id = $1 AND expires_at > NOW() AND NOT revoked";
+        let active_sessions_query = "SELECT COUNT(*)::bigint FROM user_sessions WHERE realm_id = $1 AND expires_at > NOW() AND NOT terminated";
 
         // user_sessions has realm_id
         let mfa_sessions_query = "SELECT COUNT(*)::bigint FROM user_sessions WHERE realm_id = $1 AND (authentication_method ILIKE '%mfa%' OR authentication_method ILIKE '%totp%' OR authentication_method ILIKE '%webauthn%') AND expires_at > NOW()";
@@ -1260,20 +1260,37 @@ impl AdminService for AdminManager {
         .await
         {
             Ok(role) => {
-                // Convert to admin response
-                Ok(RoleResponse {
-                    id: role.id,
-                    name: role.name,
-                    description: role.description.unwrap_or_default(),
-                    realm_id: role.realm_id.unwrap_or(Uuid::nil()),
-                    composite: role.composite,
-                    client_role: role.client_role,
-                    container_id: role.client_id,
-                    attributes: role
-                        .attributes
-                        .and_then(|attrs| serde_json::from_value(attrs).ok())
-                        .unwrap_or_default(),
-                })
+                // The create_role DB operation only accepts name, description, realm_id.
+                // If composite, client_role, or attributes differ from defaults, apply them.
+                let needs_update = request.composite
+                    || request.client_role
+                    || !request.attributes.is_empty();
+
+                if needs_update {
+                    let attr_json: Option<String> = if !request.attributes.is_empty() {
+                        Some(serde_json::to_string(&request.attributes).unwrap_or_default())
+                    } else {
+                        None
+                    };
+
+                    let now = Utc::now();
+                    let update_query = r#"
+                        UPDATE roles
+                        SET composite = $2, client_role = $3, attributes = $4, updated_at = $5
+                        WHERE id = $1 AND deleted_at IS NULL
+                    "#;
+
+                    let _ = self.db.execute(update_query, &[
+                        &role.id,
+                        &request.composite,
+                        &request.client_role,
+                        &attr_json,
+                        &now,
+                    ]).await;
+                }
+
+                // Re-fetch to get the updated role
+                self.get_role(&role.id).await
             }
             Err(e) => Err(format!("Failed to create role: {}", e)),
         }
@@ -1360,11 +1377,11 @@ impl AdminService for AdminManager {
             (
                 r#"
                     SELECT s.id, s.user_id, u.username, s.ip_address, s.user_agent,
-                           s.started_at, s.last_accessed, s.expires_at, s.client_id
+                           s.started_at, s.last_activity_at, s.expires_at
                     FROM user_sessions s
                     LEFT JOIN users u ON s.user_id = u.id
-                    WHERE s.user_id = $1 AND NOT s.revoked AND s.expires_at > NOW()
-                    ORDER BY s.last_accessed DESC
+                    WHERE s.user_id = $1 AND NOT s.terminated AND s.expires_at > NOW()
+                    ORDER BY s.last_activity_at DESC
                     LIMIT $2 OFFSET $3
                     "#.to_string(),
                 vec![
@@ -1377,11 +1394,11 @@ impl AdminService for AdminManager {
             (
                 r#"
                     SELECT s.id, s.user_id, u.username, s.ip_address, s.user_agent,
-                           s.started_at, s.last_accessed, s.expires_at, s.client_id
+                           s.started_at, s.last_activity_at, s.expires_at
                     FROM user_sessions s
                     LEFT JOIN users u ON s.user_id = u.id
-                    WHERE NOT s.revoked AND s.expires_at > NOW()
-                    ORDER BY s.last_accessed DESC
+                    WHERE NOT s.terminated AND s.expires_at > NOW()
+                    ORDER BY s.last_activity_at DESC
                     LIMIT $1 OFFSET $2
                     "#.to_string(),
                 vec![
@@ -1422,19 +1439,17 @@ impl AdminService for AdminManager {
                     .get::<_, Option<String>>("user_agent")
                     .unwrap_or_else(|| "Unknown".to_string()),
                 started_at: row.get("started_at"),
-                last_activity: row.get("last_accessed"),
+                last_activity: row.get("last_activity_at"),
                 expires_at: row.get("expires_at"),
-                client_id: row
-                    .get::<_, Option<Uuid>>("client_id")
-                    .map(|id| id.to_string()),
+                client_id: None,
             });
         }
 
         // Get total count
         let count_query = if user_id.is_some() {
-            "SELECT COUNT(*) FROM user_sessions WHERE user_id = $1 AND NOT revoked AND expires_at > NOW()"
+            "SELECT COUNT(*) FROM user_sessions WHERE user_id = $1 AND NOT terminated AND expires_at > NOW()"
         } else {
-            "SELECT COUNT(*) FROM user_sessions WHERE NOT revoked AND expires_at > NOW()"
+            "SELECT COUNT(*) FROM user_sessions WHERE NOT terminated AND expires_at > NOW()"
         };
 
         let count_params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =

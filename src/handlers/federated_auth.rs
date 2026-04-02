@@ -361,19 +361,37 @@ impl AdminService for MockAdminService {
         .await
         {
             Ok(role) => {
-                Ok(authenc_services::services::admin::RoleResponse {
-                    id: role.id,
-                    name: role.name,
-                    description: role.description.unwrap_or_default(),
-                    realm_id: role.realm_id.unwrap_or(Uuid::nil()),
-                    composite: role.composite,
-                    client_role: role.client_role,
-                    container_id: role.client_id,
-                    attributes: role
-                        .attributes
-                        .and_then(|attrs| serde_json::from_value(attrs).ok())
-                        .unwrap_or_default(),
-                })
+                // The create_role DB operation only accepts name, description, realm_id.
+                // If composite, client_role, or attributes differ from defaults, apply them.
+                let needs_update = request.composite
+                    || request.client_role
+                    || !request.attributes.is_empty();
+
+                if needs_update {
+                    let attr_json: Option<String> = if !request.attributes.is_empty() {
+                        Some(serde_json::to_string(&request.attributes).unwrap_or_default())
+                    } else {
+                        None
+                    };
+
+                    let now = chrono::Utc::now();
+                    let update_query = r#"
+                        UPDATE roles
+                        SET composite = $2, client_role = $3, attributes = $4, updated_at = $5
+                        WHERE id = $1 AND deleted_at IS NULL
+                    "#;
+
+                    let _ = self.db.execute(update_query, &[
+                        &role.id,
+                        &request.composite,
+                        &request.client_role,
+                        &attr_json,
+                        &now,
+                    ]).await;
+                }
+
+                // Re-fetch to get the updated role
+                self.get_role(&role.id).await
             }
             Err(e) => Err(format!("Failed to create role: {}", e)),
         }
