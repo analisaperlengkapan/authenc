@@ -2455,3 +2455,165 @@ pub struct TestIdentityProviderResponse {
     /// Additional test details
     pub details: Option<serde_json::Value>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── AdminServiceError ──────────────────────────────────────────────
+
+    #[test]
+    fn test_admin_service_error_display() {
+        let err = AdminServiceError::NotFound("user 123".to_string());
+        assert_eq!(format!("{}", err), "user 123");
+
+        let err = AdminServiceError::AlreadyDeleted("role gone".to_string());
+        assert_eq!(format!("{}", err), "role gone");
+
+        let err = AdminServiceError::NotImplemented("todo".to_string());
+        assert_eq!(format!("{}", err), "todo");
+
+        let err = AdminServiceError::BadRequest("bad input".to_string());
+        assert_eq!(format!("{}", err), "bad input");
+
+        let err = AdminServiceError::Internal("db down".to_string());
+        assert_eq!(format!("{}", err), "db down");
+    }
+
+    #[test]
+    fn test_admin_service_error_is_not_found() {
+        assert!(AdminServiceError::NotFound("x".into()).is_not_found());
+        assert!(AdminServiceError::AlreadyDeleted("x".into()).is_not_found());
+        assert!(!AdminServiceError::Internal("x".into()).is_not_found());
+        assert!(!AdminServiceError::BadRequest("x".into()).is_not_found());
+        assert!(!AdminServiceError::NotImplemented("x".into()).is_not_found());
+    }
+
+    #[test]
+    fn test_admin_service_error_from_string() {
+        let err: AdminServiceError = "something broke".to_string().into();
+        assert!(matches!(err, AdminServiceError::Internal(ref m) if m == "something broke"));
+    }
+
+    // ── UpdateRoleRequest serialization round-trip ──────────────────────
+
+    #[test]
+    fn test_update_role_request_all_none_fields() {
+        let req = UpdateRoleRequest {
+            name: None,
+            description: None,
+            composite: None,
+            client_role: None,
+            attributes: None,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let deserialized: UpdateRoleRequest = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.name.is_none());
+        assert!(deserialized.description.is_none());
+        assert!(deserialized.composite.is_none());
+        assert!(deserialized.client_role.is_none());
+        assert!(deserialized.attributes.is_none());
+    }
+
+    #[test]
+    fn test_update_role_request_partial_fields() {
+        let json = r#"{"description":"new desc","composite":true}"#;
+        let req: UpdateRoleRequest = serde_json::from_str(json).unwrap();
+        assert!(req.name.is_none());
+        assert_eq!(req.description.as_deref(), Some("new desc"));
+        assert_eq!(req.composite, Some(true));
+        assert!(req.client_role.is_none());
+        assert!(req.attributes.is_none());
+    }
+
+    // ── CreateUserRequest / UpdateUserRequest serialization ─────────────
+
+    #[test]
+    fn test_create_user_request_round_trip() {
+        let realm_id = Uuid::new_v4();
+        let req = CreateUserRequest {
+            username: "alice".to_string(),
+            email: "alice@example.com".to_string(),
+            password: Some("Secret1!".to_string()),
+            first_name: Some("Alice".to_string()),
+            last_name: None,
+            phone_number: None,
+            realm_id,
+            organization_id: None,
+            roles: vec!["admin".to_string()],
+            groups: vec![],
+            attributes: None,
+            email_verified: true,
+            enabled: true,
+            require_password_change: Some(false),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let deserialized: CreateUserRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.username, "alice");
+        assert_eq!(deserialized.realm_id, realm_id);
+        assert_eq!(deserialized.roles, vec!["admin".to_string()]);
+        assert!(deserialized.enabled);
+    }
+
+    #[test]
+    fn test_update_user_request_empty_json() {
+        let json = "{}";
+        let req: UpdateUserRequest = serde_json::from_str(json).unwrap();
+        assert!(req.username.is_none());
+        assert!(req.email.is_none());
+        assert!(req.enabled.is_none());
+        assert!(req.roles.is_none());
+        assert!(req.groups.is_none());
+    }
+
+    // ── Response types serialization ────────────────────────────────────
+
+    #[test]
+    fn test_role_response_serialization() {
+        let resp = RoleResponse {
+            id: Uuid::nil(),
+            name: "viewer".to_string(),
+            description: "Read-only access".to_string(),
+            realm_id: Uuid::nil(),
+            composite: false,
+            client_role: false,
+            container_id: None,
+            attributes: std::collections::HashMap::new(),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["name"], "viewer");
+        assert_eq!(json["composite"], false);
+    }
+
+    #[test]
+    fn test_session_list_response_serialization() {
+        let resp = SessionListResponse {
+            sessions: vec![],
+            total_count: 0,
+            page: 1,
+            limit: 20,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["total_count"], 0);
+        assert_eq!(json["page"], 1);
+        assert_eq!(json["limit"], 20);
+        assert!(json["sessions"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_audit_log_filter_serialization() {
+        let filter = AuditLogFilter {
+            user_id: None,
+            event_type: Some("login".to_string()),
+            realm_id: None,
+            from_date: None,
+            to_date: None,
+            page: 2,
+            limit: 50,
+        };
+        let json = serde_json::to_value(&filter).unwrap();
+        assert_eq!(json["event_type"], "login");
+        assert_eq!(json["page"], 2);
+        assert_eq!(json["limit"], 50);
+    }
+}

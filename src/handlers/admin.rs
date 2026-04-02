@@ -581,6 +581,41 @@ pub struct ListIdentityProvidersQuery {
     pub enabled: Option<bool>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_admin_error_to_status_not_found() {
+        let err = AdminServiceError::NotFound("missing".to_string());
+        assert_eq!(admin_error_to_status(&err), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_admin_error_to_status_already_deleted() {
+        let err = AdminServiceError::AlreadyDeleted("gone".to_string());
+        assert_eq!(admin_error_to_status(&err), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_admin_error_to_status_not_implemented() {
+        let err = AdminServiceError::NotImplemented("todo".to_string());
+        assert_eq!(admin_error_to_status(&err), StatusCode::NOT_IMPLEMENTED);
+    }
+
+    #[test]
+    fn test_admin_error_to_status_bad_request() {
+        let err = AdminServiceError::BadRequest("invalid".to_string());
+        assert_eq!(admin_error_to_status(&err), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_admin_error_to_status_internal() {
+        let err = AdminServiceError::Internal("db error".to_string());
+        assert_eq!(admin_error_to_status(&err), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+}
+
 /// Create admin routes
 pub fn create_admin_routes() -> Router<Arc<AppState>> {
     Router::new()

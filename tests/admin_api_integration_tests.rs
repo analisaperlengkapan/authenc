@@ -23,7 +23,43 @@ impl Drop for RealmCleanup {
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             let _ = rt.block_on(async {
-                let _ = db.execute("DELETE FROM realms WHERE id = $1", &[&realm_id]).await;
+                // Delete child records explicitly in dependency order.
+                // The canonical schema uses ON DELETE CASCADE for users → realms,
+                // but roles, user_roles, groups, user_groups, and policies are
+                // defined in separate migrations whose FK constraints may not
+                // cascade. Explicit cleanup prevents orphaned test data.
+
+                // 1. user_roles / user_groups for users in this realm
+                let _ = db.execute(
+                    "DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE realm_id = $1)",
+                    &[&realm_id],
+                ).await;
+                let _ = db.execute(
+                    "DELETE FROM user_groups WHERE user_id IN (SELECT id FROM users WHERE realm_id = $1)",
+                    &[&realm_id],
+                ).await;
+
+                // 2. roles and policies belonging to this realm
+                let _ = db.execute(
+                    "DELETE FROM roles WHERE realm_id = $1",
+                    &[&realm_id],
+                ).await;
+                let _ = db.execute(
+                    "DELETE FROM policies WHERE realm_id = $1",
+                    &[&realm_id],
+                ).await;
+
+                // 3. users belonging to this realm
+                let _ = db.execute(
+                    "DELETE FROM users WHERE realm_id = $1",
+                    &[&realm_id],
+                ).await;
+
+                // 4. the realm itself
+                let _ = db.execute(
+                    "DELETE FROM realms WHERE id = $1",
+                    &[&realm_id],
+                ).await;
             });
         })
         .join()
