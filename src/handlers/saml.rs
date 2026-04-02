@@ -147,18 +147,8 @@ pub async fn saml_acs(
 
     // Parse form-urlencoded POST body (SAML HTTP-POST binding sends
     // SAMLResponse as application/x-www-form-urlencoded in the body).
-    let form_params: std::collections::HashMap<String, String> = body
-        .split('&')
-        .filter(|s| !s.is_empty())
-        .filter_map(|pair| {
-            let mut parts = pair.splitn(2, '=');
-            let key = parts.next()?;
-            let value = parts.next().unwrap_or("");
-            Some((
-                urlencoding::decode(key).ok()?.into_owned(),
-                urlencoding::decode(value).ok()?.into_owned(),
-            ))
-        })
+    let form_params: std::collections::HashMap<String, String> = form_urlencoded::parse(body.as_bytes())
+        .map(|(k, v)| (k.into_owned(), v.into_owned()))
         .collect();
 
     // Try POST body first (standard SAML HTTP-POST binding), then fall
