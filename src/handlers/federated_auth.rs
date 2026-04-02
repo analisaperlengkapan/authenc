@@ -122,8 +122,8 @@ impl AdminService for MockAdminService {
         self.inner.delete_role(role_id).await
     }
 
-    async fn get_sessions(&self, user_id: Option<Uuid>, page: u32, limit: u32) -> std::result::Result<authenc_services::services::admin::SessionListResponse, AdminServiceError> {
-        self.inner.get_sessions(user_id, page, limit).await
+    async fn get_sessions(&self, user_id: Option<Uuid>, realm_id: Option<Uuid>, page: u32, limit: u32) -> std::result::Result<authenc_services::services::admin::SessionListResponse, AdminServiceError> {
+        self.inner.get_sessions(user_id, realm_id, page, limit).await
     }
 
     async fn terminate_session(&self, session_id: &str) -> std::result::Result<(), AdminServiceError> {

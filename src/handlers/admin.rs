@@ -244,7 +244,7 @@ pub async fn list_sessions(
     let limit = query.limit.unwrap_or(20);
 
     match admin_manager
-        .get_sessions(query.user_id, page, limit)
+        .get_sessions(query.user_id, query.realm_id, page, limit)
         .await
     {
         Ok(response) => Ok(Json(response)),

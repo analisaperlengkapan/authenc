@@ -110,6 +110,7 @@ pub trait AdminService: Send + Sync {
     async fn get_sessions(
         &self,
         user_id: Option<Uuid>,
+        realm_id: Option<Uuid>,
         page: u32,
         limit: u32,
     ) -> Result<SessionListResponse, AdminServiceError>;
@@ -1031,7 +1032,7 @@ impl AdminService for AdminManager {
 
         // Query users with pagination
         // Added organization_id to the query
-        let users_query = "SELECT id, username, email, first_name, last_name, enabled, email_verified, realm_id, created_at, last_login, login_attempts, locked_until, organization_id FROM users WHERE realm_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3";
+        let users_query = "SELECT id, username, email, first_name, last_name, enabled, email_verified, realm_id, created_at, last_login_at, failed_login_attempts, account_locked_until, organization_id FROM users WHERE realm_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3";
         let rows = self
             .db
             .query_raw(users_query, &[&realm_id, &(limit as i64), &(offset as i64)])
@@ -1566,50 +1567,52 @@ impl AdminService for AdminManager {
     async fn get_sessions(
         &self,
         user_id: Option<Uuid>,
+        realm_id: Option<Uuid>,
         page: u32,
         limit: u32,
     ) -> Result<SessionListResponse, AdminServiceError> {
         // Calculate pagination parameters
         let offset = (page.saturating_sub(1)).saturating_mul(limit);
 
-        // Build query based on whether we're filtering by user_id
-        let (query, params): (
-            String,
-            Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>>,
-        ) = if let Some(uid) = user_id {
-            (
-                r#"
-                    SELECT s.id, s.user_id, u.username, s.ip_address, s.user_agent,
-                           s.started_at, s.last_activity_at, s.expires_at
-                    FROM user_sessions s
-                    LEFT JOIN users u ON s.user_id = u.id
-                    WHERE s.user_id = $1 AND NOT s.terminated AND s.expires_at > NOW()
-                    ORDER BY s.last_activity_at DESC
-                    LIMIT $2 OFFSET $3
-                    "#.to_string(),
-                vec![
-                    Box::new(uid) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
-                    Box::new(limit as i64) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
-                    Box::new(offset as i64) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
-                ],
-            )
-        } else {
-            (
-                r#"
-                    SELECT s.id, s.user_id, u.username, s.ip_address, s.user_agent,
-                           s.started_at, s.last_activity_at, s.expires_at
-                    FROM user_sessions s
-                    LEFT JOIN users u ON s.user_id = u.id
-                    WHERE NOT s.terminated AND s.expires_at > NOW()
-                    ORDER BY s.last_activity_at DESC
-                    LIMIT $1 OFFSET $2
-                    "#.to_string(),
-                vec![
-                    Box::new(limit as i64) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
-                    Box::new(offset as i64) as Box<dyn tokio_postgres::types::ToSql + Sync + Send>,
-                ],
-            )
-        };
+        // Build dynamic WHERE conditions and params.
+        // The canonical user_sessions table does NOT have a realm_id column,
+        // so we filter by realm through a JOIN with users.
+        let mut conditions: Vec<String> = vec![
+            "NOT s.terminated".to_string(),
+            "s.expires_at > NOW()".to_string(),
+        ];
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
+        let mut param_idx: usize = 1;
+
+        if let Some(uid) = user_id {
+            conditions.push(format!("s.user_id = ${}", param_idx));
+            params.push(Box::new(uid));
+            param_idx += 1;
+        }
+
+        if let Some(rid) = realm_id {
+            conditions.push(format!("u.realm_id = ${}", param_idx));
+            params.push(Box::new(rid));
+            param_idx += 1;
+        }
+
+        let where_clause = conditions.join(" AND ");
+
+        let query = format!(
+            r#"
+                SELECT s.id, s.user_id, u.username, s.ip_address, s.user_agent,
+                       s.started_at, s.last_activity_at, s.expires_at
+                FROM user_sessions s
+                LEFT JOIN users u ON s.user_id = u.id
+                WHERE {}
+                ORDER BY s.last_activity_at DESC
+                LIMIT ${} OFFSET ${}
+            "#,
+            where_clause, param_idx, param_idx + 1
+        );
+
+        params.push(Box::new(limit as i64));
+        params.push(Box::new(offset as i64));
 
         // Execute query
         let rows: Vec<tokio_postgres::Row> = self
@@ -1648,24 +1651,25 @@ impl AdminService for AdminManager {
             });
         }
 
-        // Get total count
-        let count_query = if user_id.is_some() {
-            "SELECT COUNT(*) FROM user_sessions WHERE user_id = $1 AND NOT terminated AND expires_at > NOW()"
-        } else {
-            "SELECT COUNT(*) FROM user_sessions WHERE NOT terminated AND expires_at > NOW()"
-        };
+        // Build count query with same filters (minus LIMIT/OFFSET)
+        let count_query = format!(
+            "SELECT COUNT(*) FROM user_sessions s LEFT JOIN users u ON s.user_id = u.id WHERE {}",
+            where_clause
+        );
 
-        let count_params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> =
-            if let Some(uid) = user_id {
-                vec![Box::new(uid)]
-            } else {
-                vec![]
-            };
+        // Rebuild count params (same filter params, without limit/offset)
+        let mut count_params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
+        if let Some(uid) = user_id {
+            count_params.push(Box::new(uid));
+        }
+        if let Some(rid) = realm_id {
+            count_params.push(Box::new(rid));
+        }
 
         let count_row: tokio_postgres::Row = self
             .db
             .query_one(
-                count_query,
+                &count_query,
                 count_params
                     .iter()
                     .map(|b| b.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync))
