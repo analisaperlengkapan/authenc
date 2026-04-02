@@ -343,7 +343,7 @@ pub mod jit_provisioning {
 
             // Use admin service to create user, ensuring proper side effects
             let user_response = self.admin_service.create_user(create_request).await
-                .map_err(authenc_core::error::AuthencError::database)?;
+                .map_err(|e| authenc_core::error::AuthencError::database(e.to_string()))?;
 
             // Fetch the full User model as the return type expects it
             // AdminService returns UserResponse, but we need User
