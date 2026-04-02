@@ -10,9 +10,32 @@ use uuid::Uuid;
 
 async fn setup_test_server() -> (TestServer, Database, Uuid) {
     let mut config = AppConfig::from_env().unwrap_or_default();
-    // Ensure we use the test database
+    // Ensure we use the test database by parsing DATABASE_URL into its components.
+    // AppConfig::from_env() already handles this, but the unwrap_or_default() fallback
+    // would skip it, so we parse here as a safety net.
     if let Ok(test_db_url) = std::env::var("DATABASE_URL") {
-         config.database.host = test_db_url;
+        if let Ok(url) = url::Url::parse(&test_db_url) {
+            if let Some(host) = url.host_str() {
+                config.database.host = host.to_string();
+            }
+            if let Some(port) = url.port() {
+                config.database.port = port;
+            }
+            if !url.username().is_empty() {
+                config.database.username = url.username().to_string();
+            }
+            if let Some(password) = url.password() {
+                config.database.password = password.to_string();
+            }
+            if let Some(mut segments) = url.path_segments() {
+                if let Some(db) = segments.next() {
+                    let db_name = db.trim_start_matches('/');
+                    if !db_name.is_empty() {
+                        config.database.database = db_name.to_string();
+                    }
+                }
+            }
+        }
     }
 
     let state = AppState::new(config).await.expect("Failed to create AppState");
