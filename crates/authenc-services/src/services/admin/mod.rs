@@ -985,13 +985,13 @@ impl AdminService for AdminManager {
                 let realm_id = user.realm_id.unwrap_or(Uuid::nil());
                 let roles = authenc_database::database::operations::roles::get_user_roles(&self.db, &user.id)
                     .await
-                    .unwrap_or_default()
+                    .map_err(|e| AdminServiceError::Internal(format!("Failed to get user roles: {}", e)))?
                     .into_iter()
                     .map(|r| r.name)
                     .collect();
                 let user_groups = operations::groups::get_user_groups(&self.db, user.id)
                     .await
-                    .unwrap_or_default();
+                    .map_err(|e| AdminServiceError::Internal(format!("Failed to get user groups: {}", e)))?;
                 let group_names = user_groups.iter().map(|g| g.name.clone()).collect();
 
                 Ok(UserResponse {
@@ -1067,10 +1067,15 @@ impl AdminService for AdminManager {
             // Get roles for user (using existing get_user_roles operation)
             let roles = authenc_database::database::operations::roles::get_user_roles(&self.db, &id)
                 .await
-                .unwrap_or_default()
+                .map_err(|e| AdminServiceError::Internal(format!("Failed to get roles for user {}: {}", id, e)))?
                 .into_iter()
                 .map(|r| r.name)
                 .collect();
+
+            // Get user groups
+            let user_groups = operations::groups::get_user_groups(&self.db, id)
+                .await
+                .map_err(|e| AdminServiceError::Internal(format!("Failed to get groups for user {}: {}", id, e)))?;
 
             users.push(UserResponse {
                 id,
@@ -1083,13 +1088,7 @@ impl AdminService for AdminManager {
                 realm_id: user_realm_id,
                 organization_id,
                 roles,
-                groups: {
-                    // Get user groups
-                    let user_groups = operations::groups::get_user_groups(&self.db, id)
-                        .await
-                        .unwrap_or_default();
-                    user_groups.iter().map(|g| g.name.clone()).collect()
-                },
+                groups: user_groups.iter().map(|g| g.name.clone()).collect(),
                 created_at,
                 last_login,
                 login_attempts: login_attempts as u32,
@@ -1165,14 +1164,14 @@ impl AdminService for AdminManager {
                 // Get user roles from database
                 let roles = operations::roles::get_user_roles(&self.db, &user.id)
                     .await
-                    .unwrap_or_else(|_| vec![]);
+                    .map_err(|e| AdminServiceError::Internal(format!("Failed to get user roles: {}", e)))?;
 
                 let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
 
                 // Get user groups
                 let user_groups = operations::groups::get_user_groups(&self.db, user.id)
                     .await
-                    .unwrap_or_default();
+                    .map_err(|e| AdminServiceError::Internal(format!("Failed to get user groups: {}", e)))?;
                 let group_names: Vec<String> = user_groups.iter().map(|g| g.name.clone()).collect();
 
                 // Convert to admin response
@@ -1341,14 +1340,14 @@ impl AdminService for AdminManager {
                 // Get user roles from database
                 let roles = operations::roles::get_user_roles(&self.db, &user.id)
                     .await
-                    .unwrap_or_else(|_| vec![]);
+                    .map_err(|e| AdminServiceError::Internal(format!("Failed to get user roles: {}", e)))?;
 
                 let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
 
                 // Get user groups
                 let user_groups = operations::groups::get_user_groups(&self.db, user.id)
                     .await
-                    .unwrap_or_default();
+                    .map_err(|e| AdminServiceError::Internal(format!("Failed to get user groups: {}", e)))?;
                 let group_names: Vec<String> = user_groups.iter().map(|g| g.name.clone()).collect();
 
                 // Convert to admin response
@@ -1833,7 +1832,7 @@ impl AdminService for AdminManager {
             .into_iter()
             .map(|row| {
                 let id: Uuid = row.try_get::<_, Uuid>("id")
-                    .unwrap_or_else(|_| Uuid::new_v4());
+                    .map_err(|e| authenc_core::error::AuthencError::database(format!("Missing audit log id: {}", e)))?;
                 let event: authenc_models::models::AuditEvent = row.try_into()?;
                 Ok((id, event))
             })

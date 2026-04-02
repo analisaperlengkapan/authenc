@@ -237,10 +237,10 @@ pub async fn saml_acs(
 </body>
 </html>"#,
                         escape_html(&jit_response.user.username),
-                        jit_response.user.id,
+                        escape_html(&jit_response.user.id.to_string()),
                         escape_html(&user_info.session_index),
                         escape_html(&user_info.authn_context_class_ref),
-                        jit_response.created,
+                        escape_html(&jit_response.created.to_string()),
                         escape_html(&format!("{:?}", user_info.attributes))
                     );
                     Ok(Html(html))

@@ -343,7 +343,7 @@ pub mod jit_provisioning {
 
             // Use admin service to create user, ensuring proper side effects.
             // Map AdminServiceError to the appropriate AuthencError variant
-            // to preserve error semantics (e.g. duplicate user → ResourceExists,
+            // to preserve error semantics (e.g. duplicate user → ValidationError,
             // not found → ResourceNotFound) instead of blanket DatabaseError.
             let user_response = self.admin_service.create_user(create_request).await
                 .map_err(|e| {
