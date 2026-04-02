@@ -1280,13 +1280,13 @@ impl AdminService for AdminManager {
                         WHERE id = $1 AND deleted_at IS NULL
                     "#;
 
-                    let _ = self.db.execute(update_query, &[
+                    self.db.execute(update_query, &[
                         &role.id,
                         &request.composite,
                         &request.client_role,
                         &attr_json,
                         &now,
-                    ]).await;
+                    ]).await.map_err(|e| format!("Failed to update role attributes: {}", e))?;
                 }
 
                 // Re-fetch to get the updated role
