@@ -4,14 +4,55 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use ldap3::LdapConnSettings;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Structured error type for admin service operations
+#[derive(Debug, Clone)]
+pub enum AdminServiceError {
+    /// The requested resource was not found
+    NotFound(String),
+    /// The resource was already deleted
+    AlreadyDeleted(String),
+    /// The operation is not implemented
+    NotImplemented(String),
+    /// An internal error occurred (database, serialization, etc.)
+    Internal(String),
+}
+
+impl fmt::Display for AdminServiceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AdminServiceError::NotFound(msg) => write!(f, "{}", msg),
+            AdminServiceError::AlreadyDeleted(msg) => write!(f, "{}", msg),
+            AdminServiceError::NotImplemented(msg) => write!(f, "{}", msg),
+            AdminServiceError::Internal(msg) => write!(f, "{}", msg),
+        }
+    }
+}
+
+impl AdminServiceError {
+    /// Returns true if this is a not-found or already-deleted error
+    pub fn is_not_found(&self) -> bool {
+        matches!(
+            self,
+            AdminServiceError::NotFound(_) | AdminServiceError::AlreadyDeleted(_)
+        )
+    }
+}
+
+impl From<String> for AdminServiceError {
+    fn from(s: String) -> Self {
+        AdminServiceError::Internal(s)
+    }
+}
 
 /// Admin service trait
 #[async_trait]
 pub trait AdminService: Send + Sync {
     /// Get system statistics
-    async fn get_system_stats(&self) -> Result<SystemStats, String>;
+    async fn get_system_stats(&self) -> Result<SystemStats, AdminServiceError>;
 
     /// Get user management data
     async fn get_users(
@@ -19,42 +60,48 @@ pub trait AdminService: Send + Sync {
         realm_id: &Uuid,
         page: u32,
         limit: u32,
-    ) -> Result<UserListResponse, String>;
+    ) -> Result<UserListResponse, AdminServiceError>;
 
     /// Get user by ID
-    async fn get_user(&self, user_id: &Uuid) -> Result<UserResponse, String>;
+    async fn get_user(&self, user_id: &Uuid) -> Result<UserResponse, AdminServiceError>;
 
     /// Create new user
-    async fn create_user(&self, request: CreateUserRequest) -> Result<UserResponse, String>;
+    async fn create_user(
+        &self,
+        request: CreateUserRequest,
+    ) -> Result<UserResponse, AdminServiceError>;
 
     /// Update user
     async fn update_user(
         &self,
         user_id: &Uuid,
         request: UpdateUserRequest,
-    ) -> Result<UserResponse, String>;
+    ) -> Result<UserResponse, AdminServiceError>;
 
     /// Delete user
-    async fn delete_user(&self, user_id: &Uuid) -> Result<(), String>;
+    async fn delete_user(&self, user_id: &Uuid) -> Result<(), AdminServiceError>;
 
     /// Get roles
-    async fn get_roles(&self, realm_id: &Uuid) -> Result<Vec<RoleResponse>, String>;
+    async fn get_roles(&self, realm_id: &Uuid) -> Result<Vec<RoleResponse>, AdminServiceError>;
 
     /// Get role by ID
-    async fn get_role(&self, role_id: &Uuid) -> Result<RoleResponse, String>;
+    async fn get_role(&self, role_id: &Uuid) -> Result<RoleResponse, AdminServiceError>;
 
     /// Create role
-    async fn create_role(&self, request: CreateRoleRequest) -> Result<RoleResponse, String>;
+    async fn create_role(
+        &self,
+        request: CreateRoleRequest,
+    ) -> Result<RoleResponse, AdminServiceError>;
 
     /// Update role
     async fn update_role(
         &self,
         role_id: &Uuid,
         request: UpdateRoleRequest,
-    ) -> Result<RoleResponse, String>;
+    ) -> Result<RoleResponse, AdminServiceError>;
 
     /// Delete role
-    async fn delete_role(&self, role_id: &Uuid) -> Result<(), String>;
+    async fn delete_role(&self, role_id: &Uuid) -> Result<(), AdminServiceError>;
 
     /// Get sessions
     async fn get_sessions(
@@ -62,13 +109,16 @@ pub trait AdminService: Send + Sync {
         user_id: Option<Uuid>,
         page: u32,
         limit: u32,
-    ) -> Result<SessionListResponse, String>;
+    ) -> Result<SessionListResponse, AdminServiceError>;
 
     /// Terminate session
-    async fn terminate_session(&self, session_id: &str) -> Result<(), String>;
+    async fn terminate_session(&self, session_id: &str) -> Result<(), AdminServiceError>;
 
     /// Get audit logs
-    async fn get_audit_logs(&self, filter: AuditLogFilter) -> Result<AuditLogResponse, String>;
+    async fn get_audit_logs(
+        &self,
+        filter: AuditLogFilter,
+    ) -> Result<AuditLogResponse, AdminServiceError>;
 
     /// Get authorization policies
     async fn get_policies(
@@ -76,48 +126,56 @@ pub trait AdminService: Send + Sync {
         realm_id: &Uuid,
         page: u32,
         limit: u32,
-    ) -> Result<Vec<PolicyResponse>, String>;
+    ) -> Result<Vec<PolicyResponse>, AdminServiceError>;
 
     /// Create policy
-    async fn create_policy(&self, request: CreatePolicyRequest) -> Result<PolicyResponse, String>;
+    async fn create_policy(
+        &self,
+        request: CreatePolicyRequest,
+    ) -> Result<PolicyResponse, AdminServiceError>;
 
     /// Get zero trust dashboard data
-    async fn get_zero_trust_dashboard(&self, realm_id: &Uuid)
-    -> Result<ZeroTrustDashboard, String>;
+    async fn get_zero_trust_dashboard(
+        &self,
+        realm_id: &Uuid,
+    ) -> Result<ZeroTrustDashboard, AdminServiceError>;
 
     /// Get identity providers
     async fn get_identity_providers(
         &self,
         realm_id: &Uuid,
-    ) -> Result<Vec<IdentityProviderResponse>, String>;
+    ) -> Result<Vec<IdentityProviderResponse>, AdminServiceError>;
 
     /// Create identity provider
     async fn create_identity_provider(
         &self,
         request: CreateIdentityProviderRequest,
-    ) -> Result<IdentityProviderResponse, String>;
+    ) -> Result<IdentityProviderResponse, AdminServiceError>;
 
     /// Update identity provider
     async fn update_identity_provider(
         &self,
         provider_id: &Uuid,
         request: UpdateIdentityProviderRequest,
-    ) -> Result<IdentityProviderResponse, String>;
+    ) -> Result<IdentityProviderResponse, AdminServiceError>;
 
     /// Delete identity provider
-    async fn delete_identity_provider(&self, provider_id: &Uuid) -> Result<(), String>;
+    async fn delete_identity_provider(
+        &self,
+        provider_id: &Uuid,
+    ) -> Result<(), AdminServiceError>;
 
     /// Get identity provider by ID
     async fn get_identity_provider(
         &self,
         provider_id: &Uuid,
-    ) -> Result<IdentityProviderResponse, String>;
+    ) -> Result<IdentityProviderResponse, AdminServiceError>;
 
     /// Test identity provider connection
     async fn test_identity_provider(
         &self,
         provider_id: &Uuid,
-    ) -> Result<TestIdentityProviderResponse, String>;
+    ) -> Result<TestIdentityProviderResponse, AdminServiceError>;
 }
 
 /// System statistics
@@ -904,11 +962,11 @@ impl AdminManager {
 
 #[async_trait]
 impl AdminService for AdminManager {
-    async fn get_system_stats(&self) -> Result<SystemStats, String> {
+    async fn get_system_stats(&self) -> Result<SystemStats, AdminServiceError> {
         Ok(self.generate_system_stats().await)
     }
 
-    async fn get_user(&self, user_id: &Uuid) -> Result<UserResponse, String> {
+    async fn get_user(&self, user_id: &Uuid) -> Result<UserResponse, AdminServiceError> {
         match operations::users::get_user_by_id(&self.db, *user_id).await {
             Ok(Some(user)) => {
                 let realm_id = user.realm_id.unwrap_or(Uuid::nil());
@@ -941,8 +999,8 @@ impl AdminService for AdminManager {
                     locked_until: user.account_locked_until,
                 })
             }
-            Ok(None) => Err(format!("User with ID {} not found", user_id)),
-            Err(e) => Err(format!("Failed to get user: {}", e)),
+            Ok(None) => Err(AdminServiceError::NotFound(format!("User with ID {} not found", user_id))),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to get user: {}", e))),
         }
     }
 
@@ -951,10 +1009,10 @@ impl AdminService for AdminManager {
         realm_id: &Uuid,
         page: u32,
         limit: u32,
-    ) -> Result<UserListResponse, String> {
+    ) -> Result<UserListResponse, AdminServiceError> {
         // Integration 19: User Listing with Pagination and Realm Filtering
 
-        let offset = (page.saturating_sub(1)) * limit;
+        let offset = (page.saturating_sub(1)).saturating_mul(limit);
 
         // Query total count first
         let total_count_query =
@@ -963,7 +1021,7 @@ impl AdminService for AdminManager {
             .db
             .query_raw(total_count_query, &[&realm_id])
             .await
-            .map_err(|e| format!("Failed to get user count: {}", e))?
+            .map_err(|e| AdminServiceError::Internal(format!("Failed to get user count: {}", e)))?
             .first()
             .map(|row| row.get::<_, i64>(0))
             .unwrap_or(0) as u64;
@@ -975,7 +1033,7 @@ impl AdminService for AdminManager {
             .db
             .query_raw(users_query, &[&realm_id, &(limit as i64), &(offset as i64)])
             .await
-            .map_err(|e| format!("Failed to get users: {}", e))?;
+            .map_err(|e| AdminServiceError::Internal(format!("Failed to get users: {}", e)))?;
 
         let mut users = Vec::new();
         for row in rows {
@@ -1034,7 +1092,7 @@ impl AdminService for AdminManager {
         })
     }
 
-    async fn create_user(&self, request: CreateUserRequest) -> Result<UserResponse, String> {
+    async fn create_user(&self, request: CreateUserRequest) -> Result<UserResponse, AdminServiceError> {
         // Convert admin request to model request
         let create_request = authenc_models::models::user::CreateUserRequest {
             username: request.username.clone(),
@@ -1110,7 +1168,7 @@ impl AdminService for AdminManager {
                     locked_until: user.account_locked_until,
                 })
             }
-            Err(e) => Err(format!("Failed to create user: {}", e)),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to create user: {}", e))),
         }
     }
 
@@ -1118,7 +1176,7 @@ impl AdminService for AdminManager {
         &self,
         user_id: &Uuid,
         request: UpdateUserRequest,
-    ) -> Result<UserResponse, String> {
+    ) -> Result<UserResponse, AdminServiceError> {
         // Convert admin request to model request
         let update_request = authenc_models::models::user::UpdateUserRequest {
             username: request.username.clone(),
@@ -1138,13 +1196,44 @@ impl AdminService for AdminManager {
             Ok(user) => {
                 let realm_id = user.realm_id.unwrap_or(Uuid::nil());
 
+                // Handle role updates if provided
+                if let Some(role_names) = &request.roles {
+                    // Fetch all realm roles to resolve names to IDs
+                    let all_roles = operations::roles::list_roles_by_realm(&self.db, &realm_id)
+                        .await
+                        .unwrap_or_default();
+
+                    // Get current user roles
+                    let current_roles = operations::roles::get_user_roles(&self.db, &user.id)
+                        .await
+                        .unwrap_or_default();
+                    let current_role_names: Vec<String> = current_roles.iter().map(|r| r.name.clone()).collect();
+
+                    // Remove roles not in the new list
+                    for current_role in &current_roles {
+                        if !role_names.contains(&current_role.name) {
+                            let _ = operations::roles::remove_role_from_user(
+                                &self.db, &user.id, &current_role.id,
+                            )
+                            .await;
+                        }
+                    }
+
+                    // Add roles that are in the new list but not currently assigned
+                    for role_name in role_names {
+                        if !current_role_names.contains(role_name) {
+                            if let Some(role) = all_roles.iter().find(|r| &r.name == role_name) {
+                                let _ = operations::roles::assign_role_to_user(
+                                    &self.db, &user.id, &role.id,
+                                )
+                                .await;
+                            }
+                        }
+                    }
+                }
+
                 // Handle group updates if provided
                 if let Some(groups) = &request.groups {
-                    // For simplicity, we might add new groups. Removing existing ones
-                    // requires diffing which is complex without current state.
-                    // Assuming additive or "ensure present" logic for now, or just adding.
-                    // A full sync would require fetching current groups, removing those not in list, adding new ones.
-                    // Given the context, we will add provided groups.
                     for group_name in groups {
                         if let Ok(Some(group)) =
                             operations::groups::get_group_by_name(&self.db, realm_id, group_name)
@@ -1190,19 +1279,19 @@ impl AdminService for AdminManager {
                     locked_until: user.account_locked_until,
                 })
             }
-            Err(e) => Err(format!("Failed to update user: {}", e)),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to update user: {}", e))),
         }
     }
 
-    async fn delete_user(&self, user_id: &Uuid) -> Result<(), String> {
+    async fn delete_user(&self, user_id: &Uuid) -> Result<(), AdminServiceError> {
         // Delete user from database
         match operations::users::delete_user(&self.db, *user_id).await {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Failed to delete user: {}", e)),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to delete user: {}", e))),
         }
     }
 
-    async fn get_roles(&self, realm_id: &Uuid) -> Result<Vec<RoleResponse>, String> {
+    async fn get_roles(&self, realm_id: &Uuid) -> Result<Vec<RoleResponse>, AdminServiceError> {
         // Get roles from database
         match operations::roles::list_roles_by_realm(&self.db, realm_id).await {
             Ok(roles) => {
@@ -1225,11 +1314,11 @@ impl AdminService for AdminManager {
                 }
                 Ok(responses)
             }
-            Err(e) => Err(format!("Failed to get roles: {}", e)),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to get roles: {}", e))),
         }
     }
 
-    async fn get_role(&self, role_id: &Uuid) -> Result<RoleResponse, String> {
+    async fn get_role(&self, role_id: &Uuid) -> Result<RoleResponse, AdminServiceError> {
         match operations::roles::get_role_by_id(&self.db, role_id).await {
             Ok(Some(role)) => Ok(RoleResponse {
                 id: role.id,
@@ -1244,12 +1333,12 @@ impl AdminService for AdminManager {
                     .and_then(|attrs| serde_json::from_value(attrs).ok())
                     .unwrap_or_default(),
             }),
-            Ok(None) => Err(format!("Role with ID {} not found", role_id)),
-            Err(e) => Err(format!("Failed to get role: {}", e)),
+            Ok(None) => Err(AdminServiceError::NotFound(format!("Role with ID {} not found", role_id))),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to get role: {}", e))),
         }
     }
 
-    async fn create_role(&self, request: CreateRoleRequest) -> Result<RoleResponse, String> {
+    async fn create_role(&self, request: CreateRoleRequest) -> Result<RoleResponse, AdminServiceError> {
         // Use a transaction to ensure atomicity: if the follow-up UPDATE fails,
         // the INSERT is rolled back so no partially-created role is left behind.
         let name = request.name.clone();
@@ -1304,7 +1393,7 @@ impl AdminService for AdminManager {
 
                 Ok(role_id)
             })
-        }).await.map_err(|e| format!("Failed to create role: {}", e))?;
+        }).await.map_err(|e| AdminServiceError::Internal(format!("Failed to create role: {}", e)))?;
 
         // Re-fetch to get the complete role
         self.get_role(&role_id).await
@@ -1314,12 +1403,12 @@ impl AdminService for AdminManager {
         &self,
         role_id: &Uuid,
         request: UpdateRoleRequest,
-    ) -> Result<RoleResponse, String> {
+    ) -> Result<RoleResponse, AdminServiceError> {
         // Fetch raw role from DB to preserve Option/NULL status
         let existing = operations::roles::get_role_by_id(&self.db, role_id)
             .await
-            .map_err(|e| format!("Failed to get role: {}", e))?
-            .ok_or_else(|| format!("Role with ID {} not found", role_id))?;
+            .map_err(|e| AdminServiceError::Internal(format!("Failed to get role: {}", e)))?
+            .ok_or_else(|| AdminServiceError::NotFound(format!("Role with ID {} not found", role_id)))?;
 
         let name = request.name.unwrap_or(existing.name);
         let composite = request.composite.unwrap_or(existing.composite);
@@ -1354,23 +1443,23 @@ impl AdminService for AdminManager {
             &client_role,
             &attr_json,
             &now
-        ]).await.map_err(|e| format!("Failed to update role: {}", e))?;
+        ]).await.map_err(|e| AdminServiceError::Internal(format!("Failed to update role: {}", e)))?;
 
         if affected == 0 {
-            return Err(format!("Role with ID {} not found", role_id));
+            return Err(AdminServiceError::NotFound(format!("Role with ID {} not found", role_id)));
         }
 
         // Fetch the updated role
         self.get_role(role_id).await
     }
 
-    async fn delete_role(&self, role_id: &Uuid) -> Result<(), String> {
+    async fn delete_role(&self, role_id: &Uuid) -> Result<(), AdminServiceError> {
         let now = Utc::now();
         let query = "UPDATE roles SET deleted_at = $2, updated_at = $2 WHERE id = $1 AND deleted_at IS NULL";
         match self.db.execute(query, &[role_id, &now]).await {
             Ok(affected) if affected > 0 => Ok(()),
-            Ok(_) => Err("Role not found or already deleted".to_string()),
-            Err(e) => Err(format!("Failed to delete role: {}", e)),
+            Ok(_) => Err(AdminServiceError::AlreadyDeleted("Role not found or already deleted".to_string())),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to delete role: {}", e))),
         }
     }
 
@@ -1379,9 +1468,9 @@ impl AdminService for AdminManager {
         user_id: Option<Uuid>,
         page: u32,
         limit: u32,
-    ) -> Result<SessionListResponse, String> {
+    ) -> Result<SessionListResponse, AdminServiceError> {
         // Calculate pagination parameters
-        let offset = (page.saturating_sub(1)) * limit;
+        let offset = (page.saturating_sub(1)).saturating_mul(limit);
 
         // Build query based on whether we're filtering by user_id
         let (query, params): (
@@ -1434,7 +1523,7 @@ impl AdminService for AdminManager {
                     .as_slice(),
             )
             .await
-            .map_err(|e| format!("Failed to query sessions: {}", e))?;
+            .map_err(|e| AdminServiceError::Internal(format!("Failed to query sessions: {}", e)))?;
 
         // Convert rows to SessionResponse
         let mut sessions = Vec::new();
@@ -1484,7 +1573,7 @@ impl AdminService for AdminManager {
                     .as_slice(),
             )
             .await
-            .map_err(|e| format!("Failed to count sessions: {}", e))?;
+            .map_err(|e| AdminServiceError::Internal(format!("Failed to count sessions: {}", e)))?;
 
         let total_count: i64 = count_row.get(0);
 
@@ -1496,10 +1585,10 @@ impl AdminService for AdminManager {
         })
     }
 
-    async fn terminate_session(&self, session_id: &str) -> Result<(), String> {
+    async fn terminate_session(&self, session_id: &str) -> Result<(), AdminServiceError> {
         // Parse session_id from string to Uuid
         let session_uuid =
-            Uuid::parse_str(session_id).map_err(|e| format!("Invalid session ID format: {}", e))?;
+            Uuid::parse_str(session_id).map_err(|e| AdminServiceError::Internal(format!("Invalid session ID format: {}", e)))?;
 
         // Use database operation to revoke the session
         operations::sessions::revoke_session(
@@ -1508,12 +1597,12 @@ impl AdminService for AdminManager {
             Some("Terminated by administrator"),
         )
         .await
-        .map_err(|e| format!("Failed to terminate session: {}", e))?;
+        .map_err(|e| AdminServiceError::Internal(format!("Failed to terminate session: {}", e)))?;
 
         Ok(())
     }
 
-    async fn get_audit_logs(&self, filter: AuditLogFilter) -> Result<AuditLogResponse, String> {
+    async fn get_audit_logs(&self, filter: AuditLogFilter) -> Result<AuditLogResponse, AdminServiceError> {
         // Calculate pagination
         let offset = (filter.page.saturating_sub(1)) * filter.limit;
 
@@ -1527,7 +1616,7 @@ impl AdminService for AdminManager {
             offset as i64,
         )
         .await
-        .map_err(|e| format!("Failed to query audit logs: {}", e))?;
+        .map_err(|e| AdminServiceError::Internal(format!("Failed to query audit logs: {}", e)))?;
 
         // Get total count
         let total_count = operations::audit::get_audit_log_count(
@@ -1537,7 +1626,7 @@ impl AdminService for AdminManager {
             filter.realm_id,
         )
         .await
-        .map_err(|e| format!("Failed to count audit logs: {}", e))?;
+        .map_err(|e| AdminServiceError::Internal(format!("Failed to count audit logs: {}", e)))?;
 
         // Convert AuditEvent to AuditLogEntry with username lookup
         let mut logs = Vec::new();
@@ -1597,7 +1686,7 @@ impl AdminService for AdminManager {
         realm_id: &Uuid,
         page: u32,
         limit: u32,
-    ) -> Result<Vec<PolicyResponse>, String> {
+    ) -> Result<Vec<PolicyResponse>, AdminServiceError> {
         match operations::policies::get_policies_by_realm(&self.db, *realm_id, page, limit).await {
             Ok(policies) => {
                 let responses = policies
@@ -1617,11 +1706,11 @@ impl AdminService for AdminManager {
                     .collect();
                 Ok(responses)
             }
-            Err(e) => Err(format!("Failed to get policies: {}", e)),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to get policies: {}", e))),
         }
     }
 
-    async fn create_policy(&self, request: CreatePolicyRequest) -> Result<PolicyResponse, String> {
+    async fn create_policy(&self, request: CreatePolicyRequest) -> Result<PolicyResponse, AdminServiceError> {
         match operations::policies::create_policy(
             &self.db,
             &request.name,
@@ -1646,21 +1735,21 @@ impl AdminService for AdminManager {
                 created_at: policy.created_at,
                 updated_at: policy.updated_at,
             }),
-            Err(e) => Err(format!("Failed to create policy: {}", e)),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to create policy: {}", e))),
         }
     }
 
     async fn get_zero_trust_dashboard(
         &self,
         realm_id: &Uuid,
-    ) -> Result<ZeroTrustDashboard, String> {
-        self.generate_zero_trust_dashboard(realm_id).await
+    ) -> Result<ZeroTrustDashboard, AdminServiceError> {
+        self.generate_zero_trust_dashboard(realm_id).await.map_err(AdminServiceError::Internal)
     }
 
     async fn get_identity_providers(
         &self,
         realm_id: &Uuid,
-    ) -> Result<Vec<IdentityProviderResponse>, String> {
+    ) -> Result<Vec<IdentityProviderResponse>, AdminServiceError> {
         match operations::identity_providers::get_identity_providers_by_realm(&self.db, *realm_id)
             .await
         {
@@ -1691,14 +1780,14 @@ impl AdminService for AdminManager {
                     .collect();
                 Ok(responses)
             }
-            Err(e) => Err(format!("Failed to get identity providers: {}", e)),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to get identity providers: {}", e))),
         }
     }
 
     async fn create_identity_provider(
         &self,
         request: CreateIdentityProviderRequest,
-    ) -> Result<IdentityProviderResponse, String> {
+    ) -> Result<IdentityProviderResponse, AdminServiceError> {
         let provider_type_str = match request.provider_type {
             IdentityProviderType::SAML => "SAML",
             IdentityProviderType::OIDC => "OIDC",
@@ -1743,7 +1832,7 @@ impl AdminService for AdminManager {
                 created_at: provider.created_at,
                 updated_at: provider.updated_at,
             }),
-            Err(e) => Err(format!("Failed to create identity provider: {}", e)),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to create identity provider: {}", e))),
         }
     }
 
@@ -1751,7 +1840,7 @@ impl AdminService for AdminManager {
         &self,
         provider_id: &Uuid,
         request: UpdateIdentityProviderRequest,
-    ) -> Result<IdentityProviderResponse, String> {
+    ) -> Result<IdentityProviderResponse, AdminServiceError> {
         let provider_type_str = request.provider_type.as_ref().map(|pt| match pt {
             IdentityProviderType::SAML => "SAML",
             IdentityProviderType::OIDC => "OIDC",
@@ -1796,22 +1885,22 @@ impl AdminService for AdminManager {
                 created_at: provider.created_at,
                 updated_at: provider.updated_at,
             }),
-            Err(e) => Err(format!("Failed to update identity provider: {}", e)),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to update identity provider: {}", e))),
         }
     }
 
-    async fn delete_identity_provider(&self, provider_id: &Uuid) -> Result<(), String> {
+    async fn delete_identity_provider(&self, provider_id: &Uuid) -> Result<(), AdminServiceError> {
         match operations::identity_providers::delete_identity_provider(&self.db, *provider_id).await
         {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Failed to delete identity provider: {}", e)),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to delete identity provider: {}", e))),
         }
     }
 
     async fn get_identity_provider(
         &self,
         provider_id: &Uuid,
-    ) -> Result<IdentityProviderResponse, String> {
+    ) -> Result<IdentityProviderResponse, AdminServiceError> {
         match operations::identity_providers::get_identity_provider_by_id(&self.db, *provider_id)
             .await
         {
@@ -1836,19 +1925,19 @@ impl AdminService for AdminManager {
                 created_at: provider.created_at,
                 updated_at: provider.updated_at,
             }),
-            Ok(None) => Err("Identity provider not found".to_string()),
-            Err(e) => Err(format!("Failed to get identity provider: {}", e)),
+            Ok(None) => Err(AdminServiceError::NotFound("Identity provider not found".to_string())),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to get identity provider: {}", e))),
         }
     }
 
     async fn test_identity_provider(
         &self,
         provider_id: &Uuid,
-    ) -> Result<TestIdentityProviderResponse, String> {
+    ) -> Result<TestIdentityProviderResponse, AdminServiceError> {
         let provider = self
             .get_identity_provider(provider_id)
             .await
-            .map_err(|e| format!("Failed to get provider: {}", e))?;
+            .map_err(|e| AdminServiceError::Internal(format!("Failed to get provider: {}", e)))?;
 
         let mut details = serde_json::Map::new();
         let start = std::time::Instant::now();
@@ -1861,10 +1950,10 @@ impl AdminService for AdminManager {
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(10))
                     .build()
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| AdminServiceError::Internal(e.to_string()))?;
 
                 if let Some(url) = metadata_url {
-                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    let res = client.get(url).send().await.map_err(|e| AdminServiceError::Internal(e.to_string()))?;
                     let status = res.status();
                     details.insert(
                         "metadata_status".to_string(),
@@ -1892,14 +1981,14 @@ impl AdminService for AdminManager {
                 }
 
                 if let Some(url) = sso_url {
-                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    let res = client.get(url).send().await.map_err(|e| AdminServiceError::Internal(e.to_string()))?;
                     details.insert(
                         "sso_status".to_string(),
                         serde_json::Value::Number(res.status().as_u16().into()),
                     );
                     details.insert("reachable".to_string(), serde_json::Value::Bool(true));
                 } else {
-                    return Err("No SSO URL configured".to_string());
+                    return Err(AdminServiceError::Internal("No SSO URL configured".to_string()));
                 }
             }
             IdentityProviderType::OIDC
@@ -1919,12 +2008,12 @@ impl AdminService for AdminManager {
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(10))
                     .build()
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| AdminServiceError::Internal(e.to_string()))?;
 
                 let mut checked_any = false;
 
                 if let Some(url) = discovery_url {
-                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    let res = client.get(url).send().await.map_err(|e| AdminServiceError::Internal(e.to_string()))?;
                     details.insert(
                         "discovery_status".to_string(),
                         serde_json::Value::Number(res.status().as_u16().into()),
@@ -1950,7 +2039,7 @@ impl AdminService for AdminManager {
                 }
 
                 if let Some(url) = auth_url {
-                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    let res = client.get(url).send().await.map_err(|e| AdminServiceError::Internal(e.to_string()))?;
                     details.insert(
                         "auth_endpoint_status".to_string(),
                         serde_json::Value::Number(res.status().as_u16().into()),
@@ -1961,7 +2050,7 @@ impl AdminService for AdminManager {
                 if let Some(url) = token_url {
                     // Token endpoint usually requires POST, but we just check reachability with GET or check if it exists
                     // Many token endpoints return 405 Method Not Allowed on GET, which confirms reachability
-                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    let res = client.get(url).send().await.map_err(|e| AdminServiceError::Internal(e.to_string()))?;
                     details.insert(
                         "token_endpoint_status".to_string(),
                         serde_json::Value::Number(res.status().as_u16().into()),
@@ -1970,7 +2059,7 @@ impl AdminService for AdminManager {
                 }
 
                 if let Some(url) = userinfo_url {
-                    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+                    let res = client.get(url).send().await.map_err(|e| AdminServiceError::Internal(e.to_string()))?;
                     details.insert(
                         "userinfo_endpoint_status".to_string(),
                         serde_json::Value::Number(res.status().as_u16().into()),
@@ -1979,9 +2068,9 @@ impl AdminService for AdminManager {
                 }
 
                 if !checked_any {
-                    return Err(
+                    return Err(AdminServiceError::Internal(
                         "No Discovery, Authorization, Token or UserInfo URL configured".to_string(),
-                    );
+                    ));
                 }
 
                 details.insert("reachable".to_string(), serde_json::Value::Bool(true));
@@ -1991,7 +2080,7 @@ impl AdminService for AdminManager {
                     .config
                     .get("server_url")
                     .and_then(|v| v.as_str())
-                    .ok_or("No server_url configured")?
+                    .ok_or_else(|| AdminServiceError::Internal("No server_url configured".to_string()))?
                     .to_string();
                 let bind_dn = provider
                     .config
@@ -2013,15 +2102,15 @@ impl AdminService for AdminManager {
                 if (bind_dn.is_some() && bind_password.is_none())
                     || (bind_dn.is_none() && bind_password.is_some())
                 {
-                    return Err(
+                    return Err(AdminServiceError::Internal(
                         "Incomplete LDAP credentials: both bind_dn and bind_password must be provided"
                             .to_string(),
-                    );
+                    ));
                 }
 
                 // Basic URL validation
                 if !server_url.starts_with("ldap://") && !server_url.starts_with("ldaps://") {
-                    return Err("Server URL must start with ldap:// or ldaps://".to_string());
+                    return Err(AdminServiceError::Internal("Server URL must start with ldap:// or ldaps://".to_string()));
                 }
 
                 let settings =
@@ -2029,7 +2118,7 @@ impl AdminService for AdminManager {
 
                 let (conn, mut ldap) = ldap3::LdapConnAsync::with_settings(settings, &server_url)
                     .await
-                    .map_err(|e| format!("Failed to connect to LDAP server: {}", e))?;
+                    .map_err(|e| AdminServiceError::Internal(format!("Failed to connect to LDAP server: {}", e)))?;
 
                 ldap3::drive!(conn);
 
@@ -2039,7 +2128,7 @@ impl AdminService for AdminManager {
                     if server_url.starts_with("ldap://") {
                         // StartTLS support requires specific feature flags in ldap3 crate which are causing build conflicts.
                         // To ensure security, we reject non-LDAPS connections when TLS is requested if we cannot upgrade.
-                        return Err("StartTLS upgrade not supported. Please use ldaps:// protocol for secure connection.".to_string());
+                        return Err(AdminServiceError::Internal("StartTLS upgrade not supported. Please use ldaps:// protocol for secure connection.".to_string()));
                     }
                 }
 
@@ -2047,22 +2136,22 @@ impl AdminService for AdminManager {
                     (Some(dn), Some(pw)) => {
                         ldap.simple_bind(&dn, &pw)
                             .await
-                            .map_err(|e| format!("Bind failed: {}", e))?
+                            .map_err(|e| AdminServiceError::Internal(format!("Bind failed: {}", e)))?
                             .success()
-                            .map_err(|e| format!("Bind error: {}", e))?;
+                            .map_err(|e| AdminServiceError::Internal(format!("Bind error: {}", e)))?;
                     }
                     (None, None) => {
                         ldap.simple_bind("", "")
                             .await
-                            .map_err(|e| format!("Anonymous bind failed: {}", e))?
+                            .map_err(|e| AdminServiceError::Internal(format!("Anonymous bind failed: {}", e)))?
                             .success()
-                            .map_err(|e| format!("Anonymous bind error: {}", e))?;
+                            .map_err(|e| AdminServiceError::Internal(format!("Anonymous bind error: {}", e)))?;
                     }
                     _ => {
-                        return Err(
+                        return Err(AdminServiceError::Internal(
                             "Incomplete LDAP credentials: both bind_dn and bind_password must be provided"
                                 .to_string(),
-                        );
+                        ));
                     }
                 }
 

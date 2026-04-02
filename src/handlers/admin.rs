@@ -1,10 +1,10 @@
 use crate::app::AppState;
 use crate::error::AuthencError;
 use authenc_services::services::admin::{
-    AdminManager, AdminService, AuditLogResponse, CreateIdentityProviderRequest,
-    CreatePolicyRequest, CreateRoleRequest, CreateUserRequest, IdentityProviderResponse,
-    PolicyResponse, RoleResponse, SecurityEvent, SessionListResponse, SystemStats,
-    TestIdentityProviderResponse, UpdateIdentityProviderRequest, UpdateRoleRequest,
+    AdminManager, AdminService, AdminServiceError, AuditLogResponse,
+    CreateIdentityProviderRequest, CreatePolicyRequest, CreateRoleRequest, CreateUserRequest,
+    IdentityProviderResponse, PolicyResponse, RoleResponse, SecurityEvent, SessionListResponse,
+    SystemStats, TestIdentityProviderResponse, UpdateIdentityProviderRequest, UpdateRoleRequest,
     UpdateUserRequest, UserListResponse, UserResponse,
 };
 use axum::{
@@ -17,6 +17,17 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Convert an AdminServiceError to an appropriate HTTP StatusCode
+fn admin_error_to_status(e: &AdminServiceError) -> StatusCode {
+    match e {
+        AdminServiceError::NotFound(_) | AdminServiceError::AlreadyDeleted(_) => {
+            StatusCode::NOT_FOUND
+        }
+        AdminServiceError::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
+        AdminServiceError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
 
 #[derive(Deserialize)]
 /// Query parameters for listing users with filtering and pagination
@@ -102,7 +113,7 @@ pub async fn get_system_stats(
         Ok(stats) => Ok(Json(stats)),
         Err(e) => {
             eprintln!("Failed to get system stats: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -167,11 +178,7 @@ pub async fn get_user(
         Ok(user) => Ok(Json(user)),
         Err(e) => {
             eprintln!("Failed to get user: {}", e);
-            if e.contains("not found") {
-                Err(StatusCode::NOT_FOUND)
-            } else {
-                Err(StatusCode::INTERNAL_SERVER_ERROR)
-            }
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -343,11 +350,7 @@ pub async fn get_role(
         Ok(role) => Ok(Json(role)),
         Err(e) => {
             eprintln!("Failed to get role: {}", e);
-            if e.contains("not found") {
-                Err(StatusCode::NOT_FOUND)
-            } else {
-                Err(StatusCode::INTERNAL_SERVER_ERROR)
-            }
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -364,11 +367,7 @@ pub async fn update_role(
         Ok(role) => Ok(Json(role)),
         Err(e) => {
             eprintln!("Failed to update role: {}", e);
-            if e.contains("not found") {
-                Err(StatusCode::NOT_FOUND)
-            } else {
-                Err(StatusCode::INTERNAL_SERVER_ERROR)
-            }
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -384,11 +383,7 @@ pub async fn delete_role(
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
             eprintln!("Failed to delete role: {}", e);
-            if e.contains("not found") || e.contains("already deleted") {
-                Err(StatusCode::NOT_FOUND)
-            } else {
-                Err(StatusCode::INTERNAL_SERVER_ERROR)
-            }
+            Err(admin_error_to_status(&e))
         }
     }
 }
