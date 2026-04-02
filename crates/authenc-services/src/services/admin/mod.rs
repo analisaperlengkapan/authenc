@@ -1116,12 +1116,18 @@ impl AdminService for AdminManager {
 
                 // Assign roles if provided
                 if !request.roles.is_empty() {
-                    // This is a simplified approach - in a real implementation we might want to
-                    // validate roles or batch insert
-                    // Since bulk assignment expects IDs, we would need to resolve them first
-                    // For now, we skip assignment here as typically role assignment might be done
-                    // via dedicated endpoints or by resolving names.
-                    // If necessary, implementation would go here.
+                    let all_roles = operations::roles::list_roles_by_realm(&self.db, &realm_id)
+                        .await
+                        .unwrap_or_default();
+
+                    for role_name in &request.roles {
+                        if let Some(role) = all_roles.iter().find(|r| &r.name == role_name) {
+                            let _ = operations::roles::assign_role_to_user(
+                                &self.db, &user.id, &role.id,
+                            )
+                            .await;
+                        }
+                    }
                 }
 
                 // Assign groups if provided
