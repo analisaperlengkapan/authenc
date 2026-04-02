@@ -1133,9 +1133,10 @@ impl AdminService for AdminManager {
 
                 // Assign groups if provided
                 for group_name in &request.groups {
-                    if let Ok(Some(group)) =
-                        operations::groups::get_group_by_name(&self.db, realm_id, group_name).await
-                    {
+                    let group = operations::groups::get_group_by_name(&self.db, realm_id, group_name)
+                        .await
+                        .map_err(|e| AdminServiceError::Internal(format!("Failed to look up group {}: {}", group_name, e)))?;
+                    if let Some(group) = group {
                         operations::groups::add_user_to_group(
                             &self.db, user.id, group.id, None, None,
                         )
@@ -1204,80 +1205,113 @@ impl AdminService for AdminManager {
             Ok(user) => {
                 let realm_id = user.realm_id.unwrap_or(Uuid::nil());
 
-                // Handle role updates if provided
-                if let Some(role_names) = &request.roles {
-                    // Fetch all realm roles to resolve names to IDs
-                    let all_roles = operations::roles::list_roles_by_realm(&self.db, &realm_id)
-                        .await
-                        .map_err(|e| AdminServiceError::Internal(format!("Failed to fetch realm roles: {}", e)))?;
+                // Handle role and group updates atomically within a transaction
+                // to prevent inconsistent state on partial failure.
+                let has_role_updates = request.roles.is_some();
+                let has_group_updates = request.groups.is_some();
 
-                    // Get current user roles
-                    let current_roles = operations::roles::get_user_roles(&self.db, &user.id)
-                        .await
-                        .map_err(|e| AdminServiceError::Internal(format!("Failed to get user roles: {}", e)))?;
-                    let current_role_names: Vec<String> = current_roles.iter().map(|r| r.name.clone()).collect();
-
-                    // Remove roles not in the new list
-                    for current_role in &current_roles {
-                        if !role_names.contains(&current_role.name) {
-                            operations::roles::remove_role_from_user(
-                                &self.db, &user.id, &current_role.id,
-                            )
+                if has_role_updates || has_group_updates {
+                    // Pre-fetch current roles/groups and resolve names to IDs
+                    // outside the transaction (read-only lookups).
+                    let role_changes: Option<(Vec<Uuid>, Vec<Uuid>)> = if let Some(role_names) = &request.roles {
+                        let all_roles = operations::roles::list_roles_by_realm(&self.db, &realm_id)
                             .await
-                            .map_err(|e| AdminServiceError::Internal(format!("Failed to remove role {}: {}", current_role.name, e)))?;
-                        }
-                    }
+                            .map_err(|e| AdminServiceError::Internal(format!("Failed to fetch realm roles: {}", e)))?;
 
-                    // Add roles that are in the new list but not currently assigned
-                    for role_name in role_names {
-                        if !current_role_names.contains(role_name) {
-                            if let Some(role) = all_roles.iter().find(|r| &r.name == role_name) {
-                                operations::roles::assign_role_to_user(
-                                    &self.db, &user.id, &role.id,
-                                )
-                                .await
-                                .map_err(|e| AdminServiceError::Internal(format!("Failed to assign role {}: {}", role_name, e)))?;
-                            }
-                        }
-                    }
-                }
-
-                // Handle group updates if provided (full sync: remove old + add new)
-                if let Some(group_names) = &request.groups {
-                    // Get all realm groups to resolve names to IDs
-                    let all_groups = operations::groups::get_groups_by_realm(&self.db, realm_id, None, None)
-                        .await
-                        .map_err(|e| AdminServiceError::Internal(format!("Failed to fetch realm groups: {}", e)))?;
-
-                    // Get current user groups
-                    let current_groups = operations::groups::get_user_groups(&self.db, user.id)
-                        .await
-                        .map_err(|e| AdminServiceError::Internal(format!("Failed to get user groups: {}", e)))?;
-                    let current_group_names: Vec<String> = current_groups.iter().map(|g| g.name.clone()).collect();
-
-                    // Remove groups not in the new list
-                    for current_group in &current_groups {
-                        if !group_names.contains(&current_group.name) {
-                            operations::groups::remove_user_from_group(
-                                &self.db, user.id, current_group.id,
-                            )
+                        let current_roles = operations::roles::get_user_roles(&self.db, &user.id)
                             .await
-                            .map_err(|e| AdminServiceError::Internal(format!("Failed to remove user from group {}: {}", current_group.name, e)))?;
-                        }
-                    }
+                            .map_err(|e| AdminServiceError::Internal(format!("Failed to get user roles: {}", e)))?;
+                        let current_role_names: Vec<String> = current_roles.iter().map(|r| r.name.clone()).collect();
 
-                    // Add groups that are in the new list but not currently assigned
-                    for group_name in group_names {
-                        if !current_group_names.contains(group_name) {
-                            if let Some(group) = all_groups.iter().find(|g| &g.name == group_name) {
-                                operations::groups::add_user_to_group(
-                                    &self.db, user.id, group.id, None, None,
-                                )
-                                .await
-                                .map_err(|e| AdminServiceError::Internal(format!("Failed to add user to group {}: {}", group_name, e)))?;
+                        let roles_to_remove: Vec<Uuid> = current_roles.iter()
+                            .filter(|r| !role_names.contains(&r.name))
+                            .map(|r| r.id)
+                            .collect();
+
+                        let roles_to_add: Vec<Uuid> = role_names.iter()
+                            .filter(|name| !current_role_names.contains(name))
+                            .filter_map(|name| all_roles.iter().find(|r| &r.name == name).map(|r| r.id))
+                            .collect();
+
+                        Some((roles_to_remove, roles_to_add))
+                    } else {
+                        None
+                    };
+
+                    let group_changes: Option<(Vec<Uuid>, Vec<Uuid>)> = if let Some(group_names) = &request.groups {
+                        let all_groups = operations::groups::get_groups_by_realm(&self.db, realm_id, None, None)
+                            .await
+                            .map_err(|e| AdminServiceError::Internal(format!("Failed to fetch realm groups: {}", e)))?;
+
+                        let current_groups = operations::groups::get_user_groups(&self.db, user.id)
+                            .await
+                            .map_err(|e| AdminServiceError::Internal(format!("Failed to get user groups: {}", e)))?;
+                        let current_group_names: Vec<String> = current_groups.iter().map(|g| g.name.clone()).collect();
+
+                        let groups_to_remove: Vec<Uuid> = current_groups.iter()
+                            .filter(|g| !group_names.contains(&g.name))
+                            .map(|g| g.id)
+                            .collect();
+
+                        let groups_to_add: Vec<Uuid> = group_names.iter()
+                            .filter(|name| !current_group_names.contains(name))
+                            .filter_map(|name| all_groups.iter().find(|g| &g.name == name).map(|g| g.id))
+                            .collect();
+
+                        Some((groups_to_remove, groups_to_add))
+                    } else {
+                        None
+                    };
+
+                    // Execute all mutations inside a single transaction so that
+                    // a partial failure rolls back all changes.
+                    let user_id_copy = user.id;
+                    self.db.with_transaction(move |client| {
+                        Box::pin(async move {
+                            let now = Utc::now();
+
+                            if let Some((roles_to_remove, roles_to_add)) = role_changes {
+                                for role_id in &roles_to_remove {
+                                    client.execute(
+                                        "DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2",
+                                        &[&user_id_copy, role_id],
+                                    ).await.map_err(|e| {
+                                        authenc_core::error::AuthencError::database(format!("Failed to remove role: {}", e))
+                                    })?;
+                                }
+                                for role_id in &roles_to_add {
+                                    client.execute(
+                                        "INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES ($1, $2, $3) ON CONFLICT (user_id, role_id) DO NOTHING",
+                                        &[&user_id_copy, role_id, &now],
+                                    ).await.map_err(|e| {
+                                        authenc_core::error::AuthencError::database(format!("Failed to assign role: {}", e))
+                                    })?;
+                                }
                             }
-                        }
-                    }
+
+                            if let Some((groups_to_remove, groups_to_add)) = group_changes {
+                                for group_id in &groups_to_remove {
+                                    client.execute(
+                                        "DELETE FROM user_groups WHERE user_id = $1 AND group_id = $2",
+                                        &[&user_id_copy, group_id],
+                                    ).await.map_err(|e| {
+                                        authenc_core::error::AuthencError::database(format!("Failed to remove group: {}", e))
+                                    })?;
+                                }
+                                for group_id in &groups_to_add {
+                                    let ug_id = Uuid::new_v4();
+                                    client.execute(
+                                        "INSERT INTO user_groups (id, user_id, group_id, joined_at, attributes) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (user_id, group_id) DO NOTHING",
+                                        &[&ug_id, &user_id_copy, group_id, &now, &serde_json::json!({})],
+                                    ).await.map_err(|e| {
+                                        authenc_core::error::AuthencError::database(format!("Failed to add group: {}", e))
+                                    })?;
+                                }
+                            }
+
+                            Ok(())
+                        })
+                    }).await.map_err(|e| AdminServiceError::Internal(format!("Failed to sync roles/groups: {}", e)))?;
                 }
 
                 // Get user roles from database
