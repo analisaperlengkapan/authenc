@@ -1232,17 +1232,38 @@ impl AdminService for AdminManager {
                     }
                 }
 
-                // Handle group updates if provided
-                if let Some(groups) = &request.groups {
-                    for group_name in groups {
-                        if let Ok(Some(group)) =
-                            operations::groups::get_group_by_name(&self.db, realm_id, group_name)
-                                .await
-                        {
-                            let _ = operations::groups::add_user_to_group(
-                                &self.db, user.id, group.id, None, None,
+                // Handle group updates if provided (full sync: remove old + add new)
+                if let Some(group_names) = &request.groups {
+                    // Get all realm groups to resolve names to IDs
+                    let all_groups = operations::groups::get_groups_by_realm(&self.db, realm_id, None, None)
+                        .await
+                        .unwrap_or_default();
+
+                    // Get current user groups
+                    let current_groups = operations::groups::get_user_groups(&self.db, user.id)
+                        .await
+                        .unwrap_or_default();
+                    let current_group_names: Vec<String> = current_groups.iter().map(|g| g.name.clone()).collect();
+
+                    // Remove groups not in the new list
+                    for current_group in &current_groups {
+                        if !group_names.contains(&current_group.name) {
+                            let _ = operations::groups::remove_user_from_group(
+                                &self.db, user.id, current_group.id,
                             )
                             .await;
+                        }
+                    }
+
+                    // Add groups that are in the new list but not currently assigned
+                    for group_name in group_names {
+                        if !current_group_names.contains(group_name) {
+                            if let Some(group) = all_groups.iter().find(|g| &g.name == group_name) {
+                                let _ = operations::groups::add_user_to_group(
+                                    &self.db, user.id, group.id, None, None,
+                                )
+                                .await;
+                            }
                         }
                     }
                 }
@@ -1604,7 +1625,7 @@ impl AdminService for AdminManager {
 
     async fn get_audit_logs(&self, filter: AuditLogFilter) -> Result<AuditLogResponse, AdminServiceError> {
         // Calculate pagination
-        let offset = (filter.page.saturating_sub(1)) * filter.limit;
+        let offset = (filter.page.saturating_sub(1)).saturating_mul(filter.limit);
 
         // Query audit logs with filters
         let audit_events = operations::audit::get_audit_logs(
@@ -1936,8 +1957,7 @@ impl AdminService for AdminManager {
     ) -> Result<TestIdentityProviderResponse, AdminServiceError> {
         let provider = self
             .get_identity_provider(provider_id)
-            .await
-            .map_err(|e| AdminServiceError::Internal(format!("Failed to get provider: {}", e)))?;
+            .await?;
 
         let mut details = serde_json::Map::new();
         let start = std::time::Instant::now();
