@@ -345,17 +345,31 @@ impl AdminService for SamlAdminService {
         role_id: &uuid::Uuid,
         request: authenc_services::services::admin::UpdateRoleRequest,
     ) -> Result<authenc_services::services::admin::RoleResponse, String> {
-        // Fetch existing role to merge with partial update
-        let existing = self.get_role(role_id).await?;
+        use authenc_database::database::operations::roles;
+        // Fetch raw role from DB to preserve Option/NULL status
+        let existing = roles::get_role_by_id(&self.db, role_id)
+            .await
+            .map_err(|e| format!("Failed to get role: {}", e))?
+            .ok_or_else(|| format!("Role with ID {} not found", role_id))?;
 
         let name = request.name.unwrap_or(existing.name);
-        let description = request.description.unwrap_or(existing.description);
         let composite = request.composite.unwrap_or(existing.composite);
         let client_role = request.client_role.unwrap_or(existing.client_role);
-        let attributes = request.attributes.unwrap_or(existing.attributes);
+
+        // Preserve NULL when no update is provided
+        let description: Option<String> = if request.description.is_some() {
+            request.description
+        } else {
+            existing.description
+        };
+
+        let attr_json: Option<String> = if let Some(attrs) = request.attributes {
+            Some(serde_json::to_string(&attrs).unwrap_or_default())
+        } else {
+            existing.attributes.and_then(|v| serde_json::to_string(&v).ok())
+        };
 
         let now = chrono::Utc::now();
-        let attr_json = serde_json::to_string(&attributes).unwrap_or_default();
         let update_query = r#"
             UPDATE roles
             SET name = $2, description = $3, composite = $4, client_role = $5,
@@ -366,10 +380,10 @@ impl AdminService for SamlAdminService {
         let affected = self.db.execute(update_query, &[
             role_id,
             &name,
-            &Some(description),
+            &description,
             &composite,
             &client_role,
-            &Some(attr_json),
+            &attr_json,
             &now
         ]).await.map_err(|e| format!("Failed to update role: {}", e))?;
 
