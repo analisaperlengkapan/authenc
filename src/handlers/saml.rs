@@ -246,31 +246,17 @@ pub async fn saml_acs(
                     Ok(Html(html))
                 }
                 Err(e) => {
-                    let html = format!(
-                        r#"<!DOCTYPE html>
-<html>
-<head><title>SAML Login Failed</title></head>
-<body>
-<h1>JIT Provisioning Failed</h1>
-<p>Error: {}</p>
-</body>
-</html>"#,
-                        escape_html(&e.to_string())
-                    );
-                    Ok(Html(html))
+                    log::error!("JIT provisioning failed: {}", e);
+                    Err(AuthencError::internal(format!(
+                        "JIT provisioning failed: {}",
+                        e
+                    )))
                 }
             }
         }
-        Err(_) => {
-            let html = r#"<!DOCTYPE html>
-<html>
-<head><title>SAML Login Failed</title></head>
-<body>
-<h1>Login Failed</h1>
-<p>SAML authentication failed. Please try again.</p>
-</body>
-</html>"#;
-            Ok(Html(html.to_string()))
+        Err(e) => {
+            log::error!("SAML authentication failed: {}", e);
+            Err(AuthencError::internal("SAML authentication failed"))
         }
     }
 }
