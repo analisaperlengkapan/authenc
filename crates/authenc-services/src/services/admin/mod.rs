@@ -1528,7 +1528,7 @@ impl AdminService for AdminManager {
         let query = "UPDATE roles SET deleted_at = $2, updated_at = $2 WHERE id = $1 AND deleted_at IS NULL";
         match self.db.execute(query, &[role_id, &now]).await {
             Ok(affected) if affected > 0 => Ok(()),
-            Ok(_) => Err(AdminServiceError::AlreadyDeleted("Role not found or already deleted".to_string())),
+            Ok(_) => Err(AdminServiceError::NotFound("Role not found or already deleted".to_string())),
             Err(e) => Err(AdminServiceError::Internal(format!("Failed to delete role: {}", e))),
         }
     }
@@ -1751,15 +1751,22 @@ impl AdminService for AdminManager {
             .await
             .map_err(|e| AdminServiceError::Internal(format!("Failed to query audit logs: {}", e)))?;
 
-        let audit_events: Vec<authenc_models::models::AuditEvent> = rows
+        // Extract (id, AuditEvent) pairs so we preserve the database id
+        // that the TryFrom<Row> for AuditEvent discards.
+        let audit_entries: Vec<(Uuid, authenc_models::models::AuditEvent)> = rows
             .into_iter()
-            .map(|row| row.try_into())
+            .map(|row| {
+                let id: Uuid = row.try_get::<_, Uuid>("id")
+                    .unwrap_or_else(|_| Uuid::new_v4());
+                let event: authenc_models::models::AuditEvent = row.try_into()?;
+                Ok((id, event))
+            })
             .collect::<authenc_core::error::Result<Vec<_>>>()
             .map_err(|e| AdminServiceError::Internal(format!("Failed to parse audit logs: {}", e)))?;
 
         // Convert AuditEvent to AuditLogEntry with username lookup
         let mut logs = Vec::new();
-        for event in audit_events {
+        for (db_id, event) in audit_entries {
             // Get username if user_id exists
             let username = if let Some(uid) = event.user_id {
                 operations::users::get_user_by_id(&self.db, uid)
@@ -1772,7 +1779,7 @@ impl AdminService for AdminManager {
             };
 
             logs.push(AuditLogEntry {
-                id: Uuid::new_v4(), // Database doesn't return id, generate one for API response
+                id: db_id,
                 timestamp: event.timestamp,
                 user_id: event.user_id,
                 username,
