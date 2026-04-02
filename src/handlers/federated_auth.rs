@@ -351,50 +351,64 @@ impl AdminService for MockAdminService {
         &self,
         request: authenc_services::services::admin::CreateRoleRequest,
     ) -> std::result::Result<authenc_services::services::admin::RoleResponse, String> {
-        use authenc_database::database::operations::roles;
-        match roles::create_role(
-            &self.db,
-            &request.name,
-            Some(&request.description),
-            &request.realm_id,
-        )
-        .await
-        {
-            Ok(role) => {
-                // The create_role DB operation only accepts name, description, realm_id.
-                // If composite, client_role, or attributes differ from defaults, apply them.
-                let needs_update = request.composite
-                    || request.client_role
-                    || !request.attributes.is_empty();
+        // Use a transaction to ensure atomicity: if the follow-up UPDATE fails,
+        // the INSERT is rolled back so no partially-created role is left behind.
+        let name = request.name.clone();
+        let description = request.description.clone();
+        let realm_id = request.realm_id;
+        let composite = request.composite;
+        let client_role = request.client_role;
+        let attributes = request.attributes.clone();
+
+        let role_id = self.db.with_transaction(move |client| {
+            Box::pin(async move {
+                let role_id = Uuid::new_v4();
+                let now = chrono::Utc::now();
+
+                let insert_query = r#"
+                    INSERT INTO roles (id, name, description, realm_id, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                "#;
+
+                client.execute(
+                    insert_query,
+                    &[&role_id, &name, &Some(&description), &realm_id, &now, &now],
+                ).await.map_err(|e| {
+                    authenc_core::error::AuthencError::database(format!("Failed to create role: {}", e))
+                })?;
+
+                let needs_update = composite || client_role || !attributes.is_empty();
 
                 if needs_update {
-                    let attr_json: Option<String> = if !request.attributes.is_empty() {
-                        Some(serde_json::to_string(&request.attributes).unwrap_or_default())
+                    let attr_json: Option<String> = if !attributes.is_empty() {
+                        Some(serde_json::to_string(&attributes).unwrap_or_default())
                     } else {
                         None
                     };
 
-                    let now = chrono::Utc::now();
                     let update_query = r#"
                         UPDATE roles
                         SET composite = $2, client_role = $3, attributes = $4, updated_at = $5
                         WHERE id = $1 AND deleted_at IS NULL
                     "#;
 
-                    self.db.execute(update_query, &[
-                        &role.id,
-                        &request.composite,
-                        &request.client_role,
+                    client.execute(update_query, &[
+                        &role_id,
+                        &composite,
+                        &client_role,
                         &attr_json,
                         &now,
-                    ]).await.map_err(|e| format!("Failed to update role attributes: {}", e))?;
+                    ]).await.map_err(|e| {
+                        authenc_core::error::AuthencError::database(format!("Failed to update role attributes: {}", e))
+                    })?;
                 }
 
-                // Re-fetch to get the updated role
-                self.get_role(&role.id).await
-            }
-            Err(e) => Err(format!("Failed to create role: {}", e)),
-        }
+                Ok(role_id)
+            })
+        }).await.map_err(|e| format!("Failed to create role: {}", e))?;
+
+        // Re-fetch to get the complete role
+        self.get_role(&role_id).await
     }
 
     async fn update_role(
