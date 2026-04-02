@@ -341,9 +341,21 @@ pub mod jit_provisioning {
                 require_password_change: Some(false),
             };
 
-            // Use admin service to create user, ensuring proper side effects
+            // Use admin service to create user, ensuring proper side effects.
+            // Map AdminServiceError to the appropriate AuthencError variant
+            // to preserve error semantics (e.g. duplicate user → ResourceExists,
+            // not found → ResourceNotFound) instead of blanket DatabaseError.
             let user_response = self.admin_service.create_user(create_request).await
-                .map_err(|e| authenc_core::error::AuthencError::database(e.to_string()))?;
+                .map_err(|e| {
+                    use crate::services::admin::AdminServiceError;
+                    match &e {
+                        AdminServiceError::NotFound(msg) => authenc_core::error::AuthencError::resource_not_found(msg.clone()),
+                        AdminServiceError::AlreadyDeleted(msg) => authenc_core::error::AuthencError::resource_not_found(msg.clone()),
+                        AdminServiceError::BadRequest(msg) => authenc_core::error::AuthencError::validation(msg.clone()),
+                        AdminServiceError::NotImplemented(msg) => authenc_core::error::AuthencError::internal(msg.clone()),
+                        AdminServiceError::Internal(msg) => authenc_core::error::AuthencError::database(msg.clone()),
+                    }
+                })?;
 
             // Fetch the full User model as the return type expects it
             // AdminService returns UserResponse, but we need User

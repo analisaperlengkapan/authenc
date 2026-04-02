@@ -1,8 +1,7 @@
 use crate::app::AppState;
-use authenc_database::database::Database;
 use crate::error::AuthencError;
 use authenc_models::models::user::{JITUserProvisioningRequest, JITUserProvisioningResponse};
-use authenc_services::services::admin::{AdminManager, AdminService, AdminServiceError};
+use authenc_services::services::admin::AdminManager;
 use authenc_services::services::federation::jit_provisioning::{
     DefaultJITProvisioningService, JITProvisioningService,
 };
@@ -47,137 +46,14 @@ pub struct FederatedAuthResponse {
     pub error: Option<String>,
 }
 
-/// Admin Service adapter for federated authentication.
-/// Delegates all operations to AdminManager to avoid code duplication.
-pub struct FederatedAdminService {
-    inner: AdminManager,
-}
-
-impl FederatedAdminService {
-    /// Creates a new FederatedAdminService that delegates to AdminManager
-    pub fn new(db: Arc<Database>) -> Self {
-        Self {
-            inner: AdminManager::new(db),
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl AdminService for FederatedAdminService {
-    async fn get_system_stats(
-        &self,
-    ) -> std::result::Result<crate::services::admin::SystemStats, AdminServiceError> {
-        self.inner.get_system_stats().await
-    }
-
-    async fn get_users(
-        &self,
-        realm_id: &Uuid,
-        page: u32,
-        limit: u32,
-    ) -> std::result::Result<authenc_services::services::admin::UserListResponse, AdminServiceError> {
-        self.inner.get_users(realm_id, page, limit).await
-    }
-
-    async fn get_user(&self, user_id: &Uuid) -> std::result::Result<authenc_services::services::admin::UserResponse, AdminServiceError> {
-        self.inner.get_user(user_id).await
-    }
-
-    async fn create_user(
-        &self,
-        request: authenc_services::services::admin::CreateUserRequest,
-    ) -> std::result::Result<authenc_services::services::admin::UserResponse, AdminServiceError> {
-        self.inner.create_user(request).await
-    }
-
-    async fn update_user(
-        &self,
-        user_id: &Uuid,
-        request: authenc_services::services::admin::UpdateUserRequest,
-    ) -> std::result::Result<authenc_services::services::admin::UserResponse, AdminServiceError> {
-        self.inner.update_user(user_id, request).await
-    }
-
-    async fn delete_user(&self, user_id: &Uuid) -> std::result::Result<(), AdminServiceError> {
-        self.inner.delete_user(user_id).await
-    }
-
-    async fn get_roles(&self, realm_id: &Uuid) -> std::result::Result<Vec<authenc_services::services::admin::RoleResponse>, AdminServiceError> {
-        self.inner.get_roles(realm_id).await
-    }
-
-    async fn get_role(&self, role_id: &Uuid) -> std::result::Result<authenc_services::services::admin::RoleResponse, AdminServiceError> {
-        self.inner.get_role(role_id).await
-    }
-
-    async fn create_role(&self, request: authenc_services::services::admin::CreateRoleRequest) -> std::result::Result<authenc_services::services::admin::RoleResponse, AdminServiceError> {
-        self.inner.create_role(request).await
-    }
-
-    async fn update_role(&self, role_id: &Uuid, request: authenc_services::services::admin::UpdateRoleRequest) -> std::result::Result<authenc_services::services::admin::RoleResponse, AdminServiceError> {
-        self.inner.update_role(role_id, request).await
-    }
-
-    async fn delete_role(&self, role_id: &Uuid) -> std::result::Result<(), AdminServiceError> {
-        self.inner.delete_role(role_id).await
-    }
-
-    async fn get_sessions(&self, user_id: Option<Uuid>, realm_id: Option<Uuid>, page: u32, limit: u32) -> std::result::Result<authenc_services::services::admin::SessionListResponse, AdminServiceError> {
-        self.inner.get_sessions(user_id, realm_id, page, limit).await
-    }
-
-    async fn terminate_session(&self, session_id: &str) -> std::result::Result<(), AdminServiceError> {
-        self.inner.terminate_session(session_id).await
-    }
-
-    async fn get_audit_logs(&self, filter: authenc_services::services::admin::AuditLogFilter) -> std::result::Result<authenc_services::services::admin::AuditLogResponse, AdminServiceError> {
-        self.inner.get_audit_logs(filter).await
-    }
-
-    async fn get_policies(&self, realm_id: &Uuid, page: u32, limit: u32) -> std::result::Result<Vec<authenc_services::services::admin::PolicyResponse>, AdminServiceError> {
-        self.inner.get_policies(realm_id, page, limit).await
-    }
-
-    async fn create_policy(&self, request: authenc_services::services::admin::CreatePolicyRequest) -> std::result::Result<authenc_services::services::admin::PolicyResponse, AdminServiceError> {
-        self.inner.create_policy(request).await
-    }
-
-    async fn get_zero_trust_dashboard(&self, realm_id: &Uuid) -> std::result::Result<authenc_services::services::admin::ZeroTrustDashboard, AdminServiceError> {
-        self.inner.get_zero_trust_dashboard(realm_id).await
-    }
-
-    async fn get_identity_providers(&self, realm_id: &Uuid) -> std::result::Result<Vec<authenc_services::services::admin::IdentityProviderResponse>, AdminServiceError> {
-        self.inner.get_identity_providers(realm_id).await
-    }
-
-    async fn create_identity_provider(&self, request: authenc_services::services::admin::CreateIdentityProviderRequest) -> std::result::Result<authenc_services::services::admin::IdentityProviderResponse, AdminServiceError> {
-        self.inner.create_identity_provider(request).await
-    }
-
-    async fn update_identity_provider(&self, provider_id: &Uuid, request: authenc_services::services::admin::UpdateIdentityProviderRequest) -> std::result::Result<authenc_services::services::admin::IdentityProviderResponse, AdminServiceError> {
-        self.inner.update_identity_provider(provider_id, request).await
-    }
-
-    async fn delete_identity_provider(&self, provider_id: &Uuid) -> std::result::Result<(), AdminServiceError> {
-        self.inner.delete_identity_provider(provider_id).await
-    }
-
-    async fn get_identity_provider(&self, provider_id: &Uuid) -> std::result::Result<authenc_services::services::admin::IdentityProviderResponse, AdminServiceError> {
-        self.inner.get_identity_provider(provider_id).await
-    }
-
-    async fn test_identity_provider(&self, provider_id: &Uuid) -> std::result::Result<authenc_services::services::admin::TestIdentityProviderResponse, AdminServiceError> {
-        self.inner.test_identity_provider(provider_id).await
-    }
-}
-
 /// Handle federated authentication with JIT provisioning
 pub async fn federated_auth(
     State(state): State<Arc<AppState>>,
     Json(request): Json<FederatedAuthRequest>,
 ) -> std::result::Result<Json<FederatedAuthResponse>, AuthencError> {
-    // Create JIT provisioning service
-    let admin_service = Arc::new(FederatedAdminService::new(state.database.clone()));
+    // Create JIT provisioning service using AdminManager directly
+    // (AdminManager already implements AdminService)
+    let admin_service = Arc::new(AdminManager::new(state.database.clone()));
     let jit_service = Arc::new(DefaultJITProvisioningService::new(
         state.database.clone(),
         admin_service,

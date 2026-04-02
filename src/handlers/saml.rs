@@ -2,8 +2,8 @@ use crate::app::AppState;
 use authenc_database::database::Database;
 use authenc_database::database::operations::identity_providers::get_identity_provider_by_entity_id;
 use crate::error::AuthencError;
-use crate::handlers::federated_auth::FederatedAdminService;
 use authenc_models::models::user::JITUserProvisioningRequest;
+use authenc_services::services::admin::AdminManager;
 use authenc_services::services::federation::jit_provisioning::{
     DefaultJITProvisioningService, JITProvisioningService,
 };
@@ -15,10 +15,6 @@ use axum::{
     routing::{get, post},
 };
 use std::sync::Arc;
-
-/// Admin Service for SAML JIT provisioning.
-/// Delegates to FederatedAdminService which in turn delegates to AdminManager.
-type SamlAdminService = FederatedAdminService;
 
 /// Escape HTML special characters to prevent XSS when rendering
 /// user-controlled data (e.g. SAML assertion values) into HTML responses.
@@ -192,7 +188,7 @@ pub async fn saml_acs(
         .await
     {
         Ok(user_info) => {
-            let admin_service = Arc::new(SamlAdminService::new(Arc::new(db.clone())));
+            let admin_service = Arc::new(AdminManager::new(Arc::new(db.clone())));
             let jit_service = Arc::new(DefaultJITProvisioningService::new(
                 Arc::new(db.clone()),
                 admin_service,

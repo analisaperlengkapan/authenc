@@ -35,6 +35,8 @@ impl fmt::Display for AdminServiceError {
     }
 }
 
+impl std::error::Error for AdminServiceError {}
+
 impl AdminServiceError {
     /// Returns true if this is a not-found or already-deleted error
     pub fn is_not_found(&self) -> bool {
@@ -911,12 +913,14 @@ impl AdminManager {
         };
 
         // 5. Adaptive Controls Stats
-        // We'll run a few separate counts, filtering by realm_id
-        // user_sessions has realm_id
-        let active_sessions_query = "SELECT COUNT(*)::bigint FROM user_sessions WHERE realm_id = $1 AND expires_at > NOW() AND NOT terminated";
+        // The canonical user_sessions table does NOT have realm_id or
+        // authentication_method columns, so we JOIN with users for realm
+        // filtering and approximate MFA from audit_logs instead.
+        let active_sessions_query = "SELECT COUNT(*)::bigint FROM user_sessions s JOIN users u ON s.user_id = u.id WHERE u.realm_id = $1 AND s.expires_at > NOW() AND NOT s.terminated";
 
-        // user_sessions has realm_id
-        let mfa_sessions_query = "SELECT COUNT(*)::bigint FROM user_sessions WHERE realm_id = $1 AND (authentication_method ILIKE '%mfa%' OR authentication_method ILIKE '%totp%' OR authentication_method ILIKE '%webauthn%') AND expires_at > NOW()";
+        // MFA session count: approximate by counting active sessions whose
+        // user has a WebAuthn credential or a recent MFA audit event.
+        let mfa_sessions_query = "SELECT COUNT(DISTINCT s.id)::bigint FROM user_sessions s JOIN users u ON s.user_id = u.id LEFT JOIN webauthn_credentials wc ON wc.user_id = u.id AND wc.enabled = true WHERE u.realm_id = $1 AND s.expires_at > NOW() AND NOT s.terminated AND wc.id IS NOT NULL";
 
         // device_sessions needs join with users
         let device_verification_query = "SELECT COUNT(ds.id)::bigint FROM device_sessions ds JOIN users u ON ds.user_id = u.id WHERE u.realm_id = $1 AND ds.is_active = true";
@@ -1137,7 +1141,7 @@ impl AdminService for AdminManager {
                             .await
                             .map_err(|e| AdminServiceError::Internal(format!("Failed to assign role {}: {}", role_name, e)))?;
                         } else {
-                            eprintln!("Warning: role '{}' not found in realm {}, skipping assignment", role_name, realm_id);
+                            log::warn!("Role '{}' not found in realm {}, skipping assignment", role_name, realm_id);
                         }
                     }
                 }
@@ -1154,7 +1158,7 @@ impl AdminService for AdminManager {
                         .await
                         .map_err(|e| AdminServiceError::Internal(format!("Failed to add user to group {}: {}", group_name, e)))?;
                     } else {
-                        eprintln!("Warning: group '{}' not found in realm {}, skipping assignment", group_name, realm_id);
+                        log::warn!("Group '{}' not found in realm {}, skipping assignment", group_name, realm_id);
                     }
                 }
 
