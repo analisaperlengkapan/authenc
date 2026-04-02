@@ -25,6 +25,7 @@ fn admin_error_to_status(e: &AdminServiceError) -> StatusCode {
             StatusCode::NOT_FOUND
         }
         AdminServiceError::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
+        AdminServiceError::BadRequest(_) => StatusCode::BAD_REQUEST,
         AdminServiceError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }

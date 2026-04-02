@@ -4,9 +4,32 @@ use authenc_core::config::AppConfig;
 use authenc_database::database::Database;
 use authenc_services::services::admin::{CreateRoleRequest, CreateUserRequest, UpdateRoleRequest, UpdateUserRequest};
 use axum_test::TestServer;
-use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Guard that cleans up the test realm on drop, even if a test panics.
+struct RealmCleanup {
+    db: Database,
+    realm_id: Uuid,
+}
+
+impl Drop for RealmCleanup {
+    fn drop(&mut self) {
+        // Best-effort cleanup using a blocking runtime handle.
+        // If we're inside a tokio runtime, spawn a blocking cleanup.
+        let db = self.db.clone();
+        let realm_id = self.realm_id;
+        // Use std::thread to avoid nested runtime panics
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let _ = rt.block_on(async {
+                let _ = db.execute("DELETE FROM realms WHERE id = $1", &[&realm_id]).await;
+            });
+        })
+        .join()
+        .ok();
+    }
+}
 
 async fn setup_test_server() -> (TestServer, Database, Uuid) {
     let mut config = AppConfig::from_env().unwrap_or_default();
@@ -61,6 +84,7 @@ async fn setup_test_server() -> (TestServer, Database, Uuid) {
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_admin_user_crud_flow() {
     let (server, db, realm_id) = setup_test_server().await;
+    let _cleanup = RealmCleanup { db: db.clone(), realm_id };
 
     // 1. Create User
     let create_request = CreateUserRequest {
@@ -142,15 +166,13 @@ async fn test_admin_user_crud_flow() {
         .get(&format!("/api/v1/admin/users/{}", user_id))
         .await;
     response.assert_status(axum::http::StatusCode::NOT_FOUND);
-
-    // Cleanup realm
-    let _ = db.execute("DELETE FROM realms WHERE id = $1", &[&realm_id]).await;
 }
 
 #[tokio::test]
 #[ignore = "Requires PostgreSQL database to be running"]
 async fn test_admin_role_crud_flow() {
     let (server, db, realm_id) = setup_test_server().await;
+    let _cleanup = RealmCleanup { db: db.clone(), realm_id };
 
     // 1. Create Role
     let create_request = CreateRoleRequest {
@@ -217,7 +239,4 @@ async fn test_admin_role_crud_flow() {
         .get(&format!("/api/v1/admin/roles/{}", role_id))
         .await;
     response.assert_status(axum::http::StatusCode::NOT_FOUND);
-
-    // Cleanup realm
-    let _ = db.execute("DELETE FROM realms WHERE id = $1", &[&realm_id]).await;
 }

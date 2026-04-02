@@ -17,6 +17,8 @@ pub enum AdminServiceError {
     AlreadyDeleted(String),
     /// The operation is not implemented
     NotImplemented(String),
+    /// The request was invalid (bad input, validation failure)
+    BadRequest(String),
     /// An internal error occurred (database, serialization, etc.)
     Internal(String),
 }
@@ -27,6 +29,7 @@ impl fmt::Display for AdminServiceError {
             AdminServiceError::NotFound(msg) => write!(f, "{}", msg),
             AdminServiceError::AlreadyDeleted(msg) => write!(f, "{}", msg),
             AdminServiceError::NotImplemented(msg) => write!(f, "{}", msg),
+            AdminServiceError::BadRequest(msg) => write!(f, "{}", msg),
             AdminServiceError::Internal(msg) => write!(f, "{}", msg),
         }
     }
@@ -1524,13 +1527,40 @@ impl AdminService for AdminManager {
     }
 
     async fn delete_role(&self, role_id: &Uuid) -> Result<(), AdminServiceError> {
-        let now = Utc::now();
-        let query = "UPDATE roles SET deleted_at = $2, updated_at = $2 WHERE id = $1 AND deleted_at IS NULL";
-        match self.db.execute(query, &[role_id, &now]).await {
-            Ok(affected) if affected > 0 => Ok(()),
-            Ok(_) => Err(AdminServiceError::NotFound("Role not found or already deleted".to_string())),
-            Err(e) => Err(AdminServiceError::Internal(format!("Failed to delete role: {}", e))),
-        }
+        let role_id_copy = *role_id;
+        self.db.with_transaction(move |client| {
+            Box::pin(async move {
+                let now = Utc::now();
+
+                // Soft-delete the role
+                let query = "UPDATE roles SET deleted_at = $2, updated_at = $2 WHERE id = $1 AND deleted_at IS NULL";
+                let affected = client.execute(query, &[&role_id_copy, &now]).await.map_err(|e| {
+                    authenc_core::error::AuthencError::database(format!("Failed to delete role: {}", e))
+                })?;
+
+                if affected == 0 {
+                    return Err(authenc_core::error::AuthencError::resource_not_found(
+                        format!("Role with ID {} not found or already deleted", role_id_copy),
+                    ));
+                }
+
+                // Clean up user_roles assignments so users don't retain a deleted role
+                client.execute(
+                    "DELETE FROM user_roles WHERE role_id = $1",
+                    &[&role_id_copy],
+                ).await.map_err(|e| {
+                    authenc_core::error::AuthencError::database(format!("Failed to clean up user_roles: {}", e))
+                })?;
+
+                Ok(())
+            })
+        }).await.map_err(|e| {
+            if e.to_string().contains("not found") || e.to_string().contains("already deleted") {
+                AdminServiceError::NotFound(e.to_string())
+            } else {
+                AdminServiceError::Internal(format!("Failed to delete role: {}", e))
+            }
+        })
     }
 
     async fn get_sessions(
@@ -1658,18 +1688,24 @@ impl AdminService for AdminManager {
     async fn terminate_session(&self, session_id: &str) -> Result<(), AdminServiceError> {
         // Parse session_id from string to Uuid
         let session_uuid =
-            Uuid::parse_str(session_id).map_err(|e| AdminServiceError::Internal(format!("Invalid session ID format: {}", e)))?;
+            Uuid::parse_str(session_id).map_err(|e| AdminServiceError::BadRequest(format!("Invalid session ID format: {}", e)))?;
 
-        // Use database operation to revoke the session
-        operations::sessions::revoke_session(
-            &self.db,
-            session_uuid,
-            Some("Terminated by administrator"),
-        )
-        .await
-        .map_err(|e| AdminServiceError::Internal(format!("Failed to terminate session: {}", e)))?;
-
-        Ok(())
+        // Use a direct UPDATE with affected-row check so we can return 404
+        // for non-existent or already-terminated sessions, consistent with
+        // delete_user / delete_role behaviour.
+        let query = r#"
+            UPDATE user_sessions
+            SET terminated = TRUE,
+                terminated_at = NOW(),
+                terminated_reason = $2
+            WHERE id = $1 AND NOT terminated
+        "#;
+        let reason: Option<&str> = Some("Terminated by administrator");
+        match self.db.execute(query, &[&session_uuid, &reason]).await {
+            Ok(affected) if affected > 0 => Ok(()),
+            Ok(_) => Err(AdminServiceError::NotFound(format!("Session with ID {} not found or already terminated", session_id))),
+            Err(e) => Err(AdminServiceError::Internal(format!("Failed to terminate session: {}", e))),
+        }
     }
 
     async fn get_audit_logs(&self, filter: AuditLogFilter) -> Result<AuditLogResponse, AdminServiceError> {
