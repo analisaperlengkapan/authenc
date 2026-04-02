@@ -1354,7 +1354,14 @@ impl AdminService for AdminManager {
                     locked_until: user.account_locked_until,
                 })
             }
-            Err(e) => Err(AdminServiceError::Internal(format!("Failed to update user: {}", e))),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("query returned no rows") || msg.contains("no rows") {
+                    Err(AdminServiceError::NotFound(format!("User with ID {} not found", user_id)))
+                } else {
+                    Err(AdminServiceError::Internal(format!("Failed to update user: {}", e)))
+                }
+            }
         }
     }
 
@@ -1560,7 +1567,7 @@ impl AdminService for AdminManager {
                 Ok(())
             })
         }).await.map_err(|e| {
-            if e.to_string().contains("not found") || e.to_string().contains("already deleted") {
+            if e.error_code() == "RESOURCE_NOT_FOUND" {
                 AdminServiceError::NotFound(e.to_string())
             } else {
                 AdminServiceError::Internal(format!("Failed to delete role: {}", e))
