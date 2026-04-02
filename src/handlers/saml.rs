@@ -2,7 +2,7 @@ use crate::app::AppState;
 use authenc_database::database::Database;
 use authenc_database::database::operations::identity_providers::get_identity_provider_by_entity_id;
 use crate::error::AuthencError;
-use crate::handlers::federated_auth::MockAdminService;
+use crate::handlers::federated_auth::FederatedAdminService;
 use authenc_models::models::user::JITUserProvisioningRequest;
 use authenc_services::services::federation::jit_provisioning::{
     DefaultJITProvisioningService, JITProvisioningService,
@@ -17,8 +17,8 @@ use axum::{
 use std::sync::Arc;
 
 /// Admin Service for SAML JIT provisioning.
-/// Delegates to MockAdminService which in turn delegates to AdminManager.
-type SamlAdminService = MockAdminService;
+/// Delegates to FederatedAdminService which in turn delegates to AdminManager.
+type SamlAdminService = FederatedAdminService;
 
 /// Create SAML routes
 pub fn create_saml_routes() -> Router<Database> {

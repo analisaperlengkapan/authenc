@@ -188,11 +188,11 @@ pub async fn get_user(
 pub async fn create_user(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateUserRequest>,
-) -> Result<Json<UserResponse>, StatusCode> {
+) -> Result<(StatusCode, Json<UserResponse>), StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.create_user(request).await {
-        Ok(user) => Ok(Json(user)),
+        Ok(user) => Ok((StatusCode::CREATED, Json(user))),
         Err(e) => {
             eprintln!("Failed to create user: {}", e);
             Err(admin_error_to_status(&e))
@@ -328,11 +328,11 @@ pub async fn list_roles(
 pub async fn create_role(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateRoleRequest>,
-) -> Result<Json<RoleResponse>, StatusCode> {
+) -> Result<(StatusCode, Json<RoleResponse>), StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.create_role(request).await {
-        Ok(role) => Ok(Json(role)),
+        Ok(role) => Ok((StatusCode::CREATED, Json(role))),
         Err(e) => {
             eprintln!("Failed to create role: {}", e);
             Err(admin_error_to_status(&e))
@@ -422,11 +422,11 @@ pub async fn list_policies(
 pub async fn create_policy(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreatePolicyRequest>,
-) -> Result<Json<PolicyResponse>, StatusCode> {
+) -> Result<(StatusCode, Json<PolicyResponse>), StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.create_policy(request).await {
-        Ok(policy) => Ok(Json(policy)),
+        Ok(policy) => Ok((StatusCode::CREATED, Json(policy))),
         Err(e) => {
             eprintln!("Failed to create policy: {}", e);
             Err(admin_error_to_status(&e))
@@ -506,11 +506,11 @@ pub async fn get_identity_provider(
 pub async fn create_identity_provider(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateIdentityProviderRequest>,
-) -> Result<Json<IdentityProviderResponse>, StatusCode> {
+) -> Result<(StatusCode, Json<IdentityProviderResponse>), StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.create_identity_provider(request).await {
-        Ok(provider) => Ok(Json(provider)),
+        Ok(provider) => Ok((StatusCode::CREATED, Json(provider))),
         Err(e) => {
             eprintln!("Failed to create identity provider: {}", e);
             Err(admin_error_to_status(&e))

@@ -1131,6 +1131,8 @@ impl AdminService for AdminManager {
                             )
                             .await
                             .map_err(|e| AdminServiceError::Internal(format!("Failed to assign role {}: {}", role_name, e)))?;
+                        } else {
+                            eprintln!("Warning: role '{}' not found in realm {}, skipping assignment", role_name, realm_id);
                         }
                     }
                 }
@@ -1146,6 +1148,8 @@ impl AdminService for AdminManager {
                         )
                         .await
                         .map_err(|e| AdminServiceError::Internal(format!("Failed to add user to group {}: {}", group_name, e)))?;
+                    } else {
+                        eprintln!("Warning: group '{}' not found in realm {}, skipping assignment", group_name, realm_id);
                     }
                 }
 

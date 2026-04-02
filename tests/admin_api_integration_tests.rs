@@ -145,7 +145,7 @@ async fn test_admin_user_crud_flow() {
         .json(&create_request)
         .await;
 
-    response.assert_status_success();
+    response.assert_status(axum::http::StatusCode::CREATED);
     let user_resp: authenc_services::services::admin::UserResponse = response.json();
     assert_eq!(user_resp.username, "admin_test_user");
     let user_id = user_resp.id;
@@ -225,7 +225,7 @@ async fn test_admin_role_crud_flow() {
         .json(&create_request)
         .await;
 
-    response.assert_status_success();
+    response.assert_status(axum::http::StatusCode::CREATED);
     let role_resp: authenc_services::services::admin::RoleResponse = response.json();
     assert_eq!(role_resp.name, "test_admin_role");
     let role_id = role_resp.id;

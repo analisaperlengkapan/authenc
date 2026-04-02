@@ -49,12 +49,12 @@ pub struct FederatedAuthResponse {
 
 /// Admin Service adapter for federated authentication.
 /// Delegates all operations to AdminManager to avoid code duplication.
-pub struct MockAdminService {
+pub struct FederatedAdminService {
     inner: AdminManager,
 }
 
-impl MockAdminService {
-    /// Creates a new MockAdminService that delegates to AdminManager
+impl FederatedAdminService {
+    /// Creates a new FederatedAdminService that delegates to AdminManager
     pub fn new(db: Arc<Database>) -> Self {
         Self {
             inner: AdminManager::new(db),
@@ -63,7 +63,7 @@ impl MockAdminService {
 }
 
 #[async_trait::async_trait]
-impl AdminService for MockAdminService {
+impl AdminService for FederatedAdminService {
     async fn get_system_stats(
         &self,
     ) -> std::result::Result<crate::services::admin::SystemStats, AdminServiceError> {
@@ -177,7 +177,7 @@ pub async fn federated_auth(
     Json(request): Json<FederatedAuthRequest>,
 ) -> std::result::Result<Json<FederatedAuthResponse>, AuthencError> {
     // Create JIT provisioning service
-    let admin_service = Arc::new(MockAdminService::new(state.database.clone()));
+    let admin_service = Arc::new(FederatedAdminService::new(state.database.clone()));
     let jit_service = Arc::new(DefaultJITProvisioningService::new(
         state.database.clone(),
         admin_service,
