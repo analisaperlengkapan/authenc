@@ -1118,14 +1118,15 @@ impl AdminService for AdminManager {
                 if !request.roles.is_empty() {
                     let all_roles = operations::roles::list_roles_by_realm(&self.db, &realm_id)
                         .await
-                        .unwrap_or_default();
+                        .map_err(|e| AdminServiceError::Internal(format!("Failed to fetch realm roles: {}", e)))?;
 
                     for role_name in &request.roles {
                         if let Some(role) = all_roles.iter().find(|r| &r.name == role_name) {
-                            let _ = operations::roles::assign_role_to_user(
+                            operations::roles::assign_role_to_user(
                                 &self.db, &user.id, &role.id,
                             )
-                            .await;
+                            .await
+                            .map_err(|e| AdminServiceError::Internal(format!("Failed to assign role {}: {}", role_name, e)))?;
                         }
                     }
                 }
@@ -1135,10 +1136,11 @@ impl AdminService for AdminManager {
                     if let Ok(Some(group)) =
                         operations::groups::get_group_by_name(&self.db, realm_id, group_name).await
                     {
-                        let _ = operations::groups::add_user_to_group(
+                        operations::groups::add_user_to_group(
                             &self.db, user.id, group.id, None, None,
                         )
-                        .await;
+                        .await
+                        .map_err(|e| AdminServiceError::Internal(format!("Failed to add user to group {}: {}", group_name, e)))?;
                     }
                 }
 
@@ -1207,21 +1209,22 @@ impl AdminService for AdminManager {
                     // Fetch all realm roles to resolve names to IDs
                     let all_roles = operations::roles::list_roles_by_realm(&self.db, &realm_id)
                         .await
-                        .unwrap_or_default();
+                        .map_err(|e| AdminServiceError::Internal(format!("Failed to fetch realm roles: {}", e)))?;
 
                     // Get current user roles
                     let current_roles = operations::roles::get_user_roles(&self.db, &user.id)
                         .await
-                        .unwrap_or_default();
+                        .map_err(|e| AdminServiceError::Internal(format!("Failed to get user roles: {}", e)))?;
                     let current_role_names: Vec<String> = current_roles.iter().map(|r| r.name.clone()).collect();
 
                     // Remove roles not in the new list
                     for current_role in &current_roles {
                         if !role_names.contains(&current_role.name) {
-                            let _ = operations::roles::remove_role_from_user(
+                            operations::roles::remove_role_from_user(
                                 &self.db, &user.id, &current_role.id,
                             )
-                            .await;
+                            .await
+                            .map_err(|e| AdminServiceError::Internal(format!("Failed to remove role {}: {}", current_role.name, e)))?;
                         }
                     }
 
@@ -1229,10 +1232,11 @@ impl AdminService for AdminManager {
                     for role_name in role_names {
                         if !current_role_names.contains(role_name) {
                             if let Some(role) = all_roles.iter().find(|r| &r.name == role_name) {
-                                let _ = operations::roles::assign_role_to_user(
+                                operations::roles::assign_role_to_user(
                                     &self.db, &user.id, &role.id,
                                 )
-                                .await;
+                                .await
+                                .map_err(|e| AdminServiceError::Internal(format!("Failed to assign role {}: {}", role_name, e)))?;
                             }
                         }
                     }
@@ -1243,21 +1247,22 @@ impl AdminService for AdminManager {
                     // Get all realm groups to resolve names to IDs
                     let all_groups = operations::groups::get_groups_by_realm(&self.db, realm_id, None, None)
                         .await
-                        .unwrap_or_default();
+                        .map_err(|e| AdminServiceError::Internal(format!("Failed to fetch realm groups: {}", e)))?;
 
                     // Get current user groups
                     let current_groups = operations::groups::get_user_groups(&self.db, user.id)
                         .await
-                        .unwrap_or_default();
+                        .map_err(|e| AdminServiceError::Internal(format!("Failed to get user groups: {}", e)))?;
                     let current_group_names: Vec<String> = current_groups.iter().map(|g| g.name.clone()).collect();
 
                     // Remove groups not in the new list
                     for current_group in &current_groups {
                         if !group_names.contains(&current_group.name) {
-                            let _ = operations::groups::remove_user_from_group(
+                            operations::groups::remove_user_from_group(
                                 &self.db, user.id, current_group.id,
                             )
-                            .await;
+                            .await
+                            .map_err(|e| AdminServiceError::Internal(format!("Failed to remove user from group {}: {}", current_group.name, e)))?;
                         }
                     }
 
@@ -1265,10 +1270,11 @@ impl AdminService for AdminManager {
                     for group_name in group_names {
                         if !current_group_names.contains(group_name) {
                             if let Some(group) = all_groups.iter().find(|g| &g.name == group_name) {
-                                let _ = operations::groups::add_user_to_group(
+                                operations::groups::add_user_to_group(
                                     &self.db, user.id, group.id, None, None,
                                 )
-                                .await;
+                                .await
+                                .map_err(|e| AdminServiceError::Internal(format!("Failed to add user to group {}: {}", group_name, e)))?;
                             }
                         }
                     }
@@ -1311,9 +1317,12 @@ impl AdminService for AdminManager {
     }
 
     async fn delete_user(&self, user_id: &Uuid) -> Result<(), AdminServiceError> {
-        // Delete user from database
-        match operations::users::delete_user(&self.db, *user_id).await {
-            Ok(_) => Ok(()),
+        // Soft-delete user, checking that the user exists and isn't already deleted
+        let now = Utc::now();
+        let query = "UPDATE users SET deleted_at = $2, updated_at = $2 WHERE id = $1 AND deleted_at IS NULL";
+        match self.db.execute(query, &[user_id, &now]).await {
+            Ok(affected) if affected > 0 => Ok(()),
+            Ok(_) => Err(AdminServiceError::NotFound(format!("User with ID {} not found", user_id))),
             Err(e) => Err(AdminServiceError::Internal(format!("Failed to delete user: {}", e))),
         }
     }
@@ -1633,27 +1642,86 @@ impl AdminService for AdminManager {
         // Calculate pagination
         let offset = (filter.page.saturating_sub(1)).saturating_mul(filter.limit);
 
-        // Query audit logs with filters
-        let audit_events = operations::audit::get_audit_logs(
-            &self.db,
-            filter.user_id,
-            filter.event_type.as_deref(),
-            filter.realm_id,
-            filter.limit as i64,
-            offset as i64,
-        )
-        .await
-        .map_err(|e| AdminServiceError::Internal(format!("Failed to query audit logs: {}", e)))?;
+        // Build dynamic query to support from_date/to_date filtering
+        // that the underlying operations::audit::get_audit_logs doesn't support
+        let mut conditions = vec![
+            "($1::uuid IS NULL OR user_id = $1)".to_string(),
+            "($2::text IS NULL OR event_type = $2)".to_string(),
+            "($3::uuid IS NULL OR realm_id = $3)".to_string(),
+        ];
+        let mut param_index = 4;
 
-        // Get total count
-        let total_count = operations::audit::get_audit_log_count(
-            &self.db,
-            filter.user_id,
-            filter.event_type.as_deref(),
-            filter.realm_id,
-        )
-        .await
-        .map_err(|e| AdminServiceError::Internal(format!("Failed to count audit logs: {}", e)))?;
+        if filter.from_date.is_some() {
+            conditions.push(format!("timestamp >= ${}", param_index));
+            param_index += 1;
+        }
+        if filter.to_date.is_some() {
+            conditions.push(format!("timestamp <= ${}", param_index));
+            param_index += 1;
+        }
+
+        let where_clause = conditions.join(" AND ");
+
+        let data_query = format!(
+            r#"
+                SELECT
+                    id, timestamp, event_type, user_id, session_id,
+                    client_id, resource_type, resource_id, action,
+                    status, details, ip_address, user_agent,
+                    location_data, error_message, request_id, correlation_id,
+                    realm_id
+                FROM audit_logs
+                WHERE {}
+                ORDER BY timestamp DESC
+                LIMIT ${} OFFSET ${}
+            "#,
+            where_clause, param_index, param_index + 1
+        );
+
+        let count_query = format!(
+            "SELECT COUNT(*) FROM audit_logs WHERE {}",
+            where_clause
+        );
+
+        // Build params dynamically
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
+        params.push(Box::new(filter.user_id));
+        params.push(Box::new(filter.event_type.as_deref().map(|s| s.to_string())));
+        params.push(Box::new(filter.realm_id));
+        if let Some(from_date) = filter.from_date {
+            params.push(Box::new(from_date));
+        }
+        if let Some(to_date) = filter.to_date {
+            params.push(Box::new(to_date));
+        }
+
+        // Count query params (same filters, no limit/offset)
+        let count_params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params.iter().map(|b| b.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+
+        let count_row: tokio_postgres::Row = self.db
+            .query_one(&count_query, &count_params_refs)
+            .await
+            .map_err(|e| AdminServiceError::Internal(format!("Failed to count audit logs: {}", e)))?;
+        let total_count: i64 = count_row.get(0);
+
+        // Data query params (filters + limit + offset)
+        params.push(Box::new(filter.limit as i64));
+        params.push(Box::new(offset as i64));
+
+        let data_params_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params.iter().map(|b| b.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+
+        let rows: Vec<tokio_postgres::Row> = self.db
+            .query(&data_query, &data_params_refs)
+            .await
+            .map_err(|e| AdminServiceError::Internal(format!("Failed to query audit logs: {}", e)))?;
+
+        let audit_events: Vec<authenc_models::models::AuditEvent> = rows
+            .into_iter()
+            .map(|row| row.try_into())
+            .collect::<authenc_core::error::Result<Vec<_>>>()
+            .map_err(|e| AdminServiceError::Internal(format!("Failed to parse audit logs: {}", e)))?;
 
         // Convert AuditEvent to AuditLogEntry with username lookup
         let mut logs = Vec::new();
