@@ -2315,8 +2315,8 @@
                 require_email_verification: document.getElementById('org-require-email-verification').checked,
                 enable_two_factor: document.getElementById('org-enable-two-factor').checked,
                 password_policy: document.getElementById('org-password-policy').value,
-                session_timeout: parseInt(document.getElementById('org-session-timeout').value) || 3600,
-                max_users: document.getElementById('org-max-users').value ? parseInt(document.getElementById('org-max-users').value) : null,
+                session_timeout: parseInt(document.getElementById('org-session-timeout').value, 10) || 3600,
+                max_users: document.getElementById('org-max-users').value !== '' ? parseInt(document.getElementById('org-max-users').value, 10) : null,
                 features: _currentOrgFeatures || ["oidc", "saml"]
             };
 

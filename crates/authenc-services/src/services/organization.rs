@@ -946,7 +946,8 @@ impl OrganizationService {
         {
             Some(settings) => Ok(settings),
             None => {
-                // Return defaults if not yet customized
+                // Return defaults matching the DB schema defaults
+                // (migrations/025_organization_settings.sql)
                 Ok(OrganizationSettings {
                     organization_id: *organization_id,
                     allow_public_signup: false,
@@ -954,8 +955,8 @@ impl OrganizationService {
                     enable_two_factor: false,
                     password_policy: "default".to_string(),
                     session_timeout: 3600,
-                    max_users: Some(1000),
-                    features: vec!["oidc".to_string(), "saml".to_string()],
+                    max_users: None,
+                    features: vec![],
                 })
             }
         }
