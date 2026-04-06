@@ -58,6 +58,29 @@ fn is_duplicate_key_error(msg: &str) -> bool {
     msg.contains("duplicate key") || msg.contains("already exists") || msg.contains("unique constraint")
 }
 
+/// Parse role attributes from a `serde_json::Value` that may be either:
+///   - a JSON object (if the column is JSONB or was inserted as structured JSON), or
+///   - a JSON string containing serialized JSON (if the column is TEXT and was
+///     written via `serde_json::to_string`).
+///
+/// Returns `None` when the input is `None` or cannot be parsed.
+fn parse_role_attributes(
+    attrs: Option<serde_json::Value>,
+) -> std::collections::HashMap<String, Vec<String>> {
+    match attrs {
+        Some(serde_json::Value::String(s)) => {
+            // TEXT column: the Value is a String wrapping serialized JSON.
+            // Parse the inner JSON string into the target type.
+            serde_json::from_str(&s).unwrap_or_default()
+        }
+        Some(other) => {
+            // JSONB column or already a structured Value — deserialize directly.
+            serde_json::from_value(other).unwrap_or_default()
+        }
+        None => std::collections::HashMap::new(),
+    }
+}
+
 /// Admin service trait
 #[async_trait]
 pub trait AdminService: Send + Sync {
@@ -1408,10 +1431,7 @@ impl AdminService for AdminManager {
                         composite: role.composite,
                         client_role: role.client_role,
                         container_id: role.client_id,
-                        attributes: role
-                            .attributes
-                            .and_then(|attrs| serde_json::from_value(attrs).ok())
-                            .unwrap_or_default(),
+                        attributes: parse_role_attributes(role.attributes),
                     });
                 }
                 Ok(responses)
@@ -1430,10 +1450,7 @@ impl AdminService for AdminManager {
                 composite: role.composite,
                 client_role: role.client_role,
                 container_id: role.client_id,
-                attributes: role
-                    .attributes
-                    .and_then(|attrs| serde_json::from_value(attrs).ok())
-                    .unwrap_or_default(),
+                attributes: parse_role_attributes(role.attributes),
             }),
             Ok(None) => Err(AdminServiceError::NotFound(format!("Role with ID {} not found", role_id))),
             Err(e) => Err(AdminServiceError::Internal(format!("Failed to get role: {}", e))),
@@ -2659,5 +2676,52 @@ mod tests {
         assert_eq!(json["event_type"], "login");
         assert_eq!(json["page"], 2);
         assert_eq!(json["limit"], 50);
+    }
+
+    // ── parse_role_attributes ───────────────────────────────────────────
+
+    #[test]
+    fn test_parse_role_attributes_none() {
+        let result = parse_role_attributes(None);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_parse_role_attributes_from_json_string_value() {
+        // Simulates what happens when a TEXT column stores a JSON string
+        // and tokio_postgres reads it back as Value::String("...").
+        let mut attrs = std::collections::HashMap::new();
+        attrs.insert("scope".to_string(), vec!["read".to_string(), "write".to_string()]);
+        let json_str = serde_json::to_string(&attrs).unwrap();
+        let value = serde_json::Value::String(json_str);
+
+        let result = parse_role_attributes(Some(value));
+        assert_eq!(result.get("scope").unwrap(), &vec!["read".to_string(), "write".to_string()]);
+    }
+
+    #[test]
+    fn test_parse_role_attributes_from_json_object_value() {
+        // Simulates what happens when a JSONB column returns a structured Value.
+        let mut attrs = std::collections::HashMap::new();
+        attrs.insert("tier".to_string(), vec!["premium".to_string()]);
+        let value = serde_json::to_value(&attrs).unwrap();
+
+        let result = parse_role_attributes(Some(value));
+        assert_eq!(result.get("tier").unwrap(), &vec!["premium".to_string()]);
+    }
+
+    #[test]
+    fn test_parse_role_attributes_invalid_string_returns_empty() {
+        let value = serde_json::Value::String("not valid json".to_string());
+        let result = parse_role_attributes(Some(value));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_parse_role_attributes_wrong_type_returns_empty() {
+        // e.g. Value::Number — cannot be deserialized into HashMap
+        let value = serde_json::Value::Number(serde_json::Number::from(42));
+        let result = parse_role_attributes(Some(value));
+        assert!(result.is_empty());
     }
 }
