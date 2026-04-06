@@ -1005,6 +1005,11 @@ impl AdminService for AdminManager {
     async fn get_user(&self, user_id: &Uuid) -> Result<UserResponse, AdminServiceError> {
         match operations::users::get_user_by_id(&self.db, *user_id).await {
             Ok(Some(user)) => {
+                // Guard against returning soft-deleted users in case the
+                // underlying get_user_by_id does not filter by deleted_at.
+                if user.deleted_at.is_some() {
+                    return Err(AdminServiceError::NotFound(format!("User with ID {} not found", user_id)));
+                }
                 let realm_id = user.realm_id.unwrap_or(Uuid::nil());
                 let roles = authenc_database::database::operations::roles::get_user_roles(&self.db, &user.id)
                     .await
@@ -1249,6 +1254,10 @@ impl AdminService for AdminManager {
         // Update user in database
         match operations::users::update_user(&self.db, *user_id, &update_request).await {
             Ok(user) => {
+                // Guard against updating soft-deleted users
+                if user.deleted_at.is_some() {
+                    return Err(AdminServiceError::NotFound(format!("User with ID {} not found", user_id)));
+                }
                 let realm_id = user.realm_id.unwrap_or(Uuid::nil());
 
                 // Handle role and group updates atomically within a transaction
@@ -1420,9 +1429,9 @@ impl AdminService for AdminManager {
         // Get roles from database
         match operations::roles::list_roles_by_realm(&self.db, realm_id).await {
             Ok(roles) => {
-                // Convert to admin responses
+                // Convert to admin responses, filtering out soft-deleted roles
                 let mut responses = Vec::new();
-                for role in roles {
+                for role in roles.into_iter().filter(|r| r.deleted_at.is_none()) {
                     responses.push(RoleResponse {
                         id: role.id,
                         name: role.name,
@@ -1542,6 +1551,11 @@ impl AdminService for AdminManager {
             .await
             .map_err(|e| AdminServiceError::Internal(format!("Failed to get role: {}", e)))?
             .ok_or_else(|| AdminServiceError::NotFound(format!("Role with ID {} not found", role_id)))?;
+
+        // Guard against updating soft-deleted roles
+        if existing.deleted_at.is_some() {
+            return Err(AdminServiceError::NotFound(format!("Role with ID {} not found", role_id)));
+        }
 
         let name = request.name.unwrap_or(existing.name);
         let composite = request.composite.unwrap_or(existing.composite);
