@@ -2087,17 +2087,6 @@
                 // Actions
                 const tdActions = document.createElement('td');
 
-                const btnSettings = document.createElement('button');
-                btnSettings.style.width = 'auto';
-                btnSettings.style.padding = '0.25rem 0.5rem';
-                btnSettings.style.fontSize = '0.8rem';
-                btnSettings.style.backgroundColor = 'var(--secondary)';
-                btnSettings.textContent = 'Settings';
-                btnSettings.onclick = function() {
-                    openOrganizationSettingsModal(org.id, org.name);
-                };
-                tdActions.appendChild(btnSettings);
-
                 const btnEdit = document.createElement('button');
                 btnEdit.style.width = 'auto';
                 btnEdit.style.padding = '0.25rem 0.5rem';
