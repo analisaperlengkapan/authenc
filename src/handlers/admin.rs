@@ -18,6 +18,8 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use log::error;
+
 /// Convert an AdminServiceError to an appropriate HTTP StatusCode
 fn admin_error_to_status(e: &AdminServiceError) -> StatusCode {
     match e {
@@ -113,7 +115,7 @@ pub async fn get_system_stats(
     match admin_manager.get_system_stats().await {
         Ok(stats) => Ok(Json(stats)),
         Err(e) => {
-            eprintln!("Failed to get system stats: {}", e);
+            error!("Failed to get system stats: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -162,7 +164,7 @@ pub async fn list_users(
     match admin_manager.get_users(&realm_id, page, limit).await {
         Ok(response) => Ok(Json(response)),
         Err(e) => {
-            eprintln!("Failed to list users: {}", e);
+            error!("Failed to list users: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -178,7 +180,7 @@ pub async fn get_user(
     match admin_manager.get_user(&user_id).await {
         Ok(user) => Ok(Json(user)),
         Err(e) => {
-            eprintln!("Failed to get user: {}", e);
+            error!("Failed to get user: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -194,7 +196,7 @@ pub async fn create_user(
     match admin_manager.create_user(request).await {
         Ok(user) => Ok((StatusCode::CREATED, Json(user))),
         Err(e) => {
-            eprintln!("Failed to create user: {}", e);
+            error!("Failed to create user: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -211,7 +213,7 @@ pub async fn update_user(
     match admin_manager.update_user(&user_id, request).await {
         Ok(user) => Ok(Json(user)),
         Err(e) => {
-            eprintln!("Failed to update user: {}", e);
+            error!("Failed to update user: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -227,7 +229,7 @@ pub async fn delete_user(
     match admin_manager.delete_user(&user_id).await {
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
-            eprintln!("Failed to delete user: {}", e);
+            error!("Failed to delete user: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -249,7 +251,7 @@ pub async fn list_sessions(
     {
         Ok(response) => Ok(Json(response)),
         Err(e) => {
-            eprintln!("Failed to list sessions: {}", e);
+            error!("Failed to list sessions: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -265,7 +267,7 @@ pub async fn terminate_session(
     match admin_manager.terminate_session(&session_id).await {
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
-            eprintln!("Failed to terminate session: {}", e);
+            error!("Failed to terminate session: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -291,7 +293,7 @@ pub async fn list_audit_logs(
     match admin_manager.get_audit_logs(filter).await {
         Ok(response) => Ok(Json(response)),
         Err(e) => {
-            eprintln!("Failed to list audit logs: {}", e);
+            error!("Failed to list audit logs: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -318,7 +320,7 @@ pub async fn list_roles(
     match admin_manager.get_roles(&realm_id).await {
         Ok(roles) => Ok(Json(roles)),
         Err(e) => {
-            eprintln!("Failed to list roles: {}", e);
+            error!("Failed to list roles: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -334,7 +336,7 @@ pub async fn create_role(
     match admin_manager.create_role(request).await {
         Ok(role) => Ok((StatusCode::CREATED, Json(role))),
         Err(e) => {
-            eprintln!("Failed to create role: {}", e);
+            error!("Failed to create role: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -350,7 +352,7 @@ pub async fn get_role(
     match admin_manager.get_role(&role_id).await {
         Ok(role) => Ok(Json(role)),
         Err(e) => {
-            eprintln!("Failed to get role: {}", e);
+            error!("Failed to get role: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -367,7 +369,7 @@ pub async fn update_role(
     match admin_manager.update_role(&role_id, request).await {
         Ok(role) => Ok(Json(role)),
         Err(e) => {
-            eprintln!("Failed to update role: {}", e);
+            error!("Failed to update role: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -383,7 +385,7 @@ pub async fn delete_role(
     match admin_manager.delete_role(&role_id).await {
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
-            eprintln!("Failed to delete role: {}", e);
+            error!("Failed to delete role: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -412,7 +414,7 @@ pub async fn list_policies(
     match admin_manager.get_policies(&realm_id, page, limit).await {
         Ok(policies) => Ok(Json(policies)),
         Err(e) => {
-            eprintln!("Failed to list policies: {}", e);
+            error!("Failed to list policies: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -428,7 +430,7 @@ pub async fn create_policy(
     match admin_manager.create_policy(request).await {
         Ok(policy) => Ok((StatusCode::CREATED, Json(policy))),
         Err(e) => {
-            eprintln!("Failed to create policy: {}", e);
+            error!("Failed to create policy: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -480,7 +482,7 @@ pub async fn list_identity_providers(
     match admin_manager.get_identity_providers(&realm_id).await {
         Ok(providers) => Ok(Json(providers)),
         Err(e) => {
-            eprintln!("Failed to list identity providers: {}", e);
+            error!("Failed to list identity providers: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -496,7 +498,7 @@ pub async fn get_identity_provider(
     match admin_manager.get_identity_provider(&provider_id).await {
         Ok(provider) => Ok(Json(provider)),
         Err(e) => {
-            eprintln!("Failed to get identity provider: {}", e);
+            error!("Failed to get identity provider: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -512,7 +514,7 @@ pub async fn create_identity_provider(
     match admin_manager.create_identity_provider(request).await {
         Ok(provider) => Ok((StatusCode::CREATED, Json(provider))),
         Err(e) => {
-            eprintln!("Failed to create identity provider: {}", e);
+            error!("Failed to create identity provider: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -532,7 +534,7 @@ pub async fn update_identity_provider(
     {
         Ok(provider) => Ok(Json(provider)),
         Err(e) => {
-            eprintln!("Failed to update identity provider: {}", e);
+            error!("Failed to update identity provider: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -548,7 +550,7 @@ pub async fn delete_identity_provider(
     match admin_manager.delete_identity_provider(&provider_id).await {
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
-            eprintln!("Failed to delete identity provider: {}", e);
+            error!("Failed to delete identity provider: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
@@ -564,7 +566,7 @@ pub async fn test_identity_provider(
     match admin_manager.test_identity_provider(&provider_id).await {
         Ok(result) => Ok(Json(result)),
         Err(e) => {
-            eprintln!("Failed to test identity provider: {}", e);
+            error!("Failed to test identity provider: {}", e);
             Err(admin_error_to_status(&e))
         }
     }
