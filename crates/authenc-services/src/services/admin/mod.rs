@@ -1442,16 +1442,23 @@ impl AdminService for AdminManager {
 
     async fn get_role(&self, role_id: &Uuid) -> Result<RoleResponse, AdminServiceError> {
         match operations::roles::get_role_by_id(&self.db, role_id).await {
-            Ok(Some(role)) => Ok(RoleResponse {
-                id: role.id,
-                name: role.name,
-                description: role.description.unwrap_or_default(),
-                realm_id: role.realm_id.unwrap_or(Uuid::nil()),
-                composite: role.composite,
-                client_role: role.client_role,
-                container_id: role.client_id,
-                attributes: parse_role_attributes(role.attributes),
-            }),
+            Ok(Some(role)) => {
+                // Guard against returning soft-deleted roles in case the
+                // underlying get_role_by_id does not filter by deleted_at.
+                if role.deleted_at.is_some() {
+                    return Err(AdminServiceError::NotFound(format!("Role with ID {} not found", role_id)));
+                }
+                Ok(RoleResponse {
+                    id: role.id,
+                    name: role.name,
+                    description: role.description.unwrap_or_default(),
+                    realm_id: role.realm_id.unwrap_or(Uuid::nil()),
+                    composite: role.composite,
+                    client_role: role.client_role,
+                    container_id: role.client_id,
+                    attributes: parse_role_attributes(role.attributes),
+                })
+            }
             Ok(None) => Err(AdminServiceError::NotFound(format!("Role with ID {} not found", role_id))),
             Err(e) => Err(AdminServiceError::Internal(format!("Failed to get role: {}", e))),
         }
