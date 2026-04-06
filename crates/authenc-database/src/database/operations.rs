@@ -1834,8 +1834,8 @@ pub mod organizations {
                 &settings.require_email_verification,
                 &settings.enable_two_factor,
                 &settings.password_policy,
-                &(settings.session_timeout as i64),
-                &settings.max_users.map(|n| n as i32),
+                &i64::try_from(settings.session_timeout).map_err(|_| AuthencError::validation(format!("session_timeout out of range: {}", settings.session_timeout)))?,
+                &settings.max_users.map(|n| i32::try_from(n).map_err(|_| AuthencError::validation(format!("max_users out of range: {}", n)))).transpose()?,
                 &settings.features,
             ],
         )
