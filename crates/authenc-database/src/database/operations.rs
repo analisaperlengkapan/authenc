@@ -1074,7 +1074,9 @@ pub mod oauth2 {
 pub mod organizations {
     use authenc_core::error::{AuthencError, Result};
 
-    use authenc_models::models::{Organization, OrganizationInvitation, OrganizationMember};
+    use authenc_models::models::{
+        Organization, OrganizationInvitation, OrganizationMember, OrganizationSettings,
+    };
 
     use authenc_spi::spi::organization::OrganizationRole;
 
@@ -1762,6 +1764,90 @@ pub mod organizations {
                 error!("Failed to unlink identity provider: {}", e);
                 AuthencError::database("Failed to unlink identity provider")
             })?;
+
+        Ok(())
+    }
+
+    /// Get organization settings
+    pub async fn get_organization_settings(
+        db: &Database,
+        organization_id: Uuid,
+    ) -> Result<Option<OrganizationSettings>> {
+        let query = r#"
+            SELECT
+                organization_id, allow_public_signup, require_email_verification,
+                enable_two_factor, password_policy, session_timeout,
+                max_users, features
+            FROM organization_settings
+            WHERE organization_id = $1
+        "#;
+
+        match db.query_opt(query, &[&organization_id]).await {
+            Ok(Some(row)) => Ok(Some(row.try_into()?)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                error!("Failed to get organization settings: {}", e);
+                Err(AuthencError::database(format!(
+                    "Failed to get organization settings: {}",
+                    e
+                )))
+            }
+        }
+    }
+
+    /// Upsert organization settings
+    ///
+    /// Atomically verifies the organization has not been soft-deleted before
+    /// upserting by using a subquery in the INSERT statement, avoiding TOCTOU
+    /// races. Follows the same pattern as `add_member` and
+    /// `link_identity_provider`.
+    pub async fn upsert_organization_settings(
+        db: &Database,
+        settings: &OrganizationSettings,
+    ) -> Result<()> {
+        let query = r#"
+            INSERT INTO organization_settings (
+                organization_id, allow_public_signup, require_email_verification,
+                enable_two_factor, password_policy, session_timeout,
+                max_users, features, updated_at
+            )
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8, NOW()
+            FROM organizations
+            WHERE id = $1 AND deleted_at IS NULL
+            ON CONFLICT (organization_id) DO UPDATE
+            SET
+                allow_public_signup = EXCLUDED.allow_public_signup,
+                require_email_verification = EXCLUDED.require_email_verification,
+                enable_two_factor = EXCLUDED.enable_two_factor,
+                password_policy = EXCLUDED.password_policy,
+                session_timeout = EXCLUDED.session_timeout,
+                max_users = EXCLUDED.max_users,
+                features = EXCLUDED.features,
+                updated_at = NOW()
+        "#;
+
+        let rows_affected = db.execute(
+            query,
+            &[
+                &settings.organization_id,
+                &settings.allow_public_signup,
+                &settings.require_email_verification,
+                &settings.enable_two_factor,
+                &settings.password_policy,
+                &i64::try_from(settings.session_timeout).map_err(|_| AuthencError::validation(format!("session_timeout out of range: {}", settings.session_timeout)))?,
+                &settings.max_users.map(|n| i32::try_from(n).map_err(|_| AuthencError::validation(format!("max_users out of range: {}", n)))).transpose()?,
+                &settings.features,
+            ],
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to upsert organization settings: {}", e);
+            AuthencError::database("Failed to upsert organization settings")
+        })?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
 
         Ok(())
     }

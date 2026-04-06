@@ -162,3 +162,56 @@ pub struct InviteMemberRequest {
     /// Role to assign to the invited user
     pub role: String,
 }
+
+/// Organization settings model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizationSettings {
+    /// ID of the organization these settings apply to
+    pub organization_id: Uuid,
+    /// Whether public signup is allowed for this organization
+    pub allow_public_signup: bool,
+    /// Whether email verification is required for new users
+    pub require_email_verification: bool,
+    /// Whether two-factor authentication is enabled
+    pub enable_two_factor: bool,
+    /// Password policy rules for the organization
+    pub password_policy: String,
+    /// Session timeout in seconds
+    pub session_timeout: u64,
+    /// Maximum number of users allowed in the organization
+    pub max_users: Option<u32>,
+    /// List of enabled features for the organization
+    pub features: Vec<String>,
+}
+
+impl TryFrom<tokio_postgres::Row> for OrganizationSettings {
+    type Error = AuthencError;
+
+    fn try_from(row: tokio_postgres::Row) -> Result<Self> {
+        Ok(Self {
+            organization_id: row.try_get("organization_id")?,
+            allow_public_signup: row.try_get("allow_public_signup")?,
+            require_email_verification: row.try_get("require_email_verification")?,
+            enable_two_factor: row.try_get("enable_two_factor")?,
+            password_policy: row.try_get("password_policy")?,
+            session_timeout: {
+                let v = row.try_get::<_, i64>("session_timeout")?;
+                u64::try_from(v).map_err(|_| {
+                    AuthencError::database(format!(
+                        "session_timeout out of range: {}",
+                        v
+                    ))
+                })?
+            },
+            max_users: row
+                .try_get::<_, Option<i32>>("max_users")?
+                .map(|n| {
+                    u32::try_from(n).map_err(|_| {
+                        AuthencError::database(format!("max_users out of range: {}", n))
+                    })
+                })
+                .transpose()?,
+            features: row.try_get("features")?,
+        })
+    }
+}

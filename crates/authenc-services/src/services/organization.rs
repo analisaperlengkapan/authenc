@@ -1,5 +1,6 @@
 use authenc_database::database::Database;
 use authenc_core::error::{AuthencError, Result};
+pub use authenc_models::models::organization::OrganizationSettings;
 use authenc_models::models::organization::{
     Organization, OrganizationInvitation as ModelOrganizationInvitation, OrganizationMember,
 };
@@ -137,26 +138,6 @@ pub struct OrganizationInvitation {
     pub token: String,
 }
 
-/// Organization settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OrganizationSettings {
-    /// ID of the organization these settings apply to
-    pub organization_id: Uuid,
-    /// Whether public signup is allowed for this organization
-    pub allow_public_signup: bool,
-    /// Whether email verification is required for new users
-    pub require_email_verification: bool,
-    /// Whether two-factor authentication is enabled
-    pub enable_two_factor: bool,
-    /// Password policy rules for the organization
-    pub password_policy: String,
-    /// Session timeout in seconds
-    pub session_timeout: u64,
-    /// Maximum number of users allowed in the organization
-    pub max_users: Option<u32>,
-    /// List of enabled features for the organization
-    pub features: Vec<String>,
-}
 
 /// Organization service for multi-tenancy
 pub struct OrganizationService {
@@ -948,9 +929,6 @@ impl OrganizationService {
     }
 
     /// Get organization settings
-    ///
-    /// NOTE: Settings persistence is not yet implemented. Returns defaults
-    /// after verifying the organization exists.
     pub async fn get_settings(&self, organization_id: &Uuid) -> Result<OrganizationSettings> {
         // Verify the organization exists and is not soft-deleted
         let org = self.get_organization(organization_id).await?;
@@ -960,22 +938,31 @@ impl OrganizationService {
             ));
         }
 
-        // TODO: Retrieve from database once organization_settings table is created
-        Ok(OrganizationSettings {
-            organization_id: *organization_id,
-            allow_public_signup: false,
-            require_email_verification: true,
-            enable_two_factor: true,
-            password_policy: "default".to_string(),
-            session_timeout: 3600,
-            max_users: Some(1000),
-            features: vec!["oidc".to_string(), "saml".to_string()],
-        })
+        match authenc_database::database::operations::organizations::get_organization_settings(
+            &self.db,
+            *organization_id,
+        )
+        .await?
+        {
+            Some(settings) => Ok(settings),
+            None => {
+                // Return defaults matching the DB schema defaults
+                // (migrations/025_organization_settings.sql)
+                Ok(OrganizationSettings {
+                    organization_id: *organization_id,
+                    allow_public_signup: false,
+                    require_email_verification: true,
+                    enable_two_factor: false,
+                    password_policy: "default".to_string(),
+                    session_timeout: 3600,
+                    max_users: None,
+                    features: vec![],
+                })
+            }
+        }
     }
 
     /// Update organization settings
-    ///
-    /// NOTE: Settings persistence is not yet implemented.
     pub async fn update_settings(&self, settings: &OrganizationSettings) -> Result<()> {
         // Verify the organization exists and is not soft-deleted
         let org = self.get_organization(&settings.organization_id).await?;
@@ -985,8 +972,10 @@ impl OrganizationService {
             ));
         }
 
-        // TODO: Persist to database once organization_settings table is created
-        Ok(())
+        authenc_database::database::operations::organizations::upsert_organization_settings(
+            &self.db, settings,
+        )
+        .await
     }
 
     /// Get user's organizations
