@@ -1,8 +1,8 @@
 use authenc_database::database::Database;
 use authenc_core::error::{AuthencError, Result};
+pub use authenc_models::models::organization::OrganizationSettings;
 use authenc_models::models::organization::{
     Organization, OrganizationInvitation as ModelOrganizationInvitation, OrganizationMember,
-    OrganizationSettings,
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;

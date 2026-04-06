@@ -194,8 +194,23 @@ impl TryFrom<tokio_postgres::Row> for OrganizationSettings {
             require_email_verification: row.try_get("require_email_verification")?,
             enable_two_factor: row.try_get("enable_two_factor")?,
             password_policy: row.try_get("password_policy")?,
-            session_timeout: row.try_get::<_, i64>("session_timeout")? as u64,
-            max_users: row.try_get::<_, Option<i32>>("max_users")?.map(|n| n as u32),
+            session_timeout: {
+                let v = row.try_get::<_, i64>("session_timeout")?;
+                u64::try_from(v).map_err(|_| {
+                    AuthencError::database(format!(
+                        "session_timeout out of range: {}",
+                        v
+                    ))
+                })?
+            },
+            max_users: row
+                .try_get::<_, Option<i32>>("max_users")?
+                .map(|n| {
+                    u32::try_from(n).map_err(|_| {
+                        AuthencError::database(format!("max_users out of range: {}", n))
+                    })
+                })
+                .transpose()?,
             features: row.try_get("features")?,
         })
     }

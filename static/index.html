@@ -2275,6 +2275,8 @@
         let _currentOrgFeatures = null;
 
         async function fetchOrganizationSettings(orgId) {
+            const saveBtn = document.querySelector('#org-settings-form button[type="submit"]');
+            saveBtn.disabled = true;
             try {
                 const response = await fetch(`${window.location.origin}/api/v1/organizations/${orgId}/settings`, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -2292,8 +2294,9 @@
                 document.getElementById('org-enable-two-factor').checked = settings.enable_two_factor;
                 document.getElementById('org-password-policy').value = settings.password_policy || 'default';
                 document.getElementById('org-session-timeout').value = settings.session_timeout;
-                document.getElementById('org-max-users').value = settings.max_users || '';
+                document.getElementById('org-max-users').value = settings.max_users != null ? settings.max_users : '';
                 _currentOrgFeatures = settings.features || [];
+                saveBtn.disabled = false;
 
             } catch (err) {
                 document.getElementById('org-settings-error').textContent = err.message;
