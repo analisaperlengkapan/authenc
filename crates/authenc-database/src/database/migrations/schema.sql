@@ -174,6 +174,20 @@ CREATE TABLE IF NOT EXISTS organization_domains (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Organization settings (per-tenant configuration)
+CREATE TABLE IF NOT EXISTS organization_settings (
+    organization_id UUID PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+    allow_public_signup BOOLEAN NOT NULL DEFAULT false,
+    require_email_verification BOOLEAN NOT NULL DEFAULT true,
+    enable_two_factor BOOLEAN NOT NULL DEFAULT false,
+    password_policy TEXT NOT NULL DEFAULT 'default',
+    session_timeout BIGINT NOT NULL DEFAULT 3600,
+    max_users INTEGER,
+    features TEXT[] NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- NOTE: organization_identity_providers table is defined after identity_providers (see IDENTITY BROKERING section)
 
 -- ============================================================================
@@ -585,6 +599,7 @@ CREATE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices FOR EACH ROW E
 CREATE TRIGGER update_organizations_updated_at BEFORE UPDATE ON organizations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_organization_members_updated_at BEFORE UPDATE ON organization_members FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_organization_domains_updated_at BEFORE UPDATE ON organization_domains FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_organization_settings_updated_at BEFORE UPDATE ON organization_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 -- NOTE: organization_identity_providers trigger is defined after the table (see IDENTITY BROKERING section)
 CREATE TRIGGER update_oauth2_clients_updated_at BEFORE UPDATE ON oauth2_clients FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_saml_service_providers_updated_at BEFORE UPDATE ON saml_service_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
