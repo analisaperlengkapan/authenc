@@ -80,7 +80,7 @@ async fn test_webauthn_registration_challenge_generation() {
         first_name: Some("Test".to_string()),
         last_name: Some("User".to_string()),
         phone_number: None,
-        realm_id: None, // Set to None to avoid foreign key constraint
+        realm_id: Some(realm_id),
         organization_id: None,
         attributes: None,
         email_verified: Some(true),
@@ -230,7 +230,7 @@ async fn test_webauthn_authentication_challenge_generation() {
         first_name: Some("Test".to_string()),
         last_name: Some("User".to_string()),
         phone_number: None,
-        realm_id: None, // Set to None to avoid foreign key constraint
+        realm_id: Some(realm_id),
         organization_id: None,
         attributes: None,
         email_verified: Some(true),

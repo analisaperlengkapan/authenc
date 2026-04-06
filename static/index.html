@@ -639,6 +639,42 @@
         </div>
     </div>
 
+    <div id="org-settings-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div class="card" style="max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;">
+            <h2 id="org-settings-title" style="text-align: center;">Organization Settings</h2>
+            <form id="org-settings-form">
+                <input type="hidden" id="org-settings-id">
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="org-allow-public-signup" name="allow_public_signup" style="width: auto;">
+                    <label for="org-allow-public-signup">Allow Public Signup</label>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="org-require-email-verification" name="require_email_verification" style="width: auto;">
+                    <label for="org-require-email-verification">Require Email Verification</label>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="org-enable-two-factor" name="enable_two_factor" style="width: auto;">
+                    <label for="org-enable-two-factor">Enable Two-Factor Auth</label>
+                </div>
+                <div class="form-group">
+                    <label for="org-password-policy">Password Policy</label>
+                    <input type="text" id="org-password-policy" name="password_policy">
+                </div>
+                <div class="form-group">
+                    <label for="org-session-timeout">Session Timeout (seconds)</label>
+                    <input type="number" id="org-session-timeout" name="session_timeout">
+                </div>
+                <div class="form-group">
+                    <label for="org-max-users">Max Users</label>
+                    <input type="number" id="org-max-users" name="max_users">
+                </div>
+                <button type="submit">Save Settings</button>
+                <button type="button" class="secondary" onclick="closeOrganizationSettingsModal()">Cancel</button>
+            </form>
+            <div id="org-settings-error" class="error-message"></div>
+        </div>
+    </div>
+
     <div id="org-members-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
         <div class="card" style="max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto;">
             <h2 id="org-members-title" style="text-align: center;">Organization Members</h2>
@@ -2051,6 +2087,17 @@
                 // Actions
                 const tdActions = document.createElement('td');
 
+                const btnSettings = document.createElement('button');
+                btnSettings.style.width = 'auto';
+                btnSettings.style.padding = '0.25rem 0.5rem';
+                btnSettings.style.fontSize = '0.8rem';
+                btnSettings.style.backgroundColor = 'var(--secondary)';
+                btnSettings.textContent = 'Settings';
+                btnSettings.onclick = function() {
+                    openOrganizationSettingsModal(org.id, org.name);
+                };
+                tdActions.appendChild(btnSettings);
+
                 const btnEdit = document.createElement('button');
                 btnEdit.style.width = 'auto';
                 btnEdit.style.padding = '0.25rem 0.5rem';
@@ -2165,6 +2212,17 @@
                 btnEdit.style.width = 'auto';
                 btnEdit.style.padding = '0.25rem 0.5rem';
                 btnEdit.style.fontSize = '0.8rem';
+                const btnSettings = document.createElement("button");
+                btnSettings.style.width = "auto";
+                btnSettings.style.padding = "0.25rem 0.5rem";
+                btnSettings.style.fontSize = "0.8rem";
+                btnSettings.style.backgroundColor = "var(--secondary)";
+                btnSettings.textContent = "Settings";
+                btnSettings.onclick = function() {
+                    openOrganizationSettingsModal(org.id, org.name);
+                };
+                tdActions.appendChild(btnSettings);
+
                 btnEdit.textContent = 'Edit';
                 btnEdit.onclick = function() {
                     openEditOrganizationModal(org);
@@ -2200,6 +2258,91 @@
             document.getElementById('edit-organization-modal').style.alignItems = 'center';
             document.getElementById('edit-organization-modal').style.justifyContent = 'center';
         }
+
+        async function openOrganizationSettingsModal(orgId, orgName) {
+            document.getElementById('org-settings-id').value = orgId;
+            document.getElementById('org-settings-title').textContent = `Settings: ${orgName}`;
+            document.getElementById('org-settings-error').textContent = '';
+
+            // Clear form before loading
+            document.getElementById('org-settings-form').reset();
+
+            document.getElementById('org-settings-modal').classList.remove('hidden');
+            document.getElementById('org-settings-modal').style.display = 'flex';
+            document.getElementById('org-settings-modal').style.alignItems = 'center';
+            document.getElementById('org-settings-modal').style.justifyContent = 'center';
+
+            await fetchOrganizationSettings(orgId);
+        }
+
+        function closeOrganizationSettingsModal() {
+            document.getElementById('org-settings-modal').classList.add('hidden');
+            document.getElementById('org-settings-modal').style.display = 'none';
+            document.getElementById('org-settings-error').textContent = '';
+        }
+
+        async function fetchOrganizationSettings(orgId) {
+            try {
+                const response = await fetch(`${window.location.origin}/api/v1/organizations/${orgId}/settings`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch settings: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const settings = data.settings;
+
+                document.getElementById('org-allow-public-signup').checked = settings.allow_public_signup;
+                document.getElementById('org-require-email-verification').checked = settings.require_email_verification;
+                document.getElementById('org-enable-two-factor').checked = settings.enable_two_factor;
+                document.getElementById('org-password-policy').value = settings.password_policy || 'default';
+                document.getElementById('org-session-timeout').value = settings.session_timeout;
+                document.getElementById('org-max-users').value = settings.max_users || '';
+
+            } catch (err) {
+                document.getElementById('org-settings-error').textContent = err.message;
+            }
+        }
+
+        document.getElementById('org-settings-form').onsubmit = async function(e) {
+            e.preventDefault();
+            const orgId = document.getElementById('org-settings-id').value;
+            const errorDiv = document.getElementById('org-settings-error');
+            errorDiv.textContent = '';
+
+            const settings = {
+                organization_id: orgId,
+                allow_public_signup: document.getElementById('org-allow-public-signup').checked,
+                require_email_verification: document.getElementById('org-require-email-verification').checked,
+                enable_two_factor: document.getElementById('org-enable-two-factor').checked,
+                password_policy: document.getElementById('org-password-policy').value,
+                session_timeout: parseInt(document.getElementById('org-session-timeout').value) || 3600,
+                max_users: document.getElementById('org-max-users').value ? parseInt(document.getElementById('org-max-users').value) : null,
+                features: ["oidc", "saml"] // Maintain current features for now
+            };
+
+            try {
+                const response = await fetch(`${window.location.origin}/api/v1/organizations/${orgId}/settings`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(settings)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Update failed: ${response.statusText}`);
+                }
+
+                closeOrganizationSettingsModal();
+            } catch (err) {
+                errorDiv.textContent = err.message;
+            }
+        };
 
         function openEditOrganizationModal(org) {
             document.getElementById('edit-organization-title').textContent = 'Edit Organization';
