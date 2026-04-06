@@ -306,12 +306,14 @@ impl SamlService {
             xml
         };
 
-        // Compress and base64 encode
+        // Compress and base64 encode per SAML HTTP-Redirect binding spec:
+        // DEFLATE → standard base64 (RFC 4648 §4) → URL-encode.
         let compressed = self.deflate_compress(&signed_xml)?;
-        let encoded = Base64UrlUnpadded::encode_string(&compressed);
+        let encoded = base64ct::Base64::encode_string(&compressed);
 
-        // Build redirect URL
-        let mut url = format!("{}?SAMLRequest={}", idp.sso_url, encoded);
+        // Build redirect URL — URL-encode the base64 value since standard
+        // base64 contains `+`, `/`, and `=` which are special in URLs.
+        let mut url = format!("{}?SAMLRequest={}", idp.sso_url, urlencoding::encode(&encoded));
         if let Some(relay_state) = relay_state {
             url.push_str(&format!("&RelayState={}", urlencoding::encode(relay_state)));
         }
@@ -801,15 +803,17 @@ impl SamlService {
             logout_request_xml
         };
 
-        // Compress and base64 encode
+        // Compress and base64 encode per SAML HTTP-Redirect binding spec:
+        // DEFLATE → standard base64 (RFC 4648 §4) → URL-encode.
         let compressed = self.deflate_compress(&signed_xml)?;
-        let encoded = Base64UrlUnpadded::encode_string(&compressed);
+        let encoded = base64ct::Base64::encode_string(&compressed);
 
-        // Build logout URL
+        // Build logout URL — URL-encode the base64 value since standard
+        // base64 contains `+`, `/`, and `=` which are special in URLs.
         let url = format!(
             "{}?SAMLRequest={}",
             idp.slo_url.as_ref().unwrap_or(&idp.sso_url),
-            encoded
+            urlencoding::encode(&encoded)
         );
 
         Ok(url)

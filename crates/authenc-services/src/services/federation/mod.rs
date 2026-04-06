@@ -353,7 +353,7 @@ pub mod jit_provisioning {
                         AdminServiceError::AlreadyDeleted(msg) => authenc_core::error::AuthencError::resource_not_found(msg.clone()),
                         AdminServiceError::BadRequest(msg) => authenc_core::error::AuthencError::validation(msg.clone()),
                         AdminServiceError::NotImplemented(msg) => authenc_core::error::AuthencError::internal(msg.clone()),
-                        AdminServiceError::Internal(msg) => authenc_core::error::AuthencError::database(msg.clone()),
+                        AdminServiceError::Internal(msg) => authenc_core::error::AuthencError::internal(msg.clone()),
                     }
                 })?;
 
