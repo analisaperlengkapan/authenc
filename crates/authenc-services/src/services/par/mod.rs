@@ -122,7 +122,7 @@ impl InMemoryPARStorage {
     /// - RwLock provides concurrent read access but exclusive writes
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::par::InMemoryPARStorage;
     ///
     /// let storage = InMemoryPARStorage::new();
@@ -307,7 +307,7 @@ impl<S: PARStorage> PARAuthorizationHandler<S> {
     /// - Handles PAR request validation and consumption
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::services::par::{PARAuthorizationHandler, PARManager, InMemoryPARStorage};
     ///
     /// let storage = InMemoryPARStorage::new();

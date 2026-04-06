@@ -2,14 +2,12 @@ use crate::app::AppState;
 use authenc_database::database::Database;
 use authenc_database::database::operations::identity_providers::get_identity_provider_by_entity_id;
 use crate::error::AuthencError;
-use crate::handlers::federated_auth::MockAdminService;
 use authenc_models::models::user::JITUserProvisioningRequest;
-use authenc_services::services::admin::AdminService;
+use authenc_services::services::admin::AdminManager;
 use authenc_services::services::federation::jit_provisioning::{
     DefaultJITProvisioningService, JITProvisioningService,
 };
 use authenc_services::services::protocols::saml::{SamlIdentityProvider, SamlService, SamlServiceProvider};
-use async_trait::async_trait;
 use axum::{
     Router,
     extract::{Query, State},
@@ -18,235 +16,15 @@ use axum::{
 };
 use std::sync::Arc;
 
-/// Admin Service for SAML JIT provisioning
-struct SamlAdminService {
-    db: Arc<Database>,
-}
-
-#[allow(unsafe_code)]
-unsafe impl Send for SamlAdminService {}
-#[allow(unsafe_code)]
-unsafe impl Sync for SamlAdminService {}
-
-impl SamlAdminService {
-    fn new(db: Arc<Database>) -> Self {
-        Self { db }
-    }
-}
-
-#[async_trait]
-impl AdminService for SamlAdminService {
-    async fn get_system_stats(&self) -> Result<crate::services::admin::SystemStats, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn get_users(
-        &self,
-        _realm_id: &uuid::Uuid,
-        _page: u32,
-        _limit: u32,
-    ) -> Result<crate::services::admin::UserListResponse, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn create_user(
-        &self,
-        request: crate::services::admin::CreateUserRequest,
-    ) -> Result<crate::services::admin::UserResponse, String> {
-        // Use the database operations to create user
-        use authenc_database::database::operations::{groups, roles, users};
-        use authenc_models::models::user::CreateUserRequest as DbCreateUserRequest;
-
-        let db_request = DbCreateUserRequest {
-            username: request.username.clone(),
-            email: request.email.clone(),
-            password: request.password.clone(),
-            first_name: request.first_name.clone(),
-            last_name: request.last_name.clone(),
-            phone_number: request.phone_number.clone(),
-            attributes: request.attributes.clone(),
-            realm_id: Some(request.realm_id),
-            organization_id: None,
-            enabled: Some(true),
-            email_verified: Some(true),
-            require_password_change: Some(false),
-        };
-
-        match users::create_user(&self.db, &db_request).await {
-            Ok(user) => {
-                // Assign roles if provided
-                if !request.roles.is_empty() {
-                    let all_roles = roles::list_roles_by_realm(&self.db, &request.realm_id)
-                        .await
-                        .map_err(|e| format!("Failed to fetch realm roles: {}", e))?;
-
-                    for role_name in &request.roles {
-                        if let Some(role) = all_roles.iter().find(|r| r.name == *role_name) {
-                            roles::assign_role_to_user(&self.db, &user.id, &role.id)
-                                .await
-                                .map_err(|e| {
-                                    format!("Failed to assign role {}: {}", role_name, e)
-                                })?;
-                        }
-                    }
-                }
-
-                // Assign groups if provided
-                if !request.groups.is_empty() {
-                    let all_groups =
-                        groups::get_groups_by_realm(&self.db, request.realm_id, None, None)
-                            .await
-                            .map_err(|e| format!("Failed to fetch realm groups: {}", e))?;
-
-                    for group_name in &request.groups {
-                        if let Some(group) = all_groups.iter().find(|g| g.name == *group_name) {
-                            groups::add_user_to_group(&self.db, user.id, group.id, None, None)
-                                .await
-                                .map_err(|e| {
-                                    format!("Failed to add user to group {}: {}", group_name, e)
-                                })?;
-                        }
-                    }
-                }
-
-                let user_roles = roles::get_user_roles(&self.db, &user.id)
-                    .await
-                    .map_err(|e| format!("Failed to get user roles: {}", e))?;
-
-                let user_groups = groups::get_user_groups(&self.db, user.id)
-                    .await
-                    .map_err(|e| format!("Failed to get user groups: {}", e))?;
-
-                Ok(crate::services::admin::UserResponse {
-                    id: user.id,
-                    username: user.username,
-                    email: user.email,
-                    email_verified: user.email_verified,
-                    first_name: user.first_name,
-                    last_name: user.last_name,
-                    enabled: user.enabled,
-                    realm_id: user.realm_id.unwrap_or_default(),
-                    organization_id: user.organization_id,
-                    roles: user_roles.into_iter().map(|r| r.name).collect(),
-                    groups: user_groups.into_iter().map(|g| g.name).collect(),
-                    created_at: user.created_at,
-                    last_login: user.last_login_at,
-                    login_attempts: user.failed_login_attempts as u32,
-                    locked_until: user.account_locked_until,
-                })
-            }
-            Err(e) => Err(format!("Failed to create user: {}", e)),
-        }
-    }
-
-    async fn update_user(
-        &self,
-        _user_id: &uuid::Uuid,
-        _request: crate::services::admin::UpdateUserRequest,
-    ) -> Result<crate::services::admin::UserResponse, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn delete_user(&self, _user_id: &uuid::Uuid) -> Result<(), String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn get_roles(
-        &self,
-        _realm_id: &uuid::Uuid,
-    ) -> Result<Vec<crate::services::admin::RoleResponse>, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn create_role(
-        &self,
-        _request: crate::services::admin::CreateRoleRequest,
-    ) -> Result<crate::services::admin::RoleResponse, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn get_sessions(
-        &self,
-        _user_id: Option<uuid::Uuid>,
-        _page: u32,
-        _limit: u32,
-    ) -> Result<crate::services::admin::SessionListResponse, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn terminate_session(&self, _session_id: &str) -> Result<(), String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn get_audit_logs(
-        &self,
-        _filter: crate::services::admin::AuditLogFilter,
-    ) -> Result<crate::services::admin::AuditLogResponse, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn get_policies(
-        &self,
-        _realm_id: &uuid::Uuid,
-        _page: u32,
-        _limit: u32,
-    ) -> Result<Vec<crate::services::admin::PolicyResponse>, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn create_policy(
-        &self,
-        _request: crate::services::admin::CreatePolicyRequest,
-    ) -> Result<crate::services::admin::PolicyResponse, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn get_zero_trust_dashboard(
-        &self,
-        _realm_id: &uuid::Uuid,
-    ) -> Result<crate::services::admin::ZeroTrustDashboard, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn get_identity_providers(
-        &self,
-        _realm_id: &uuid::Uuid,
-    ) -> Result<Vec<crate::services::admin::IdentityProviderResponse>, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn create_identity_provider(
-        &self,
-        _request: crate::services::admin::CreateIdentityProviderRequest,
-    ) -> Result<crate::services::admin::IdentityProviderResponse, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn update_identity_provider(
-        &self,
-        _provider_id: &uuid::Uuid,
-        _request: crate::services::admin::UpdateIdentityProviderRequest,
-    ) -> Result<crate::services::admin::IdentityProviderResponse, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn delete_identity_provider(&self, _provider_id: &uuid::Uuid) -> Result<(), String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn get_identity_provider(
-        &self,
-        _provider_id: &uuid::Uuid,
-    ) -> Result<crate::services::admin::IdentityProviderResponse, String> {
-        Err("Not implemented".to_string())
-    }
-
-    async fn test_identity_provider(
-        &self,
-        _provider_id: &uuid::Uuid,
-    ) -> Result<crate::services::admin::TestIdentityProviderResponse, String> {
-        Err("Not implemented".to_string())
-    }
+/// Escape HTML special characters to prevent XSS when rendering
+/// user-controlled data (e.g. SAML assertion values) into HTML responses.
+fn escape_html(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
 }
 
 /// Create SAML routes
@@ -262,7 +40,7 @@ pub fn create_saml_routes() -> Router<Database> {
 fn get_default_sp_config() -> SamlServiceProvider {
     SamlServiceProvider {
         entity_id: "https://authenc.example.com/saml/sp".to_string(),
-        realm_id: uuid::Uuid::nil(), // Placeholder Realm ID
+        realm_id: uuid::Uuid::nil(),
         assertion_consumer_service_url: "https://authenc.example.com/saml/acs".to_string(),
         single_logout_service_url: Some("https://authenc.example.com/saml/slo".to_string()),
         name_id_format: "urn:oasis:names:tc:SAML:1.0:nameid-format:emailAddress".to_string(),
@@ -273,7 +51,7 @@ fn get_default_sp_config() -> SamlServiceProvider {
 
 fn get_default_idp_config() -> SamlIdentityProvider {
     SamlIdentityProvider {
-        id: uuid::Uuid::nil(), // Placeholder ID
+        id: uuid::Uuid::nil(),
         entity_id: "https://idp.example.com/saml/idp".to_string(),
         sso_url: "https://idp.example.com/saml/auth".to_string(),
         slo_url: Some("https://idp.example.com/saml/slo".to_string()),
@@ -290,7 +68,6 @@ pub async fn sp_metadata(
 ) -> std::result::Result<Html<String>, AuthencError> {
     let mut service = SamlService::new(Arc::new(db));
 
-    // In production, load from configuration
     let sp = get_default_sp_config();
     service.register_service_provider(sp.clone());
 
@@ -310,11 +87,7 @@ pub async fn idp_metadata(
 ) -> std::result::Result<Html<String>, AuthencError> {
     let mut service = SamlService::new(Arc::new(db));
 
-    // In production, load from configuration
-
     let mut idp = get_default_idp_config();
-    // Override default IDP config (which points to external IDP) with "authenc" details
-    // to represent the local Identity Provider configuration.
     idp.entity_id = "https://authenc.example.com/saml/idp".to_string();
     idp.sso_url = "https://authenc.example.com/saml/auth".to_string();
     idp.slo_url = Some("https://authenc.example.com/saml/slo".to_string());
@@ -337,11 +110,9 @@ pub async fn saml_auth(
 ) -> std::result::Result<Redirect, AuthencError> {
     let mut service = SamlService::new(Arc::new(db));
 
-    // Register service provider
     let sp = get_default_sp_config();
     service.register_service_provider(sp.clone());
 
-    // Register identity provider
     let idp = get_default_idp_config();
     service.register_identity_provider(idp.clone());
 
@@ -366,26 +137,35 @@ pub async fn saml_auth(
 pub async fn saml_acs(
     State(db): State<Database>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-    _body: String,
+    body: String,
 ) -> std::result::Result<Html<String>, AuthencError> {
     let mut service = SamlService::new(Arc::new(db.clone()));
 
-    // Extract SAMLResponse from form data or query parameters
-    let saml_response = if let Some(response) = params.get("SAMLResponse") {
-        response
+    // Parse form-urlencoded POST body (SAML HTTP-POST binding sends
+    // SAMLResponse as application/x-www-form-urlencoded in the body).
+    let form_params: std::collections::HashMap<String, String> = form_urlencoded::parse(body.as_bytes())
+        .map(|(k, v)| (k.into_owned(), v.into_owned()))
+        .collect();
+
+    // Try POST body first (standard SAML HTTP-POST binding), then fall
+    // back to query parameters (HTTP-Redirect binding or non-standard).
+    let saml_response = if let Some(response) = form_params.get("SAMLResponse") {
+        response.clone()
+    } else if let Some(response) = params.get("SAMLResponse") {
+        response.clone()
     } else {
-        // In production, parse from form body
-        return Err(AuthencError::validation("Bad request"));
+        return Err(AuthencError::validation("Missing SAMLResponse parameter"));
     };
 
-    let relay_state = params.get("RelayState").map(|s| s.as_str());
+    let relay_state = form_params
+        .get("RelayState")
+        .or_else(|| params.get("RelayState"))
+        .map(|s| s.as_str());
 
-    // Extract issuer and XML to identify IdP and avoid double parsing
     let (issuer, xml) = service
-        .get_issuer_and_xml_from_response(saml_response)
+        .get_issuer_and_xml_from_response(&saml_response)
         .map_err(|e| AuthencError::validation(format!("Failed to parse SAML response: {}", e)))?;
 
-    // Look up Identity Provider from database to get realm_id
     let idp_data = get_identity_provider_by_entity_id(&db, &issuer)
         .await
         .map_err(|e| AuthencError::internal(format!("Database error: {}", e)))?
@@ -396,7 +176,6 @@ pub async fn saml_acs(
             ))
         })?;
 
-    // Register IDP configuration with service
     let idp_config: SamlIdentityProvider = serde_json::from_value(idp_data.config.clone())
         .map_err(|e| {
             AuthencError::internal(format!("Invalid Identity Provider configuration: {}", e))
@@ -404,20 +183,17 @@ pub async fn saml_acs(
 
     service.register_identity_provider(idp_config);
 
-    // Use process_xml_response to avoid double decompression
     match service
         .process_xml_response(&xml, relay_state, &issuer)
         .await
     {
         Ok(user_info) => {
-            // Create JIT provisioning service
-            let admin_service = Arc::new(SamlAdminService::new(Arc::new(db.clone())));
+            let admin_service = Arc::new(AdminManager::new(Arc::new(db.clone())));
             let jit_service = Arc::new(DefaultJITProvisioningService::new(
                 Arc::new(db.clone()),
                 admin_service,
             ));
 
-// Helper to extract first value from attributes
             let get_attribute_value = |key: &str| -> Option<String> {
                 user_info
                     .attributes
@@ -426,7 +202,6 @@ pub async fn saml_acs(
                     .cloned()
             };
 
-            // Prepare JIT provisioning request using realm_id from IDP config
             log::info!(
                 "Preparing JIT provisioning request for IDP: {}",
                 idp_data.id
@@ -445,10 +220,8 @@ pub async fn saml_acs(
                 realm_id: idp_data.realm_id,
             };
 
-            // Provision user using JIT
             match jit_service.provision_user(jit_request).await {
                 Ok(jit_response) => {
-                    // In production, create session and redirect to application
                     let html = format!(
                         r#"<!DOCTYPE html>
 <html>
@@ -460,44 +233,30 @@ pub async fn saml_acs(
 <p>Session Index: {}</p>
 <p>Authentication Context: {}</p>
 <p>JIT Provisioned: {}</p>
-<pre>{:?}</pre>
+<pre>{}</pre>
 </body>
 </html>"#,
-                        jit_response.user.username,
-                        jit_response.user.id,
-                        user_info.session_index,
-                        user_info.authn_context_class_ref,
-                        jit_response.created,
-                        user_info.attributes
+                        escape_html(&jit_response.user.username),
+                        escape_html(&jit_response.user.id.to_string()),
+                        escape_html(&user_info.session_index),
+                        escape_html(&user_info.authn_context_class_ref),
+                        escape_html(&jit_response.created.to_string()),
+                        escape_html(&format!("{:?}", user_info.attributes))
                     );
                     Ok(Html(html))
                 }
                 Err(e) => {
-                    let html = format!(
-                        r#"<!DOCTYPE html>
-<html>
-<head><title>SAML Login Failed</title></head>
-<body>
-<h1>JIT Provisioning Failed</h1>
-<p>Error: {}</p>
-</body>
-</html>"#,
+                    log::error!("JIT provisioning failed: {}", e);
+                    Err(AuthencError::internal(format!(
+                        "JIT provisioning failed: {}",
                         e
-                    );
-                    Ok(Html(html))
+                    )))
                 }
             }
         }
-        Err(_) => {
-            let html = r#"<!DOCTYPE html>
-<html>
-<head><title>SAML Login Failed</title></head>
-<body>
-<h1>Login Failed</h1>
-<p>SAML authentication failed. Please try again.</p>
-</body>
-</html>"#;
-            Ok(Html(html.to_string()))
+        Err(e) => {
+            log::error!("SAML authentication failed: {}", e);
+            Err(AuthencError::internal("SAML authentication failed"))
         }
     }
 }
@@ -507,7 +266,6 @@ pub async fn saml_slo(
     State(_db): State<Database>,
     Query(_params): Query<std::collections::HashMap<String, String>>,
 ) -> std::result::Result<Redirect, AuthencError> {
-    // In production, implement SAML logout
-    // For now, redirect to home page
     Ok(Redirect::to("/"))
 }
+

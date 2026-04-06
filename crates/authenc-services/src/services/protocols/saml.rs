@@ -306,12 +306,14 @@ impl SamlService {
             xml
         };
 
-        // Compress and base64 encode
+        // Compress and base64 encode per SAML HTTP-Redirect binding spec:
+        // DEFLATE → standard base64 (RFC 4648 §4) → URL-encode.
         let compressed = self.deflate_compress(&signed_xml)?;
-        let encoded = Base64UrlUnpadded::encode_string(&compressed);
+        let encoded = base64ct::Base64::encode_string(&compressed);
 
-        // Build redirect URL
-        let mut url = format!("{}?SAMLRequest={}", idp.sso_url, encoded);
+        // Build redirect URL — URL-encode the base64 value since standard
+        // base64 contains `+`, `/`, and `=` which are special in URLs.
+        let mut url = format!("{}?SAMLRequest={}", idp.sso_url, urlencoding::encode(&encoded));
         if let Some(relay_state) = relay_state {
             url.push_str(&format!("&RelayState={}", urlencoding::encode(relay_state)));
         }
@@ -324,16 +326,34 @@ impl SamlService {
     }
 
     /// Decode and decompress SAML Response
+    ///
+    /// SAML HTTP-POST binding uses standard base64 (RFC 4648 §4, `+` and `/`
+    /// alphabet with `=` padding).  SAML HTTP-Redirect binding uses the same
+    /// alphabet but may omit padding.  We try standard padded first, then
+    /// URL-safe unpadded as a fallback for non-conforming IdPs.
     fn decode_saml_response(&self, saml_response: &str) -> Result<String> {
-        // Decode
-        let decoded = Base64UrlUnpadded::decode_vec(saml_response).map_err(|_| {
-            AuthencError::ValidationError {
-                message: "Invalid SAML response encoding".to_string(),
-            }
-        })?;
+        // Strip any whitespace that browsers / form-encoding may have introduced.
+        let cleaned: String = saml_response
+            .chars()
+            .filter(|c| !c.is_ascii_whitespace())
+            .collect();
 
-        // Decompress
-        self.deflate_decompress(&decoded)
+        // Try standard base64 first (SAML HTTP-POST binding spec).
+        let decoded = base64ct::Base64::decode_vec(&cleaned)
+            .or_else(|_| Base64UrlUnpadded::decode_vec(&cleaned))
+            .map_err(|_| AuthencError::ValidationError {
+                message: "Invalid SAML response encoding".to_string(),
+            })?;
+
+        // SAML HTTP-POST responses are NOT deflate-compressed (only
+        // HTTP-Redirect uses DEFLATE).  Try decompression, but if it
+        // fails treat the bytes as raw XML.
+        match self.deflate_decompress(&decoded) {
+            Ok(xml) => Ok(xml),
+            Err(_) => String::from_utf8(decoded).map_err(|_| AuthencError::ValidationError {
+                message: "SAML response is not valid UTF-8".to_string(),
+            }),
+        }
     }
 
     /// Get Issuer and raw XML from SAML Response without full validation
@@ -783,15 +803,17 @@ impl SamlService {
             logout_request_xml
         };
 
-        // Compress and base64 encode
+        // Compress and base64 encode per SAML HTTP-Redirect binding spec:
+        // DEFLATE → standard base64 (RFC 4648 §4) → URL-encode.
         let compressed = self.deflate_compress(&signed_xml)?;
-        let encoded = Base64UrlUnpadded::encode_string(&compressed);
+        let encoded = base64ct::Base64::encode_string(&compressed);
 
-        // Build logout URL
+        // Build logout URL — URL-encode the base64 value since standard
+        // base64 contains `+`, `/`, and `=` which are special in URLs.
         let url = format!(
             "{}?SAMLRequest={}",
             idp.slo_url.as_ref().unwrap_or(&idp.sso_url),
-            encoded
+            urlencoding::encode(&encoded)
         );
 
         Ok(url)
@@ -803,14 +825,25 @@ impl SamlService {
         saml_response: &str,
         _expected_idp_entity_id: &str,
     ) -> Result<()> {
-        // Decode and decompress
-        let decoded = Base64UrlUnpadded::decode_vec(saml_response).map_err(|_| {
-            AuthencError::ValidationError {
-                message: "Invalid SAML logout response encoding".to_string(),
-            }
-        })?;
+        // Decode — same logic as decode_saml_response: try standard base64
+        // first, then URL-safe unpadded as fallback.
+        let cleaned: String = saml_response
+            .chars()
+            .filter(|c| !c.is_ascii_whitespace())
+            .collect();
 
-        let xml = self.deflate_decompress(&decoded)?;
+        let decoded = base64ct::Base64::decode_vec(&cleaned)
+            .or_else(|_| Base64UrlUnpadded::decode_vec(&cleaned))
+            .map_err(|_| AuthencError::ValidationError {
+                message: "Invalid SAML logout response encoding".to_string(),
+            })?;
+
+        let xml = match self.deflate_decompress(&decoded) {
+            Ok(xml) => xml,
+            Err(_) => String::from_utf8(decoded).map_err(|_| AuthencError::ValidationError {
+                message: "SAML logout response is not valid UTF-8".to_string(),
+            })?,
+        };
 
         // Parse XML (simplified - in production, use proper SAML logout response parsing)
         if xml.contains("urn:oasis:names:tc:SAML:2.0:status:Success") {

@@ -28,7 +28,7 @@ use async_trait::async_trait;
 /// - Provide tamper-evident storage mechanisms
 ///
 /// # Example Implementation
-/// ```rust
+/// ```rust,no_run
 /// use async_trait::async_trait;
 /// use authenc::services::stores::audit_log_store::AuditLogStore;
 /// use authenc::models::audit_log::AuditLog;
@@ -71,7 +71,7 @@ pub trait AuditLogStore: Send + Sync {
     /// - Implement proper error handling without exposing sensitive data
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use authenc::models::audit_log::AuditLog;
     /// use chrono::{DateTime, Utc};
     ///
@@ -112,7 +112,7 @@ pub trait AuditLogStore: Send + Sync {
     /// - Optimize database queries for common access patterns
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// // let all_logs = audit_store.all().await?;
     /// // for log in all_logs {

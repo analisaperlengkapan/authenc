@@ -108,6 +108,7 @@ chrono = { version = "0.4", features = ["serde"] }
 dashmap = { version = "6.1.0", features = ["raw-api"] }
 num_cpus = "1.16"
 serde_qs = "0.15.0"
+form-urlencoded = "1.2"
 url = "2.0"
 urlencoding = "2.1"
 
@@ -321,6 +322,7 @@ chrono = { workspace = true }
 dashmap = { workspace = true }
 num_cpus = { workspace = true }
 serde_qs = { workspace = true }
+form-urlencoded = { workspace = true }
 url = { workspace = true, optional = true }
 urlencoding = { workspace = true }
 
@@ -390,6 +392,7 @@ tokio-test = "0.4"
 serial_test = { workspace = true }
 lazy_static = "1.5"
 temp-env = { workspace = true }
+url = { workspace = true }
 webauthn-rs = { workspace = true }
 
 # Performance optimization profiles

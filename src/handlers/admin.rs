@@ -1,11 +1,11 @@
 use crate::app::AppState;
 use crate::error::AuthencError;
 use authenc_services::services::admin::{
-    AdminManager, AdminService, AuditLogResponse, CreateIdentityProviderRequest,
+    AdminManager, AdminServiceError, AuditLogResponse, CreateIdentityProviderRequest,
     CreatePolicyRequest, CreateRoleRequest, CreateUserRequest, IdentityProviderResponse,
     PolicyResponse, RoleResponse, SecurityEvent, SessionListResponse, SystemStats,
-    TestIdentityProviderResponse, UpdateIdentityProviderRequest, UpdateUserRequest,
-    UserListResponse, UserResponse,
+    TestIdentityProviderResponse, UpdateIdentityProviderRequest, UpdateRoleRequest,
+    UpdateUserRequest, UserListResponse, UserResponse,
 };
 use axum::{
     Router,
@@ -17,6 +17,20 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
+
+use log::error;
+
+/// Convert an AdminServiceError to an appropriate HTTP StatusCode
+fn admin_error_to_status(e: &AdminServiceError) -> StatusCode {
+    match e {
+        AdminServiceError::NotFound(_) | AdminServiceError::AlreadyDeleted(_) => {
+            StatusCode::NOT_FOUND
+        }
+        AdminServiceError::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
+        AdminServiceError::BadRequest(_) => StatusCode::BAD_REQUEST,
+        AdminServiceError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
 
 #[derive(Deserialize)]
 /// Query parameters for listing users with filtering and pagination
@@ -101,8 +115,8 @@ pub async fn get_system_stats(
     match admin_manager.get_system_stats().await {
         Ok(stats) => Ok(Json(stats)),
         Err(e) => {
-            eprintln!("Failed to get system stats: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to get system stats: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -150,33 +164,40 @@ pub async fn list_users(
     match admin_manager.get_users(&realm_id, page, limit).await {
         Ok(response) => Ok(Json(response)),
         Err(e) => {
-            eprintln!("Failed to list users: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to list users: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
 
 /// Get user by ID
 pub async fn get_user(
-    State(_state): State<Arc<AppState>>,
-    Path(_user_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    Path(user_id): Path<Uuid>,
 ) -> Result<Json<UserResponse>, StatusCode> {
-    // Mock response - in real implementation would fetch from service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.get_user(&user_id).await {
+        Ok(user) => Ok(Json(user)),
+        Err(e) => {
+            error!("Failed to get user: {}", e);
+            Err(admin_error_to_status(&e))
+        }
+    }
 }
 
 /// Create a new user
 pub async fn create_user(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateUserRequest>,
-) -> Result<Json<UserResponse>, StatusCode> {
+) -> Result<(StatusCode, Json<UserResponse>), StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.create_user(request).await {
-        Ok(user) => Ok(Json(user)),
+        Ok(user) => Ok((StatusCode::CREATED, Json(user))),
         Err(e) => {
-            eprintln!("Failed to create user: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to create user: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -192,8 +213,8 @@ pub async fn update_user(
     match admin_manager.update_user(&user_id, request).await {
         Ok(user) => Ok(Json(user)),
         Err(e) => {
-            eprintln!("Failed to update user: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to update user: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -208,49 +229,74 @@ pub async fn delete_user(
     match admin_manager.delete_user(&user_id).await {
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
-            eprintln!("Failed to delete user: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to delete user: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
 
 /// List user sessions
 pub async fn list_sessions(
-    State(_state): State<Arc<AppState>>,
-    Query(_query): Query<ListSessionsQuery>,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ListSessionsQuery>,
 ) -> Result<Json<SessionListResponse>, StatusCode> {
-    // Mock response - in real implementation would fetch from service
-    let response = SessionListResponse {
-        sessions: vec![],
-        total_count: 0,
-        page: 1,
-        limit: 20,
-    };
-    Ok(Json(response))
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    let page = query.page.unwrap_or(1);
+    let limit = query.limit.unwrap_or(20);
+
+    match admin_manager
+        .get_sessions(query.user_id, query.realm_id, page, limit)
+        .await
+    {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => {
+            error!("Failed to list sessions: {}", e);
+            Err(admin_error_to_status(&e))
+        }
+    }
 }
 
 /// Terminate user session
 pub async fn terminate_session(
-    State(_state): State<Arc<AppState>>,
-    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    // Mock response - in real implementation would terminate via service
-    Ok(StatusCode::NO_CONTENT)
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.terminate_session(&session_id).await {
+        Ok(_) => Ok(StatusCode::NO_CONTENT),
+        Err(e) => {
+            error!("Failed to terminate session: {}", e);
+            Err(admin_error_to_status(&e))
+        }
+    }
 }
 
 /// List audit logs
 pub async fn list_audit_logs(
-    State(_state): State<Arc<AppState>>,
-    Query(_query): Query<ListAuditLogsQuery>,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ListAuditLogsQuery>,
 ) -> Result<Json<AuditLogResponse>, StatusCode> {
-    // Mock response - in real implementation would fetch from service
-    let response = AuditLogResponse {
-        logs: vec![],
-        total_count: 0,
-        page: 1,
-        limit: 50,
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    let filter = authenc_services::services::admin::AuditLogFilter {
+        user_id: query.user_id,
+        event_type: query.event_type,
+        realm_id: query.realm_id,
+        from_date: query.from_date,
+        to_date: query.to_date,
+        page: query.page.unwrap_or(1),
+        limit: query.limit.unwrap_or(50),
     };
-    Ok(Json(response))
+
+    match admin_manager.get_audit_logs(filter).await {
+        Ok(response) => Ok(Json(response)),
+        Err(e) => {
+            error!("Failed to list audit logs: {}", e);
+            Err(admin_error_to_status(&e))
+        }
+    }
 }
 
 /// List roles
@@ -274,8 +320,8 @@ pub async fn list_roles(
     match admin_manager.get_roles(&realm_id).await {
         Ok(roles) => Ok(Json(roles)),
         Err(e) => {
-            eprintln!("Failed to list roles: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to list roles: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -284,44 +330,65 @@ pub async fn list_roles(
 pub async fn create_role(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateRoleRequest>,
-) -> Result<Json<RoleResponse>, StatusCode> {
+) -> Result<(StatusCode, Json<RoleResponse>), StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.create_role(request).await {
-        Ok(role) => Ok(Json(role)),
+        Ok(role) => Ok((StatusCode::CREATED, Json(role))),
         Err(e) => {
-            eprintln!("Failed to create role: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to create role: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
 
 /// Get role by ID
 pub async fn get_role(
-    State(_state): State<Arc<AppState>>,
-    Path(_role_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    Path(role_id): Path<Uuid>,
 ) -> Result<Json<RoleResponse>, StatusCode> {
-    // Mock response - in real implementation would fetch from service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.get_role(&role_id).await {
+        Ok(role) => Ok(Json(role)),
+        Err(e) => {
+            error!("Failed to get role: {}", e);
+            Err(admin_error_to_status(&e))
+        }
+    }
 }
 
 /// Update role
 pub async fn update_role(
-    State(_state): State<Arc<AppState>>,
-    Path(_role_id): Path<Uuid>,
-    Json(_request): Json<CreateRoleRequest>,
+    State(state): State<Arc<AppState>>,
+    Path(role_id): Path<Uuid>,
+    Json(request): Json<UpdateRoleRequest>,
 ) -> Result<Json<RoleResponse>, StatusCode> {
-    // Mock response - in real implementation would update via service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.update_role(&role_id, request).await {
+        Ok(role) => Ok(Json(role)),
+        Err(e) => {
+            error!("Failed to update role: {}", e);
+            Err(admin_error_to_status(&e))
+        }
+    }
 }
 
 /// Delete role
 pub async fn delete_role(
-    State(_state): State<Arc<AppState>>,
-    Path(_role_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    Path(role_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    // Mock response - in real implementation would delete via service
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let admin_manager = AdminManager::new(state.database.clone());
+
+    match admin_manager.delete_role(&role_id).await {
+        Ok(_) => Ok(StatusCode::NO_CONTENT),
+        Err(e) => {
+            error!("Failed to delete role: {}", e);
+            Err(admin_error_to_status(&e))
+        }
+    }
 }
 
 /// List authorization policies
@@ -347,8 +414,8 @@ pub async fn list_policies(
     match admin_manager.get_policies(&realm_id, page, limit).await {
         Ok(policies) => Ok(Json(policies)),
         Err(e) => {
-            eprintln!("Failed to list policies: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to list policies: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -357,14 +424,14 @@ pub async fn list_policies(
 pub async fn create_policy(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreatePolicyRequest>,
-) -> Result<Json<PolicyResponse>, StatusCode> {
+) -> Result<(StatusCode, Json<PolicyResponse>), StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.create_policy(request).await {
-        Ok(policy) => Ok(Json(policy)),
+        Ok(policy) => Ok((StatusCode::CREATED, Json(policy))),
         Err(e) => {
-            eprintln!("Failed to create policy: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to create policy: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -415,8 +482,8 @@ pub async fn list_identity_providers(
     match admin_manager.get_identity_providers(&realm_id).await {
         Ok(providers) => Ok(Json(providers)),
         Err(e) => {
-            eprintln!("Failed to list identity providers: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to list identity providers: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -431,8 +498,8 @@ pub async fn get_identity_provider(
     match admin_manager.get_identity_provider(&provider_id).await {
         Ok(provider) => Ok(Json(provider)),
         Err(e) => {
-            eprintln!("Failed to get identity provider: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to get identity provider: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -441,14 +508,14 @@ pub async fn get_identity_provider(
 pub async fn create_identity_provider(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateIdentityProviderRequest>,
-) -> Result<Json<IdentityProviderResponse>, StatusCode> {
+) -> Result<(StatusCode, Json<IdentityProviderResponse>), StatusCode> {
     let admin_manager = AdminManager::new(state.database.clone());
 
     match admin_manager.create_identity_provider(request).await {
-        Ok(provider) => Ok(Json(provider)),
+        Ok(provider) => Ok((StatusCode::CREATED, Json(provider))),
         Err(e) => {
-            eprintln!("Failed to create identity provider: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to create identity provider: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -467,8 +534,8 @@ pub async fn update_identity_provider(
     {
         Ok(provider) => Ok(Json(provider)),
         Err(e) => {
-            eprintln!("Failed to update identity provider: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to update identity provider: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -483,8 +550,8 @@ pub async fn delete_identity_provider(
     match admin_manager.delete_identity_provider(&provider_id).await {
         Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
-            eprintln!("Failed to delete identity provider: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to delete identity provider: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -499,8 +566,8 @@ pub async fn test_identity_provider(
     match admin_manager.test_identity_provider(&provider_id).await {
         Ok(result) => Ok(Json(result)),
         Err(e) => {
-            eprintln!("Failed to test identity provider: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            error!("Failed to test identity provider: {}", e);
+            Err(admin_error_to_status(&e))
         }
     }
 }
@@ -514,6 +581,41 @@ pub struct ListIdentityProvidersQuery {
     pub provider_type: Option<String>,
     /// Filter by enabled status
     pub enabled: Option<bool>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_admin_error_to_status_not_found() {
+        let err = AdminServiceError::NotFound("missing".to_string());
+        assert_eq!(admin_error_to_status(&err), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_admin_error_to_status_already_deleted() {
+        let err = AdminServiceError::AlreadyDeleted("gone".to_string());
+        assert_eq!(admin_error_to_status(&err), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_admin_error_to_status_not_implemented() {
+        let err = AdminServiceError::NotImplemented("todo".to_string());
+        assert_eq!(admin_error_to_status(&err), StatusCode::NOT_IMPLEMENTED);
+    }
+
+    #[test]
+    fn test_admin_error_to_status_bad_request() {
+        let err = AdminServiceError::BadRequest("invalid".to_string());
+        assert_eq!(admin_error_to_status(&err), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_admin_error_to_status_internal() {
+        let err = AdminServiceError::Internal("db error".to_string());
+        assert_eq!(admin_error_to_status(&err), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }
 
 /// Create admin routes
