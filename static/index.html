@@ -2270,6 +2270,9 @@
             document.getElementById('org-settings-error').textContent = '';
         }
 
+        // Preserve fetched features so they are not lost on save
+        let _currentOrgFeatures = null;
+
         async function fetchOrganizationSettings(orgId) {
             try {
                 const response = await fetch(`${window.location.origin}/api/v1/organizations/${orgId}/settings`, {
@@ -2289,6 +2292,7 @@
                 document.getElementById('org-password-policy').value = settings.password_policy || 'default';
                 document.getElementById('org-session-timeout').value = settings.session_timeout;
                 document.getElementById('org-max-users').value = settings.max_users || '';
+                _currentOrgFeatures = settings.features || [];
 
             } catch (err) {
                 document.getElementById('org-settings-error').textContent = err.message;
@@ -2309,7 +2313,7 @@
                 password_policy: document.getElementById('org-password-policy').value,
                 session_timeout: parseInt(document.getElementById('org-session-timeout').value) || 3600,
                 max_users: document.getElementById('org-max-users').value ? parseInt(document.getElementById('org-max-users').value) : null,
-                features: ["oidc", "saml"] // Maintain current features for now
+                features: _currentOrgFeatures || ["oidc", "saml"]
             };
 
             try {

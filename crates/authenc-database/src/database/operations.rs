@@ -1796,6 +1796,11 @@ pub mod organizations {
     }
 
     /// Upsert organization settings
+    ///
+    /// Atomically verifies the organization has not been soft-deleted before
+    /// upserting by using a subquery in the INSERT statement, avoiding TOCTOU
+    /// races. Follows the same pattern as `add_member` and
+    /// `link_identity_provider`.
     pub async fn upsert_organization_settings(
         db: &Database,
         settings: &OrganizationSettings,
@@ -1806,7 +1811,9 @@ pub mod organizations {
                 enable_two_factor, password_policy, session_timeout,
                 max_users, features, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8, NOW()
+            FROM organizations
+            WHERE id = $1 AND deleted_at IS NULL
             ON CONFLICT (organization_id) DO UPDATE
             SET
                 allow_public_signup = EXCLUDED.allow_public_signup,
@@ -1819,7 +1826,7 @@ pub mod organizations {
                 updated_at = NOW()
         "#;
 
-        db.execute(
+        let rows_affected = db.execute(
             query,
             &[
                 &settings.organization_id,
@@ -1837,6 +1844,10 @@ pub mod organizations {
             error!("Failed to upsert organization settings: {}", e);
             AuthencError::database("Failed to upsert organization settings")
         })?;
+
+        if rows_affected == 0 {
+            return Err(AuthencError::resource_not_found("Organization not found"));
+        }
 
         Ok(())
     }
