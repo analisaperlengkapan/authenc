@@ -306,7 +306,7 @@ impl IdentityProvider for LdapIdentityProvider {
 
         // 3. Search for user
         let escaped_username = escape_ldap_filter_value(username);
-        let filter = self.user_search_filter.replace("{0}", &escaped_username);
+        let filter = self.user_search_filter.replace("{0}", &escaped_username).replace("{}", &escaped_username);
 
         let attrs = vec!["*", "+"];
 

@@ -3499,7 +3499,7 @@
                     first_name_attribute: document.getElementById('ldap-first-name-attr').value,
                     last_name_attribute: document.getElementById('ldap-last-name-attr').value,
                     group_attribute: document.getElementById('ldap-group-attr').value,
-                    import_enabled: document.getElementById('ldap-import-enabled').checked,
+                    import_enabled: String(document.getElementById('ldap-import-enabled').checked),
                     role_mappings: JSON.stringify(mappings)
                 };
             } else {
