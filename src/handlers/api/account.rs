@@ -136,6 +136,11 @@ pub async fn get_account_profile(
         || user.totp_secret.is_some();
     let mut response = UserResponse::from(user);
     response.totp_enabled = totp_enabled;
+    // Strip attributes from self-service read path — they may contain
+    // admin-managed data (internal flags, compliance tags) that should
+    // not be visible to end users. This is consistent with the write
+    // path in update_account_profile which also strips attributes.
+    response.attributes = None;
     Ok(Json(response))
 }
 
