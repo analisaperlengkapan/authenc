@@ -58,12 +58,13 @@ impl LdapIdentityProvider {
 
         let role_mappings = if let Some(json) = config.config.get("role_mappings") {
             // Role mappings are stored as a stringified JSON object in the config map
-            if json.starts_with('{') {
-                serde_json::from_str(json).map_err(|e| {
+            let trimmed = json.trim();
+            if trimmed.starts_with('{') {
+                serde_json::from_str(trimmed).map_err(|e| {
                     tracing::error!("Failed to parse role_mappings: {}", e);
                     anyhow!("Invalid role_mappings JSON")
                 })?
-            } else if json.is_empty() {
+            } else if trimmed.is_empty() {
                 HashMap::new()
             } else {
                 return Err(anyhow!("role_mappings must be a stringified JSON object"));
