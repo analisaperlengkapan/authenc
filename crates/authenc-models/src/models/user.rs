@@ -658,6 +658,8 @@ pub struct UserResponse {
     pub organization_id: Option<Uuid>,
     /// Whether the user must change their password on next login
     pub require_password_change: bool,
+    /// Additional user attributes as JSON
+    pub attributes: Option<serde_json::Value>,
     /// Whether the user account is enabled
     pub enabled: bool,
     /// Timestamp when the user was created
@@ -851,6 +853,7 @@ impl From<User> for UserResponse {
             realm_id: user.realm_id,
             organization_id: user.organization_id,
             require_password_change: user.require_password_change,
+            attributes: user.attributes,
             enabled: user.enabled,
             created_at: user.created_at,
             updated_at: user.updated_at,

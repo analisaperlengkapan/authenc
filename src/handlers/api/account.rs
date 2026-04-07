@@ -351,10 +351,21 @@ pub async fn delete_account(
     // Delete all WebAuthn credentials for the user
     state.webauthn_service.delete_user_credentials(user_id).await?;
 
-    // Remove TOTP secret
+    // Clear TOTP secret from DB first (more likely to fail)
+    state.user_store
+        .clear_totp_secret(user_id)
+        .await
+        .map_err(|e| AuthencError::internal(format!("Failed to clear TOTP secret in database: {}", e)))?;
+
+    // Remove TOTP secret from in-memory store
     state.totp_store
         .remove_secret(&user_id.to_string())
         .map_err(|e| AuthencError::internal(format!("Failed to remove TOTP secret: {}", e)))?;
+
+    // Also remove backup codes from in-memory store
+    state.totp_store
+        .remove_backup_codes(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to remove backup codes: {}", e)))?;
 
     // Delete the user account
     state.user_store.delete_user(user_id).await?;

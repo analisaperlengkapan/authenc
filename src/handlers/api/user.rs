@@ -398,6 +398,19 @@ pub async fn delete_user_totp(
         return Err(AuthencError::resource_not_found("User not found in realm"));
     }
 
+    // Check if TOTP is configured before attempting removal.
+    let has_totp = state
+        .totp_store
+        .get_secret(&user_id.to_string())
+        .ok()
+        .flatten()
+        .is_some()
+        || user.totp_secret.is_some();
+
+    if !has_totp {
+        return Err(AuthencError::resource_not_found("TOTP is not configured for this user"));
+    }
+
     // Clear the totp_secret field in the database first so that
     // if this fails, we haven't yet modified the in-memory state.
     // The DB operation is more likely to fail; the in-memory removal is trivial.
