@@ -24,7 +24,7 @@ pub struct LdapIdentityProvider {
     bind_dn: Option<String>,
     /// Bind password for initial connection (optional)
     bind_password: Option<String>,
-    /// User search filter template (e.g. "(uid={})")
+    /// User search filter template (e.g. "(uid={0})")
     user_search_filter: String,
     /// Role mappings (LDAP Group -> Authenc Role)
     role_mappings: HashMap<String, String>,
@@ -54,7 +54,7 @@ impl LdapIdentityProvider {
             .config
             .get("user_search_filter")
             .cloned()
-            .unwrap_or_else(|| "(uid={})".to_string());
+            .unwrap_or_else(|| "(uid={0})".to_string());
 
         let role_mappings = if let Some(json) = config.config.get("role_mappings") {
             // Role mappings are stored as a stringified JSON object in the config map
@@ -306,7 +306,7 @@ impl IdentityProvider for LdapIdentityProvider {
 
         // 3. Search for user
         let escaped_username = escape_ldap_filter_value(username);
-        let filter = self.user_search_filter.replace("{}", &escaped_username);
+        let filter = self.user_search_filter.replace("{0}", &escaped_username);
 
         let attrs = vec!["*", "+"];
 

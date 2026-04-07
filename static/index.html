@@ -3323,6 +3323,7 @@
             document.getElementById('edit-provider-type').disabled = false;
             document.getElementById('edit-provider-config').value = '{\n  "client_id": "",\n  "client_secret": ""\n}';
             document.getElementById('provider-config-json-container').classList.remove('hidden');
+            document.getElementById('edit-provider-config').required = true;
             document.getElementById('ldap-wizard').classList.add('hidden');
             document.getElementById('edit-provider-enabled').checked = true;
             document.getElementById('edit-provider-error').style.display = 'none';
@@ -3490,8 +3491,8 @@
                 configObj = {
                     server_url: document.getElementById('ldap-url').value,
                     base_dn: document.getElementById('ldap-base-dn').value,
-                    bind_dn: document.getElementById('ldap-bind-dn').value || null,
-                    bind_password: document.getElementById('ldap-bind-password').value || null,
+                    bind_dn: document.getElementById('ldap-bind-dn').value || undefined,
+                    bind_password: document.getElementById('ldap-bind-password').value || undefined,
                     user_search_filter: document.getElementById('ldap-search-filter').value,
                     username_attribute: document.getElementById('ldap-username-attr').value,
                     email_attribute: document.getElementById('ldap-email-attr').value,
