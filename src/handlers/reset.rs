@@ -69,10 +69,20 @@ pub async fn request_password_reset(
         }
     };
 
-    state
+    match state
         .password_reset_service
         .request_reset(&payload.email, &realm_id)
-        .await?;
+        .await
+    {
+        Ok(_) => {},
+        Err(e) => {
+            // Log the error but always return OK to prevent email enumeration.
+            // The service already returns Ok(()) for non-existent/disabled emails,
+            // but a database or network error could propagate a different status
+            // code and leak information about whether the email exists.
+            tracing::error!("Failed to request password reset: {}", e);
+        }
+    }
 
     Ok((
         StatusCode::OK,

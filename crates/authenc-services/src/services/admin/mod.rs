@@ -364,7 +364,7 @@ pub struct UpdateUserRequest {
     /// - Absent from JSON → `None` (no change)
     /// - JSON `null` → `Some(None)` (clear the field)
     /// - JSON `"uuid-string"` → `Some(Some(uuid))` (set the field)
-    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
+    #[serde(default, deserialize_with = "deserialize_optional_nullable", skip_serializing_if = "Option::is_none")]
     pub organization_id: Option<Option<Uuid>>,
     /// New user attributes
     pub attributes: Option<serde_json::Value>,
