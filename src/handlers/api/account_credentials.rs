@@ -166,12 +166,21 @@ pub async fn remove_account_credential(
     match credential_id.as_str() {
         "totp" => {
             // Check if TOTP is configured before attempting removal.
+            // Check both the in-memory TotpStore and the database column,
+            // consistent with delete_user_totp in user.rs.
+            let user = state
+                .user_store
+                .get_user(user_id)
+                .await?
+                .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+
             let has_totp = state
                 .totp_store
                 .get_secret(&user_id.to_string())
                 .ok()
                 .flatten()
-                .is_some();
+                .is_some()
+                || user.totp_secret.is_some();
 
             if !has_totp {
                 return Err(AuthencError::resource_not_found("Credential not found"));
