@@ -165,26 +165,36 @@ pub async fn remove_account_credential(
 
     match credential_id.as_str() {
         "totp" => {
-            // Remove TOTP secret for the current user.
-            // Ownership is implicitly verified because we only delete using the authenticated user_id.
-            // If the secret doesn't exist for this user, remove_secret returns false, allowing us to return 404.
-            // This is atomic and more efficient than get-then-remove.
-            let removed = state
+            // Check if TOTP is configured before attempting removal.
+            let has_totp = state
+                .totp_store
+                .get_secret(&user_id.to_string())
+                .ok()
+                .flatten()
+                .is_some();
+
+            if !has_totp {
+                return Err(AuthencError::resource_not_found("Credential not found"));
+            }
+
+            // Clear the DB totp_secret column first (more likely to fail).
+            // If this fails we haven't modified the in-memory state yet.
+            state
+                .user_store
+                .clear_totp_secret(user_id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to clear totp_secret in database for user {}: {}", user_id, e);
+                    AuthencError::internal(format!("Failed to clear totp_secret in database: {}", e))
+                })?;
+
+            // Remove TOTP secret from in-memory store.
+            state
                 .totp_store
                 .remove_secret(&user_id.to_string())
                 .map_err(|e| {
                     AuthencError::internal(format!("Failed to remove TOTP secret: {}", e))
                 })?;
-
-            if !removed {
-                return Err(AuthencError::resource_not_found("Credential not found"));
-            }
-
-            // Also clear the DB totp_secret column so that
-            // user_response_with_totp's OR check stays consistent.
-            if let Err(e) = state.user_store.clear_totp_secret(user_id).await {
-                tracing::error!("Failed to clear totp_secret in database for user {}: {}", user_id, e);
-            }
         }
         "password" => {
             return Err(AuthencError::validation(
