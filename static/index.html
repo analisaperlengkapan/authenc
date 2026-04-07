@@ -3325,6 +3325,9 @@
             document.getElementById('provider-config-json-container').classList.remove('hidden');
             document.getElementById('edit-provider-config').required = true;
             document.getElementById('ldap-wizard').classList.add('hidden');
+            // Clear sensitive LDAP wizard fields to prevent credential leakage from a previous edit session
+            document.getElementById('ldap-bind-dn').value = '';
+            document.getElementById('ldap-bind-password').value = '';
             document.getElementById('edit-provider-enabled').checked = true;
             document.getElementById('edit-provider-error').style.display = 'none';
             document.getElementById('edit-provider-modal').classList.remove('hidden');
