@@ -17,6 +17,21 @@ use authenc_services::services::stores::social_account_store::SocialAccountStore
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// Create a UserResponse from a User, checking the in-memory TotpStore
+/// for the actual TOTP status instead of relying on the database column
+/// (which may not be populated during normal TOTP setup flows).
+fn user_response_with_totp(user: authenc_models::models::user::User, totp_store: &authenc_services::services::stores::totp_store::TotpStore) -> UserResponse {
+    let totp_enabled = totp_store
+        .get_secret(&user.id.to_string())
+        .ok()
+        .flatten()
+        .is_some()
+        || user.totp_secret.is_some();
+    let mut response = UserResponse::from(user);
+    response.totp_enabled = totp_enabled;
+    response
+}
+
 /// Create user management routes for a realm
 pub fn create_user_routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -51,7 +66,7 @@ pub async fn get_users(
         .user_store
         .get_users_by_realm(realm_id)
         .await?;
-    let response_users = users.into_iter().map(UserResponse::from).collect();
+    let response_users = users.into_iter().map(|u| user_response_with_totp(u, &state.totp_store)).collect();
     Ok(Json(response_users))
 }
 
@@ -74,7 +89,7 @@ pub async fn get_user_by_id(
         return Err(AuthencError::resource_not_found("User not found in realm"));
     }
 
-    Ok(Json(UserResponse::from(user)))
+    Ok(Json(user_response_with_totp(user, &state.totp_store)))
 }
 #[derive(Deserialize)]
 /// Request payload for creating a new user account
@@ -177,7 +192,7 @@ pub async fn create_user(
         tracing::error!("Failed to fire user creation admin event: {}", e);
     }
 
-    Ok(Json(UserResponse::from(created_user)))
+    Ok(Json(user_response_with_totp(created_user, &state.totp_store)))
 }
 #[derive(Deserialize)]
 /// Request payload for updating user information
@@ -375,13 +390,14 @@ pub async fn delete_user_totp(
     // Also clear the totp_secret field in the database so that
     // UserResponse.totp_enabled (derived from user.totp_secret.is_some())
     // reflects the actual state.
-    if let Err(e) = state
+    state
         .user_store
         .clear_totp_secret(user_id)
         .await
-    {
-        tracing::error!("Failed to clear totp_secret in database for user {}: {}", user_id, e);
-    }
+        .map_err(|e| {
+            tracing::error!("Failed to clear totp_secret in database for user {}: {}", user_id, e);
+            AuthencError::internal(format!("Failed to clear totp_secret in database: {}", e))
+        })?;
 
     // Fire admin event for TOTP deletion
     let auth_details = crate::models::events::AuthDetails {
