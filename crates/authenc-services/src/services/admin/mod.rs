@@ -3,7 +3,7 @@ use authenc_database::database::operations;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use ldap3::LdapConnSettings;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -51,6 +51,21 @@ impl From<String> for AdminServiceError {
     fn from(s: String) -> Self {
         AdminServiceError::Internal(s)
     }
+}
+
+/// Deserialize a field as `Option<Option<T>>`:
+/// - JSON `null` or explicit `null` → `Some(None)` (clear the field)
+/// - JSON value present → `Some(Some(value))`
+/// - Field absent → `None` (no change)
+///
+/// Use with `#[serde(default, deserialize_with = "deserialize_optional_nullable")]`.
+fn deserialize_optional_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    let value: Option<T> = Option::deserialize(deserializer)?;
+    Ok(Some(value))
 }
 
 /// Check if a database error message indicates a unique constraint violation
@@ -345,8 +360,12 @@ pub struct UpdateUserRequest {
     pub enabled: Option<bool>,
     /// New password change requirement
     pub require_password_change: Option<bool>,
-    /// ID of the organization the user belongs to
-    pub organization_id: Option<Uuid>,
+    /// ID of the organization the user belongs to.
+    /// - Absent from JSON → `None` (no change)
+    /// - JSON `null` → `Some(None)` (clear the field)
+    /// - JSON `"uuid-string"` → `Some(Some(uuid))` (set the field)
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
+    pub organization_id: Option<Option<Uuid>>,
     /// New user attributes
     pub attributes: Option<serde_json::Value>,
 }
@@ -1250,7 +1269,7 @@ impl AdminService for AdminManager {
             email_verified: request.email_verified,
             phone_verified: request.phone_verified,
             require_password_change: request.require_password_change,
-            organization_id: request.organization_id.map(Some),
+            organization_id: request.organization_id,
             attributes: request.attributes.clone(),
         };
 

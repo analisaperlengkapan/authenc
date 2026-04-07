@@ -10,12 +10,25 @@ use axum::{
     response::Json,
     routing::{delete, get, patch, post, put},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use authenc_models::models::social_account::{CreateSocialAccountRequest, SocialAccountResponse};
 use authenc_services::services::social::SocialProvider;
 use authenc_services::services::stores::social_account_store::SocialAccountStoreTrait;
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Deserialize a field as `Option<Option<T>>`:
+/// - JSON `null` → `Some(None)` (clear the field)
+/// - JSON value present → `Some(Some(value))`
+/// - Field absent → `None` (no change)
+fn deserialize_optional_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    let value: Option<T> = Option::deserialize(deserializer)?;
+    Ok(Some(value))
+}
 
 /// Create a UserResponse from a User, checking the in-memory TotpStore
 /// for the actual TOTP status instead of relying on the database column
@@ -215,8 +228,12 @@ pub struct UpdateUserRequest {
     pub phone_verified: Option<bool>,
     /// Whether the user must change their password on next login
     pub require_password_change: Option<bool>,
-    /// Optional organization ID the user belongs to
-    pub organization_id: Option<Uuid>,
+    /// Optional organization ID the user belongs to.
+    /// - Absent from JSON → `None` (no change)
+    /// - JSON `null` → `Some(None)` (clear the field)
+    /// - JSON `"uuid-string"` → `Some(Some(uuid))` (set the field)
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
+    pub organization_id: Option<Option<Uuid>>,
     /// Additional user attributes as JSON
     pub attributes: Option<serde_json::Value>,
 }
@@ -248,8 +265,6 @@ pub async fn update_user(
     }
 
     // Create update request for the model
-    // Convert handler's Option<Uuid> to model's Option<Option<Uuid>>:
-    // Some(uuid) → Some(Some(uuid)), None → None (no change)
     let update_request = crate::models::user::UpdateUserRequest {
         username: req.username,
         email: req.email,
@@ -260,7 +275,7 @@ pub async fn update_user(
         email_verified: req.email_verified,
         phone_verified: req.phone_verified,
         require_password_change: req.require_password_change,
-        organization_id: req.organization_id.map(Some),
+        organization_id: req.organization_id,
         attributes: req.attributes,
     };
 
@@ -400,6 +415,12 @@ pub async fn delete_user_totp(
         .totp_store
         .remove_secret(&user_id.to_string())
         .map_err(|e| AuthencError::internal(format!("Failed to remove TOTP secret: {}", e)))?;
+
+    // Also remove backup codes from in-memory store
+    state
+        .totp_store
+        .remove_backup_codes(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to remove backup codes: {}", e)))?;
 
     // Fire admin event for TOTP deletion
     let auth_details = crate::models::events::AuthDetails {

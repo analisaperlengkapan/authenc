@@ -195,6 +195,14 @@ pub async fn remove_account_credential(
                 .map_err(|e| {
                     AuthencError::internal(format!("Failed to remove TOTP secret: {}", e))
                 })?;
+
+            // Also remove backup codes from in-memory store.
+            state
+                .totp_store
+                .remove_backup_codes(&user_id.to_string())
+                .map_err(|e| {
+                    AuthencError::internal(format!("Failed to remove backup codes: {}", e))
+                })?;
         }
         "password" => {
             return Err(AuthencError::validation(
@@ -360,6 +368,12 @@ pub async fn disable_totp(
         .totp_store
         .remove_secret(&user_id.to_string())
         .map_err(|e| AuthencError::internal(format!("Failed to remove TOTP secret: {}", e)))?;
+
+    // Also remove backup codes from in-memory store
+    state
+        .totp_store
+        .remove_backup_codes(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to remove backup codes: {}", e)))?;
 
     Ok(StatusCode::NO_CONTENT)
 }

@@ -249,6 +249,11 @@ pub async fn get_user_info(
         ));
     };
 
+    // NOTE: `totp_enabled` in the response is derived from the DB `totp_secret`
+    // column, which may not reflect the in-memory TotpStore (the primary source
+    // of truth during normal TOTP setup flows). This handler does not have access
+    // to the TotpStore, so `totp_enabled` may be inaccurate here. This is
+    // acceptable for this permission-management utility endpoint.
     Ok(Json(user.into()))
 }
 
