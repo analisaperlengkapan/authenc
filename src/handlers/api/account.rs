@@ -150,6 +150,10 @@ pub async fn update_account_profile(
 
     // Strip admin-only fields that a regular user must not be able to modify
     // on their own account via the self-service endpoint.
+    // NOTE: `attributes` is also stripped because it may contain admin-managed
+    // data (e.g., internal flags, compliance tags). If user-settable profile
+    // attributes are needed in the future, consider a separate allowlisted
+    // "user_attributes" field.
     let sanitized_request = UpdateUserRequest {
         username: update_request.username,
         email: update_request.email,
@@ -161,7 +165,7 @@ pub async fn update_account_profile(
         phone_verified: None,
         require_password_change: None,
         organization_id: None,
-        attributes: update_request.attributes,
+        attributes: None,
     };
 
     state.user_store.update_user(user_id, sanitized_request).await?;

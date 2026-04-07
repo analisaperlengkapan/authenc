@@ -1,7 +1,4 @@
-use authenc::AppState;
-use authenc::handlers::api::auth::LoginRequest;
-use authenc_models::models::user::{CreateUserRequest, UpdateUserRequest, UserResponse};
-use authenc_services::services::stores::user_store::UserStoreTrait;
+use authenc_models::models::user::UserResponse;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use serde_json::json;
@@ -11,14 +8,7 @@ use std::sync::Arc;
 mod common;
 
 async fn setup_test_server() -> TestServer {
-    let mut config = common::build_test_config().await;
-    // We need a working DB for these tests since I cannot easily mock AppState's nested Arc traits
-    // but the environment seems to have one if configured correctly.
-    // However, since AppState::new fails, I'll try to bypass it by using the mocks if I can construct a router manually.
-
-    let db = Arc::new(authenc::database::Database::new(&config.database).await.expect("DB init failed"));
-    let user_store = Arc::new(authenc::services::stores::user_store::UserStore::new(db.clone()));
-    let totp_store = Arc::new(authenc::services::stores::totp_store::TotpStore::new());
+    let config = common::build_test_config().await;
 
     // Create a minimal AppState-like structure for the router
     let state = authenc::app::AppState::new(config).await.expect("Failed to create AppState");
@@ -31,7 +21,7 @@ async fn setup_test_server() -> TestServer {
 #[tokio::test]
 async fn test_delete_user_totp_endpoint() {
     // Skip if no DB
-    let mut config = common::build_test_config().await;
+    let config = common::build_test_config().await;
     if authenc::database::Database::new(&config.database).await.is_err() {
         return;
     }
@@ -72,7 +62,7 @@ async fn test_delete_user_totp_endpoint() {
 
 #[tokio::test]
 async fn test_password_policy_unified_error() {
-    let mut config = common::build_test_config().await;
+    let config = common::build_test_config().await;
     if authenc::database::Database::new(&config.database).await.is_err() {
         return;
     }
@@ -107,7 +97,7 @@ async fn test_password_policy_unified_error() {
 
 #[tokio::test]
 async fn test_update_user_organization_id() {
-    let mut config = common::build_test_config().await;
+    let config = common::build_test_config().await;
     if authenc::database::Database::new(&config.database).await.is_err() {
         return;
     }

@@ -2371,7 +2371,7 @@ pub mod users {
                 account_locked_until, failed_login_attempts, last_login_at,
                 last_failed_login_at, password_changed_at, password_expires_at,
                 require_password_change, realm_id, organization_id, attributes,
-                enabled, federated, created_at, updated_at, deleted_at, last_login_at, login_count
+                enabled, federated, created_at, updated_at, deleted_at, login_count
             FROM users
             WHERE email = $2 AND realm_id = $1 AND deleted_at IS NULL
         "#;
