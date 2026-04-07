@@ -349,7 +349,7 @@ pub async fn delete_user(
 /// Delete a user's TOTP secret from the specified realm
 pub async fn delete_user_totp(
     State(state): State<Arc<AppState>>,
-    _auth: AuthBearer,
+    AuthBearer(auth): AuthBearer,
     Path((realm, id)): Path<(String, String)>,
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&id).map_err(|_| AuthencError::validation("Invalid user ID"))?;
@@ -371,6 +371,33 @@ pub async fn delete_user_totp(
         .totp_store
         .remove_secret(&user_id.to_string())
         .map_err(|e| AuthencError::internal(format!("Failed to remove TOTP secret: {}", e)))?;
+
+    // Fire admin event for TOTP deletion
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let admin_event = crate::services::events::AdminEventBuilder::new(
+        realm.clone(),
+        auth_details,
+        crate::models::events::ResourceType::User,
+        crate::models::events::OperationType::Delete,
+        format!("/realms/{}/users/{}/totp", realm, user_id),
+    )
+    .build();
+
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, false)
+        .await
+    {
+        tracing::error!("Failed to fire TOTP deletion admin event: {}", e);
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }

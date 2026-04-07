@@ -736,6 +736,9 @@ impl User {
         if let Some(require_password_change) = request.require_password_change {
             self.require_password_change = require_password_change;
         }
+        if let Some(organization_id) = request.organization_id {
+            self.organization_id = Some(organization_id);
+        }
         if let Some(attributes) = request.attributes {
             self.attributes = Some(attributes);
         }
