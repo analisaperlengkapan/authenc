@@ -102,6 +102,13 @@ impl UserStoreTrait for UserStore {
         operations::users::unlock_account(&self.database, user_id).await
     }
 
+    async fn clear_totp_secret(
+        &self,
+        user_id: Uuid,
+    ) -> Result<(), AuthencError> {
+        operations::users::clear_totp_secret(&self.database, user_id).await
+    }
+
     async fn set_reset_token(
         &self,
         user_id: Uuid,

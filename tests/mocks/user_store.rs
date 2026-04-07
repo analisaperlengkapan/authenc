@@ -142,6 +142,17 @@ impl UserStoreTrait for MockUserStore {
          Ok(users.values().filter(|u| u.realm_id == Some(realm_id)).cloned().collect())
     }
 
+    async fn clear_totp_secret(&self, user_id: Uuid) -> Result<()> {
+        let mut users = self.users.write().unwrap();
+        if let Some(user) = users.get_mut(&user_id) {
+            user.totp_secret = None;
+            user.totp_backup_codes = None;
+            Ok(())
+        } else {
+            Err(AuthencError::not_found("User not found"))
+        }
+    }
+
     async fn update_password(&self, user_id: Uuid, password_hash: String) -> Result<()> {
         let mut users = self.users.write().unwrap();
         if let Some(user) = users.get_mut(&user_id) {

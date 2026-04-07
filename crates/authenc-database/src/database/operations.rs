@@ -2380,6 +2380,18 @@ pub mod users {
         Ok(row.map(|r| row_to_user(&r)))
     }
 
+    /// Clear the TOTP secret for a user
+    pub async fn clear_totp_secret(db: &Database, user_id: Uuid) -> Result<()> {
+        let now = Utc::now();
+        let query = r#"
+            UPDATE users
+            SET totp_secret = NULL, totp_backup_codes = NULL, updated_at = $2
+            WHERE id = $1 AND deleted_at IS NULL
+        "#;
+        db.execute(query, &[&user_id, &now]).await?;
+        Ok(())
+    }
+
     /// Update user
     pub async fn update_user(
         db: &Database,

@@ -366,11 +366,22 @@ pub async fn delete_user_totp(
         return Err(AuthencError::resource_not_found("User not found in realm"));
     }
 
-    // Remove the TOTP secret
+    // Remove the TOTP secret from in-memory store
     state
         .totp_store
         .remove_secret(&user_id.to_string())
         .map_err(|e| AuthencError::internal(format!("Failed to remove TOTP secret: {}", e)))?;
+
+    // Also clear the totp_secret field in the database so that
+    // UserResponse.totp_enabled (derived from user.totp_secret.is_some())
+    // reflects the actual state.
+    if let Err(e) = state
+        .user_store
+        .clear_totp_secret(user_id)
+        .await
+    {
+        tracing::error!("Failed to clear totp_secret in database for user {}: {}", user_id, e);
+    }
 
     // Fire admin event for TOTP deletion
     let auth_details = crate::models::events::AuthDetails {
