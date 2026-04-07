@@ -248,6 +248,8 @@ pub async fn update_user(
     }
 
     // Create update request for the model
+    // Convert handler's Option<Uuid> to model's Option<Option<Uuid>>:
+    // Some(uuid) → Some(Some(uuid)), None → None (no change)
     let update_request = crate::models::user::UpdateUserRequest {
         username: req.username,
         email: req.email,
@@ -258,7 +260,7 @@ pub async fn update_user(
         email_verified: req.email_verified,
         phone_verified: req.phone_verified,
         require_password_change: req.require_password_change,
-        organization_id: req.organization_id,
+        organization_id: req.organization_id.map(Some),
         attributes: req.attributes,
     };
 

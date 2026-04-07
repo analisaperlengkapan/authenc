@@ -115,7 +115,8 @@ impl UserStoreTrait for MockUserStore {
                 user.email_verified = email_verified;
             }
              if let Some(organization_id) = req.organization_id {
-                user.organization_id = Some(organization_id);
+                // Some(Some(uuid)) → set, Some(None) → clear
+                user.organization_id = organization_id;
             }
              if let Some(attributes) = req.attributes {
                 user.attributes = Some(attributes);

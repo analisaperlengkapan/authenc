@@ -127,7 +127,16 @@ pub async fn get_account_profile(
         .await?
         .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
-    Ok(Json(user.into()))
+    // Check in-memory TotpStore for actual TOTP status (DB column may not be populated)
+    let totp_enabled = state.totp_store
+        .get_secret(&user_id.to_string())
+        .ok()
+        .flatten()
+        .is_some()
+        || user.totp_secret.is_some();
+    let mut response = UserResponse::from(user);
+    response.totp_enabled = totp_enabled;
+    Ok(Json(response))
 }
 
 /// Update current user's account profile
@@ -464,6 +473,13 @@ pub async fn disable_totp(
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    // Clear the DB totp_secret column first (more likely to fail).
+    // If this fails we haven't modified the in-memory state yet.
+    state.user_store
+        .clear_totp_secret(user_id)
+        .await
+        .map_err(|e| AuthencError::internal(format!("Failed to clear TOTP secret in database: {}", e)))?;
 
     state.totp_store
         .remove_secret(&user_id.to_string())

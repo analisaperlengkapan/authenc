@@ -1250,7 +1250,7 @@ impl AdminService for AdminManager {
             email_verified: request.email_verified,
             phone_verified: request.phone_verified,
             require_password_change: request.require_password_change,
-            organization_id: request.organization_id,
+            organization_id: request.organization_id.map(Some),
             attributes: request.attributes.clone(),
         };
 

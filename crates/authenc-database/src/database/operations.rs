@@ -2400,6 +2400,7 @@ pub mod users {
     ) -> Result<User> {
         let now = Utc::now();
         let has_org_id = request.organization_id.is_some();
+        let org_id_value: Option<Uuid> = request.organization_id.flatten();
 
         let query = r#"
             UPDATE users SET
@@ -2442,7 +2443,7 @@ pub mod users {
                     &request.phone_verified,
                     &request.require_password_change,
                     &has_org_id,
-                    &request.organization_id,
+                    &org_id_value,
                     &request
                         .attributes
                         .as_ref()
