@@ -10,6 +10,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::app::AppState;
+use crate::error::AuthencError;
+use authenc_services::services::security::password_policy::PasswordPolicy;
 
 /// Request payload for password reset
 #[derive(Debug, Deserialize)]
@@ -34,7 +36,7 @@ pub async fn request_password_reset(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(payload): Json<ForgotPasswordRequest>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AuthencError> {
     // Rate limit check using brute force protector (limits requests by IP)
     let ip = addr.ip().to_string();
     // Use a specific key prefix for password reset requests to separate from login attempts
@@ -44,17 +46,11 @@ pub async fn request_password_reset(
     match state.password_reset_protector.register_attempt(&rate_limit_key) {
         Ok(true) => {
             tracing::warn!("Rate limit exceeded for password reset request from IP: {}", ip);
-            return (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(json!({ "error": "Too many requests. Please try again later." })),
-            );
+            return Err(AuthencError::RateLimitExceeded);
         }
         Err(e) => {
             tracing::error!("Rate limiter error: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Internal server error" })),
-            );
+            return Err(AuthencError::internal("Internal server error"));
         }
         _ => {}
     }
@@ -73,25 +69,17 @@ pub async fn request_password_reset(
         }
     };
 
-    match state
+    state
         .password_reset_service
         .request_reset(&payload.email, &realm_id)
-        .await
-    {
-        Ok(_) => (
-            StatusCode::OK,
-            Json(json!({
-                "message": "If the email exists, a password reset link has been sent"
-            })),
-        ),
-        Err(e) => {
-            tracing::error!("Failed to request password reset: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Internal server error" })),
-            )
-        }
-    }
+        .await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "message": "If the email exists, a password reset link has been sent"
+        })),
+    ))
 }
 
 /// Handler for resetting the password
@@ -99,7 +87,7 @@ pub async fn reset_password(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(payload): Json<ResetPasswordRequest>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AuthencError> {
     // Rate limit check
     let ip = addr.ip().to_string();
     let rate_limit_key = format!("pwd_reset_sub:{}", ip);
@@ -107,27 +95,19 @@ pub async fn reset_password(
     match state.password_reset_protector.register_attempt(&rate_limit_key) {
         Ok(true) => {
             tracing::warn!("Rate limit exceeded for password reset submission from IP: {}", ip);
-            return (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(json!({ "error": "Too many requests. Please try again later." })),
-            );
+            return Err(AuthencError::RateLimitExceeded);
         }
         Err(e) => {
             tracing::error!("Rate limiter error: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Internal server error" })),
-            );
+            return Err(AuthencError::internal("Internal server error"));
         }
         _ => {}
     }
 
-    // Basic password validation
-    if payload.new_password.len() < 8 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Password must be at least 8 characters long" })),
-        );
+    // Validate password against policy
+    let policy = PasswordPolicy::default();
+    if let Err(e) = policy.validate(&payload.new_password) {
+        return Err(AuthencError::validation(format!("Password policy validation failed: {}", e)));
     }
 
     match state
@@ -135,21 +115,19 @@ pub async fn reset_password(
         .reset_password(&payload.token, &payload.new_password)
         .await
     {
-        Ok(_) => (
+        Ok(_) => Ok((
             StatusCode::OK,
             Json(json!({ "message": "Password reset successfully" })),
-        ),
+        )),
         Err(e) => {
             // Log specific error but return generic error to client to prevent information leakage
             tracing::warn!("Password reset failed: {}", e);
-            let (status, message) = if e.to_string().contains("Invalid") || e.to_string().contains("expired") {
+            if e.to_string().contains("Invalid") || e.to_string().contains("expired") {
                 // Return generic message for validation errors to hide whether token was valid-but-expired vs invalid
-                (StatusCode::BAD_REQUEST, "Invalid or expired reset token".to_string())
+                Err(AuthencError::validation("Invalid or expired reset token"))
             } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
-            };
-
-            (status, Json(json!({ "error": message })))
+                Err(AuthencError::internal("Internal server error"))
+            }
         }
     }
 }

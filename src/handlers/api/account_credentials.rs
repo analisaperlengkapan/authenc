@@ -10,6 +10,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AuthencError;
+use authenc_services::services::security::password_policy::PasswordPolicy;
 use authenc_services::services::stores::session_store::SessionStoreTrait;
 use authenc_services::services::stores::user_store::UserStoreTrait;
 use authenc_services::services::stores::totp_store::TotpStore;
@@ -125,6 +126,12 @@ pub async fn update_account_password(
 
     if !password_valid {
         return Err(AuthencError::unauthorized("Invalid current password"));
+    }
+
+    // Validate new password against policy
+    let policy = PasswordPolicy::default();
+    if let Err(e) = policy.validate(&password_request.new_password) {
+        return Err(AuthencError::validation(format!("Password policy validation failed: {}", e)));
     }
 
     // Hash the new password

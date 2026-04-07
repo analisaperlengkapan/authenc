@@ -244,6 +244,7 @@ pub async fn social_callback(
                      email_verified: Some(true),
                      phone_verified: None,
                      require_password_change: None,
+                     organization_id: None,
                      attributes: None,
                  };
                  let _ = state.user_store.update_user(user.id, update_req).await;

@@ -554,6 +554,22 @@
                     <input type="checkbox" id="edit-require-password-change" name="require_password_change" style="width: auto;">
                     <label for="edit-require-password-change" style="margin: 0;">Require Password Change</label>
                 </div>
+                <div class="form-group">
+                    <label for="edit-org-id">Organization ID (UUID)</label>
+                    <input type="text" id="edit-org-id" name="organization_id">
+                </div>
+                <div class="form-group">
+                    <label for="edit-attributes">Attributes (JSON)</label>
+                    <textarea id="edit-attributes" name="attributes" rows="3" style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.25rem; font-family: monospace;"></textarea>
+                </div>
+
+                <div style="margin-top: 1rem; margin-bottom: 1rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
+                    <h3 style="margin-bottom: 0.5rem;">Multi-Factor Authentication</h3>
+                    <div id="totp-status-container" style="margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between;">
+                        <span id="totp-status-text" style="font-size: 0.9rem;">Checking TOTP status...</span>
+                        <button type="button" id="disable-totp-btn" class="hidden" style="width: auto; background-color: var(--error); padding: 0.25rem 0.5rem; font-size: 0.8rem;">Disable TOTP</button>
+                    </div>
+                </div>
 
                 <div style="margin-top: 1rem; margin-bottom: 1rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
@@ -727,8 +743,12 @@
             <form id="edit-realm-form">
                 <input type="hidden" id="edit-realm-id">
                 <div class="form-group">
-                    <label for="edit-realm-name">Name</label>
+                    <label for="edit-realm-name">Name (Internal)</label>
                     <input type="text" id="edit-realm-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-realm-display-name">Display Name</label>
+                    <input type="text" id="edit-realm-display-name" name="display_name">
                 </div>
                 <div class="form-group">
                     <label for="edit-realm-description">Description</label>
@@ -737,6 +757,18 @@
                 <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
                     <input type="checkbox" id="edit-realm-enabled" name="enabled" style="width: auto;">
                     <label for="edit-realm-enabled" style="margin: 0;">Enabled</label>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="edit-realm-reg-allowed" name="registration_allowed" style="width: auto;">
+                    <label for="edit-realm-reg-allowed" style="margin: 0;">Registration Allowed</label>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="edit-realm-verify-email" name="verify_email" style="width: auto;">
+                    <label for="edit-realm-verify-email" style="margin: 0;">Verify Email</label>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="edit-realm-reset-pwd" name="reset_password_allowed" style="width: auto;">
+                    <label for="edit-realm-reset-pwd" style="margin: 0;">Reset Password Allowed</label>
                 </div>
                 <button type="submit">Save Realm</button>
                 <button type="button" class="secondary" onclick="closeEditRealmModal()">Cancel</button>
@@ -1387,6 +1419,63 @@
             }
         }
 
+        async function fetchUserTotpStatus(userId) {
+            const statusText = document.getElementById('totp-status-text');
+            const disableBtn = document.getElementById('disable-totp-btn');
+            statusText.textContent = 'Checking...';
+            disableBtn.classList.add('hidden');
+
+            try {
+                // In this implementation, we check if TOTP is enabled via a specific admin/account endpoint
+                // For simplicity in this static UI, we attempt to fetch credentials.
+                // If it's the current user, this will work. If it's another user, it depends on RBAC.
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/users/${userId}`;
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const user = await response.json();
+                    // We check attributes or a flag if present in the response
+                    // In our current UserResponse, we don't have totp_enabled yet, but let's assume it's there
+                    // or check if 'totp' is in a known attribute.
+                    if (user.totp_enabled) {
+                        statusText.textContent = 'Enabled';
+                        disableBtn.classList.remove('hidden');
+                        disableBtn.onclick = () => disableUserTotp(userId);
+                    } else {
+                        statusText.textContent = 'Not configured';
+                    }
+                } else {
+                    statusText.textContent = 'Unable to verify';
+                }
+            } catch (err) {
+                statusText.textContent = 'Error checking status';
+            }
+        }
+
+        async function disableUserTotp(userId) {
+            if (!confirm("Are you sure you want to disable TOTP for this user?")) return;
+
+            try {
+                // Assuming a backend endpoint exists to disable TOTP for a specific user as an admin
+                let url = `${API_BASE}/auth/realms/${currentRealmId}/users/${userId}/totp`;
+                const response = await fetch(url, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    alert('TOTP disabled successfully');
+                    fetchUserTotpStatus(userId);
+                } else {
+                    alert('Failed to disable TOTP');
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
         async function fetchUserSocialAccounts(userId) {
             const container = document.getElementById('social-accounts-container');
             const table = document.getElementById('social-accounts-table');
@@ -1548,9 +1637,12 @@
             document.getElementById('edit-enabled').checked = user.enabled;
             document.getElementById('edit-email-verified').checked = user.email_verified;
             document.getElementById('edit-require-password-change').checked = user.require_password_change || false;
+            document.getElementById('edit-org-id').value = user.organization_id || '';
+            document.getElementById('edit-attributes').value = JSON.stringify(user.attributes || {}, null, 2);
             document.getElementById('edit-user-error').style.display = 'none';
 
-            // Fetch social accounts
+            // Fetch TOTP status and social accounts
+            fetchUserTotpStatus(user.id);
             fetchUserSocialAccounts(user.id);
         }
 
@@ -1565,6 +1657,16 @@
             const errorDiv = document.getElementById('edit-user-error');
             errorDiv.style.display = 'none';
 
+            let attributes = {};
+            try {
+                const attrVal = document.getElementById('edit-attributes').value.trim();
+                attributes = attrVal ? JSON.parse(attrVal) : {};
+            } catch (err) {
+                errorDiv.textContent = 'Invalid JSON in Attributes field';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
             const payload = {
                 username: document.getElementById('edit-username').value,
                 email: document.getElementById('edit-email').value,
@@ -1573,7 +1675,9 @@
                 phone_number: document.getElementById('edit-phone').value || "",
                 enabled: document.getElementById('edit-enabled').checked,
                 email_verified: document.getElementById('edit-email-verified').checked,
-                require_password_change: document.getElementById('edit-require-password-change').checked
+                require_password_change: document.getElementById('edit-require-password-change').checked,
+                organization_id: document.getElementById('edit-org-id').value || null,
+                attributes: attributes
             };
 
             try {
@@ -2685,8 +2789,12 @@
             document.getElementById('edit-realm-title').textContent = 'Edit Realm';
             document.getElementById('edit-realm-id').value = realm.id;
             document.getElementById('edit-realm-name').value = realm.name;
+            document.getElementById('edit-realm-display-name').value = realm.display_name || '';
             document.getElementById('edit-realm-description').value = realm.description || '';
             document.getElementById('edit-realm-enabled').checked = realm.enabled;
+            document.getElementById('edit-realm-reg-allowed').checked = realm.registration_allowed || false;
+            document.getElementById('edit-realm-verify-email').checked = realm.verify_email || false;
+            document.getElementById('edit-realm-reset-pwd').checked = realm.reset_password_allowed || false;
             document.getElementById('edit-realm-error').style.display = 'none';
             document.getElementById('edit-realm-modal').classList.remove('hidden');
             document.getElementById('edit-realm-modal').style.display = 'flex';
@@ -2706,17 +2814,17 @@
             errorDiv.style.display = 'none';
 
             const isUpdate = id !== '';
-            let payload;
-            if (isUpdate) {
-                payload = {
-                    display_name: document.getElementById('edit-realm-name').value,
-                    description: document.getElementById('edit-realm-description').value || null,
-                };
-            } else {
-                payload = {
-                    name: document.getElementById('edit-realm-name').value,
-                    description: document.getElementById('edit-realm-description').value || null,
-                };
+            let payload = {
+                display_name: document.getElementById('edit-realm-display-name').value || null,
+                description: document.getElementById('edit-realm-description').value || null,
+                enabled: document.getElementById('edit-realm-enabled').checked,
+                registration_allowed: document.getElementById('edit-realm-reg-allowed').checked,
+                verify_email: document.getElementById('edit-realm-verify-email').checked,
+                reset_password_allowed: document.getElementById('edit-realm-reset-pwd').checked,
+            };
+
+            if (!isUpdate) {
+                payload.name = document.getElementById('edit-realm-name').value;
             }
 
             let url = `${API_BASE}/auth/realms`;

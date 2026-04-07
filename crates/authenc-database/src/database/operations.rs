@@ -2399,8 +2399,9 @@ pub mod users {
                 email_verified = COALESCE($8, email_verified),
                 phone_verified = COALESCE($9, phone_verified),
                 require_password_change = COALESCE($10, require_password_change),
-                attributes = COALESCE($11, attributes),
-                updated_at = $12
+                organization_id = COALESCE($11, organization_id),
+                attributes = COALESCE($12, attributes),
+                updated_at = $13
             WHERE id = $1 AND deleted_at IS NULL
             RETURNING
                 id, username, email, first_name, last_name,
@@ -2427,6 +2428,7 @@ pub mod users {
                     &request.email_verified,
                     &request.phone_verified,
                     &request.require_password_change,
+                    &request.organization_id,
                     &request
                         .attributes
                         .as_ref()

@@ -594,12 +594,14 @@ pub struct UpdateUserRequest {
     pub phone_verified: Option<bool>,
     /// Whether the user must change their password on next login
     pub require_password_change: Option<bool>,
+    /// ID of the organization the user belongs to
+    pub organization_id: Option<Uuid>,
     /// Additional user attributes as JSON
     pub attributes: Option<serde_json::Value>,
 }
 
 /// User response (without sensitive data)
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UserResponse {
     /// Unique identifier for the user
     pub id: Uuid,
@@ -617,6 +619,8 @@ pub struct UserResponse {
     pub phone_number: Option<String>,
     /// Whether the phone number has been verified
     pub phone_verified: bool,
+    /// Whether TOTP is enabled for this user
+    pub totp_enabled: bool,
     /// Whether WebAuthn is enabled for this user
     pub webauthn_enabled: bool,
     /// Whether the account is currently locked
@@ -811,6 +815,7 @@ impl From<User> for UserResponse {
             last_name: user.last_name,
             phone_number: user.phone_number,
             phone_verified: user.phone_verified,
+            totp_enabled: user.totp_secret.is_some(),
             webauthn_enabled: user.webauthn_enabled,
             account_locked: user.account_locked,
             last_login_at: user.last_login_at,

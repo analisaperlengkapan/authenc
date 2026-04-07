@@ -345,6 +345,8 @@ pub struct UpdateUserRequest {
     pub enabled: Option<bool>,
     /// New password change requirement
     pub require_password_change: Option<bool>,
+    /// ID of the organization the user belongs to
+    pub organization_id: Option<Uuid>,
     /// New user attributes
     pub attributes: Option<serde_json::Value>,
 }
@@ -1248,6 +1250,7 @@ impl AdminService for AdminManager {
             email_verified: request.email_verified,
             phone_verified: request.phone_verified,
             require_password_change: request.require_password_change,
+            organization_id: request.organization_id,
             attributes: request.attributes.clone(),
         };
 
