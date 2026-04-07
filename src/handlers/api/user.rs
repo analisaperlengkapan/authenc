@@ -10,25 +10,13 @@ use axum::{
     response::Json,
     routing::{delete, get, patch, post, put},
 };
-use serde::{Deserialize, Deserializer};
+use authenc_models::models::user::deserialize_optional_nullable;
+use serde::Deserialize;
 use authenc_models::models::social_account::{CreateSocialAccountRequest, SocialAccountResponse};
 use authenc_services::services::social::SocialProvider;
 use authenc_services::services::stores::social_account_store::SocialAccountStoreTrait;
 use std::sync::Arc;
 use uuid::Uuid;
-
-/// Deserialize a field as `Option<Option<T>>`:
-/// - JSON `null` → `Some(None)` (clear the field)
-/// - JSON value present → `Some(Some(value))`
-/// - Field absent → `None` (no change)
-fn deserialize_optional_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    let value: Option<T> = Option::deserialize(deserializer)?;
-    Ok(Some(value))
-}
 
 /// Create a UserResponse from a User, checking the in-memory TotpStore
 /// for the actual TOTP status instead of relying on the database column
@@ -232,7 +220,7 @@ pub struct UpdateUserRequest {
     /// - Absent from JSON → `None` (no change)
     /// - JSON `null` → `Some(None)` (clear the field)
     /// - JSON `"uuid-string"` → `Some(Some(uuid))` (set the field)
-    #[serde(default, deserialize_with = "deserialize_optional_nullable", skip_serializing_if = "Option::is_none")]
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub organization_id: Option<Option<Uuid>>,
     /// Additional user attributes as JSON
     pub attributes: Option<serde_json::Value>,

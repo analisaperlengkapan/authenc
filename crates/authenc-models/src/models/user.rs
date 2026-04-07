@@ -9,7 +9,7 @@ use uuid::Uuid;
 /// - Field absent → `None` (no change)
 ///
 /// Use with `#[serde(default, deserialize_with = "deserialize_optional_nullable")]`.
-fn deserialize_optional_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+pub fn deserialize_optional_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,
@@ -615,7 +615,7 @@ pub struct UpdateUserRequest {
     /// - Absent from JSON → `None` (no change)
     /// - JSON `null` → `Some(None)` (clear the field)
     /// - JSON `"uuid-string"` → `Some(Some(uuid))` (set the field)
-    #[serde(default, deserialize_with = "deserialize_optional_nullable", skip_serializing_if = "Option::is_none")]
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub organization_id: Option<Option<Uuid>>,
     /// Additional user attributes as JSON
     pub attributes: Option<serde_json::Value>,
