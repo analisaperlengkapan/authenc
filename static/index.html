@@ -3360,7 +3360,7 @@
                 document.getElementById('ldap-first-name-attr').value = config.first_name_attribute || config.first_name_attr || '';
                 document.getElementById('ldap-last-name-attr').value = config.last_name_attribute || config.last_name_attr || '';
                 document.getElementById('ldap-group-attr').value = config.group_attribute || config.group_attr || '';
-                document.getElementById('ldap-import-enabled').checked = config.import_enabled !== false;
+                document.getElementById('ldap-import-enabled').checked = config.import_enabled !== 'false' && config.import_enabled !== false;
 
                 const mappingsContainer = document.getElementById('ldap-role-mappings-container');
                 mappingsContainer.innerHTML = '';
