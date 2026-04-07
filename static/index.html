@@ -3376,6 +3376,7 @@
                 for (const [group, role] of Object.entries(mappings)) {
                     addLdapRoleMapping(group, role);
                 }
+            } else {
                 configJsonContainer.classList.remove('hidden');
                 configField.required = true;
                 ldapWizard.classList.add('hidden');
@@ -3383,6 +3384,7 @@
                 document.getElementById('ldap-bind-dn').value = '';
                 document.getElementById('ldap-bind-password').value = '';
                 document.getElementById('edit-provider-config').value = JSON.stringify(provider.config || {}, null, 2);
+            }
 
             document.getElementById('edit-provider-enabled').checked = provider.enabled;
             document.getElementById('edit-provider-error').style.display = 'none';
