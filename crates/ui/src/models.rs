@@ -10,11 +10,14 @@ pub struct UserResponse {
     pub last_name: Option<String>,
     pub phone_number: Option<String>,
     pub phone_verified: bool,
+    #[serde(default)]
+    pub totp_enabled: bool,
     pub webauthn_enabled: bool,
     pub account_locked: bool,
     pub last_login_at: Option<String>,
     pub realm_id: Option<String>,
     pub organization_id: Option<String>,
+    pub attributes: Option<serde_json::Value>,
     pub enabled: bool,
     pub created_at: String,
     pub updated_at: String,
@@ -31,6 +34,8 @@ pub struct UpdateUserRequest {
     pub email_verified: Option<bool>,
     pub phone_verified: Option<bool>,
     pub require_password_change: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organization_id: Option<Option<String>>,
     pub attributes: Option<serde_json::Value>,
 }
 

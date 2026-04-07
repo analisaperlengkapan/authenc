@@ -135,6 +135,14 @@ pub trait UserStoreTrait: Send + Sync {
     ) -> Result<(), AuthencError> {
         Err(AuthencError::not_implemented("Method not implemented"))
     }
+
+    /// Clear the TOTP secret for a user (sets totp_secret to NULL in the database)
+    async fn clear_totp_secret(
+        &self,
+        _user_id: Uuid,
+    ) -> Result<(), AuthencError> {
+        Err(AuthencError::not_implemented("Method not implemented"))
+    }
 }
 
 // ============================================================

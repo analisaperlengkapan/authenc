@@ -10,6 +10,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AuthencError;
+use authenc_services::services::security::password_policy::PasswordPolicy;
 use authenc_services::services::stores::session_store::SessionStoreTrait;
 use authenc_services::services::stores::user_store::UserStoreTrait;
 use authenc_services::services::stores::totp_store::TotpStore;
@@ -127,6 +128,12 @@ pub async fn update_account_password(
         return Err(AuthencError::unauthorized("Invalid current password"));
     }
 
+    // Validate new password against policy
+    let policy = PasswordPolicy::default();
+    if let Err(e) = policy.validate(&password_request.new_password) {
+        return Err(AuthencError::validation(format!("Password policy validation failed: {}", e)));
+    }
+
     // Hash the new password
     let new_password_hash =
         authenc_crypto::utils::crypto::password::hash_password(&password_request.new_password)
@@ -158,20 +165,53 @@ pub async fn remove_account_credential(
 
     match credential_id.as_str() {
         "totp" => {
-            // Remove TOTP secret for the current user.
-            // Ownership is implicitly verified because we only delete using the authenticated user_id.
-            // If the secret doesn't exist for this user, remove_secret returns false, allowing us to return 404.
-            // This is atomic and more efficient than get-then-remove.
-            let removed = state
+            // Check if TOTP is configured before attempting removal.
+            // Check both the in-memory TotpStore and the database column,
+            // consistent with delete_user_totp in user.rs.
+            let user = state
+                .user_store
+                .get_user(user_id)
+                .await?
+                .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+
+            let has_totp = state
+                .totp_store
+                .get_secret(&user_id.to_string())
+                .ok()
+                .flatten()
+                .is_some()
+                || user.totp_secret.is_some();
+
+            if !has_totp {
+                return Err(AuthencError::resource_not_found("Credential not found"));
+            }
+
+            // Clear the DB totp_secret column first (more likely to fail).
+            // If this fails we haven't modified the in-memory state yet.
+            state
+                .user_store
+                .clear_totp_secret(user_id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to clear totp_secret in database for user {}: {}", user_id, e);
+                    AuthencError::internal(format!("Failed to clear totp_secret in database: {}", e))
+                })?;
+
+            // Remove TOTP secret from in-memory store.
+            state
                 .totp_store
                 .remove_secret(&user_id.to_string())
                 .map_err(|e| {
                     AuthencError::internal(format!("Failed to remove TOTP secret: {}", e))
                 })?;
 
-            if !removed {
-                return Err(AuthencError::resource_not_found("Credential not found"));
-            }
+            // Also remove backup codes from in-memory store.
+            state
+                .totp_store
+                .remove_backup_codes(&user_id.to_string())
+                .map_err(|e| {
+                    AuthencError::internal(format!("Failed to remove backup codes: {}", e))
+                })?;
         }
         "password" => {
             return Err(AuthencError::validation(
@@ -325,11 +365,24 @@ pub async fn disable_totp(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    // Remove the TOTP secret
+    // Clear the DB totp_secret column first (more likely to fail)
+    state
+        .user_store
+        .clear_totp_secret(user_id)
+        .await
+        .map_err(|e| AuthencError::internal(format!("Failed to clear TOTP secret in database: {}", e)))?;
+
+    // Remove the TOTP secret from in-memory store
     state
         .totp_store
         .remove_secret(&user_id.to_string())
         .map_err(|e| AuthencError::internal(format!("Failed to remove TOTP secret: {}", e)))?;
+
+    // Also remove backup codes from in-memory store
+    state
+        .totp_store
+        .remove_backup_codes(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to remove backup codes: {}", e)))?;
 
     Ok(StatusCode::NO_CONTENT)
 }

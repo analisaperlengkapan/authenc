@@ -1,7 +1,24 @@
 use authenc_core::error::AuthencError;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
+
+/// Deserialize a field as `Option<Option<T>>`:
+/// - JSON `null` or explicit `null` → `Some(None)` (clear the field)
+/// - JSON value present → `Some(Some(value))`
+/// - Field absent → `None` (no change)
+///
+/// Use with `#[serde(default, deserialize_with = "deserialize_optional_nullable")]`.
+pub fn deserialize_optional_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    // If this function is called, the field was present in the JSON.
+    // Deserialize the inner value (which may be null → None).
+    let value: Option<T> = Option::deserialize(deserializer)?;
+    Ok(Some(value))
+}
 
 /// JWT Claims for user authentication
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -594,12 +611,18 @@ pub struct UpdateUserRequest {
     pub phone_verified: Option<bool>,
     /// Whether the user must change their password on next login
     pub require_password_change: Option<bool>,
+    /// ID of the organization the user belongs to.
+    /// - Absent from JSON → `None` (no change)
+    /// - JSON `null` → `Some(None)` (clear the field)
+    /// - JSON `"uuid-string"` → `Some(Some(uuid))` (set the field)
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
+    pub organization_id: Option<Option<Uuid>>,
     /// Additional user attributes as JSON
     pub attributes: Option<serde_json::Value>,
 }
 
 /// User response (without sensitive data)
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UserResponse {
     /// Unique identifier for the user
     pub id: Uuid,
@@ -617,6 +640,12 @@ pub struct UserResponse {
     pub phone_number: Option<String>,
     /// Whether the phone number has been verified
     pub phone_verified: bool,
+    /// Whether TOTP is enabled for this user.
+    /// NOTE: The `From<User>` impl derives this from the DB `totp_secret` column,
+    /// which may not reflect the in-memory TotpStore. Handlers should override
+    /// this field by checking the TotpStore when available.
+    #[serde(default)]
+    pub totp_enabled: bool,
     /// Whether WebAuthn is enabled for this user
     pub webauthn_enabled: bool,
     /// Whether the account is currently locked
@@ -629,6 +658,8 @@ pub struct UserResponse {
     pub organization_id: Option<Uuid>,
     /// Whether the user must change their password on next login
     pub require_password_change: bool,
+    /// Additional user attributes as JSON
+    pub attributes: Option<serde_json::Value>,
     /// Whether the user account is enabled
     pub enabled: bool,
     /// Timestamp when the user was created
@@ -732,6 +763,10 @@ impl User {
         if let Some(require_password_change) = request.require_password_change {
             self.require_password_change = require_password_change;
         }
+        if let Some(organization_id) = request.organization_id {
+            // Some(Some(uuid)) → set, Some(None) → clear
+            self.organization_id = organization_id;
+        }
         if let Some(attributes) = request.attributes {
             self.attributes = Some(attributes);
         }
@@ -811,12 +846,14 @@ impl From<User> for UserResponse {
             last_name: user.last_name,
             phone_number: user.phone_number,
             phone_verified: user.phone_verified,
+            totp_enabled: user.totp_secret.is_some(),
             webauthn_enabled: user.webauthn_enabled,
             account_locked: user.account_locked,
             last_login_at: user.last_login_at,
             realm_id: user.realm_id,
             organization_id: user.organization_id,
             require_password_change: user.require_password_change,
+            attributes: user.attributes,
             enabled: user.enabled,
             created_at: user.created_at,
             updated_at: user.updated_at,

@@ -127,7 +127,21 @@ pub async fn get_account_profile(
         .await?
         .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
-    Ok(Json(user.into()))
+    // Check in-memory TotpStore for actual TOTP status (DB column may not be populated)
+    let totp_enabled = state.totp_store
+        .get_secret(&user_id.to_string())
+        .ok()
+        .flatten()
+        .is_some()
+        || user.totp_secret.is_some();
+    let mut response = UserResponse::from(user);
+    response.totp_enabled = totp_enabled;
+    // Strip attributes from self-service read path — they may contain
+    // admin-managed data (internal flags, compliance tags) that should
+    // not be visible to end users. This is consistent with the write
+    // path in update_account_profile which also strips attributes.
+    response.attributes = None;
+    Ok(Json(response))
 }
 
 /// Update current user's account profile
@@ -139,7 +153,27 @@ pub async fn update_account_profile(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    state.user_store.update_user(user_id, update_request).await?;
+    // Strip admin-only fields that a regular user must not be able to modify
+    // on their own account via the self-service endpoint.
+    // NOTE: `attributes` is also stripped because it may contain admin-managed
+    // data (e.g., internal flags, compliance tags). If user-settable profile
+    // attributes are needed in the future, consider a separate allowlisted
+    // "user_attributes" field.
+    let sanitized_request = UpdateUserRequest {
+        username: update_request.username,
+        email: update_request.email,
+        first_name: update_request.first_name,
+        last_name: update_request.last_name,
+        phone_number: update_request.phone_number,
+        enabled: None,
+        email_verified: None,
+        phone_verified: None,
+        require_password_change: None,
+        organization_id: None,
+        attributes: None,
+    };
+
+    state.user_store.update_user(user_id, sanitized_request).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -326,10 +360,21 @@ pub async fn delete_account(
     // Delete all WebAuthn credentials for the user
     state.webauthn_service.delete_user_credentials(user_id).await?;
 
-    // Remove TOTP secret
+    // Clear TOTP secret from DB first (more likely to fail)
+    state.user_store
+        .clear_totp_secret(user_id)
+        .await
+        .map_err(|e| AuthencError::internal(format!("Failed to clear TOTP secret in database: {}", e)))?;
+
+    // Remove TOTP secret from in-memory store
     state.totp_store
         .remove_secret(&user_id.to_string())
         .map_err(|e| AuthencError::internal(format!("Failed to remove TOTP secret: {}", e)))?;
+
+    // Also remove backup codes from in-memory store
+    state.totp_store
+        .remove_backup_codes(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to remove backup codes: {}", e)))?;
 
     // Delete the user account
     state.user_store.delete_user(user_id).await?;
@@ -464,6 +509,13 @@ pub async fn disable_totp(
 ) -> Result<StatusCode, AuthencError> {
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    // Clear the DB totp_secret column first (more likely to fail).
+    // If this fails we haven't modified the in-memory state yet.
+    state.user_store
+        .clear_totp_secret(user_id)
+        .await
+        .map_err(|e| AuthencError::internal(format!("Failed to clear TOTP secret in database: {}", e)))?;
 
     state.totp_store
         .remove_secret(&user_id.to_string())

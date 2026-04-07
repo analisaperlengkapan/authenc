@@ -1,7 +1,8 @@
 use crate::app::AppState;
+use crate::error::AuthencError;
 use crate::handlers::api::auth_bearer::AuthBearer;
-use authenc_models::models::user::{self, User, UserResponse};
-use authenc_services::services::stores::user_store::UserStoreTrait;
+use authenc_models::models::user::{self, UserResponse};
+use authenc_services::services::security::password_policy::PasswordPolicy;
 use axum::{
     Router,
     extract::{Path, State},
@@ -9,12 +10,28 @@ use axum::{
     response::Json,
     routing::{delete, get, patch, post, put},
 };
+use authenc_models::models::user::deserialize_optional_nullable;
 use serde::Deserialize;
 use authenc_models::models::social_account::{CreateSocialAccountRequest, SocialAccountResponse};
 use authenc_services::services::social::SocialProvider;
 use authenc_services::services::stores::social_account_store::SocialAccountStoreTrait;
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Create a UserResponse from a User, checking the in-memory TotpStore
+/// for the actual TOTP status instead of relying on the database column
+/// (which may not be populated during normal TOTP setup flows).
+fn user_response_with_totp(user: authenc_models::models::user::User, totp_store: &authenc_services::services::stores::totp_store::TotpStore) -> UserResponse {
+    let totp_enabled = totp_store
+        .get_secret(&user.id.to_string())
+        .ok()
+        .flatten()
+        .is_some()
+        || user.totp_secret.is_some();
+    let mut response = UserResponse::from(user);
+    response.totp_enabled = totp_enabled;
+    response
+}
 
 /// Create user management routes for a realm
 pub fn create_user_routes() -> Router<Arc<AppState>> {
@@ -28,6 +45,10 @@ pub fn create_user_routes() -> Router<Arc<AppState>> {
             "/realms/{realm}/users/{id}/password",
             patch(update_password),
         )
+        .route(
+            "/realms/{realm}/users/{id}/totp",
+            delete(delete_user_totp),
+        )
         .route("/realms/{realm}/users/{id}/social", get(get_user_social_accounts).post(link_user_social_account))
         .route(
             "/realms/{realm}/users/{id}/social/{provider}",
@@ -40,14 +61,13 @@ pub async fn get_users(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
     Path(realm): Path<String>,
-) -> Result<Json<Vec<UserResponse>>, StatusCode> {
-    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> Result<Json<Vec<UserResponse>>, AuthencError> {
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| AuthencError::validation("Invalid realm ID"))?;
     let users = state
         .user_store
         .get_users_by_realm(realm_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let response_users = users.into_iter().map(UserResponse::from).collect();
+        .await?;
+    let response_users = users.into_iter().map(|u| user_response_with_totp(u, &state.totp_store)).collect();
     Ok(Json(response_users))
 }
 
@@ -56,22 +76,21 @@ pub async fn get_user_by_id(
     State(state): State<Arc<AppState>>,
     _auth: AuthBearer,
     Path((realm, id)): Path<(String, String)>,
-) -> Result<Json<UserResponse>, StatusCode> {
-    let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> Result<Json<UserResponse>, AuthencError> {
+    let user_id = Uuid::parse_str(&id).map_err(|_| AuthencError::validation("Invalid user ID"))?;
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| AuthencError::validation("Invalid realm ID"))?;
 
     let user = state
         .user_store
         .get_user(user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
     if user.realm_id != Some(realm_id) {
-        return Err(StatusCode::NOT_FOUND);
+        return Err(AuthencError::resource_not_found("User not found in realm"));
     }
 
-    Ok(Json(UserResponse::from(user)))
+    Ok(Json(user_response_with_totp(user, &state.totp_store)))
 }
 #[derive(Deserialize)]
 /// Request payload for creating a new user account
@@ -96,6 +115,10 @@ pub struct CreateUserRequest {
     pub email_verified: Option<bool>,
     /// Whether the user must change their password on first login
     pub require_password_change: Option<bool>,
+    /// Optional organization ID the user belongs to
+    pub organization_id: Option<Uuid>,
+    /// Additional user attributes as JSON
+    pub attributes: Option<serde_json::Value>,
 }
 /// Create a new user in the specified realm
 pub async fn create_user(
@@ -103,14 +126,21 @@ pub async fn create_user(
     AuthBearer(auth): AuthBearer,
     Path(realm): Path<String>,
     Json(request): Json<CreateUserRequest>,
-) -> Result<Json<UserResponse>, StatusCode> {
-    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> Result<Json<UserResponse>, AuthencError> {
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| AuthencError::validation("Invalid realm ID"))?;
 
     // Validate that request body realm_id matches path realm_id if present
     if let Some(req_realm_id) = request.realm_id {
         if req_realm_id != realm_id {
-            return Err(StatusCode::BAD_REQUEST);
+            return Err(AuthencError::validation("Realm ID mismatch"));
         }
+    }
+
+    // Validate password against policy
+    let policy = PasswordPolicy::default();
+    if let Err(e) = policy.validate(&request.password) {
+        tracing::warn!("Password policy validation failed for user {}: {}", request.username, e);
+        return Err(AuthencError::validation(format!("Password policy validation failed: {}", e)));
     }
 
     // Convert handler request to model request
@@ -125,16 +155,15 @@ pub async fn create_user(
         enabled: request.enabled,
         require_password_change: request.require_password_change,
         realm_id: Some(realm_id),
-        organization_id: None,
-        attributes: None,
+        organization_id: request.organization_id,
+        attributes: request.attributes,
     };
 
     // Store the user
     let created_user = state
         .user_store
         .add_user(model_request)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
     // Fire admin event for user creation
     let auth_details = crate::models::events::AuthDetails {
@@ -164,7 +193,7 @@ pub async fn create_user(
         tracing::error!("Failed to fire user creation admin event: {}", e);
     }
 
-    Ok(Json(UserResponse::from(created_user)))
+    Ok(Json(user_response_with_totp(created_user, &state.totp_store)))
 }
 #[derive(Deserialize)]
 /// Request payload for updating user information
@@ -183,8 +212,18 @@ pub struct UpdateUserRequest {
     pub enabled: Option<bool>,
     /// Whether the email address has been verified
     pub email_verified: Option<bool>,
+    /// Whether the phone number has been verified
+    pub phone_verified: Option<bool>,
     /// Whether the user must change their password on next login
     pub require_password_change: Option<bool>,
+    /// Optional organization ID the user belongs to.
+    /// - Absent from JSON → `None` (no change)
+    /// - JSON `null` → `Some(None)` (clear the field)
+    /// - JSON `"uuid-string"` → `Some(Some(uuid))` (set the field)
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
+    pub organization_id: Option<Option<Uuid>>,
+    /// Additional user attributes as JSON
+    pub attributes: Option<serde_json::Value>,
 }
 
 /// Update an existing user's information in the specified realm
@@ -193,25 +232,24 @@ pub async fn update_user(
     AuthBearer(auth): AuthBearer,
     Path((realm, id)): Path<(String, String)>,
     Json(req): Json<UpdateUserRequest>,
-) -> Result<StatusCode, StatusCode> {
-    let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> Result<StatusCode, AuthencError> {
+    let user_id = Uuid::parse_str(&id).map_err(|_| AuthencError::validation("Invalid user ID"))?;
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| AuthencError::validation("Invalid realm ID"))?;
 
     // Check if user exists and belongs to the realm
     let user = state
         .user_store
         .get_user(user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
     if user.realm_id != Some(realm_id) {
-        return Err(StatusCode::NOT_FOUND);
+        return Err(AuthencError::resource_not_found("User not found in realm"));
     }
 
     // Prevent self-disabling
     if req.enabled == Some(false) && (auth.sub == id || Uuid::parse_str(&auth.sub).ok() == Some(user_id)) {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(AuthencError::forbidden("Cannot disable your own account"));
     }
 
     // Create update request for the model
@@ -223,17 +261,17 @@ pub async fn update_user(
         phone_number: req.phone_number,
         enabled: req.enabled,
         email_verified: req.email_verified,
-        phone_verified: None,
+        phone_verified: req.phone_verified,
         require_password_change: req.require_password_change,
-        attributes: None,
+        organization_id: req.organization_id,
+        attributes: req.attributes,
     };
 
     // Update user in database
     state
         .user_store
         .update_user(user_id, update_request)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
     // Fire admin event for user update
     let auth_details = crate::models::events::AuthDetails {
@@ -270,34 +308,32 @@ pub async fn delete_user(
     State(state): State<Arc<AppState>>,
     AuthBearer(auth): AuthBearer,
     Path((realm, id)): Path<(String, String)>,
-) -> Result<StatusCode, StatusCode> {
-    let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> Result<StatusCode, AuthencError> {
+    let user_id = Uuid::parse_str(&id).map_err(|_| AuthencError::validation("Invalid user ID"))?;
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| AuthencError::validation("Invalid realm ID"))?;
 
     // Check if user exists and belongs to the realm
     let user = state
         .user_store
         .get_user(user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
     if user.realm_id != Some(realm_id) {
-        return Err(StatusCode::NOT_FOUND);
+        return Err(AuthencError::resource_not_found("User not found in realm"));
     }
 
     // Prevent self-deletion
     // Compare as strings and, if possible, as UUIDs to ensure format mismatches don't bypass the check
     if auth.sub == id || Uuid::parse_str(&auth.sub).ok() == Some(user_id) {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(AuthencError::forbidden("Cannot delete your own account"));
     }
 
     // Delete the user
     state
         .user_store
         .delete_user(user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
     // Fire admin event for user deletion
     let auth_details = crate::models::events::AuthDetails {
@@ -330,6 +366,93 @@ pub async fn delete_user(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Delete a user's TOTP secret from the specified realm
+pub async fn delete_user_totp(
+    State(state): State<Arc<AppState>>,
+    AuthBearer(auth): AuthBearer,
+    Path((realm, id)): Path<(String, String)>,
+) -> Result<StatusCode, AuthencError> {
+    let user_id = Uuid::parse_str(&id).map_err(|_| AuthencError::validation("Invalid user ID"))?;
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| AuthencError::validation("Invalid realm ID"))?;
+
+    // Check if user exists and belongs to the realm
+    let user = state
+        .user_store
+        .get_user(user_id)
+        .await?
+        .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+
+    if user.realm_id != Some(realm_id) {
+        return Err(AuthencError::resource_not_found("User not found in realm"));
+    }
+
+    // Check if TOTP is configured before attempting removal.
+    let has_totp = state
+        .totp_store
+        .get_secret(&user_id.to_string())
+        .ok()
+        .flatten()
+        .is_some()
+        || user.totp_secret.is_some();
+
+    if !has_totp {
+        return Err(AuthencError::resource_not_found("TOTP is not configured for this user"));
+    }
+
+    // Clear the totp_secret field in the database first so that
+    // if this fails, we haven't yet modified the in-memory state.
+    // The DB operation is more likely to fail; the in-memory removal is trivial.
+    state
+        .user_store
+        .clear_totp_secret(user_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to clear totp_secret in database for user {}: {}", user_id, e);
+            AuthencError::internal(format!("Failed to clear totp_secret in database: {}", e))
+        })?;
+
+    // Remove the TOTP secret from in-memory store
+    state
+        .totp_store
+        .remove_secret(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to remove TOTP secret: {}", e)))?;
+
+    // Also remove backup codes from in-memory store
+    state
+        .totp_store
+        .remove_backup_codes(&user_id.to_string())
+        .map_err(|e| AuthencError::internal(format!("Failed to remove backup codes: {}", e)))?;
+
+    // Fire admin event for TOTP deletion
+    let auth_details = crate::models::events::AuthDetails {
+        user_id: auth.sub.clone(),
+        username: None,
+        ip_address: None,
+        user_agent: None,
+    };
+
+    let admin_event = crate::services::events::AdminEventBuilder::new(
+        realm.clone(),
+        auth_details,
+        crate::models::events::ResourceType::User,
+        crate::models::events::OperationType::Delete,
+        format!("/realms/{}/users/{}/totp", realm, user_id),
+    )
+    .build();
+
+    if let Err(e) = state
+        .event_manager
+        .write()
+        .await
+        .fire_admin_event(admin_event, false)
+        .await
+    {
+        tracing::error!("Failed to fire TOTP deletion admin event: {}", e);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[derive(Deserialize)]
 /// Request payload for updating a user's password
 pub struct UpdatePasswordRequest {
@@ -345,47 +468,51 @@ pub async fn update_password(
     AuthBearer(auth): AuthBearer,
     Path((realm, id)): Path<(String, String)>,
     Json(req): Json<UpdatePasswordRequest>,
-) -> Result<StatusCode, StatusCode> {
-    let user_id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let realm_id = Uuid::parse_str(&realm).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> Result<StatusCode, AuthencError> {
+    let user_id = Uuid::parse_str(&id).map_err(|_| AuthencError::validation("Invalid user ID"))?;
+    let realm_id = Uuid::parse_str(&realm).map_err(|_| AuthencError::validation("Invalid realm ID"))?;
 
     // Get the user
     let user = state
         .user_store
         .get_user(user_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
 
     // Check if user belongs to the realm
     if user.realm_id != Some(realm_id) {
-        return Err(StatusCode::NOT_FOUND);
+        return Err(AuthencError::resource_not_found("User not found in realm"));
     }
 
     // Verify old password if user has a password hash
     if let Some(password_hash) = &user.password_hash {
         let is_valid = authenc_crypto::utils::crypto::verify_password(password_hash, &req.old_password)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|e| AuthencError::internal(format!("Password verification failed: {}", e)))?;
         if !is_valid {
-            return Err(StatusCode::UNAUTHORIZED);
+            return Err(AuthencError::unauthorized("Invalid current password"));
         }
     } else {
         // User doesn't have a password set, which shouldn't happen for regular users
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(AuthencError::validation("User does not have a password set"));
+    }
+
+    // Validate new password against policy
+    let policy = PasswordPolicy::default();
+    if let Err(e) = policy.validate(&req.new_password) {
+        return Err(AuthencError::validation(format!("Password policy validation failed: {}", e)));
     }
 
     // Hash the new password
     let new_password_hash = authenc_crypto::utils::crypto::hash_password(&req.new_password)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| AuthencError::internal(format!("Password hashing failed: {}", e)))?;
 
     // Update password in database
     state
         .user_store
         .update_password(user_id, new_password_hash)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
     // Fire admin event for password change
     let auth_details = crate::models::events::AuthDetails {

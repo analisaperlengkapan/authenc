@@ -171,6 +171,7 @@ async fn test_admin_user_crud_flow() {
         phone_verified: None,
         enabled: Some(false),
         require_password_change: None,
+        organization_id: None,
         attributes: None,
     };
 

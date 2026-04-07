@@ -164,6 +164,7 @@ async fn test_user_store_comprehensive_operations() {
         email_verified: Some(true),
         phone_verified: Some(false),
         require_password_change: Some(false),
+        organization_id: None,
         attributes: None,
     };
     let updated_alice = store.update_user(alice_id, update_req).await.unwrap();
@@ -254,6 +255,7 @@ async fn test_user_store_error_handling() {
         email_verified: Some(false),
         phone_verified: Some(false),
         require_password_change: Some(false),
+        organization_id: None,
         attributes: None,
     };
 

@@ -3,6 +3,7 @@ use authenc_database::database::operations;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use ldap3::LdapConnSettings;
+use authenc_models::models::user::deserialize_optional_nullable;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
@@ -345,6 +346,12 @@ pub struct UpdateUserRequest {
     pub enabled: Option<bool>,
     /// New password change requirement
     pub require_password_change: Option<bool>,
+    /// ID of the organization the user belongs to.
+    /// - Absent from JSON → `None` (no change)
+    /// - JSON `null` → `Some(None)` (clear the field)
+    /// - JSON `"uuid-string"` → `Some(Some(uuid))` (set the field)
+    #[serde(default, deserialize_with = "deserialize_optional_nullable", skip_serializing_if = "Option::is_none")]
+    pub organization_id: Option<Option<Uuid>>,
     /// New user attributes
     pub attributes: Option<serde_json::Value>,
 }
@@ -1248,6 +1255,7 @@ impl AdminService for AdminManager {
             email_verified: request.email_verified,
             phone_verified: request.phone_verified,
             require_password_change: request.require_password_change,
+            organization_id: request.organization_id,
             attributes: request.attributes.clone(),
         };
 

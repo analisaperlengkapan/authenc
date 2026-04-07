@@ -114,6 +114,10 @@ impl UserStoreTrait for MockUserStore {
              if let Some(email_verified) = req.email_verified {
                 user.email_verified = email_verified;
             }
+             if let Some(organization_id) = req.organization_id {
+                // Some(Some(uuid)) → set, Some(None) → clear
+                user.organization_id = organization_id;
+            }
              if let Some(attributes) = req.attributes {
                 user.attributes = Some(attributes);
             }
@@ -137,6 +141,17 @@ impl UserStoreTrait for MockUserStore {
     async fn get_users_by_realm(&self, realm_id: Uuid) -> Result<Vec<User>> {
          let users = self.users.read().unwrap();
          Ok(users.values().filter(|u| u.realm_id == Some(realm_id)).cloned().collect())
+    }
+
+    async fn clear_totp_secret(&self, user_id: Uuid) -> Result<()> {
+        let mut users = self.users.write().unwrap();
+        if let Some(user) = users.get_mut(&user_id) {
+            user.totp_secret = None;
+            user.totp_backup_codes = None;
+            Ok(())
+        } else {
+            Err(AuthencError::not_found("User not found"))
+        }
     }
 
     async fn update_password(&self, user_id: Uuid, password_hash: String) -> Result<()> {

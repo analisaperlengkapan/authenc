@@ -2371,13 +2371,25 @@ pub mod users {
                 account_locked_until, failed_login_attempts, last_login_at,
                 last_failed_login_at, password_changed_at, password_expires_at,
                 require_password_change, realm_id, organization_id, attributes,
-                enabled, federated, created_at, updated_at, deleted_at, last_login_at, login_count
+                enabled, federated, created_at, updated_at, deleted_at, login_count
             FROM users
             WHERE email = $2 AND realm_id = $1 AND deleted_at IS NULL
         "#;
 
         let row = db.query_opt(query, &[realm_id, &email]).await?;
         Ok(row.map(|r| row_to_user(&r)))
+    }
+
+    /// Clear the TOTP secret for a user
+    pub async fn clear_totp_secret(db: &Database, user_id: Uuid) -> Result<()> {
+        let now = Utc::now();
+        let query = r#"
+            UPDATE users
+            SET totp_secret = NULL, totp_backup_codes = NULL, updated_at = $2
+            WHERE id = $1 AND deleted_at IS NULL
+        "#;
+        db.execute(query, &[&user_id, &now]).await?;
+        Ok(())
     }
 
     /// Update user
@@ -2387,6 +2399,8 @@ pub mod users {
         request: &UpdateUserRequest,
     ) -> Result<User> {
         let now = Utc::now();
+        let has_org_id = request.organization_id.is_some();
+        let org_id_value: Option<Uuid> = request.organization_id.flatten();
 
         let query = r#"
             UPDATE users SET
@@ -2399,8 +2413,9 @@ pub mod users {
                 email_verified = COALESCE($8, email_verified),
                 phone_verified = COALESCE($9, phone_verified),
                 require_password_change = COALESCE($10, require_password_change),
-                attributes = COALESCE($11, attributes),
-                updated_at = $12
+                organization_id = CASE WHEN $11::boolean THEN $12 ELSE organization_id END,
+                attributes = COALESCE($13, attributes),
+                updated_at = $14
             WHERE id = $1 AND deleted_at IS NULL
             RETURNING
                 id, username, email, first_name, last_name,
@@ -2427,6 +2442,8 @@ pub mod users {
                     &request.email_verified,
                     &request.phone_verified,
                     &request.require_password_change,
+                    &has_org_id,
+                    &org_id_value,
                     &request
                         .attributes
                         .as_ref()

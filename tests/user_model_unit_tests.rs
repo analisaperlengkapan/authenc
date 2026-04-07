@@ -121,6 +121,7 @@ mod tests {
             email_verified: Some(true),
             phone_verified: Some(true),
             require_password_change: Some(true),
+            organization_id: None,
             attributes: Some(json!({"custom_field": "value"})),
         };
 
@@ -650,6 +651,7 @@ mod tests {
             email_verified: None,
             phone_verified: Some(false),
             require_password_change: None,
+            organization_id: None,
             attributes: None,
         };
 
