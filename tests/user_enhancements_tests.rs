@@ -1,3 +1,6 @@
+use authenc::app::AppState;
+use authenc::handlers::create_router;
+use authenc_core::config::AppConfig;
 use authenc_models::models::user::UserResponse;
 use axum::http::StatusCode;
 use axum_test::TestServer;
@@ -5,28 +8,53 @@ use serde_json::json;
 use uuid::Uuid;
 use std::sync::Arc;
 
-mod common;
+async fn setup_test_server() -> Option<TestServer> {
+    let mut config = AppConfig::from_env().unwrap_or_default();
+    if let Ok(test_db_url) = std::env::var("DATABASE_URL") {
+        if let Ok(url) = url::Url::parse(&test_db_url) {
+            if let Some(host) = url.host_str() {
+                config.database.host = host.to_string();
+            }
+            if let Some(port) = url.port() {
+                config.database.port = port;
+            }
+            if !url.username().is_empty() {
+                config.database.username = url.username().to_string();
+            }
+            if let Some(password) = url.password() {
+                config.database.password = password.to_string();
+            }
+            if let Some(mut segments) = url.path_segments() {
+                if let Some(db) = segments.next() {
+                    let db_name = db.trim_start_matches('/');
+                    if !db_name.is_empty() {
+                        config.database.database = db_name.to_string();
+                    }
+                }
+            }
+        }
+    }
 
-async fn setup_test_server() -> TestServer {
-    let config = common::build_test_config().await;
-
-    // Create a minimal AppState-like structure for the router
-    let state = authenc::app::AppState::new(config).await.expect("Failed to create AppState");
+    let state = match AppState::new(config).await {
+        Ok(s) => s,
+        Err(_) => {
+            println!("Skipping test: failed to create AppState (database unavailable)");
+            return None;
+        }
+    };
     let state_arc = Arc::new(state);
 
-    let app = authenc::handlers::create_router(state_arc);
-    TestServer::new(app).expect("Failed to create test server")
+    let app = create_router(state_arc);
+    Some(TestServer::new(app).expect("Failed to create test server"))
 }
 
 #[tokio::test]
+#[ignore = "Requires PostgreSQL database to be running"]
 async fn test_delete_user_totp_endpoint() {
-    // Skip if no DB
-    let config = common::build_test_config().await;
-    if authenc::database::Database::new(&config.database).await.is_err() {
-        return;
-    }
-
-    let server = setup_test_server().await;
+    let server = match setup_test_server().await {
+        Some(s) => s,
+        None => return,
+    };
 
     // Create a test user first to get a token
     let realm_name = "master";
@@ -61,12 +89,12 @@ async fn test_delete_user_totp_endpoint() {
 }
 
 #[tokio::test]
+#[ignore = "Requires PostgreSQL database to be running"]
 async fn test_password_policy_unified_error() {
-    let config = common::build_test_config().await;
-    if authenc::database::Database::new(&config.database).await.is_err() {
-        return;
-    }
-    let server = setup_test_server().await;
+    let server = match setup_test_server().await {
+        Some(s) => s,
+        None => return,
+    };
 
     // Login as admin
     let login_res = server.post("/api/v1/auth/login").json(&json!({
@@ -96,12 +124,12 @@ async fn test_password_policy_unified_error() {
 }
 
 #[tokio::test]
+#[ignore = "Requires PostgreSQL database to be running"]
 async fn test_update_user_organization_id() {
-    let config = common::build_test_config().await;
-    if authenc::database::Database::new(&config.database).await.is_err() {
-        return;
-    }
-    let server = setup_test_server().await;
+    let server = match setup_test_server().await {
+        Some(s) => s,
+        None => return,
+    };
 
     // Login as admin
     let login_res = server.post("/api/v1/auth/login").json(&json!({
