@@ -179,6 +179,12 @@ pub async fn remove_account_credential(
             if !removed {
                 return Err(AuthencError::resource_not_found("Credential not found"));
             }
+
+            // Also clear the DB totp_secret column so that
+            // user_response_with_totp's OR check stays consistent.
+            if let Err(e) = state.user_store.clear_totp_secret(user_id).await {
+                tracing::error!("Failed to clear totp_secret in database for user {}: {}", user_id, e);
+            }
         }
         "password" => {
             return Err(AuthencError::validation(
@@ -332,7 +338,14 @@ pub async fn disable_totp(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    // Remove the TOTP secret
+    // Clear the DB totp_secret column first (more likely to fail)
+    state
+        .user_store
+        .clear_totp_secret(user_id)
+        .await
+        .map_err(|e| AuthencError::internal(format!("Failed to clear TOTP secret in database: {}", e)))?;
+
+    // Remove the TOTP secret from in-memory store
     state
         .totp_store
         .remove_secret(&user_id.to_string())

@@ -2399,6 +2399,7 @@ pub mod users {
         request: &UpdateUserRequest,
     ) -> Result<User> {
         let now = Utc::now();
+        let has_org_id = request.organization_id.is_some();
 
         let query = r#"
             UPDATE users SET
@@ -2411,9 +2412,9 @@ pub mod users {
                 email_verified = COALESCE($8, email_verified),
                 phone_verified = COALESCE($9, phone_verified),
                 require_password_change = COALESCE($10, require_password_change),
-                organization_id = COALESCE($11, organization_id),
-                attributes = COALESCE($12, attributes),
-                updated_at = $13
+                organization_id = CASE WHEN $11::boolean THEN $12 ELSE organization_id END,
+                attributes = COALESCE($13, attributes),
+                updated_at = $14
             WHERE id = $1 AND deleted_at IS NULL
             RETURNING
                 id, username, email, first_name, last_name,
@@ -2440,6 +2441,7 @@ pub mod users {
                     &request.email_verified,
                     &request.phone_verified,
                     &request.require_password_change,
+                    &has_org_id,
                     &request.organization_id,
                     &request
                         .attributes
