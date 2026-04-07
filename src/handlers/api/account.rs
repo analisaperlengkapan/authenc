@@ -148,7 +148,23 @@ pub async fn update_account_profile(
     let user_id = Uuid::parse_str(&auth_user.id)
         .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
 
-    state.user_store.update_user(user_id, update_request).await?;
+    // Strip admin-only fields that a regular user must not be able to modify
+    // on their own account via the self-service endpoint.
+    let sanitized_request = UpdateUserRequest {
+        username: update_request.username,
+        email: update_request.email,
+        first_name: update_request.first_name,
+        last_name: update_request.last_name,
+        phone_number: update_request.phone_number,
+        enabled: None,
+        email_verified: None,
+        phone_verified: None,
+        require_password_change: None,
+        organization_id: None,
+        attributes: update_request.attributes,
+    };
+
+    state.user_store.update_user(user_id, sanitized_request).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
