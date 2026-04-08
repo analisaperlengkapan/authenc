@@ -24,7 +24,7 @@ pub struct LdapIdentityProvider {
     bind_dn: Option<String>,
     /// Bind password for initial connection (optional)
     bind_password: Option<String>,
-    /// User search filter template (e.g. "(uid={})")
+    /// User search filter template (e.g. "(uid={0})")
     user_search_filter: String,
     /// Role mappings (LDAP Group -> Authenc Role)
     role_mappings: HashMap<String, String>,
@@ -33,10 +33,12 @@ pub struct LdapIdentityProvider {
 impl LdapIdentityProvider {
     /// Create new LDAP identity provider
     pub async fn new(config: IdentityProviderConfig) -> Result<Self> {
+        // Support both 'server_url' (new) and 'url' (legacy)
         let url = config
             .config
-            .get("url")
-            .ok_or_else(|| anyhow!("Missing url in LDAP config"))?
+            .get("server_url")
+            .or_else(|| config.config.get("url"))
+            .ok_or_else(|| anyhow!("Missing server_url or url in LDAP config"))?
             .clone();
 
         let base_dn = config
@@ -52,10 +54,21 @@ impl LdapIdentityProvider {
             .config
             .get("user_search_filter")
             .cloned()
-            .unwrap_or_else(|| "(uid={})".to_string());
+            .unwrap_or_else(|| "(uid={0})".to_string());
 
         let role_mappings = if let Some(json) = config.config.get("role_mappings") {
-            serde_json::from_str(json).unwrap_or_default()
+            // Role mappings are stored as a stringified JSON object in the config map
+            let trimmed = json.trim();
+            if trimmed.starts_with('{') {
+                serde_json::from_str(trimmed).map_err(|e| {
+                    tracing::error!("Failed to parse role_mappings: {}", e);
+                    anyhow!("Invalid role_mappings JSON")
+                })?
+            } else if trimmed.is_empty() {
+                HashMap::new()
+            } else {
+                return Err(anyhow!("role_mappings must be a stringified JSON object"));
+            }
         } else {
             HashMap::new()
         };
@@ -90,35 +103,40 @@ impl LdapIdentityProvider {
             attributes: HashMap::new(),
         };
 
-        // Get attribute mapping from config
+        // Get attribute mapping from config (support new longer names and legacy short ones)
         let username_attr = self
             .config
             .config
-            .get("username_attr")
+            .get("username_attribute")
+            .or_else(|| self.config.config.get("username_attr"))
             .map(|s| s.as_str())
             .unwrap_or("uid");
         let email_attr = self
             .config
             .config
-            .get("email_attr")
+            .get("email_attribute")
+            .or_else(|| self.config.config.get("email_attr"))
             .map(|s| s.as_str())
             .unwrap_or("mail");
         let first_name_attr = self
             .config
             .config
-            .get("first_name_attr")
+            .get("first_name_attribute")
+            .or_else(|| self.config.config.get("first_name_attr"))
             .map(|s| s.as_str())
             .unwrap_or("givenName");
         let last_name_attr = self
             .config
             .config
-            .get("last_name_attr")
+            .get("last_name_attribute")
+            .or_else(|| self.config.config.get("last_name_attr"))
             .map(|s| s.as_str())
             .unwrap_or("sn");
         let group_attr = self
             .config
             .config
-            .get("group_attr")
+            .get("group_attribute")
+            .or_else(|| self.config.config.get("group_attr"))
             .map(|s| s.as_str())
             .unwrap_or("memberOf");
 
@@ -289,7 +307,11 @@ impl IdentityProvider for LdapIdentityProvider {
 
         // 3. Search for user
         let escaped_username = escape_ldap_filter_value(username);
-        let filter = self.user_search_filter.replace("{}", &escaped_username);
+        let filter = if self.user_search_filter.contains("{0}") {
+            self.user_search_filter.replace("{0}", &escaped_username)
+        } else {
+            self.user_search_filter.replace("{}", &escaped_username)
+        };
 
         let attrs = vec!["*", "+"];
 

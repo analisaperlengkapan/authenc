@@ -877,9 +877,63 @@
                         <option value="Custom">Custom</option>
                     </select>
                 </div>
-                <div class="form-group">
+                <div id="provider-config-json-container" class="form-group">
                     <label for="edit-provider-config">Configuration (JSON)</label>
                     <textarea id="edit-provider-config" name="config" rows="5" required style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.25rem; font-family: monospace;"></textarea>
+                </div>
+
+                <div id="ldap-wizard" class="hidden" style="margin-top: 1rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
+                    <h4 style="margin-bottom: 1rem;">LDAP Configuration Wizard</h4>
+                    <div class="form-group">
+                        <label for="ldap-url">Server URL</label>
+                        <input type="text" id="ldap-url" placeholder="ldap://localhost:389" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="ldap-base-dn">Base DN</label>
+                        <input type="text" id="ldap-base-dn" placeholder="dc=example,dc=com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="ldap-bind-dn">Bind DN (Optional)</label>
+                        <input type="text" id="ldap-bind-dn" placeholder="cn=admin,dc=example,dc=com">
+                    </div>
+                    <div class="form-group">
+                        <label for="ldap-bind-password">Bind Password (Optional)</label>
+                        <input type="password" id="ldap-bind-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="ldap-search-filter">User Search Filter</label>
+                        <input type="text" id="ldap-search-filter" placeholder="(uid={0})">
+                    </div>
+                    <div class="form-group">
+                        <label for="ldap-username-attr">Username Attribute</label>
+                        <input type="text" id="ldap-username-attr" placeholder="uid">
+                    </div>
+                    <div class="form-group">
+                        <label for="ldap-email-attr">Email Attribute</label>
+                        <input type="text" id="ldap-email-attr" placeholder="mail">
+                    </div>
+                    <div class="form-group">
+                        <label for="ldap-first-name-attr">First Name Attribute</label>
+                        <input type="text" id="ldap-first-name-attr" placeholder="givenName">
+                    </div>
+                    <div class="form-group">
+                        <label for="ldap-last-name-attr">Last Name Attribute</label>
+                        <input type="text" id="ldap-last-name-attr" placeholder="sn">
+                    </div>
+                    <div class="form-group">
+                        <label for="ldap-group-attr">Group Attribute</label>
+                        <input type="text" id="ldap-group-attr" placeholder="memberOf">
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" id="ldap-import-enabled" style="width: auto;" checked>
+                        <label for="ldap-import-enabled" style="margin: 0;">Enable User Import</label>
+                    </div>
+
+                    <div style="margin-top: 1rem;">
+                        <label style="margin-bottom: 0.5rem;">Role Mappings (LDAP Group → Authenc Role)</label>
+                        <div id="ldap-role-mappings-container" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+                        <button type="button" onclick="addLdapRoleMapping()" style="width: auto; font-size: 0.8rem; margin-top: 0.5rem; background-color: var(--success);">+ Add Mapping</button>
+                    </div>
                 </div>
                 <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
                     <input type="checkbox" id="edit-provider-enabled" name="enabled" style="width: auto;">
@@ -3268,6 +3322,12 @@
             document.getElementById('edit-provider-type').value = 'OIDC';
             document.getElementById('edit-provider-type').disabled = false;
             document.getElementById('edit-provider-config').value = '{\n  "client_id": "",\n  "client_secret": ""\n}';
+            document.getElementById('provider-config-json-container').classList.remove('hidden');
+            document.getElementById('edit-provider-config').required = true;
+            document.getElementById('ldap-wizard').classList.add('hidden');
+            // Clear sensitive LDAP wizard fields to prevent credential leakage from a previous edit session
+            document.getElementById('ldap-bind-dn').value = '';
+            document.getElementById('ldap-bind-password').value = '';
             document.getElementById('edit-provider-enabled').checked = true;
             document.getElementById('edit-provider-error').style.display = 'none';
             document.getElementById('edit-provider-modal').classList.remove('hidden');
@@ -3283,7 +3343,49 @@
             document.getElementById('edit-provider-display-name').value = provider.display_name || provider.name;
             document.getElementById('edit-provider-type').value = provider.provider_type;
             document.getElementById('edit-provider-type').disabled = true; // Cannot edit type once created
-            document.getElementById('edit-provider-config').value = JSON.stringify(provider.config || {}, null, 2);
+
+            const configJsonContainer = document.getElementById('provider-config-json-container');
+            const ldapWizard = document.getElementById('ldap-wizard');
+            const configField = document.getElementById('edit-provider-config');
+
+            if (provider.provider_type === 'LDAP') {
+                configJsonContainer.classList.add('hidden');
+                configField.required = false;
+                ldapWizard.classList.remove('hidden');
+                const config = provider.config || {};
+                document.getElementById('ldap-url').value = config.server_url || config.url || '';
+                document.getElementById('ldap-base-dn').value = config.base_dn || '';
+                document.getElementById('ldap-bind-dn').value = config.bind_dn || '';
+                document.getElementById('ldap-bind-password').value = config.bind_password || '';
+                document.getElementById('ldap-search-filter').value = config.user_search_filter || '';
+                document.getElementById('ldap-username-attr').value = config.username_attribute || config.username_attr || '';
+                document.getElementById('ldap-email-attr').value = config.email_attribute || config.email_attr || '';
+                document.getElementById('ldap-first-name-attr').value = config.first_name_attribute || config.first_name_attr || '';
+                document.getElementById('ldap-last-name-attr').value = config.last_name_attribute || config.last_name_attr || '';
+                document.getElementById('ldap-group-attr').value = config.group_attribute || config.group_attr || '';
+                document.getElementById('ldap-import-enabled').checked = config.import_enabled !== 'false' && config.import_enabled !== false;
+
+                const mappingsContainer = document.getElementById('ldap-role-mappings-container');
+                mappingsContainer.innerHTML = '';
+
+                let mappings = config.role_mappings || {};
+                if (typeof mappings === 'string') {
+                    try { mappings = JSON.parse(mappings); } catch (e) { mappings = {}; }
+                }
+
+                for (const [group, role] of Object.entries(mappings)) {
+                    addLdapRoleMapping(group, role);
+                }
+            } else {
+                configJsonContainer.classList.remove('hidden');
+                configField.required = true;
+                ldapWizard.classList.add('hidden');
+                // Clear sensitive LDAP wizard fields to prevent credential leakage from a previous edit session
+                document.getElementById('ldap-bind-dn').value = '';
+                document.getElementById('ldap-bind-password').value = '';
+                document.getElementById('edit-provider-config').value = JSON.stringify(provider.config || {}, null, 2);
+            }
+
             document.getElementById('edit-provider-enabled').checked = provider.enabled;
             document.getElementById('edit-provider-error').style.display = 'none';
             document.getElementById('edit-provider-modal').classList.remove('hidden');
@@ -3295,18 +3397,81 @@
         function closeEditProviderModal() {
             document.getElementById('edit-provider-modal').classList.add('hidden');
             document.getElementById('edit-provider-modal').style.display = 'none';
+            // Clear sensitive LDAP wizard fields to prevent credential leakage
+            document.getElementById('ldap-bind-dn').value = '';
+            document.getElementById('ldap-bind-password').value = '';
+        }
+
+        function addLdapRoleMapping(group = '', role = '') {
+            const container = document.getElementById('ldap-role-mappings-container');
+            const div = document.createElement('div');
+            div.style.display = 'flex';
+            div.style.gap = '0.5rem';
+            div.className = 'ldap-mapping-row';
+
+            const groupInput = document.createElement('input');
+            groupInput.type = 'text';
+            groupInput.placeholder = 'LDAP Group/OU';
+            groupInput.value = group;
+            groupInput.style.flex = '1';
+
+            const roleInput = document.createElement('input');
+            roleInput.type = 'text';
+            roleInput.placeholder = 'Authenc Role';
+            roleInput.value = role;
+            roleInput.style.flex = '1';
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.textContent = '×';
+            removeBtn.style.width = 'auto';
+            removeBtn.style.backgroundColor = 'var(--error)';
+            removeBtn.onclick = function() { div.remove(); };
+
+            div.appendChild(groupInput);
+            div.appendChild(roleInput);
+            div.appendChild(removeBtn);
+            container.appendChild(div);
         }
 
         document.getElementById('edit-provider-type').addEventListener('change', (e) => {
             const type = e.target.value;
             const configField = document.getElementById('edit-provider-config');
+            const configJsonContainer = document.getElementById('provider-config-json-container');
+            const ldapWizard = document.getElementById('ldap-wizard');
             const isUpdate = document.getElementById('edit-provider-id').value !== '';
+
+            if (type === 'LDAP') {
+                configJsonContainer.classList.add('hidden');
+                configField.required = false;
+                ldapWizard.classList.remove('hidden');
+                if (!isUpdate) {
+                    // Pre-fill wizard with defaults
+                    document.getElementById('ldap-url').value = 'ldap://localhost:389';
+                    document.getElementById('ldap-base-dn').value = 'dc=example,dc=com';
+                    document.getElementById('ldap-bind-dn').value = '';
+                    document.getElementById('ldap-bind-password').value = '';
+                    document.getElementById('ldap-search-filter').value = '(uid={0})';
+                    document.getElementById('ldap-username-attr').value = 'uid';
+                    document.getElementById('ldap-email-attr').value = 'mail';
+                    document.getElementById('ldap-first-name-attr').value = 'givenName';
+                    document.getElementById('ldap-last-name-attr').value = 'sn';
+                    document.getElementById('ldap-group-attr').value = 'memberOf';
+                    document.getElementById('ldap-import-enabled').checked = true;
+                    document.getElementById('ldap-role-mappings-container').innerHTML = '';
+                    addLdapRoleMapping('Admins', 'admin');
+                }
+            } else {
+                configJsonContainer.classList.remove('hidden');
+                configField.required = true;
+                ldapWizard.classList.add('hidden');
+            }
 
             if (!isUpdate) {
                 if (type === 'OIDC' || type === 'OAuth2' || type === 'SocialLogin') {
                     configField.value = '{\n  "client_id": "",\n  "client_secret": ""\n}';
                 } else if (type === 'LDAP') {
-                    configField.value = '{\n  "bind_dn": "",\n  "bind_password": "",\n  "base_dn": "",\n  "connection_url": ""\n}';
+                    // Handled by wizard
                 } else if (type === 'SAML') {
                     configField.value = '{\n  "idp_entity_id": "",\n  "sso_url": "",\n  "signing_cert": ""\n}';
                 } else if (type === 'Kerberos') {
@@ -3320,16 +3485,42 @@
         document.getElementById('edit-provider-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const id = document.getElementById('edit-provider-id').value;
+            const type = document.getElementById('edit-provider-type').value;
             const errorDiv = document.getElementById('edit-provider-error');
             errorDiv.style.display = 'none';
 
             let configObj;
-            try {
-                configObj = JSON.parse(document.getElementById('edit-provider-config').value);
-            } catch (err) {
-                errorDiv.textContent = 'Invalid JSON in Configuration field';
-                errorDiv.style.display = 'block';
-                return;
+            if (type === 'LDAP') {
+                const mappings = {};
+                document.querySelectorAll('.ldap-mapping-row').forEach(row => {
+                    const inputs = row.querySelectorAll('input');
+                    if (inputs[0].value && inputs[1].value) {
+                        mappings[inputs[0].value] = inputs[1].value;
+                    }
+                });
+
+                configObj = {
+                    server_url: document.getElementById('ldap-url').value,
+                    base_dn: document.getElementById('ldap-base-dn').value,
+                    bind_dn: document.getElementById('ldap-bind-dn').value || undefined,
+                    bind_password: document.getElementById('ldap-bind-password').value || undefined,
+                    user_search_filter: document.getElementById('ldap-search-filter').value || undefined,
+                    username_attribute: document.getElementById('ldap-username-attr').value || undefined,
+                    email_attribute: document.getElementById('ldap-email-attr').value || undefined,
+                    first_name_attribute: document.getElementById('ldap-first-name-attr').value || undefined,
+                    last_name_attribute: document.getElementById('ldap-last-name-attr').value || undefined,
+                    group_attribute: document.getElementById('ldap-group-attr').value || undefined,
+                    import_enabled: String(document.getElementById('ldap-import-enabled').checked),
+                    role_mappings: JSON.stringify(mappings)
+                };
+            } else {
+                try {
+                    configObj = JSON.parse(document.getElementById('edit-provider-config').value);
+                } catch (err) {
+                    errorDiv.textContent = 'Invalid JSON in Configuration field';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
             }
 
             const isUpdate = id !== '';
