@@ -886,11 +886,11 @@
                     <h4 style="margin-bottom: 1rem;">LDAP Configuration Wizard</h4>
                     <div class="form-group">
                         <label for="ldap-url">Server URL</label>
-                        <input type="text" id="ldap-url" placeholder="ldap://localhost:389">
+                        <input type="text" id="ldap-url" placeholder="ldap://localhost:389" required>
                     </div>
                     <div class="form-group">
                         <label for="ldap-base-dn">Base DN</label>
-                        <input type="text" id="ldap-base-dn" placeholder="dc=example,dc=com">
+                        <input type="text" id="ldap-base-dn" placeholder="dc=example,dc=com" required>
                     </div>
                     <div class="form-group">
                         <label for="ldap-bind-dn">Bind DN (Optional)</label>
@@ -3397,6 +3397,9 @@
         function closeEditProviderModal() {
             document.getElementById('edit-provider-modal').classList.add('hidden');
             document.getElementById('edit-provider-modal').style.display = 'none';
+            // Clear sensitive LDAP wizard fields to prevent credential leakage
+            document.getElementById('ldap-bind-dn').value = '';
+            document.getElementById('ldap-bind-password').value = '';
         }
 
         function addLdapRoleMapping(group = '', role = '') {
