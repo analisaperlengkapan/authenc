@@ -14,7 +14,7 @@ use crate::error::AuthencError;
 use crate::middleware::auth::AuthUser;
 use authenc_services::services::security::zero_trust::{
     AdaptiveControls, AuthContext, RiskAssessment, RiskLevel,
-    ContinuousAuthService, Location, DeviceInfo,
+    ContinuousAuthService, Location, DeviceInfo, ZeroTrustManager,
     extract_os, extract_browser,
 };
 
@@ -144,10 +144,8 @@ pub async fn assess_risk(
     // Compute the server-side fingerprint to look up previous last_seen.
     // This gives calculate_time_risk a meaningful inactivity duration instead of
     // always seeing ~0 (which would pin the time risk at the minimum 0.1).
-    let server_fingerprint = format!(
-        "fp_{}_{}_{}",
-        request.user_agent, real_ip, extract_os(&request.user_agent)
-    );
+    // Uses the shared helper to stay in sync with evaluate_device_trust.
+    let server_fingerprint = ZeroTrustManager::compute_device_fingerprint(&device_info);
     let last_activity = state.zero_trust_manager
         .get_device_last_seen(&server_fingerprint)
         .unwrap_or_else(chrono::Utc::now);
@@ -222,10 +220,21 @@ pub async fn verify_session(
 ) -> Result<Json<SessionVerificationResponse>, AuthencError> {
     // Use the server-generated device_id (fingerprint) for trust store lookup,
     // not the client-controlled session_id.
-    let (valid, risk_score, requires_additional_auth) = match state.zero_trust_manager.verify_session(&request.device_id).await {
-        Ok(true) => (true, 0.1, false),   // Low risk — session is valid, no extra auth needed
-        Ok(false) => (true, 0.5, true),   // Elevated risk — session is valid but step-up auth recommended
-        Err(_) => (false, 0.8, true),     // High risk — verification failed, session invalid
+    //
+    // TODO: The client echoes back the device_id it received from assess_risk.
+    // Ideally the server should maintain a user→device mapping so we can verify
+    // that the authenticated caller actually owns this device_id.  The risk is
+    // partially mitigated because the fingerprint encodes the real connection IP,
+    // so an attacker would need to know the exact user-agent + IP + OS of the
+    // target device to probe its trust level.
+    //
+    // verify_session_with_score returns the actual combined risk score so we
+    // can feed it into generate_adaptive_controls without losing precision.
+    let (valid, risk_score, requires_additional_auth) = match state.zero_trust_manager.verify_session_with_score(&request.device_id) {
+        Ok((true, score)) if score <= 0.3 => (true, score, false),  // Low risk — no extra auth needed
+        Ok((true, score)) => (true, score, true),                   // Elevated risk — step-up auth recommended
+        Ok((false, score)) => (false, score, true),                 // High risk — session invalid
+        Err(_) => (false, 0.8, true),                               // Lock/internal error — fail closed
     };
 
     let response = SessionVerificationResponse {

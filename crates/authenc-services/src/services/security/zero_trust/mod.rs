@@ -213,8 +213,11 @@ pub trait ContinuousAuthService: Send + Sync {
     /// Update adaptive controls based on risk
     async fn update_adaptive_controls(&self, context: &mut AuthContext) -> Result<(), String>;
 
-    /// Verify session integrity
-    async fn verify_session(&self, session_id: &str) -> Result<bool, String>;
+    /// Verify session integrity by looking up the device trust entry.
+    ///
+    /// `device_id` is the server-generated fingerprint (returned as `device_id`
+    /// by `evaluate_device_trust`), **not** the application-level session ID.
+    async fn verify_session(&self, device_id: &str) -> Result<bool, String>;
 
     /// Handle suspicious activity
     async fn handle_suspicious_activity(&self, activity: &SuspiciousActivity)
@@ -245,6 +248,14 @@ pub struct SuspiciousActivity {
 const MAX_DEVICE_TRUST_ENTRIES: usize = 10_000;
 
 /// Zero Trust Manager - main service
+///
+/// # Note on `std::sync::RwLock`
+/// `device_trust_store` uses `std::sync::RwLock` (not `tokio::sync::RwLock`).
+/// This is safe **only** because no `RwLockReadGuard` or `RwLockWriteGuard` is
+/// held across an `.await` point.  If a future change introduces an `.await`
+/// while a guard is alive, it will either fail to compile (due to `Send` bounds
+/// from `#[async_trait]`) or block the tokio runtime thread under contention.
+/// If that becomes necessary, migrate to `tokio::sync::RwLock`.
 pub struct ZeroTrustManager {
     // Internal storage for device trust information (wrapped in RwLock for interior mutability behind Arc)
     device_trust_store: RwLock<HashMap<String, DeviceTrust>>,
@@ -605,6 +616,57 @@ impl ZeroTrustManager {
         };
         store.get(device_id).map(|d| d.last_seen)
     }
+
+    /// Verify a session/device and return the combined risk score.
+    ///
+    /// Unlike the trait method `verify_session` (which returns `Result<bool, String>`),
+    /// this method exposes the actual computed risk score so callers can feed it into
+    /// `generate_adaptive_controls` without losing precision.
+    ///
+    /// Returns `(is_valid, combined_risk_score)`.
+    pub fn verify_session_with_score(&self, device_id: &str) -> Result<(bool, f64), String> {
+        let store = self.device_trust_store.read()
+            .map_err(|e| format!("Failed to read device trust store: {}", e))?;
+        let device_trust = store.get(device_id);
+
+        let device_risk = if let Some(trust) = device_trust {
+            match trust.trust_level {
+                TrustLevel::Maximum => 0.0,
+                TrustLevel::High => 0.1,
+                TrustLevel::Medium => 0.3,
+                TrustLevel::Low => 0.6,
+                TrustLevel::None => 0.9,
+            }
+        } else {
+            0.5
+        };
+
+        let behavioral_risk = if self.anomaly_detector.is_some() { 0.3 } else { 0.3 };
+        let location_risk = 0.2;
+
+        let combined_risk = (device_risk * 0.4) + (behavioral_risk * 0.3) + (location_risk * 0.3);
+
+        if combined_risk > 0.6 {
+            // High risk — session is invalid
+            Ok((false, combined_risk))
+        } else {
+            // Valid (possibly with elevated risk)
+            Ok((true, combined_risk))
+        }
+    }
+
+    /// Compute the server-side device fingerprint from device characteristics.
+    ///
+    /// This is the single source of truth for fingerprint generation.  Both
+    /// `evaluate_device_trust` and any handler that needs to look up a device
+    /// before calling `evaluate_device_trust` (e.g. to fetch `last_seen`)
+    /// **must** use this method to avoid format divergence.
+    pub fn compute_device_fingerprint(device_info: &DeviceInfo) -> String {
+        format!(
+            "fp_{}_{}_{}",
+            device_info.user_agent, device_info.ip_address, device_info.os
+        )
+    }
 }
 
 #[async_trait]
@@ -613,10 +675,7 @@ impl ContinuousAuthService for ZeroTrustManager {
         // Always generate the fingerprint server-side from device characteristics.
         // Never trust a client-provided fingerprint as the cache key — a malicious
         // client could send another device's fingerprint and inherit its trust level.
-        let device_fingerprint = format!(
-            "fp_{}_{}_{}",
-            device_info.user_agent, device_info.ip_address, device_info.os
-        );
+        let device_fingerprint = Self::compute_device_fingerprint(device_info);
 
         // Calculate trust level based on device characteristics (done before locking
         // so we don't hold the write lock longer than necessary for the insert).
@@ -763,16 +822,16 @@ impl ContinuousAuthService for ZeroTrustManager {
         Ok(())
     }
 
-    async fn verify_session(&self, session_id: &str) -> Result<bool, String> {
+    async fn verify_session(&self, device_id: &str) -> Result<bool, String> {
         // Integration 20: Zero Trust Session Verification
         // This integrates device trust evaluation, anomaly detection, and geolocation risk assessment
         // Note: In production, this would query session from database. Here we demonstrate
         // the risk assessment integration logic using the existing zero trust components.
 
-        // Step 1: Check if we have cached device trust for this session
+        // Step 1: Check if we have cached device trust for this device
         let store = self.device_trust_store.read()
             .map_err(|e| format!("Failed to read device trust store: {}", e))?;
-        let device_trust = store.get(session_id);
+        let device_trust = store.get(device_id);
 
         // Step 2: Evaluate device trust
         let device_risk = if let Some(trust) = device_trust {
