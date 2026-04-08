@@ -13,6 +13,7 @@ use crate::error::AuthencError;
 use authenc_services::services::security::zero_trust::{
     AdaptiveControls, AuthContext, RiskAssessment, RiskLevel,
     ContinuousAuthService, Location, DeviceInfo,
+    extract_os, extract_browser,
 };
 
 #[derive(Deserialize)]
@@ -107,13 +108,13 @@ pub async fn assess_risk(
     State(state): State<Arc<AppState>>,
     Json(request): Json<AssessRiskRequest>,
 ) -> Result<Json<RiskAssessmentResponse>, AuthencError> {
-    // Create device info
+    // Create device info, parsing OS and browser from the user agent
     let device_info = DeviceInfo {
         user_agent: request.user_agent.clone(),
         ip_address: request.ip_address.clone(),
         location: request.location.clone(),
-        os: "Unknown".to_string(),      // Ideally parsed from UA
-        browser: "Unknown".to_string(), // Ideally parsed from UA
+        os: extract_os(&request.user_agent),
+        browser: extract_browser(&request.user_agent),
         screen_resolution: None,
         timezone: None,
     };

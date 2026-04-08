@@ -639,9 +639,6 @@ impl ContinuousAuthService for ZeroTrustManager {
             compliance_status,
         };
 
-        // Persist the evaluated device trust into the store
-        self.register_device_trust(device_trust.clone());
-
         Ok(device_trust)
     }
 
@@ -874,8 +871,7 @@ impl ContinuousAuthService for ZeroTrustManager {
 // Helper functions for session verification
 
 /// Extract operating system from user agent string
-#[allow(dead_code)]
-fn extract_os(user_agent: &str) -> String {
+pub fn extract_os(user_agent: &str) -> String {
     let ua_lower = user_agent.to_lowercase();
     if ua_lower.contains("windows") {
         "Windows".to_string()
@@ -893,8 +889,7 @@ fn extract_os(user_agent: &str) -> String {
 }
 
 /// Extract browser from user agent string
-#[allow(dead_code)]
-fn extract_browser(user_agent: &str) -> String {
+pub fn extract_browser(user_agent: &str) -> String {
     let ua_lower = user_agent.to_lowercase();
     if ua_lower.contains("firefox") {
         "Firefox".to_string()
