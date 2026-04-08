@@ -140,6 +140,9 @@ pub async fn assess_risk(
     let device_trust = state.zero_trust_manager.evaluate_device_trust(&device_info).await
         .map_err(|e| AuthencError::internal(e))?;
 
+    // Save device_id before device_trust is moved into AuthContext
+    let device_id = device_trust.device_id.clone();
+
     // Create auth context for assessment
     let context = AuthContext {
         session_id: request.session_id.clone(),
@@ -168,7 +171,7 @@ pub async fn assess_risk(
         .map_err(|e| AuthencError::internal(e))?;
 
     let response = RiskAssessmentResponse {
-        device_id: device_trust.device_id.clone(),
+        device_id,
         score: assessment.score,
         level: assessment.level,
         factors: assessment.factors.into_iter().map(|f| f.description).collect(),

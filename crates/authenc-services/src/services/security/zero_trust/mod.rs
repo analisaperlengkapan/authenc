@@ -240,6 +240,10 @@ pub struct SuspiciousActivity {
     pub risk_score: f64,
 }
 
+/// Maximum number of entries in the device trust store before eviction kicks in.
+/// This prevents unbounded memory growth from unique fingerprints.
+const MAX_DEVICE_TRUST_ENTRIES: usize = 10_000;
+
 /// Zero Trust Manager - main service
 pub struct ZeroTrustManager {
     // Internal storage for device trust information (wrapped in RwLock for interior mutability behind Arc)
@@ -534,8 +538,13 @@ impl ZeroTrustManager {
 
     /// Check if device is trusted
     pub fn is_device_trusted(&self, device_id: &str) -> bool {
-        let store = self.device_trust_store.read()
-            .unwrap_or_else(|e| e.into_inner());
+        let store = match self.device_trust_store.read() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[SECURITY] Device trust store lock poisoned during read: {}", e);
+                return false;
+            }
+        };
         if let Some(device_trust) = store.get(device_id) {
             matches!(
                 device_trust.trust_level,
@@ -546,17 +555,39 @@ impl ZeroTrustManager {
         }
     }
 
-    /// Register device trust
+    /// Register device trust, evicting the oldest entry if the store exceeds its capacity.
     pub fn register_device_trust(&self, device_trust: DeviceTrust) {
-        let mut store = self.device_trust_store.write()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut store = match self.device_trust_store.write() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[SECURITY] Device trust store lock poisoned during write: {}", e);
+                return;
+            }
+        };
+
+        // Evict the oldest entry (by last_seen) when the store is at capacity
+        if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
+            if let Some(oldest_key) = store
+                .iter()
+                .min_by_key(|(_, v)| v.last_seen)
+                .map(|(k, _)| k.clone())
+            {
+                store.remove(&oldest_key);
+            }
+        }
+
         store.insert(device_trust.device_id.clone(), device_trust);
     }
 
     /// Update device trust level
     pub fn update_device_trust(&self, device_id: &str, new_level: TrustLevel) {
-        let mut store = self.device_trust_store.write()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut store = match self.device_trust_store.write() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[SECURITY] Device trust store lock poisoned during write: {}", e);
+                return;
+            }
+        };
         if let Some(device_trust) = store.get_mut(device_id) {
             device_trust.trust_level = new_level;
             device_trust.last_seen = Utc::now();
@@ -565,8 +596,13 @@ impl ZeroTrustManager {
 
     /// Get the last_seen timestamp for a device, if it exists in the store
     pub fn get_device_last_seen(&self, device_id: &str) -> Option<DateTime<Utc>> {
-        let store = self.device_trust_store.read()
-            .unwrap_or_else(|e| e.into_inner());
+        let store = match self.device_trust_store.read() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[SECURITY] Device trust store lock poisoned during read: {}", e);
+                return None;
+            }
+        };
         store.get(device_id).map(|d| d.last_seen)
     }
 }
@@ -585,7 +621,7 @@ impl ContinuousAuthService for ZeroTrustManager {
         // Check if we already have trust info for this device fingerprint
         {
             let mut store = self.device_trust_store.write()
-                .unwrap_or_else(|e| e.into_inner());
+                .map_err(|e| format!("Failed to write device trust store: {}", e))?;
             if let Some(existing) = store.get_mut(&device_fingerprint) {
                 // Update last_seen and device_info in-place, then return a clone
                 existing.last_seen = Utc::now();
