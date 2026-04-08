@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::RwLock;
 use uuid::Uuid;
 
 /// Zero Trust security levels
@@ -238,8 +239,8 @@ pub struct SuspiciousActivity {
 
 /// Zero Trust Manager - main service
 pub struct ZeroTrustManager {
-    // Internal storage for device trust information
-    device_trust_store: HashMap<String, DeviceTrust>,
+    // Internal storage for device trust information (wrapped in RwLock for interior mutability behind Arc)
+    device_trust_store: RwLock<HashMap<String, DeviceTrust>>,
     // Risk assessment policies
     risk_policies: Vec<ZeroTrustPolicy>,
     // Adaptive control policies
@@ -288,7 +289,7 @@ impl ZeroTrustManager {
     /// ```
     pub fn new() -> Self {
         Self {
-            device_trust_store: HashMap::new(),
+            device_trust_store: RwLock::new(HashMap::new()),
             risk_policies: Vec::new(),
             adaptive_policies: Vec::new(),
             anomaly_detector: None,
@@ -530,7 +531,8 @@ impl ZeroTrustManager {
 
     /// Check if device is trusted
     pub fn is_device_trusted(&self, device_id: &str) -> bool {
-        if let Some(device_trust) = self.device_trust_store.get(device_id) {
+        let store = self.device_trust_store.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(device_trust) = store.get(device_id) {
             matches!(
                 device_trust.trust_level,
                 TrustLevel::High | TrustLevel::Maximum
@@ -541,14 +543,15 @@ impl ZeroTrustManager {
     }
 
     /// Register device trust
-    pub fn register_device_trust(&mut self, device_trust: DeviceTrust) {
-        self.device_trust_store
-            .insert(device_trust.device_id.clone(), device_trust);
+    pub fn register_device_trust(&self, device_trust: DeviceTrust) {
+        let mut store = self.device_trust_store.write().unwrap_or_else(|e| e.into_inner());
+        store.insert(device_trust.device_id.clone(), device_trust);
     }
 
     /// Update device trust level
-    pub fn update_device_trust(&mut self, device_id: &str, new_level: TrustLevel) {
-        if let Some(device_trust) = self.device_trust_store.get_mut(device_id) {
+    pub fn update_device_trust(&self, device_id: &str, new_level: TrustLevel) {
+        let mut store = self.device_trust_store.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(device_trust) = store.get_mut(device_id) {
             device_trust.trust_level = new_level;
             device_trust.last_seen = Utc::now();
         }
@@ -625,8 +628,9 @@ impl ContinuousAuthService for ZeroTrustManager {
             TrustLevel::None
         };
 
+        let device_id = format!("device_{}", uuid::Uuid::new_v4());
         let device_trust = DeviceTrust {
-            device_id: format!("device_{}", uuid::Uuid::new_v4()),
+            device_id: device_id.clone(),
             device_fingerprint,
             trust_level,
             last_seen: Utc::now(),
@@ -634,6 +638,9 @@ impl ContinuousAuthService for ZeroTrustManager {
             device_info: device_info.clone(),
             compliance_status,
         };
+
+        // Persist the evaluated device trust into the store
+        self.register_device_trust(device_trust.clone());
 
         Ok(device_trust)
     }
@@ -688,7 +695,9 @@ impl ContinuousAuthService for ZeroTrustManager {
         // the risk assessment integration logic using the existing zero trust components.
 
         // Step 1: Check if we have cached device trust for this session
-        let device_trust = self.device_trust_store.get(session_id);
+        let store = self.device_trust_store.read()
+            .map_err(|e| format!("Failed to read device trust store: {}", e))?;
+        let device_trust = store.get(session_id);
 
         // Step 2: Evaluate device trust
         let device_risk = if let Some(trust) = device_trust {
@@ -774,36 +783,37 @@ impl ContinuousAuthService for ZeroTrustManager {
         );
 
         // Step 3: Update device trust based on severity
-        if let Some(mut device_trust) = self.device_trust_store.get(&activity.session_id).cloned() {
-            // Save old trust level before modification
-            let old_trust_level = device_trust.trust_level.clone();
+        {
+            let mut store = self.device_trust_store.write()
+                .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+            if let Some(device_trust) = store.get_mut(&activity.session_id) {
+                let old_trust_level = device_trust.trust_level.clone();
 
-            // Downgrade trust level based on risk score
-            let new_trust_level = match activity.risk_score {
-                score if score >= 0.8 => TrustLevel::None,
-                score if score >= 0.6 => TrustLevel::Low,
-                score if score >= 0.3 => {
-                    // Downgrade by one level
-                    match old_trust_level {
-                        TrustLevel::Maximum => TrustLevel::High,
-                        TrustLevel::High => TrustLevel::Medium,
-                        TrustLevel::Medium => TrustLevel::Low,
-                        TrustLevel::Low => TrustLevel::None,
-                        TrustLevel::None => TrustLevel::None,
+                // Downgrade trust level based on risk score
+                let new_trust_level = match activity.risk_score {
+                    score if score >= 0.8 => TrustLevel::None,
+                    score if score >= 0.6 => TrustLevel::Low,
+                    score if score >= 0.3 => {
+                        // Downgrade by one level
+                        match old_trust_level {
+                            TrustLevel::Maximum => TrustLevel::High,
+                            TrustLevel::High => TrustLevel::Medium,
+                            TrustLevel::Medium => TrustLevel::Low,
+                            TrustLevel::Low => TrustLevel::None,
+                            TrustLevel::None => TrustLevel::None,
+                        }
                     }
-                }
-                _ => old_trust_level.clone(), // Keep current level for low risk
-            };
+                    _ => old_trust_level.clone(), // Keep current level for low risk
+                };
 
-            device_trust.trust_level = new_trust_level.clone();
-            device_trust.last_seen = Utc::now();
+                device_trust.trust_level = new_trust_level.clone();
+                device_trust.last_seen = Utc::now();
 
-            // Update the store (would need mutable access in production)
-            // For now, log the intended update
-            eprintln!(
-                "[SECURITY ACTION] Device trust updated for session {}: {:?} -> {:?}",
-                activity.session_id, old_trust_level, new_trust_level
-            );
+                eprintln!(
+                    "[SECURITY ACTION] Device trust updated for session {}: {:?} -> {:?}",
+                    activity.session_id, old_trust_level, new_trust_level
+                );
+            }
         }
 
         // Step 4: Take action based on severity level
