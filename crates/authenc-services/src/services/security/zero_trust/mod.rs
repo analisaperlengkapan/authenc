@@ -582,10 +582,19 @@ impl ZeroTrustManager {
             }
         };
 
-        // Evict the oldest entry (by last_seen) when the store is at capacity
-        // If the device already exists, just update it in-place (no eviction needed)
-        if store.contains_key(&device_trust.device_id) {
-            store.insert(device_trust.device_id.clone(), device_trust);
+        // If the device already exists, update it in-place (no eviction needed).
+        // We must preserve the `security_downgraded` flag set by
+        // `handle_suspicious_activity` — a blind insert would reset it to
+        // `false`, silently undoing a trust demotion.
+        if let Some(existing) = store.get_mut(&device_trust.device_id) {
+            existing.last_seen = device_trust.last_seen;
+            existing.device_info = device_trust.device_info;
+            existing.compliance_status = device_trust.compliance_status;
+            // Only upgrade trust when the device has NOT been security-
+            // downgraded.  Mirrors the guard in `evaluate_device_trust`.
+            if !existing.security_downgraded && device_trust.trust_level > existing.trust_level {
+                existing.trust_level = device_trust.trust_level;
+            }
             return;
         }
 
