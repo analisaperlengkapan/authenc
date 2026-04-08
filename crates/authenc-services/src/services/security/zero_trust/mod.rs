@@ -577,6 +577,13 @@ impl ZeroTrustManager {
         };
 
         // Evict the oldest entry (by last_seen) when the store is at capacity
+        // If the device already exists, just update it in-place (no eviction needed)
+        if store.contains_key(&device_trust.device_id) {
+            store.insert(device_trust.device_id.clone(), device_trust);
+            return;
+        }
+
+        // Evict the oldest entry (by last_seen) when the store is at capacity
         if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
             if let Some(oldest_key) = store
                 .iter()
