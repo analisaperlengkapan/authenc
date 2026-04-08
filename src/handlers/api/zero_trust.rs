@@ -119,14 +119,14 @@ pub async fn assess_risk(
         timezone: None,
     };
 
-    // Evaluate device trust
-    let mut device_trust = state.zero_trust_manager.evaluate_device_trust(&device_info).await
+    // Evaluate device trust (reuses existing entry for the same device fingerprint)
+    let device_trust = state.zero_trust_manager.evaluate_device_trust(&device_info).await
         .map_err(|e| AuthencError::internal(e))?;
 
-    // Use the client-provided fingerprint for tracking
-    device_trust.device_fingerprint = request.device_fingerprint.clone();
+    // Persist the device trust under its fingerprint-based ID for future lookups
+    state.zero_trust_manager.register_device_trust(device_trust.clone());
 
-    // Also register the device trust under the session_id so verify_session can look it up
+    // Also register under the session_id so verify_session can look it up
     let mut session_device_trust = device_trust.clone();
     session_device_trust.device_id = request.session_id.clone();
     state.zero_trust_manager.register_device_trust(session_device_trust);

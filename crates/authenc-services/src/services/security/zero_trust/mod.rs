@@ -567,6 +567,18 @@ impl ContinuousAuthService for ZeroTrustManager {
             device_info.user_agent, device_info.ip_address, device_info.os
         );
 
+        // Check if we already have trust info for this device fingerprint
+        {
+            let store = self.device_trust_store.read().unwrap_or_else(|e| e.into_inner());
+            if let Some(existing) = store.get(&device_fingerprint) {
+                // Return existing trust with updated last_seen
+                let mut trust = existing.clone();
+                trust.last_seen = Utc::now();
+                trust.device_info = device_info.clone();
+                return Ok(trust);
+            }
+        }
+
         // Calculate trust level based on device characteristics
         let mut trust_score = 0;
         let mut compliance_status = ComplianceStatus::Compliant;
@@ -628,9 +640,9 @@ impl ContinuousAuthService for ZeroTrustManager {
             TrustLevel::None
         };
 
-        let device_id = format!("device_{}", uuid::Uuid::new_v4());
+        // Use the fingerprint as the device_id for stable lookups
         let device_trust = DeviceTrust {
-            device_id: device_id.clone(),
+            device_id: device_fingerprint.clone(),
             device_fingerprint,
             trust_level,
             last_seen: Utc::now(),
