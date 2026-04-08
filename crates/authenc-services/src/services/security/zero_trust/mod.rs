@@ -651,6 +651,9 @@ impl ContinuousAuthService for ZeroTrustManager {
             compliance_status,
         };
 
+        // Persist the new entry so future calls for the same fingerprint hit the cache
+        self.register_device_trust(device_trust.clone());
+
         Ok(device_trust)
     }
 
