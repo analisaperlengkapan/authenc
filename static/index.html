@@ -2280,13 +2280,26 @@
                 if (analyticsRes.ok) {
                     const analytics = await analyticsRes.json();
                     const content = document.getElementById('risk-analytics-content');
-                    content.innerHTML = `
-                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                            <div><strong>Average Risk Score:</strong> ${analytics.average_risk_score}</div>
-                            <div><strong>Risky Sessions:</strong> ${analytics.risky_sessions} / ${analytics.total_sessions}</div>
-                            <div><strong>Top Risk Factors:</strong> ${analytics.top_risk_factors.join(', ') || 'None'}</div>
-                        </div>
-                    `;
+                    content.textContent = '';
+                    const wrapper = document.createElement('div');
+                    wrapper.style.cssText = 'display: flex; flex-direction: column; gap: 0.5rem;';
+                    const avgDiv = document.createElement('div');
+                    const avgLabel = document.createElement('strong');
+                    avgLabel.textContent = 'Average Risk Score: ';
+                    avgDiv.appendChild(avgLabel);
+                    avgDiv.appendChild(document.createTextNode(analytics.average_risk_score));
+                    const riskyDiv = document.createElement('div');
+                    const riskyLabel = document.createElement('strong');
+                    riskyLabel.textContent = 'Risky Sessions: ';
+                    riskyDiv.appendChild(riskyLabel);
+                    riskyDiv.appendChild(document.createTextNode(analytics.risky_sessions + ' / ' + analytics.total_sessions));
+                    const factorsDiv = document.createElement('div');
+                    const factorsLabel = document.createElement('strong');
+                    factorsLabel.textContent = 'Top Risk Factors: ';
+                    factorsDiv.appendChild(factorsLabel);
+                    factorsDiv.appendChild(document.createTextNode(analytics.top_risk_factors.join(', ') || 'None'));
+                    wrapper.append(avgDiv, riskyDiv, factorsDiv);
+                    content.appendChild(wrapper);
                 }
             } catch (err) { console.error('Failed to fetch security data', err); }
         }
