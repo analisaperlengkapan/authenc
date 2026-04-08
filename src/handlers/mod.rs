@@ -74,8 +74,6 @@ pub mod social;
 pub mod oid4vc;
 /// Single Sign-On (SSO) handlers and endpoints
 pub mod sso;
-/// Zero Trust security model handlers and endpoints
-pub mod zero_trust;
 /// FIPS management handlers
 pub mod fips;
 /// Password reset handlers
@@ -192,7 +190,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .nest(
             "/zero-trust",
-            zero_trust::create_zero_trust_routes(),
+            api::zero_trust::create_zero_trust_routes(),
         )
         .nest(
             "/broker",

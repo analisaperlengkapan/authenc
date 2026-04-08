@@ -91,6 +91,8 @@ pub struct AppState {
     pub social_login_manager: Arc<authenc_services::services::social::SocialLoginManager>,
     /// Authorization manager for fine-grained permissions
     pub authorization_manager: Arc<authenc_services::services::authorization::AuthorizationManager>,
+    /// Zero trust security manager
+    pub zero_trust_manager: Arc<authenc_services::services::security::zero_trust::ZeroTrustManager>,
     /// JIT provisioning service for federated users
     pub jit_provisioning_service: Arc<dyn authenc_services::services::federation::jit_provisioning::JITProvisioningService>,
     /// OAuth2 client validator
@@ -708,6 +710,12 @@ impl AppState {
         // Preload policies (best effort)
         let _ = authorization_manager.reload().await;
 
+        // Initialize zero trust manager
+        let mut zero_trust_manager = authenc_services::services::security::zero_trust::ZeroTrustManager::new();
+        // Integration with anomaly detector if available (as trait object)
+        zero_trust_manager.set_anomaly_detector(Box::new((*anomaly_detector).clone()));
+        let zero_trust_manager = Arc::new(zero_trust_manager);
+
         // Initialize admin service for JIT
         let admin_service = Arc::new(authenc_services::services::admin::AdminManager::new(database.clone()));
 
@@ -768,6 +776,7 @@ impl AppState {
             fips_provider,
             social_login_manager,
             authorization_manager,
+            zero_trust_manager,
             jit_provisioning_service,
             client_validator,
             password_reset_service,

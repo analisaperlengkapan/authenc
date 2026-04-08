@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Trait for anomaly detection functionality
 pub trait AnomalyDetectorTrait: Send + Sync {
@@ -8,9 +8,10 @@ pub trait AnomalyDetectorTrait: Send + Sync {
 }
 
 /// Anomaly detector for tracking user IP addresses and detecting suspicious activity
+#[derive(Clone)]
 pub struct AnomalyDetector {
     /// Map of user IDs to their known IP addresses for anomaly detection
-    known_ips: Mutex<HashMap<String, Vec<String>>>,
+    known_ips: Arc<Mutex<HashMap<String, Vec<String>>>>,
 }
 
 impl Default for AnomalyDetector {
@@ -23,7 +24,7 @@ impl AnomalyDetector {
     /// Create a new anomaly detector instance
     pub fn new() -> Self {
         Self {
-            known_ips: Mutex::new(HashMap::new()),
+            known_ips: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }

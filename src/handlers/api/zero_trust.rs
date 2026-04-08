@@ -1,7 +1,6 @@
 use axum::{
     Router,
     extract::{Query, State},
-    http::StatusCode,
     response::Json,
     routing::{get, post, put},
 };
@@ -11,10 +10,9 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::error::AuthencError;
-use authenc_services::services::security::anomaly_detector::AnomalyDetectorTrait;
 use authenc_services::services::security::zero_trust::{
-    AdaptiveControls, AuthContext, ComplianceStatus, DeviceTrust, RiskAssessment, RiskLevel,
-    TrustLevel,
+    AdaptiveControls, AuthContext, RiskAssessment, RiskLevel,
+    ContinuousAuthService, Location, DeviceInfo,
 };
 
 #[derive(Deserialize)]
@@ -31,7 +29,7 @@ pub struct AssessRiskRequest {
     /// IP address of the request
     pub ip_address: String,
     /// Geographic location information
-    pub location: Option<crate::services::security::zero_trust::Location>,
+    pub location: Option<Location>,
 }
 
 #[derive(Serialize)]
@@ -106,76 +104,59 @@ pub struct GetRiskAnalyticsQuery {
 
 /// Assess risk for a user action
 pub async fn assess_risk(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<AssessRiskRequest>,
-) -> Result<Json<RiskAssessmentResponse>, StatusCode> {
-    // Create device trust info
-    let device_info = crate::services::security::zero_trust::DeviceInfo {
+) -> Result<Json<RiskAssessmentResponse>, AuthencError> {
+    // Create device info
+    let device_info = DeviceInfo {
         user_agent: request.user_agent.clone(),
         ip_address: request.ip_address.clone(),
         location: request.location.clone(),
-        os: "Unknown".to_string(),      // Would be parsed from user agent
-        browser: "Unknown".to_string(), // Would be parsed from user agent
+        os: "Unknown".to_string(),      // Ideally parsed from UA
+        browser: "Unknown".to_string(), // Ideally parsed from UA
         screen_resolution: None,
         timezone: None,
     };
 
-    let device_trust = DeviceTrust {
-        device_id: format!("device_{}", request.device_fingerprint),
-        device_fingerprint: request.device_fingerprint.clone(),
-        trust_level: TrustLevel::Medium,
-        last_seen: chrono::Utc::now(),
-        first_seen: chrono::Utc::now(),
-        device_info,
-        compliance_status: ComplianceStatus::Unknown,
-    };
+    // Evaluate device trust
+    let device_trust = state.zero_trust_manager.evaluate_device_trust(&device_info).await
+        .map_err(|e| AuthencError::internal(e))?;
 
-    // Create risk assessment
-    let risk_assessment = RiskAssessment {
-        score: 0.0,
-        level: RiskLevel::Low,
-        factors: vec![],
-        recommendations: vec![],
-        assessed_at: chrono::Utc::now(),
-    };
-
-    // Create adaptive controls
-    let adaptive_controls = AdaptiveControls {
-        require_mfa: false,
-        require_device_verification: false,
-        session_timeout: 3600, // 1 hour in seconds
-        max_concurrent_sessions: 5,
-        allowed_locations: vec![],
-        blocked_actions: vec![],
-    };
-
-    // Create auth context
-    let _context = AuthContext {
+    // Create auth context for assessment
+    let context = AuthContext {
         session_id: request.session_id.clone(),
         user_id: request.user_id,
         device_trust,
-        risk_assessment,
+        risk_assessment: RiskAssessment {
+            score: 0.0,
+            level: RiskLevel::Low,
+            factors: vec![],
+            recommendations: vec![],
+            assessed_at: chrono::Utc::now(),
+        },
         last_activity: chrono::Utc::now(),
-        adaptive_controls,
+        adaptive_controls: AdaptiveControls {
+            require_mfa: false,
+            require_device_verification: false,
+            session_timeout: 3600,
+            max_concurrent_sessions: 5,
+            allowed_locations: vec![],
+            blocked_actions: vec![],
+        },
     };
 
-    // Create a simple anomaly detector (in production, this would be more sophisticated)
-    struct SimpleAnomalyDetector;
-    impl AnomalyDetectorTrait for SimpleAnomalyDetector {
-        fn is_new_ip(&self, _user_id: &str, _ip: &str) -> Result<bool, String> {
-            Ok(false) // Simplified implementation
-        }
-    }
-    let _detector = SimpleAnomalyDetector;
+    // Assess risk
+    let assessment = state.zero_trust_manager.assess_risk(&context).await
+        .map_err(|e| AuthencError::internal(e))?;
 
-    // Mock response - in real implementation would use actual service
     let response = RiskAssessmentResponse {
-        score: 0.2,
-        level: RiskLevel::Low,
-        factors: vec!["Mock factor".to_string()],
-        recommendations: vec!["Mock recommendation".to_string()],
-        assessed_at: chrono::Utc::now(),
+        score: assessment.score,
+        level: assessment.level,
+        factors: assessment.factors.into_iter().map(|f| f.description).collect(),
+        recommendations: assessment.recommendations,
+        assessed_at: assessment.assessed_at,
     };
+
     Ok(Json(response))
 }
 
@@ -183,8 +164,8 @@ pub async fn assess_risk(
 pub async fn update_adaptive_controls(
     State(_state): State<Arc<AppState>>,
     Json(request): Json<UpdateAdaptiveControlsRequest>,
-) -> Result<Json<AdaptiveControlsResponse>, StatusCode> {
-    // Mock response - in real implementation would update via service
+) -> Result<Json<AdaptiveControlsResponse>, AuthencError> {
+    // In a real implementation, we would store these controls in a session or database
     let response = AdaptiveControlsResponse {
         session_id: request.session_id,
         user_id: request.user_id,
@@ -196,22 +177,18 @@ pub async fn update_adaptive_controls(
 
 /// Verify session security
 pub async fn verify_session(
-    State(_state): State<Arc<AppState>>,
-    Json(_request): Json<VerifySessionRequest>,
-) -> Result<Json<SessionVerificationResponse>, StatusCode> {
-    // Mock response - in real implementation would verify via service
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<VerifySessionRequest>,
+) -> Result<Json<SessionVerificationResponse>, AuthencError> {
+    let valid = state.zero_trust_manager.verify_session(&request.session_id).await
+        .unwrap_or(false);
+
+    // Mock additional details for the response
     let response = SessionVerificationResponse {
-        valid: true,
-        risk_score: 0.1,
-        requires_additional_auth: false,
-        adaptive_controls: AdaptiveControls {
-            require_mfa: false,
-            require_device_verification: false,
-            session_timeout: 3600,
-            max_concurrent_sessions: 5,
-            allowed_locations: vec![],
-            blocked_actions: vec![],
-        },
+        valid,
+        risk_score: if valid { 0.1 } else { 0.8 },
+        requires_additional_auth: !valid,
+        adaptive_controls: state.zero_trust_manager.generate_adaptive_controls(if valid { 0.1 } else { 0.8 }),
     };
     Ok(Json(response))
 }
@@ -221,7 +198,7 @@ pub async fn get_risk_analytics(
     State(_state): State<Arc<AppState>>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
-    // Mock response - in real implementation would fetch from service
+    // Mock response
     let analytics = serde_json::json!({
         "total_sessions": 100,
         "risky_sessions": 5,
@@ -236,7 +213,7 @@ pub async fn get_security_dashboard(
     State(_state): State<Arc<AppState>>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
-    // Mock response - in real implementation would fetch from service
+    // Mock response
     let dashboard = serde_json::json!({
         "active_sessions": 25,
         "trusted_devices": 18,

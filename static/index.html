@@ -277,6 +277,8 @@
                 <button id="tab-roles" class="tab-button" onclick="switchTab('roles')">Roles</button>
                 <button id="tab-clients" class="tab-button" onclick="switchTab('clients')">Clients</button>
                 <button id="tab-providers" class="tab-button" onclick="switchTab('providers')">Identity Providers</button>
+                <button id="tab-authorization" class="tab-button" onclick="switchTab('authorization')">Authorization</button>
+                <button id="tab-security" class="tab-button" onclick="switchTab('security')">Security</button>
                 <button id="tab-audit" class="tab-button" onclick="switchTab('audit')">Audit Logs</button>
             </div>
 
@@ -481,6 +483,98 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <div id="authorization-section" class="hidden">
+                <div style="margin-bottom: 2rem;">
+                    <h3>Authorization Policies</h3>
+                    <p style="color: var(--text-light);">Manage access control policies for realm: <strong id="current-realm-policies">master</strong></p>
+                    <div style="display: flex; gap: 1rem;">
+                        <button onclick="fetchPolicies()" style="width: auto;">Refresh List</button>
+                        <button onclick="openCreatePolicyModal()" style="width: auto; background-color: var(--success);">Create Policy</button>
+                    </div>
+                </div>
+
+                <div style="overflow-x: auto; margin-bottom: 2rem;">
+                    <table id="policies-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Logic</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="policies-body">
+                            <tr>
+                                <td colspan="5" style="text-align: center;">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-bottom: 2rem; border-top: 1px solid #e5e7eb; padding-top: 2rem;">
+                    <h3>Permissions</h3>
+                    <p style="color: var(--text-light);">Define permissions by linking resources to policies.</p>
+                    <div style="display: flex; gap: 1rem;">
+                        <button onclick="fetchPermissions()" style="width: auto;">Refresh List</button>
+                        <button onclick="openCreatePermissionModal()" style="width: auto; background-color: var(--success);">Create Permission</button>
+                    </div>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table id="permissions-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Resource ID</th>
+                                <th>Scopes</th>
+                                <th>Policies</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="permissions-body">
+                            <tr>
+                                <td colspan="5" style="text-align: center;">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="security-section" class="hidden">
+                <div style="margin-bottom: 2rem;">
+                    <h3>Security Dashboard (Zero Trust)</h3>
+                    <p style="color: var(--text-light);">Adaptive security and risk analytics for realm: <strong id="current-realm-security">master</strong></p>
+                    <button onclick="fetchSecurityData()" style="width: auto;">Refresh Analytics</button>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div class="card" style="margin: 0; max-width: none; text-align: center;">
+                        <div style="font-size: 0.85rem; color: var(--text-light);">Active Sessions</div>
+                        <div id="stat-active-sessions" style="font-size: 2rem; font-weight: bold;">0</div>
+                    </div>
+                    <div class="card" style="margin: 0; max-width: none; text-align: center;">
+                        <div style="font-size: 0.85rem; color: var(--text-light);">Trusted Devices</div>
+                        <div id="stat-trusted-devices" style="font-size: 2rem; font-weight: bold;">0</div>
+                    </div>
+                    <div class="card" style="margin: 0; max-width: none; text-align: center;">
+                        <div style="font-size: 0.85rem; color: var(--text-light);">Risky Sessions</div>
+                        <div id="stat-risky-sessions" style="font-size: 2rem; font-weight: bold; color: var(--error);">0</div>
+                    </div>
+                    <div class="card" style="margin: 0; max-width: none; text-align: center;">
+                        <div style="font-size: 0.85rem; color: var(--text-light);">Compliance Rate</div>
+                        <div id="stat-compliance-rate" style="font-size: 2rem; font-weight: bold; color: var(--success);">0%</div>
+                    </div>
+                </div>
+
+                <h4>Risk Analytics Summary</h4>
+                <div style="overflow-x: auto; background: #f9fafb; padding: 1rem; border-radius: 0.5rem;">
+                    <div id="risk-analytics-content">
+                        <p style="text-align: center; color: var(--text-light);">Click Refresh to load analytics</p>
+                    </div>
                 </div>
             </div>
 
@@ -852,6 +946,87 @@
         </div>
     </div>
 
+    <div id="edit-policy-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div class="card" style="max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;">
+            <h2 id="edit-policy-title" style="text-align: center;">Create Policy</h2>
+            <form id="edit-policy-form">
+                <input type="hidden" id="edit-policy-id">
+                <div class="form-group">
+                    <label for="edit-policy-name">Name</label>
+                    <input type="text" id="edit-policy-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-policy-description">Description</label>
+                    <input type="text" id="edit-policy-description" name="description">
+                </div>
+                <div class="form-group">
+                    <label for="edit-policy-type">Policy Type</label>
+                    <select id="edit-policy-type" name="policy_type" required style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.25rem;">
+                        <option value="RoleBased">Role-Based (RBAC)</option>
+                        <option value="AttributeBased">Attribute-Based (ABAC)</option>
+                        <option value="TimeBased">Time-Based</option>
+                        <option value="LocationBased">Location-Based</option>
+                        <option value="RiskBased">Risk-Based</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="edit-policy-logic">Logic Type</label>
+                    <select id="edit-policy-logic" name="logic" required style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.25rem;">
+                        <option value="Positive">Positive (Permit if matched)</option>
+                        <option value="Negative">Negative (Deny if matched)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="edit-policy-config">Config (JSON)</label>
+                    <textarea id="edit-policy-config" name="config" rows="5" required style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.25rem; font-family: monospace;">{
+  "roles": [],
+  "attributes": {},
+  "conditions": []
+}</textarea>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="edit-policy-enabled" name="enabled" style="width: auto;" checked>
+                    <label for="edit-policy-enabled" style="margin: 0;">Enabled</label>
+                </div>
+                <button type="submit">Save Policy</button>
+                <button type="button" class="secondary" onclick="closeEditPolicyModal()">Cancel</button>
+            </form>
+            <div id="edit-policy-error" class="error-message"></div>
+        </div>
+    </div>
+
+    <div id="edit-permission-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div class="card" style="max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;">
+            <h2 id="edit-permission-title" style="text-align: center;">Create Permission</h2>
+            <form id="edit-permission-form">
+                <input type="hidden" id="edit-permission-id">
+                <div class="form-group">
+                    <label for="edit-permission-name">Name</label>
+                    <input type="text" id="edit-permission-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-permission-description">Description</label>
+                    <input type="text" id="edit-permission-description" name="description">
+                </div>
+                <div class="form-group">
+                    <label for="edit-permission-resource">Resource ID (UUID)</label>
+                    <input type="text" id="edit-permission-resource" name="resource_id" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-permission-scopes">Scopes (Comma separated)</label>
+                    <input type="text" id="edit-permission-scopes" name="scopes" placeholder="read, write, delete">
+                </div>
+                <div class="form-group">
+                    <label for="edit-permission-policies">Policy IDs (Comma separated UUIDs)</label>
+                    <textarea id="edit-permission-policies" name="policies" rows="3" style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.25rem; font-family: monospace;"></textarea>
+                </div>
+                <button type="submit">Save Permission</button>
+                <button type="button" class="secondary" onclick="closeEditPermissionModal()">Cancel</button>
+            </form>
+            <div id="edit-permission-error" class="error-message"></div>
+        </div>
+    </div>
+
     <div id="edit-provider-modal" class="container hidden" style="position: fixed; top: 0; left: 0; width: 100%; max-width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
         <div class="card" style="max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;">
             <h2 id="edit-provider-title" style="text-align: center;">Create Provider</h2>
@@ -1003,6 +1178,8 @@
             document.getElementById('current-realm-roles').textContent = currentRealm;
             document.getElementById('current-realm-clients').textContent = currentRealm;
             document.getElementById('current-realm-providers').textContent = currentRealm;
+            document.getElementById('current-realm-policies').textContent = currentRealm;
+            document.getElementById('current-realm-security').textContent = currentRealm;
             document.getElementById('current-realm-audit').textContent = currentRealm;
             switchTab('realms');
         }
@@ -1015,6 +1192,8 @@
             document.getElementById('tab-roles').classList.remove('active');
             document.getElementById('tab-clients').classList.remove('active');
             document.getElementById('tab-providers').classList.remove('active');
+            document.getElementById('tab-authorization').classList.remove('active');
+            document.getElementById('tab-security').classList.remove('active');
             document.getElementById('tab-audit').classList.remove('active');
             document.getElementById('realms-section').classList.add('hidden');
             document.getElementById('organizations-section').classList.add('hidden');
@@ -1023,6 +1202,8 @@
             document.getElementById('roles-section').classList.add('hidden');
             document.getElementById('clients-section').classList.add('hidden');
             document.getElementById('providers-section').classList.add('hidden');
+            document.getElementById('authorization-section').classList.add('hidden');
+            document.getElementById('security-section').classList.add('hidden');
             document.getElementById('audit-section').classList.add('hidden');
 
             if (tabName === 'realms') {
@@ -1053,6 +1234,15 @@
                 document.getElementById('tab-providers').classList.add('active');
                 document.getElementById('providers-section').classList.remove('hidden');
                 fetchProviders();
+            } else if (tabName === 'authorization') {
+                document.getElementById('tab-authorization').classList.add('active');
+                document.getElementById('authorization-section').classList.remove('hidden');
+                fetchPolicies();
+                fetchPermissions();
+            } else if (tabName === 'security') {
+                document.getElementById('tab-security').classList.add('active');
+                document.getElementById('security-section').classList.remove('hidden');
+                fetchSecurityData();
             } else if (tabName === 'audit') {
                 document.getElementById('tab-audit').classList.add('active');
                 document.getElementById('audit-section').classList.remove('hidden');
@@ -1780,6 +1970,291 @@
             } catch (err) {
                 alert(err.message);
             }
+        }
+
+        async function fetchPolicies() {
+            const tbody = document.getElementById('policies-body');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading...</td></tr>';
+
+            try {
+                const response = await fetch(`${API_BASE}/realms/${currentRealmId}/policies`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const policies = await response.json();
+                    renderPolicies(policies);
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--error);">Failed to load policies</td></tr>';
+                }
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--error);">${err.message}</td></tr>`;
+            }
+        }
+
+        function renderPolicies(policies) {
+            const tbody = document.getElementById('policies-body');
+            tbody.innerHTML = '';
+
+            if (policies.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No policies found</td></tr>';
+                return;
+            }
+
+            policies.forEach(policy => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${policy.name}</td>
+                    <td>${policy.policy_type}</td>
+                    <td>${policy.logic}</td>
+                    <td><span class="badge ${policy.enabled ? 'badge-success' : 'badge-error'}">${policy.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                    <td>
+                        <button onclick='openEditPolicyModal(${JSON.stringify(policy)})' style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem;">Edit</button>
+                        <button onclick="deletePolicy('${policy.id}')" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background-color: var(--error);">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openCreatePolicyModal() {
+            document.getElementById('edit-policy-title').textContent = 'Create Policy';
+            document.getElementById('edit-policy-id').value = '';
+            document.getElementById('edit-policy-name').value = '';
+            document.getElementById('edit-policy-description').value = '';
+            document.getElementById('edit-policy-type').value = 'RoleBased';
+            document.getElementById('edit-policy-logic').value = 'Positive';
+            document.getElementById('edit-policy-config').value = JSON.stringify({roles:[], attributes:{}, conditions:[]}, null, 2);
+            document.getElementById('edit-policy-enabled').checked = true;
+            document.getElementById('edit-policy-modal').classList.remove('hidden');
+            document.getElementById('edit-policy-modal').style.display = 'flex';
+            document.getElementById('edit-policy-modal').style.alignItems = 'center';
+            document.getElementById('edit-policy-modal').style.justifyContent = 'center';
+        }
+
+        function openEditPolicyModal(policy) {
+            document.getElementById('edit-policy-title').textContent = 'Edit Policy';
+            document.getElementById('edit-policy-id').value = policy.id;
+            document.getElementById('edit-policy-name').value = policy.name;
+            document.getElementById('edit-policy-description').value = policy.description || '';
+            document.getElementById('edit-policy-type').value = policy.policy_type;
+            document.getElementById('edit-policy-logic').value = policy.logic;
+            document.getElementById('edit-policy-config').value = JSON.stringify(policy.config, null, 2);
+            document.getElementById('edit-policy-enabled').checked = policy.enabled;
+            document.getElementById('edit-policy-modal').classList.remove('hidden');
+            document.getElementById('edit-policy-modal').style.display = 'flex';
+            document.getElementById('edit-policy-modal').style.alignItems = 'center';
+            document.getElementById('edit-policy-modal').style.justifyContent = 'center';
+        }
+
+        function closeEditPolicyModal() {
+            document.getElementById('edit-policy-modal').classList.add('hidden');
+            document.getElementById('edit-policy-modal').style.display = 'none';
+        }
+
+        document.getElementById('edit-policy-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-policy-id').value;
+            const isUpdate = !!id;
+
+            const payload = {
+                name: document.getElementById('edit-policy-name').value,
+                description: document.getElementById('edit-policy-description').value,
+                policy_type: document.getElementById('edit-policy-type').value,
+                logic: document.getElementById('edit-policy-logic').value,
+                config: JSON.parse(document.getElementById('edit-policy-config').value),
+                enabled: document.getElementById('edit-policy-enabled').checked,
+                realm_id: currentRealmId
+            };
+
+            const url = isUpdate
+                ? `${API_BASE}/realms/${currentRealmId}/policies/${id}`
+                : `${API_BASE}/realms/${currentRealmId}/policies`;
+
+            try {
+                const response = await fetch(url, {
+                    method: isUpdate ? 'PUT' : 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    closeEditPolicyModal();
+                    fetchPolicies();
+                } else {
+                    const err = await response.json();
+                    alert(err.error || 'Operation failed');
+                }
+            } catch (err) {
+                alert(err.message);
+            }
+        });
+
+        async function deletePolicy(id) {
+            if (!confirm("Delete policy?")) return;
+            try {
+                await fetch(`${API_BASE}/realms/${currentRealmId}/policies/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                fetchPolicies();
+            } catch (err) { alert(err.message); }
+        }
+
+        async function fetchPermissions() {
+            const tbody = document.getElementById('permissions-body');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading...</td></tr>';
+
+            try {
+                const response = await fetch(`${API_BASE}/realms/${currentRealmId}/permissions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const permissions = await response.json();
+                    renderPermissions(permissions);
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        function renderPermissions(permissions) {
+            const tbody = document.getElementById('permissions-body');
+            tbody.innerHTML = '';
+
+            if (permissions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No permissions defined</td></tr>';
+                return;
+            }
+
+            permissions.forEach(perm => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${perm.name}</td>
+                    <td style="font-size: 0.8rem; font-family: monospace;">${perm.resource_id}</td>
+                    <td>${perm.scopes.join(', ')}</td>
+                    <td>${perm.policies.length} policies</td>
+                    <td>
+                        <button onclick='openEditPermissionModal(${JSON.stringify(perm)})' style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem;">Edit</button>
+                        <button onclick="deletePermission('${perm.id}')" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background-color: var(--error);">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openCreatePermissionModal() {
+            document.getElementById('edit-permission-title').textContent = 'Create Permission';
+            document.getElementById('edit-permission-id').value = '';
+            document.getElementById('edit-permission-name').value = '';
+            document.getElementById('edit-permission-description').value = '';
+            document.getElementById('edit-permission-resource').value = '';
+            document.getElementById('edit-permission-scopes').value = '';
+            document.getElementById('edit-permission-policies').value = '';
+            document.getElementById('edit-permission-modal').classList.remove('hidden');
+            document.getElementById('edit-permission-modal').style.display = 'flex';
+            document.getElementById('edit-permission-modal').style.alignItems = 'center';
+            document.getElementById('edit-permission-modal').style.justifyContent = 'center';
+        }
+
+        function openEditPermissionModal(perm) {
+            document.getElementById('edit-permission-title').textContent = 'Edit Permission';
+            document.getElementById('edit-permission-id').value = perm.id;
+            document.getElementById('edit-permission-name').value = perm.name;
+            document.getElementById('edit-permission-description').value = perm.description || '';
+            document.getElementById('edit-permission-resource').value = perm.resource_id;
+            document.getElementById('edit-permission-scopes').value = perm.scopes.join(', ');
+            document.getElementById('edit-permission-policies').value = perm.policies.join(', ');
+            document.getElementById('edit-permission-modal').classList.remove('hidden');
+            document.getElementById('edit-permission-modal').style.display = 'flex';
+            document.getElementById('edit-permission-modal').style.alignItems = 'center';
+            document.getElementById('edit-permission-modal').style.justifyContent = 'center';
+        }
+
+        function closeEditPermissionModal() {
+            document.getElementById('edit-permission-modal').classList.add('hidden');
+            document.getElementById('edit-permission-modal').style.display = 'none';
+        }
+
+        document.getElementById('edit-permission-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-permission-id').value;
+            const isUpdate = !!id;
+
+            const payload = {
+                name: document.getElementById('edit-permission-name').value,
+                description: document.getElementById('edit-permission-description').value,
+                resource_id: document.getElementById('edit-permission-resource').value,
+                scopes: document.getElementById('edit-permission-scopes').value.split(',').map(s => s.trim()).filter(s => s),
+                policies: document.getElementById('edit-permission-policies').value.split(',').map(s => s.trim()).filter(s => s),
+                realm_id: currentRealmId
+            };
+
+            const url = isUpdate
+                ? `${API_BASE}/realms/${currentRealmId}/permissions/${id}`
+                : `${API_BASE}/realms/${currentRealmId}/permissions`;
+
+            try {
+                const response = await fetch(url, {
+                    method: isUpdate ? 'PUT' : 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    closeEditPermissionModal();
+                    fetchPermissions();
+                }
+            } catch (err) { alert(err.message); }
+        });
+
+        async function deletePermission(id) {
+            if (!confirm("Delete permission?")) return;
+            try {
+                await fetch(`${API_BASE}/realms/${currentRealmId}/permissions/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                fetchPermissions();
+            } catch (err) { alert(err.message); }
+        }
+
+        async function fetchSecurityData() {
+            try {
+                const [dashboardRes, analyticsRes] = await Promise.all([
+                    fetch(`${API_BASE}/auth/zero-trust/dashboard/security?realm_id=${currentRealmId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
+                    fetch(`${API_BASE}/auth/zero-trust/analytics/risk?realm_id=${currentRealmId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    })
+                ]);
+
+                if (dashboardRes.ok) {
+                    const data = await dashboardRes.json();
+                    document.getElementById('stat-active-sessions').textContent = data.active_sessions || 0;
+                    document.getElementById('stat-trusted-devices').textContent = data.trusted_devices || 0;
+                    document.getElementById('stat-risky-sessions').textContent = data.risky_sessions || 0;
+                    document.getElementById('stat-compliance-rate').textContent = ((data.compliance_rate || 0) * 100).toFixed(0) + '%';
+                }
+
+                if (analyticsRes.ok) {
+                    const analytics = await analyticsRes.json();
+                    const content = document.getElementById('risk-analytics-content');
+                    content.innerHTML = `
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div><strong>Average Risk Score:</strong> ${analytics.average_risk_score}</div>
+                            <div><strong>Risky Sessions:</strong> ${analytics.risky_sessions} / ${analytics.total_sessions}</div>
+                            <div><strong>Top Risk Factors:</strong> ${analytics.top_risk_factors.join(', ') || 'None'}</div>
+                        </div>
+                    `;
+                }
+            } catch (err) { console.error('Failed to fetch security data', err); }
         }
 
         function openCreateRoleModal() {
