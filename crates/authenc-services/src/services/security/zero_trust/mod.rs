@@ -644,8 +644,10 @@ impl ZeroTrustManager {
         // When no anomaly detector is configured we have zero behavioural
         // visibility, so assume a higher baseline risk (0.7).  With a detector
         // present we cannot run the full `calculate_behavioral_risk` (no
-        // AuthContext available), so use a moderate baseline (0.3).
-        let behavioral_risk = if self.anomaly_detector.is_some() { 0.3 } else { 0.7 };
+        // AuthContext available), so use a moderate-high baseline (0.5) —
+        // high enough that untrusted devices (device_risk >= 0.6) can still
+        // exceed the 0.6 rejection threshold.
+        let behavioral_risk = if self.anomaly_detector.is_some() { 0.5 } else { 0.7 };
         let location_risk = 0.2;
 
         let combined_risk = (device_risk * 0.4) + (behavioral_risk * 0.3) + (location_risk * 0.3);
@@ -860,8 +862,9 @@ impl ContinuousAuthService for ZeroTrustManager {
         // Step 3: Calculate behavioral risk using anomaly detector if available
         let behavioral_risk = if let Some(ref _detector) = self.anomaly_detector {
             // In production, would use detector.is_new_ip() and other checks
-            // For now, use medium risk when detector is available
-            0.3
+            // Use moderate-high baseline so untrusted devices can exceed the
+            // 0.6 rejection threshold (matches verify_session_with_score).
+            0.5
         } else {
             // No anomaly detector — no behavioural visibility, so assume
             // elevated risk.  This ensures untrusted devices can actually
@@ -1026,10 +1029,10 @@ pub fn extract_os(user_agent: &str) -> String {
         "Windows".to_string()
     } else if ua_lower.contains("mac os") || ua_lower.contains("macos") {
         "macOS".to_string()
-    } else if ua_lower.contains("linux") {
-        "Linux".to_string()
     } else if ua_lower.contains("android") {
         "Android".to_string()
+    } else if ua_lower.contains("linux") {
+        "Linux".to_string()
     } else if ua_lower.contains("iphone") || ua_lower.contains("ipad") {
         "iOS".to_string()
     } else {
