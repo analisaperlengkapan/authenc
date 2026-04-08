@@ -1977,7 +1977,7 @@
             tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading...</td></tr>';
 
             try {
-                const response = await fetch(`${API_BASE}/realms/${currentRealmId}/policies`, {
+                const response = await fetch(`${API_BASE}/admin/policies?realm_id=${currentRealmId}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
@@ -2020,15 +2020,10 @@
                 tdStatus.appendChild(badge);
 
                 const tdActions = document.createElement('td');
-                const editBtn = document.createElement('button');
-                editBtn.textContent = 'Edit';
-                editBtn.style.cssText = 'width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem;';
-                editBtn.addEventListener('click', () => openEditPolicyModal(policy));
-                const deleteBtn = document.createElement('button');
-                deleteBtn.textContent = 'Delete';
-                deleteBtn.style.cssText = 'width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background-color: var(--error);';
-                deleteBtn.addEventListener('click', () => deletePolicy(policy.id));
-                tdActions.append(editBtn, deleteBtn);
+                const infoSpan = document.createElement('span');
+                infoSpan.style.cssText = 'font-size: 0.8rem; color: var(--text-light);';
+                infoSpan.textContent = 'View only';
+                tdActions.appendChild(infoSpan);
 
                 tr.append(tdName, tdType, tdLogic, tdStatus, tdActions);
                 tbody.appendChild(tr);
@@ -2085,13 +2080,16 @@
                 realm_id: currentRealmId
             };
 
-            const url = isUpdate
-                ? `${API_BASE}/realms/${currentRealmId}/policies/${id}`
-                : `${API_BASE}/realms/${currentRealmId}/policies`;
+            if (isUpdate) {
+                alert('Policy update is not yet supported by the backend.');
+                return;
+            }
+
+            const url = `${API_BASE}/admin/policies`;
 
             try {
                 const response = await fetch(url, {
-                    method: isUpdate ? 'PUT' : 'POST',
+                    method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
@@ -2112,14 +2110,8 @@
         });
 
         async function deletePolicy(id) {
-            if (!confirm("Delete policy?")) return;
-            try {
-                await fetch(`${API_BASE}/realms/${currentRealmId}/policies/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                fetchPolicies();
-            } catch (err) { alert(err.message); }
+            // DELETE route for policies does not exist on the backend yet
+            alert('Policy deletion is not yet supported by the backend.');
         }
 
         async function fetchPermissions() {
@@ -2127,7 +2119,7 @@
             tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading...</td></tr>';
 
             try {
-                const response = await fetch(`${API_BASE}/realms/${currentRealmId}/permissions`, {
+                const response = await fetch(`${API_BASE}/auth/realms/${currentRealmId}/permissions`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
@@ -2164,15 +2156,11 @@
                 tdPolicies.textContent = perm.policies.length + ' policies';
 
                 const tdActions = document.createElement('td');
-                const editBtn = document.createElement('button');
-                editBtn.textContent = 'Edit';
-                editBtn.style.cssText = 'width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem;';
-                editBtn.addEventListener('click', () => openEditPermissionModal(perm));
                 const deleteBtn = document.createElement('button');
                 deleteBtn.textContent = 'Delete';
                 deleteBtn.style.cssText = 'width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background-color: var(--error);';
-                deleteBtn.addEventListener('click', () => deletePermission(perm.id));
-                tdActions.append(editBtn, deleteBtn);
+                deleteBtn.addEventListener('click', () => deletePermission(perm.name));
+                tdActions.appendChild(deleteBtn);
 
                 tr.append(tdName, tdResource, tdScopes, tdPolicies, tdActions);
                 tbody.appendChild(tr);
@@ -2217,22 +2205,23 @@
             const id = document.getElementById('edit-permission-id').value;
             const isUpdate = !!id;
 
+            if (isUpdate) {
+                alert('Permission update is not yet supported by the backend.');
+                return;
+            }
+
             const payload = {
                 name: document.getElementById('edit-permission-name').value,
                 description: document.getElementById('edit-permission-description').value,
-                resource_id: document.getElementById('edit-permission-resource').value,
-                scopes: document.getElementById('edit-permission-scopes').value.split(',').map(s => s.trim()).filter(s => s),
-                policies: document.getElementById('edit-permission-policies').value.split(',').map(s => s.trim()).filter(s => s),
-                realm_id: currentRealmId
+                resource: document.getElementById('edit-permission-resource').value,
+                action: document.getElementById('edit-permission-scopes').value.split(',').map(s => s.trim()).filter(s => s).join(','),
             };
 
-            const url = isUpdate
-                ? `${API_BASE}/realms/${currentRealmId}/permissions/${id}`
-                : `${API_BASE}/realms/${currentRealmId}/permissions`;
+            const url = `${API_BASE}/auth/realms/${currentRealmId}/permissions`;
 
             try {
                 const response = await fetch(url, {
-                    method: isUpdate ? 'PUT' : 'POST',
+                    method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
@@ -2247,10 +2236,10 @@
             } catch (err) { alert(err.message); }
         });
 
-        async function deletePermission(id) {
+        async function deletePermission(name) {
             if (!confirm("Delete permission?")) return;
             try {
-                await fetch(`${API_BASE}/realms/${currentRealmId}/permissions/${id}`, {
+                await fetch(`${API_BASE}/auth/realms/${currentRealmId}/permissions/${encodeURIComponent(name)}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
