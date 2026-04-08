@@ -618,19 +618,8 @@ impl ContinuousAuthService for ZeroTrustManager {
             device_info.user_agent, device_info.ip_address, device_info.os
         );
 
-        // Check if we already have trust info for this device fingerprint
-        {
-            let mut store = self.device_trust_store.write()
-                .map_err(|e| format!("Failed to write device trust store: {}", e))?;
-            if let Some(existing) = store.get_mut(&device_fingerprint) {
-                // Update last_seen and device_info in-place, then return a clone
-                existing.last_seen = Utc::now();
-                existing.device_info = device_info.clone();
-                return Ok(existing.clone());
-            }
-        }
-
-        // Calculate trust level based on device characteristics
+        // Calculate trust level based on device characteristics (done before locking
+        // so we don't hold the write lock longer than necessary for the insert).
         let mut trust_score = 0;
         let mut compliance_status = ComplianceStatus::Compliant;
 
@@ -691,6 +680,30 @@ impl ContinuousAuthService for ZeroTrustManager {
             TrustLevel::None
         };
 
+        // Atomically check-then-insert under a single write lock to prevent the
+        // TOCTOU race where two concurrent first-time requests for the same
+        // fingerprint could both observe "not found" and overwrite each other.
+        let mut store = self.device_trust_store.write()
+            .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+
+        // If the fingerprint already exists, update in-place and return
+        if let Some(existing) = store.get_mut(&device_fingerprint) {
+            existing.last_seen = Utc::now();
+            existing.device_info = device_info.clone();
+            return Ok(existing.clone());
+        }
+
+        // Evict the oldest entry (by last_seen) when the store is at capacity
+        if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
+            if let Some(oldest_key) = store
+                .iter()
+                .min_by_key(|(_, v)| v.last_seen)
+                .map(|(k, _)| k.clone())
+            {
+                store.remove(&oldest_key);
+            }
+        }
+
         // Use the fingerprint as the device_id for stable lookups
         let device_trust = DeviceTrust {
             device_id: device_fingerprint.clone(),
@@ -702,8 +715,7 @@ impl ContinuousAuthService for ZeroTrustManager {
             compliance_status,
         };
 
-        // Persist the new entry so future calls for the same fingerprint hit the cache
-        self.register_device_trust(device_trust.clone());
+        store.insert(device_trust.device_id.clone(), device_trust.clone());
 
         Ok(device_trust)
     }

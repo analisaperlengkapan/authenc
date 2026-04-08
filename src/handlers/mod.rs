@@ -190,7 +190,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .nest(
             "/zero-trust",
-            api::zero_trust::create_zero_trust_routes(),
+            api::zero_trust::create_zero_trust_routes()
+                .layer(axum::middleware::from_fn_with_state(
+                    Arc::new(crate::middleware::auth::AuthState {
+                        jwt_secret: state.config.security.jwt_secret.clone(),
+                    }),
+                    crate::middleware::auth::auth_middleware,
+                )),
         )
         .nest(
             "/broker",
