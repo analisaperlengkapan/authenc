@@ -180,15 +180,17 @@ pub async fn verify_session(
     State(state): State<Arc<AppState>>,
     Json(request): Json<VerifySessionRequest>,
 ) -> Result<Json<SessionVerificationResponse>, AuthencError> {
-    let valid = state.zero_trust_manager.verify_session(&request.session_id).await
-        .unwrap_or(false);
+    let (valid, risk_score) = match state.zero_trust_manager.verify_session(&request.session_id).await {
+        Ok(true) => (true, 0.1),   // Low risk — session is valid
+        Ok(false) => (false, 0.5), // Elevated risk — additional verification recommended
+        Err(_) => (false, 0.8),    // High risk — verification failed
+    };
 
-    // Mock additional details for the response
     let response = SessionVerificationResponse {
         valid,
-        risk_score: if valid { 0.1 } else { 0.8 },
+        risk_score,
         requires_additional_auth: !valid,
-        adaptive_controls: state.zero_trust_manager.generate_adaptive_controls(if valid { 0.1 } else { 0.8 }),
+        adaptive_controls: state.zero_trust_manager.generate_adaptive_controls(risk_score),
     };
     Ok(Json(response))
 }
