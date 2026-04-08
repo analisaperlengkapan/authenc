@@ -813,7 +813,7 @@ impl ContinuousAuthService for ZeroTrustManager {
         {
             let mut store = self.device_trust_store.write()
                 .map_err(|e| format!("Failed to write device trust store: {}", e))?;
-            if let Some(device_trust) = store.get_mut(&activity.session_id) {
+            if let Some(device_trust) = store.get_mut(&activity.device_id) {
                 let old_trust_level = device_trust.trust_level.clone();
 
                 // Downgrade trust level based on risk score
