@@ -641,7 +641,11 @@ impl ZeroTrustManager {
             0.5
         };
 
-        let behavioral_risk = if self.anomaly_detector.is_some() { 0.3 } else { 0.3 };
+        // When no anomaly detector is configured we have zero behavioural
+        // visibility, so assume a higher baseline risk (0.7).  With a detector
+        // present we cannot run the full `calculate_behavioral_risk` (no
+        // AuthContext available), so use a moderate baseline (0.3).
+        let behavioral_risk = if self.anomaly_detector.is_some() { 0.3 } else { 0.7 };
         let location_risk = 0.2;
 
         let combined_risk = (device_risk * 0.4) + (behavioral_risk * 0.3) + (location_risk * 0.3);
@@ -853,8 +857,10 @@ impl ContinuousAuthService for ZeroTrustManager {
             // For now, use medium risk when detector is available
             0.3
         } else {
-            // No anomaly detector - use medium risk
-            0.3
+            // No anomaly detector — no behavioural visibility, so assume
+            // elevated risk.  This ensures untrusted devices can actually
+            // exceed the 0.6 rejection threshold.
+            0.7
         };
 
         // Step 4: Calculate location risk (placeholder - would use IP geolocation in production)
