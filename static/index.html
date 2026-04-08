@@ -2003,16 +2003,34 @@
 
             policies.forEach(policy => {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${policy.name}</td>
-                    <td>${policy.policy_type}</td>
-                    <td>${policy.logic}</td>
-                    <td><span class="badge ${policy.enabled ? 'badge-success' : 'badge-error'}">${policy.enabled ? 'Enabled' : 'Disabled'}</span></td>
-                    <td>
-                        <button onclick='openEditPolicyModal(${JSON.stringify(policy)})' style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem;">Edit</button>
-                        <button onclick="deletePolicy('${policy.id}')" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background-color: var(--error);">Delete</button>
-                    </td>
-                `;
+
+                const tdName = document.createElement('td');
+                tdName.textContent = policy.name;
+
+                const tdType = document.createElement('td');
+                tdType.textContent = policy.policy_type;
+
+                const tdLogic = document.createElement('td');
+                tdLogic.textContent = policy.logic;
+
+                const tdStatus = document.createElement('td');
+                const badge = document.createElement('span');
+                badge.className = 'badge ' + (policy.enabled ? 'badge-success' : 'badge-error');
+                badge.textContent = policy.enabled ? 'Enabled' : 'Disabled';
+                tdStatus.appendChild(badge);
+
+                const tdActions = document.createElement('td');
+                const editBtn = document.createElement('button');
+                editBtn.textContent = 'Edit';
+                editBtn.style.cssText = 'width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem;';
+                editBtn.addEventListener('click', () => openEditPolicyModal(policy));
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.style.cssText = 'width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background-color: var(--error);';
+                deleteBtn.addEventListener('click', () => deletePolicy(policy.id));
+                tdActions.append(editBtn, deleteBtn);
+
+                tr.append(tdName, tdType, tdLogic, tdStatus, tdActions);
                 tbody.appendChild(tr);
             });
         }
@@ -2131,16 +2149,32 @@
 
             permissions.forEach(perm => {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${perm.name}</td>
-                    <td style="font-size: 0.8rem; font-family: monospace;">${perm.resource_id}</td>
-                    <td>${perm.scopes.join(', ')}</td>
-                    <td>${perm.policies.length} policies</td>
-                    <td>
-                        <button onclick='openEditPermissionModal(${JSON.stringify(perm)})' style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem;">Edit</button>
-                        <button onclick="deletePermission('${perm.id}')" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background-color: var(--error);">Delete</button>
-                    </td>
-                `;
+
+                const tdName = document.createElement('td');
+                tdName.textContent = perm.name;
+
+                const tdResource = document.createElement('td');
+                tdResource.style.cssText = 'font-size: 0.8rem; font-family: monospace;';
+                tdResource.textContent = perm.resource_id;
+
+                const tdScopes = document.createElement('td');
+                tdScopes.textContent = perm.scopes.join(', ');
+
+                const tdPolicies = document.createElement('td');
+                tdPolicies.textContent = perm.policies.length + ' policies';
+
+                const tdActions = document.createElement('td');
+                const editBtn = document.createElement('button');
+                editBtn.textContent = 'Edit';
+                editBtn.style.cssText = 'width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem;';
+                editBtn.addEventListener('click', () => openEditPermissionModal(perm));
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.style.cssText = 'width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background-color: var(--error);';
+                deleteBtn.addEventListener('click', () => deletePermission(perm.id));
+                tdActions.append(editBtn, deleteBtn);
+
+                tr.append(tdName, tdResource, tdScopes, tdPolicies, tdActions);
                 tbody.appendChild(tr);
             });
         }
