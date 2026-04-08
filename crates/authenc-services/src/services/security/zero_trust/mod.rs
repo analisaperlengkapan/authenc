@@ -763,14 +763,22 @@ impl ContinuousAuthService for ZeroTrustManager {
             .map_err(|e| format!("Failed to write device trust store: {}", e))?;
 
         // If the fingerprint already exists, update in-place and return.
-        // We always apply the freshly-computed trust_level and compliance_status
-        // so that changes in non-fingerprint factors (e.g. gaining location info,
-        // switching to a recognised browser) are reflected instead of being
-        // silently discarded.
+        // We only *upgrade* the trust level — never overwrite a security
+        // downgrade applied by `handle_suspicious_activity`.  Without this
+        // guard, every `assess_risk` request would recalculate trust purely
+        // from device characteristics and silently undo any prior downgrade.
         if let Some(existing) = store.get_mut(&device_fingerprint) {
             existing.last_seen = Utc::now();
             existing.device_info = device_info.clone();
-            existing.trust_level = trust_level;
+            // Only upgrade: apply the new level if it is strictly higher than
+            // the current one.  This preserves downgrades from suspicious
+            // activity while still allowing trust to improve when device
+            // characteristics change favourably.
+            if trust_level > existing.trust_level {
+                existing.trust_level = trust_level;
+            }
+            // Compliance may degrade independently of trust level (e.g. an
+            // unknown OS), so always apply the freshly-computed status.
             existing.compliance_status = compliance_status;
             return Ok(existing.clone());
         }
