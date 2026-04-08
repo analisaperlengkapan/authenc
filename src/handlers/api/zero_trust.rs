@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::error::AuthencError;
+use crate::middleware::auth::AuthUser;
 use authenc_services::services::security::zero_trust::{
     AdaptiveControls, AuthContext, RiskAssessment, RiskLevel,
     ContinuousAuthService, Location, DeviceInfo,
@@ -112,8 +113,16 @@ pub struct GetRiskAnalyticsQuery {
 pub async fn assess_risk(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::Extension(auth_user): axum::Extension<AuthUser>,
     Json(request): Json<AssessRiskRequest>,
 ) -> Result<Json<RiskAssessmentResponse>, AuthencError> {
+    // Use the authenticated user's ID from the JWT token, never the client-provided
+    // user_id.  A malicious client could send another user's UUID to pollute that
+    // user's known-IP list in the anomaly detector, weakening future anomaly
+    // detection for them.
+    let authenticated_user_id: Uuid = auth_user.id.parse()
+        .map_err(|_| AuthencError::internal("Invalid user ID in auth token".to_string()))?;
+
     // Always use the real connection IP for security decisions, never the
     // client-provided ip_address.  A malicious client could spoof a private IP
     // (e.g. 192.168.1.1) to gain higher trust scores, or send another user's
@@ -151,10 +160,11 @@ pub async fn assess_risk(
     // Save device_id before device_trust is moved into AuthContext
     let device_id = device_trust.device_id.clone();
 
-    // Create auth context for assessment
+    // Create auth context for assessment — use the authenticated user's ID, not the
+    // client-supplied request.user_id, to prevent cross-user anomaly detector pollution.
     let context = AuthContext {
         session_id: request.session_id.clone(),
-        user_id: request.user_id,
+        user_id: authenticated_user_id,
         device_trust,
         risk_assessment: RiskAssessment {
             score: 0.0,
