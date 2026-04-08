@@ -36,6 +36,8 @@ pub struct AssessRiskRequest {
 #[derive(Serialize)]
 /// Response payload containing risk assessment results
 pub struct RiskAssessmentResponse {
+    /// Server-generated device identifier (use this for verify_session)
+    pub device_id: String,
     /// Risk score between 0.0 and 1.0
     pub score: f64,
     /// Risk level classification
@@ -75,8 +77,10 @@ pub struct AdaptiveControlsResponse {
 #[derive(Deserialize)]
 /// Request payload for verifying session validity
 pub struct VerifySessionRequest {
-    /// Session identifier to verify
+    /// Session identifier (for logging/context)
     pub session_id: String,
+    /// Server-generated device identifier (returned by assess_risk)
+    pub device_id: String,
 }
 
 #[derive(Serialize)]
@@ -120,22 +124,21 @@ pub async fn assess_risk(
         fingerprint: Some(request.device_fingerprint.clone()),
     };
 
-    // Read the session's previous last_seen *before* we overwrite it below.
+    // Compute the server-side fingerprint to look up previous last_seen.
     // This gives calculate_time_risk a meaningful inactivity duration instead of
     // always seeing ~0 (which would pin the time risk at the minimum 0.1).
+    let server_fingerprint = format!(
+        "fp_{}_{}_{}",
+        request.user_agent, request.ip_address, extract_os(&request.user_agent)
+    );
     let last_activity = state.zero_trust_manager
-        .get_device_last_seen(&request.session_id)
+        .get_device_last_seen(&server_fingerprint)
         .unwrap_or_else(chrono::Utc::now);
 
-    // Evaluate device trust (reuses existing entry for the same device fingerprint).
+    // Evaluate device trust (reuses existing entry for the same server-generated fingerprint).
     // New entries are persisted inside evaluate_device_trust, so no extra registration needed.
     let device_trust = state.zero_trust_manager.evaluate_device_trust(&device_info).await
         .map_err(|e| AuthencError::internal(e))?;
-
-    // Register under the session_id so verify_session can look it up
-    let mut session_device_trust = device_trust.clone();
-    session_device_trust.device_id = request.session_id.clone();
-    state.zero_trust_manager.register_device_trust(session_device_trust);
 
     // Create auth context for assessment
     let context = AuthContext {
@@ -165,6 +168,7 @@ pub async fn assess_risk(
         .map_err(|e| AuthencError::internal(e))?;
 
     let response = RiskAssessmentResponse {
+        device_id: device_trust.device_id.clone(),
         score: assessment.score,
         level: assessment.level,
         factors: assessment.factors.into_iter().map(|f| f.description).collect(),
@@ -195,7 +199,9 @@ pub async fn verify_session(
     State(state): State<Arc<AppState>>,
     Json(request): Json<VerifySessionRequest>,
 ) -> Result<Json<SessionVerificationResponse>, AuthencError> {
-    let (valid, risk_score, requires_additional_auth) = match state.zero_trust_manager.verify_session(&request.session_id).await {
+    // Use the server-generated device_id (fingerprint) for trust store lookup,
+    // not the client-controlled session_id.
+    let (valid, risk_score, requires_additional_auth) = match state.zero_trust_manager.verify_session(&request.device_id).await {
         Ok(true) => (true, 0.1, false),   // Low risk — session is valid, no extra auth needed
         Ok(false) => (true, 0.5, true),   // Elevated risk — session is valid but step-up auth recommended
         Err(_) => (false, 0.8, true),     // High risk — verification failed, session invalid

@@ -574,17 +574,13 @@ impl ZeroTrustManager {
 #[async_trait]
 impl ContinuousAuthService for ZeroTrustManager {
     async fn evaluate_device_trust(&self, device_info: &DeviceInfo) -> Result<DeviceTrust, String> {
-        // Use the pre-computed device fingerprint if available, otherwise generate one
-        // from device characteristics. The fingerprint field on DeviceInfo is set by the
-        // handler from the client-provided value, giving a stable identity across IP changes.
-        let device_fingerprint = if let Some(ref fp) = device_info.fingerprint {
-            fp.clone()
-        } else {
-            format!(
-                "fp_{}_{}_{}",
-                device_info.user_agent, device_info.ip_address, device_info.os
-            )
-        };
+        // Always generate the fingerprint server-side from device characteristics.
+        // Never trust a client-provided fingerprint as the cache key — a malicious
+        // client could send another device's fingerprint and inherit its trust level.
+        let device_fingerprint = format!(
+            "fp_{}_{}_{}",
+            device_info.user_agent, device_info.ip_address, device_info.os
+        );
 
         // Check if we already have trust info for this device fingerprint
         {
