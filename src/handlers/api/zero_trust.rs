@@ -1,6 +1,7 @@
 use axum::{
     Router,
     extract::{ConnectInfo, Query, State},
+    http::HeaderMap,
     response::Json,
     routing::{get, post, put},
 };
@@ -114,6 +115,7 @@ pub async fn assess_risk(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     axum::Extension(auth_user): axum::Extension<AuthUser>,
+    headers: HeaderMap,
     Json(request): Json<AssessRiskRequest>,
 ) -> Result<Json<RiskAssessmentResponse>, AuthencError> {
     // Use the authenticated user's ID from the JWT token, never the client-provided
@@ -129,13 +131,24 @@ pub async fn assess_risk(
     // IP to inherit their device trust entry.
     let real_ip = addr.ip().to_string();
 
-    // Create device info, parsing OS and browser from the user agent
+    // Use the real HTTP User-Agent header for trust scoring, not the client-provided
+    // JSON field.  While the UA header is also client-controlled, it is the canonical
+    // source that proxies/WAFs can inspect and normalize.  Accepting a separate JSON
+    // field would let an attacker craft a UA string (e.g. containing "Chrome/" and
+    // "Windows") to inflate trust scores by ~45 points without the header matching.
+    let real_user_agent = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("Unknown")
+        .to_string();
+
+    // Create device info, parsing OS and browser from the real HTTP User-Agent header
     let device_info = DeviceInfo {
-        user_agent: request.user_agent.clone(),
+        user_agent: real_user_agent.clone(),
         ip_address: real_ip.clone(),
         location: request.location.clone(),
-        os: extract_os(&request.user_agent),
-        browser: extract_browser(&request.user_agent),
+        os: extract_os(&real_user_agent),
+        browser: extract_browser(&real_user_agent),
         screen_resolution: None,
         timezone: None,
         fingerprint: Some(request.device_fingerprint.clone()),

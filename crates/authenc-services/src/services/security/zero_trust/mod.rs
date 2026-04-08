@@ -749,10 +749,16 @@ impl ContinuousAuthService for ZeroTrustManager {
         let mut store = self.device_trust_store.write()
             .map_err(|e| format!("Failed to write device trust store: {}", e))?;
 
-        // If the fingerprint already exists, update in-place and return
+        // If the fingerprint already exists, update in-place and return.
+        // We always apply the freshly-computed trust_level and compliance_status
+        // so that changes in non-fingerprint factors (e.g. gaining location info,
+        // switching to a recognised browser) are reflected instead of being
+        // silently discarded.
         if let Some(existing) = store.get_mut(&device_fingerprint) {
             existing.last_seen = Utc::now();
             existing.device_info = device_info.clone();
+            existing.trust_level = trust_level;
+            existing.compliance_status = compliance_status;
             return Ok(existing.clone());
         }
 
