@@ -37,6 +37,12 @@ pub struct DeviceTrust {
     pub device_info: DeviceInfo,
     /// Compliance status of the device
     pub compliance_status: ComplianceStatus,
+    /// Whether the trust level was explicitly downgraded by `handle_suspicious_activity`.
+    /// When `true`, `evaluate_device_trust` will **never** upgrade the trust level —
+    /// only an explicit call to `update_device_trust` or a new `handle_suspicious_activity`
+    /// with a low risk score can clear this flag.
+    #[serde(default)]
+    pub security_downgraded: bool,
 }
 
 /// Device information
@@ -597,7 +603,11 @@ impl ZeroTrustManager {
         store.insert(device_trust.device_id.clone(), device_trust);
     }
 
-    /// Update device trust level
+    /// Update device trust level (explicit administrative action).
+    ///
+    /// This also clears the `security_downgraded` flag so that future
+    /// `evaluate_device_trust` calls can upgrade the trust level again
+    /// based on device characteristics.
     pub fn update_device_trust(&self, device_id: &str, new_level: TrustLevel) {
         let mut store = match self.device_trust_store.write() {
             Ok(s) => s,
@@ -608,6 +618,7 @@ impl ZeroTrustManager {
         };
         if let Some(device_trust) = store.get_mut(device_id) {
             device_trust.trust_level = new_level;
+            device_trust.security_downgraded = false;
             device_trust.last_seen = Utc::now();
         }
     }
@@ -763,18 +774,19 @@ impl ContinuousAuthService for ZeroTrustManager {
             .map_err(|e| format!("Failed to write device trust store: {}", e))?;
 
         // If the fingerprint already exists, update in-place and return.
-        // We only *upgrade* the trust level — never overwrite a security
-        // downgrade applied by `handle_suspicious_activity`.  Without this
-        // guard, every `assess_risk` request would recalculate trust purely
-        // from device characteristics and silently undo any prior downgrade.
+        // We must never overwrite a security downgrade applied by
+        // `handle_suspicious_activity`.  The `security_downgraded` flag
+        // is set when suspicious activity triggers a trust demotion;
+        // while it is set, we skip trust-level changes entirely so that
+        // repeated `assess_risk` calls cannot silently rehabilitate a
+        // device that was flagged as suspicious.
         if let Some(existing) = store.get_mut(&device_fingerprint) {
             existing.last_seen = Utc::now();
             existing.device_info = device_info.clone();
-            // Only upgrade: apply the new level if it is strictly higher than
-            // the current one.  This preserves downgrades from suspicious
-            // activity while still allowing trust to improve when device
-            // characteristics change favourably.
-            if trust_level > existing.trust_level {
+            // Only upgrade trust when the device has NOT been security-
+            // downgraded.  If it has, the trust level is frozen until an
+            // administrator explicitly clears it via `update_device_trust`.
+            if !existing.security_downgraded && trust_level > existing.trust_level {
                 existing.trust_level = trust_level;
             }
             // Compliance may degrade independently of trust level (e.g. an
@@ -803,6 +815,7 @@ impl ContinuousAuthService for ZeroTrustManager {
             first_seen: Utc::now(),
             device_info: device_info.clone(),
             compliance_status,
+            security_downgraded: false,
         };
 
         store.insert(device_trust.device_id.clone(), device_trust.clone());
@@ -971,6 +984,12 @@ impl ContinuousAuthService for ZeroTrustManager {
                     _ => old_trust_level.clone(), // Keep current level for low risk
                 };
 
+                // Mark the device as security-downgraded so that
+                // `evaluate_device_trust` will not silently undo this
+                // demotion on the next `assess_risk` call.
+                if new_trust_level < old_trust_level {
+                    device_trust.security_downgraded = true;
+                }
                 device_trust.trust_level = new_trust_level.clone();
                 device_trust.last_seen = Utc::now();
 

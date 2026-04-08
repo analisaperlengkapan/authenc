@@ -95,8 +95,10 @@ async fn test_device_trust_structure() {
             browser: "Chrome".to_string(),
             screen_resolution: Some("1920x1080".to_string()),
             timezone: Some("America/Los_Angeles".to_string()),
+            fingerprint: None,
         },
         compliance_status: ComplianceStatus::Compliant,
+        security_downgraded: false,
     };
 
     // Verify DeviceTrust structure
@@ -415,6 +417,7 @@ async fn test_device_fingerprint_generation() {
         browser: "Chrome".to_string(),
         screen_resolution: Some("1920x1080".to_string()),
         timezone: Some("America/Los_Angeles".to_string()),
+        fingerprint: None,
     };
 
     let device_info2 = device_info1.clone();
@@ -466,6 +469,7 @@ async fn test_zero_trust_context_evaluation() {
         browser: "Chrome".to_string(),
         screen_resolution: Some("1920x1080".to_string()),
         timezone: Some("America/Los_Angeles".to_string()),
+        fingerprint: None,
     };
 
     let device_trust = DeviceTrust {
@@ -476,6 +480,7 @@ async fn test_zero_trust_context_evaluation() {
         first_seen: Utc::now(),
         device_info,
         compliance_status: ComplianceStatus::Compliant,
+        security_downgraded: false,
     };
 
     let risk_assessment = RiskAssessment {
