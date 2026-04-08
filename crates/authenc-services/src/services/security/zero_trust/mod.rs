@@ -56,6 +56,9 @@ pub struct DeviceInfo {
     pub screen_resolution: Option<String>,
     /// Timezone of the device
     pub timezone: Option<String>,
+    /// Client-provided device fingerprint for stable identity across IP changes
+    #[serde(default)]
+    pub fingerprint: Option<String>,
 }
 
 /// Location information
@@ -531,7 +534,8 @@ impl ZeroTrustManager {
 
     /// Check if device is trusted
     pub fn is_device_trusted(&self, device_id: &str) -> bool {
-        let store = self.device_trust_store.read().unwrap_or_else(|e| e.into_inner());
+        let store = self.device_trust_store.read()
+            .unwrap_or_else(|e| e.into_inner());
         if let Some(device_trust) = store.get(device_id) {
             matches!(
                 device_trust.trust_level,
@@ -544,38 +548,53 @@ impl ZeroTrustManager {
 
     /// Register device trust
     pub fn register_device_trust(&self, device_trust: DeviceTrust) {
-        let mut store = self.device_trust_store.write().unwrap_or_else(|e| e.into_inner());
+        let mut store = self.device_trust_store.write()
+            .unwrap_or_else(|e| e.into_inner());
         store.insert(device_trust.device_id.clone(), device_trust);
     }
 
     /// Update device trust level
     pub fn update_device_trust(&self, device_id: &str, new_level: TrustLevel) {
-        let mut store = self.device_trust_store.write().unwrap_or_else(|e| e.into_inner());
+        let mut store = self.device_trust_store.write()
+            .unwrap_or_else(|e| e.into_inner());
         if let Some(device_trust) = store.get_mut(device_id) {
             device_trust.trust_level = new_level;
             device_trust.last_seen = Utc::now();
         }
+    }
+
+    /// Get the last_seen timestamp for a device, if it exists in the store
+    pub fn get_device_last_seen(&self, device_id: &str) -> Option<DateTime<Utc>> {
+        let store = self.device_trust_store.read()
+            .unwrap_or_else(|e| e.into_inner());
+        store.get(device_id).map(|d| d.last_seen)
     }
 }
 
 #[async_trait]
 impl ContinuousAuthService for ZeroTrustManager {
     async fn evaluate_device_trust(&self, device_info: &DeviceInfo) -> Result<DeviceTrust, String> {
-        // Generate device fingerprint from device characteristics
-        let device_fingerprint = format!(
-            "fp_{}_{}_{}",
-            device_info.user_agent, device_info.ip_address, device_info.os
-        );
+        // Use the pre-computed device fingerprint if available, otherwise generate one
+        // from device characteristics. The fingerprint field on DeviceInfo is set by the
+        // handler from the client-provided value, giving a stable identity across IP changes.
+        let device_fingerprint = if let Some(ref fp) = device_info.fingerprint {
+            fp.clone()
+        } else {
+            format!(
+                "fp_{}_{}_{}",
+                device_info.user_agent, device_info.ip_address, device_info.os
+            )
+        };
 
         // Check if we already have trust info for this device fingerprint
         {
-            let store = self.device_trust_store.read().unwrap_or_else(|e| e.into_inner());
-            if let Some(existing) = store.get(&device_fingerprint) {
-                // Return existing trust with updated last_seen
-                let mut trust = existing.clone();
-                trust.last_seen = Utc::now();
-                trust.device_info = device_info.clone();
-                return Ok(trust);
+            let mut store = self.device_trust_store.write()
+                .unwrap_or_else(|e| e.into_inner());
+            if let Some(existing) = store.get_mut(&device_fingerprint) {
+                // Update last_seen and device_info in-place, then return a clone
+                existing.last_seen = Utc::now();
+                existing.device_info = device_info.clone();
+                return Ok(existing.clone());
             }
         }
 

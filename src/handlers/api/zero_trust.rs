@@ -117,7 +117,15 @@ pub async fn assess_risk(
         browser: extract_browser(&request.user_agent),
         screen_resolution: None,
         timezone: None,
+        fingerprint: Some(request.device_fingerprint.clone()),
     };
+
+    // Read the session's previous last_seen *before* we overwrite it below.
+    // This gives calculate_time_risk a meaningful inactivity duration instead of
+    // always seeing ~0 (which would pin the time risk at the minimum 0.1).
+    let last_activity = state.zero_trust_manager
+        .get_device_last_seen(&request.session_id)
+        .unwrap_or_else(chrono::Utc::now);
 
     // Evaluate device trust (reuses existing entry for the same device fingerprint).
     // New entries are persisted inside evaluate_device_trust, so no extra registration needed.
@@ -141,7 +149,7 @@ pub async fn assess_risk(
             recommendations: vec![],
             assessed_at: chrono::Utc::now(),
         },
-        last_activity: chrono::Utc::now(),
+        last_activity,
         adaptive_controls: AdaptiveControls {
             require_mfa: false,
             require_device_verification: false,
