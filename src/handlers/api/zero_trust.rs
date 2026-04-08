@@ -1,10 +1,11 @@
 use axum::{
     Router,
-    extract::{Query, State},
+    extract::{ConnectInfo, Query, State},
     response::Json,
     routing::{get, post, put},
 };
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -110,12 +111,19 @@ pub struct GetRiskAnalyticsQuery {
 /// Assess risk for a user action
 pub async fn assess_risk(
     State(state): State<Arc<AppState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(request): Json<AssessRiskRequest>,
 ) -> Result<Json<RiskAssessmentResponse>, AuthencError> {
+    // Always use the real connection IP for security decisions, never the
+    // client-provided ip_address.  A malicious client could spoof a private IP
+    // (e.g. 192.168.1.1) to gain higher trust scores, or send another user's
+    // IP to inherit their device trust entry.
+    let real_ip = addr.ip().to_string();
+
     // Create device info, parsing OS and browser from the user agent
     let device_info = DeviceInfo {
         user_agent: request.user_agent.clone(),
-        ip_address: request.ip_address.clone(),
+        ip_address: real_ip.clone(),
         location: request.location.clone(),
         os: extract_os(&request.user_agent),
         browser: extract_browser(&request.user_agent),
@@ -129,7 +137,7 @@ pub async fn assess_risk(
     // always seeing ~0 (which would pin the time risk at the minimum 0.1).
     let server_fingerprint = format!(
         "fp_{}_{}_{}",
-        request.user_agent, request.ip_address, extract_os(&request.user_agent)
+        request.user_agent, real_ip, extract_os(&request.user_agent)
     );
     let last_activity = state.zero_trust_manager
         .get_device_last_seen(&server_fingerprint)
