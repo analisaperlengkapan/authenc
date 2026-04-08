@@ -3501,12 +3501,12 @@
                     base_dn: document.getElementById('ldap-base-dn').value,
                     bind_dn: document.getElementById('ldap-bind-dn').value || undefined,
                     bind_password: document.getElementById('ldap-bind-password').value || undefined,
-                    user_search_filter: document.getElementById('ldap-search-filter').value,
-                    username_attribute: document.getElementById('ldap-username-attr').value,
-                    email_attribute: document.getElementById('ldap-email-attr').value,
-                    first_name_attribute: document.getElementById('ldap-first-name-attr').value,
-                    last_name_attribute: document.getElementById('ldap-last-name-attr').value,
-                    group_attribute: document.getElementById('ldap-group-attr').value,
+                    user_search_filter: document.getElementById('ldap-search-filter').value || undefined,
+                    username_attribute: document.getElementById('ldap-username-attr').value || undefined,
+                    email_attribute: document.getElementById('ldap-email-attr').value || undefined,
+                    first_name_attribute: document.getElementById('ldap-first-name-attr').value || undefined,
+                    last_name_attribute: document.getElementById('ldap-last-name-attr').value || undefined,
+                    group_attribute: document.getElementById('ldap-group-attr').value || undefined,
                     import_enabled: String(document.getElementById('ldap-import-enabled').checked),
                     role_mappings: JSON.stringify(mappings)
                 };
