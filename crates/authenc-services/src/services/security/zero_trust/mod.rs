@@ -1009,7 +1009,16 @@ impl ContinuousAuthService for ZeroTrustManager {
                 // should not lock the device.
                 if activity.risk_score >= 0.3 {
                     device_trust.security_downgraded = true;
-                    device_trust.trust_level = new_trust_level.clone();
+                    // Never upgrade the trust level during a suspicious-activity
+                    // response.  The risk-score-to-level mapping above can
+                    // produce a level *higher* than the current one (e.g.
+                    // TrustLevel::Low for a HIGH alert on a device already at
+                    // TrustLevel::None).  Using `min` guarantees we only
+                    // downgrade or stay the same.
+                    if new_trust_level < old_trust_level {
+                        device_trust.trust_level = new_trust_level.clone();
+                    }
+                    // else: keep current (already at or below target)
                 }
                 device_trust.last_seen = Utc::now();
 
