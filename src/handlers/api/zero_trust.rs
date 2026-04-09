@@ -214,12 +214,19 @@ pub async fn assess_risk(
 /// Update adaptive controls for a user
 pub async fn update_adaptive_controls(
     State(_state): State<Arc<AppState>>,
+    axum::Extension(auth_user): axum::Extension<AuthUser>,
     Json(request): Json<UpdateAdaptiveControlsRequest>,
 ) -> Result<Json<AdaptiveControlsResponse>, AuthencError> {
+    // Use the authenticated user's ID from the JWT token, never the client-provided
+    // user_id.  When this is wired to real storage, trusting the client-provided
+    // user_id would let any authenticated user modify another user's controls.
+    let authenticated_user_id: Uuid = auth_user.id.parse()
+        .map_err(|_| AuthencError::internal("Invalid user ID in auth token".to_string()))?;
+
     // In a real implementation, we would store these controls in a session or database
     let response = AdaptiveControlsResponse {
         session_id: request.session_id,
-        user_id: request.user_id,
+        user_id: authenticated_user_id,
         controls: request.controls,
         updated_at: chrono::Utc::now(),
     };

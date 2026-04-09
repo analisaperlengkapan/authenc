@@ -341,6 +341,7 @@ impl ZeroTrustManager {
     /// Calculate risk score based on multiple factors
     pub async fn calculate_risk_score(&self, context: &AuthContext) -> f64 {
         let mut total_score = 0.0;
+        let mut total_weight = 0.0;
         let mut factors = Vec::new();
 
         // Device trust factor
@@ -352,6 +353,7 @@ impl ZeroTrustManager {
             TrustLevel::None => 1.0,
         };
         total_score += device_score * 0.4; // 40% weight
+        total_weight += 0.4;
         factors.push(RiskFactor {
             factor_type: "device_trust".to_string(),
             description: format!("Device trust level: {:?}", context.device_trust.trust_level),
@@ -366,6 +368,7 @@ impl ZeroTrustManager {
         // Location anomaly factor
         let location_score = self.calculate_location_risk(context).await;
         total_score += location_score * 0.2; // 20% weight
+        total_weight += 0.2;
         factors.push(RiskFactor {
             factor_type: "location".to_string(),
             description: "Location-based risk assessment".to_string(),
@@ -380,6 +383,7 @@ impl ZeroTrustManager {
         // Time-based factor
         let time_score = self.calculate_time_risk(context);
         total_score += time_score * 0.15; // 15% weight
+        total_weight += 0.15;
         factors.push(RiskFactor {
             factor_type: "time".to_string(),
             description: "Time-based access patterns".to_string(),
@@ -397,6 +401,7 @@ impl ZeroTrustManager {
                 .calculate_behavioral_risk(context, detector.as_ref())
                 .await;
             total_score += behavioral_score * 0.25; // 25% weight
+            total_weight += 0.25;
             factors.push(RiskFactor {
                 factor_type: "behavioral".to_string(),
                 description: "Behavioral anomaly detection".to_string(),
@@ -407,6 +412,14 @@ impl ZeroTrustManager {
                     RiskLevel::Low
                 },
             });
+        }
+
+        // Normalize by the sum of active weights so that the score stays in
+        // [0, 1] even when the anomaly detector is absent (total_weight = 0.75).
+        // Without normalization the maximum possible score would be ~0.66,
+        // making RiskLevel::Critical unreachable.
+        if total_weight > 0.0 {
+            total_score /= total_weight;
         }
 
         // Clamp score between 0 and 1
