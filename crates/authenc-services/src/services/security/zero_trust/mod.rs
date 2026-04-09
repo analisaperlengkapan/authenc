@@ -39,8 +39,7 @@ pub struct DeviceTrust {
     pub compliance_status: ComplianceStatus,
     /// Whether the trust level was explicitly downgraded by `handle_suspicious_activity`.
     /// When `true`, `evaluate_device_trust` will **never** upgrade the trust level —
-    /// only an explicit call to `update_device_trust` or a new `handle_suspicious_activity`
-    /// with a low risk score can clear this flag.
+    /// only an explicit call to `update_device_trust` can clear this flag.
     #[serde(default)]
     pub security_downgraded: bool,
 }
@@ -996,7 +995,16 @@ impl ContinuousAuthService for ZeroTrustManager {
                 // Mark the device as security-downgraded so that
                 // `evaluate_device_trust` will not silently undo this
                 // demotion on the next `assess_risk` call.
-                if new_trust_level < old_trust_level {
+                //
+                // We guard on `risk_score >= 0.3` (not `new < old`) because
+                // the device may already be at or below the target level
+                // (e.g. TrustLevel::None receiving a CRITICAL alert where
+                // new == old == None).  Without the flag in that case, a
+                // subsequent `evaluate_device_trust` could upgrade the
+                // device despite the active security alert.  The `_ =>`
+                // branch (risk_score < 0.3) keeps the current level and
+                // should not lock the device.
+                if activity.risk_score >= 0.3 {
                     device_trust.security_downgraded = true;
                     device_trust.trust_level = new_trust_level.clone();
                 }
