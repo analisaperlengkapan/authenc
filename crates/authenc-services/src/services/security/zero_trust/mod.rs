@@ -998,8 +998,8 @@ impl ContinuousAuthService for ZeroTrustManager {
                 // demotion on the next `assess_risk` call.
                 if new_trust_level < old_trust_level {
                     device_trust.security_downgraded = true;
+                    device_trust.trust_level = new_trust_level.clone();
                 }
-                device_trust.trust_level = new_trust_level.clone();
                 device_trust.last_seen = Utc::now();
 
                 eprintln!(
