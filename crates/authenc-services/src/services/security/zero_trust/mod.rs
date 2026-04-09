@@ -946,12 +946,10 @@ impl ContinuousAuthService for ZeroTrustManager {
             // handle it gracefully (e.g. step-up auth) instead of treating it as
             // an internal error.
             Ok(false)
-        } else if combined_risk > 0.3 {
-            // Elevated risk - may require additional verification
-            // Returning Ok(false) indicates verification passed but with caution
-            Ok(false) // Indicates additional verification recommended
         } else {
-            // Low risk - session is valid
+            // Low or elevated risk — session is valid.
+            // Callers that need to distinguish elevated (0.3-0.6) from low (<= 0.3)
+            // should use `verify_session_with_score` instead.
             Ok(true)
         }
     }
