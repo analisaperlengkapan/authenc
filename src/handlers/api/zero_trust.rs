@@ -229,18 +229,45 @@ pub async fn update_adaptive_controls(
 /// Verify session security
 pub async fn verify_session(
     State(state): State<Arc<AppState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::Extension(_auth_user): axum::Extension<AuthUser>,
+    headers: HeaderMap,
     Json(request): Json<VerifySessionRequest>,
 ) -> Result<Json<SessionVerificationResponse>, AuthencError> {
-    // Use the server-generated device_id (fingerprint) for trust store lookup,
-    // not the client-controlled session_id.
-    //
-    // TODO: The client echoes back the device_id it received from assess_risk.
-    // Ideally the server should maintain a user→device mapping so we can verify
-    // that the authenticated caller actually owns this device_id.  The risk is
-    // partially mitigated because the fingerprint encodes the real connection IP,
-    // so an attacker would need to know the exact user-agent + IP + OS of the
-    // target device to probe its trust level.
-    //
+    // Recompute the device fingerprint from the caller's actual connection
+    // parameters and verify it matches the client-provided device_id.
+    // This prevents authenticated users from probing other devices' trust
+    // levels — the fingerprint is derived from the real IP + UA + OS, so
+    // only the device that originally called assess_risk can verify itself.
+    let real_ip = addr.ip().to_string();
+    let real_user_agent = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("Unknown")
+        .to_string();
+    let caller_device_info = DeviceInfo {
+        user_agent: real_user_agent.clone(),
+        ip_address: real_ip,
+        location: None,
+        os: extract_os(&real_user_agent),
+        browser: extract_browser(&real_user_agent),
+        screen_resolution: None,
+        timezone: None,
+        fingerprint: None,
+    };
+    let expected_device_id = ZeroTrustManager::compute_device_fingerprint(&caller_device_info);
+    if request.device_id != expected_device_id {
+        // The caller's connection doesn't match the device_id they claim to own.
+        // Fail closed — treat as high risk / invalid.
+        let response = SessionVerificationResponse {
+            valid: false,
+            risk_score: 0.9,
+            requires_additional_auth: true,
+            adaptive_controls: state.zero_trust_manager.generate_adaptive_controls(0.9),
+        };
+        return Ok(Json(response));
+    }
+
     // verify_session_with_score returns the actual combined risk score so we
     // can feed it into generate_adaptive_controls without losing precision.
     let (valid, risk_score, requires_additional_auth) = match state.zero_trust_manager.verify_session_with_score(&request.device_id) {
@@ -264,12 +291,14 @@ pub async fn get_risk_analytics(
     State(_state): State<Arc<AppState>>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
-    // Mock response
+    // Placeholder response — not wired to real data yet.
+    // The `placeholder` flag lets the UI indicate these are sample values.
     let analytics = serde_json::json!({
-        "total_sessions": 100,
-        "risky_sessions": 5,
-        "average_risk_score": 0.15,
-        "top_risk_factors": ["Unusual location", "New device"]
+        "placeholder": true,
+        "total_sessions": 0,
+        "risky_sessions": 0,
+        "average_risk_score": 0.0,
+        "top_risk_factors": []
     });
     Ok(Json(analytics))
 }
@@ -279,13 +308,15 @@ pub async fn get_security_dashboard(
     State(_state): State<Arc<AppState>>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
-    // Mock response
+    // Placeholder response — not wired to real data yet.
+    // The `placeholder` flag lets the UI indicate these are sample values.
     let dashboard = serde_json::json!({
-        "active_sessions": 25,
-        "trusted_devices": 18,
-        "risky_sessions": 2,
-        "security_events_today": 3,
-        "compliance_rate": 0.95
+        "placeholder": true,
+        "active_sessions": 0,
+        "trusted_devices": 0,
+        "risky_sessions": 0,
+        "security_events_today": 0,
+        "compliance_rate": 0.0
     });
     Ok(Json(dashboard))
 }

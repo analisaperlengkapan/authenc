@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::RwLock;
 use uuid::Uuid;
@@ -698,10 +699,12 @@ impl ZeroTrustManager {
     /// before calling `evaluate_device_trust` (e.g. to fetch `last_seen`)
     /// **must** use this method to avoid format divergence.
     pub fn compute_device_fingerprint(device_info: &DeviceInfo) -> String {
-        format!(
+        let raw = format!(
             "fp_{}_{}_{}",
             device_info.user_agent, device_info.ip_address, device_info.os
-        )
+        );
+        let hash = Sha256::digest(raw.as_bytes());
+        format!("fp_{}", hex::encode(hash))
     }
 }
 
