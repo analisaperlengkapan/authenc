@@ -146,7 +146,7 @@ pub async fn assess_risk(
     let device_info = DeviceInfo {
         user_agent: real_user_agent.clone(),
         ip_address: real_ip.clone(),
-        location: request.location.clone(),
+        location: None, // Never trust client-provided location; use server-side IP geolocation
         os: extract_os(&real_user_agent),
         browser: extract_browser(&real_user_agent),
         screen_resolution: None,
