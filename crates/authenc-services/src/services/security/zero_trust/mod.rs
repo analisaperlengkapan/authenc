@@ -338,8 +338,12 @@ impl ZeroTrustManager {
         self.adaptive_policies.push(policy);
     }
 
-    /// Calculate risk score based on multiple factors
-    pub async fn calculate_risk_score(&self, context: &AuthContext) -> f64 {
+    /// Calculate risk score and contributing factors based on multiple signals.
+    ///
+    /// Returns `(score, factors)` where `score` is in `[0, 1]` and `factors`
+    /// contains per-component breakdowns.  `assess_risk` uses both to build
+    /// the full `RiskAssessment`.
+    pub async fn calculate_risk_score(&self, context: &AuthContext) -> (f64, Vec<RiskFactor>) {
         let mut total_score = 0.0;
         let mut total_weight = 0.0;
         let mut factors = Vec::new();
@@ -423,7 +427,7 @@ impl ZeroTrustManager {
         }
 
         // Clamp score between 0 and 1
-        total_score.clamp(0.0, 1.0)
+        (total_score.clamp(0.0, 1.0), factors)
     }
 
     /// Calculate location-based risk
@@ -566,6 +570,22 @@ impl ZeroTrustManager {
         controls
     }
 
+    /// Evict the oldest entry (by `last_seen`) from the given store if it is at
+    /// or above `MAX_DEVICE_TRUST_ENTRIES`.  This is the single source of truth
+    /// for eviction policy — used by both `register_device_trust` and
+    /// `evaluate_device_trust` to avoid divergence.
+    fn evict_oldest_if_at_capacity(store: &mut HashMap<String, DeviceTrust>) {
+        if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
+            if let Some(oldest_key) = store
+                .iter()
+                .min_by_key(|(_, v)| v.last_seen)
+                .map(|(k, _)| k.clone())
+            {
+                store.remove(&oldest_key);
+            }
+        }
+    }
+
     /// Check if device is trusted
     pub fn is_device_trusted(&self, device_id: &str) -> bool {
         let store = match self.device_trust_store.read() {
@@ -611,16 +631,7 @@ impl ZeroTrustManager {
             return;
         }
 
-        // Evict the oldest entry (by last_seen) when the store is at capacity
-        if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
-            if let Some(oldest_key) = store
-                .iter()
-                .min_by_key(|(_, v)| v.last_seen)
-                .map(|(k, _)| k.clone())
-            {
-                store.remove(&oldest_key);
-            }
-        }
+        Self::evict_oldest_if_at_capacity(&mut store);
 
         store.insert(device_trust.device_id.clone(), device_trust);
     }
@@ -819,16 +830,7 @@ impl ContinuousAuthService for ZeroTrustManager {
             return Ok(existing.clone());
         }
 
-        // Evict the oldest entry (by last_seen) when the store is at capacity
-        if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
-            if let Some(oldest_key) = store
-                .iter()
-                .min_by_key(|(_, v)| v.last_seen)
-                .map(|(k, _)| k.clone())
-            {
-                store.remove(&oldest_key);
-            }
-        }
+        Self::evict_oldest_if_at_capacity(&mut store);
 
         // Use the fingerprint as the device_id for stable lookups
         let device_trust = DeviceTrust {
@@ -848,15 +850,8 @@ impl ContinuousAuthService for ZeroTrustManager {
     }
 
     async fn assess_risk(&self, context: &AuthContext) -> Result<RiskAssessment, String> {
-        let score = self.calculate_risk_score(context).await;
+        let (score, factors) = self.calculate_risk_score(context).await;
         let level = Self::determine_risk_level(score);
-
-        let factors = vec![RiskFactor {
-            factor_type: "device".to_string(),
-            description: format!("Device trust: {:?}", context.device_trust.trust_level),
-            weight: 0.4,
-            severity: level.clone(),
-        }];
 
         let recommendations = match level {
             RiskLevel::Critical => vec![
@@ -936,8 +931,8 @@ impl ContinuousAuthService for ZeroTrustManager {
         // Risk threshold: 0.0-0.3 = safe, 0.3-0.6 = elevated, 0.6-1.0 = high risk
         //
         // Semantics aligned with `verify_session_with_score`:
-        //   Ok(true)  — low risk, session valid
-        //   Ok(false) — elevated or high risk, additional verification recommended
+        //   Ok(true)  — low or elevated risk (combined_risk <= 0.6), session valid
+        //   Ok(false) — high risk (combined_risk > 0.6), session invalid
         //   Err(...)  — internal/lock error only (never for risk-based rejection)
         //
         // Callers that need the actual score should use `verify_session_with_score`.
