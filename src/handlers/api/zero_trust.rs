@@ -97,6 +97,10 @@ pub struct SessionVerificationResponse {
     pub requires_additional_auth: bool,
     /// Active adaptive controls for the session
     pub adaptive_controls: AdaptiveControls,
+    /// Human-readable reason when `valid` is false (e.g. "device_mismatch",
+    /// "high_risk", "internal_error").  Absent when `valid` is true.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -266,22 +270,26 @@ pub async fn verify_session(
     if request.device_id != expected_device_id {
         // The caller's connection doesn't match the device_id they claim to own.
         // Fail closed — treat as high risk / invalid.
+        // This commonly happens when the client's IP changed between assess_risk
+        // and verify_session (e.g. mobile network switch, DHCP renewal).  The
+        // client should call assess_risk again to obtain a fresh device_id.
         let response = SessionVerificationResponse {
             valid: false,
             risk_score: 0.9,
             requires_additional_auth: true,
             adaptive_controls: state.zero_trust_manager.generate_adaptive_controls(0.9),
+            reason: Some("device_mismatch".to_string()),
         };
         return Ok(Json(response));
     }
 
     // verify_session_with_score returns the actual combined risk score so we
     // can feed it into generate_adaptive_controls without losing precision.
-    let (valid, risk_score, requires_additional_auth) = match state.zero_trust_manager.verify_session_with_score(&request.device_id) {
-        Ok((true, score)) if score <= 0.3 => (true, score, false),  // Low risk — no extra auth needed
-        Ok((true, score)) => (true, score, true),                   // Elevated risk — step-up auth recommended
-        Ok((false, score)) => (false, score, true),                 // High risk — session invalid
-        Err(_) => (false, 0.8, true),                               // Lock/internal error — fail closed
+    let (valid, risk_score, requires_additional_auth, reason) = match state.zero_trust_manager.verify_session_with_score(&request.device_id) {
+        Ok((true, score)) if score <= 0.3 => (true, score, false, None),           // Low risk — no extra auth needed
+        Ok((true, score)) => (true, score, true, None),                            // Elevated risk — step-up auth recommended
+        Ok((false, score)) => (false, score, true, Some("high_risk".to_string())), // High risk — session invalid
+        Err(_) => (false, 0.8, true, Some("internal_error".to_string())),          // Lock/internal error — fail closed
     };
 
     let response = SessionVerificationResponse {
@@ -289,6 +297,7 @@ pub async fn verify_session(
         risk_score,
         requires_additional_auth,
         adaptive_controls: state.zero_trust_manager.generate_adaptive_controls(risk_score),
+        reason,
     };
     Ok(Json(response))
 }
@@ -296,9 +305,14 @@ pub async fn verify_session(
 /// Get risk analytics
 pub async fn get_risk_analytics(
     State(_state): State<Arc<AppState>>,
-    axum::Extension(_auth_user): axum::Extension<AuthUser>,
+    axum::Extension(auth_user): axum::Extension<AuthUser>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
+    // Only administrators should access security analytics.
+    if !auth_user.roles.iter().any(|r| r == "admin" || r == "realm-admin") {
+        return Err(AuthencError::forbidden("Admin role required to access risk analytics"));
+    }
+
     // Placeholder response — not wired to real data yet.
     // The `placeholder` flag lets the UI indicate these are sample values.
     let analytics = serde_json::json!({
@@ -314,9 +328,14 @@ pub async fn get_risk_analytics(
 /// Get security dashboard data
 pub async fn get_security_dashboard(
     State(_state): State<Arc<AppState>>,
-    axum::Extension(_auth_user): axum::Extension<AuthUser>,
+    axum::Extension(auth_user): axum::Extension<AuthUser>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
+    // Only administrators should access the security dashboard.
+    if !auth_user.roles.iter().any(|r| r == "admin" || r == "realm-admin") {
+        return Err(AuthencError::forbidden("Admin role required to access security dashboard"));
+    }
+
     // Placeholder response — not wired to real data yet.
     // The `placeholder` flag lets the UI indicate these are sample values.
     let dashboard = serde_json::json!({

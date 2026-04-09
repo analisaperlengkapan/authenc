@@ -623,9 +623,10 @@ impl ZeroTrustManager {
             existing.last_seen = device_trust.last_seen;
             existing.device_info = device_trust.device_info;
             existing.compliance_status = device_trust.compliance_status;
-            // Only upgrade trust when the device has NOT been security-
-            // downgraded.  Mirrors the guard in `evaluate_device_trust`.
-            if !existing.security_downgraded && device_trust.trust_level > existing.trust_level {
+            // When the device has been security-downgraded, freeze the trust
+            // level.  Otherwise, apply the new trust level in both directions
+            // (mirrors the guard in `evaluate_device_trust`).
+            if !existing.security_downgraded {
                 existing.trust_level = device_trust.trust_level;
             }
             return;
@@ -686,7 +687,7 @@ impl ZeroTrustManager {
                 TrustLevel::High => 0.1,
                 TrustLevel::Medium => 0.3,
                 TrustLevel::Low => 0.6,
-                TrustLevel::None => 0.9,
+                TrustLevel::None => 1.0,
             }
         } else {
             0.5
@@ -695,11 +696,11 @@ impl ZeroTrustManager {
         // Conservative baseline for behavioural risk.  We cannot run the full
         // `calculate_behavioral_risk` here (no AuthContext available), so we use
         // a fixed value regardless of whether an anomaly detector is configured.
-        // 0.7 is high enough that untrusted devices (device_risk >= 0.9) can
+        // 0.7 is high enough that untrusted devices (device_risk >= 1.0) can
         // still exceed the 0.6 rejection threshold:
         //
-        // With behavioral_risk = 0.7 and device_risk = 0.9 (TrustLevel::None):
-        //   combined = 0.9*0.4 + 0.7*0.3 + 0.2*0.3 = 0.63 > 0.6 ✓
+        // With behavioral_risk = 0.7 and device_risk = 1.0 (TrustLevel::None):
+        //   combined = 1.0*0.4 + 0.7*0.3 + 0.2*0.3 = 0.67 > 0.6 ✓
         // With behavioral_risk = 0.7 and device_risk = 0.6 (TrustLevel::Low):
         //   combined = 0.6*0.4 + 0.7*0.3 + 0.2*0.3 = 0.51 (elevated, not rejected) ✓
         let behavioral_risk = 0.7;
@@ -818,10 +819,16 @@ impl ContinuousAuthService for ZeroTrustManager {
         if let Some(existing) = store.get_mut(&device_fingerprint) {
             existing.last_seen = Utc::now();
             existing.device_info = device_info.clone();
-            // Only upgrade trust when the device has NOT been security-
-            // downgraded.  If it has, the trust level is frozen until an
+            // When the device has been security-downgraded by
+            // `handle_suspicious_activity`, freeze the trust level until an
             // administrator explicitly clears it via `update_device_trust`.
-            if !existing.security_downgraded && trust_level > existing.trust_level {
+            //
+            // Otherwise, apply the freshly-computed trust level in both
+            // directions (upgrade *and* downgrade).  The old code only
+            // upgraded, which meant a device whose characteristics degraded
+            // (e.g. switched to an unknown OS or lost location data) would
+            // keep its previous high-water-mark trust level indefinitely.
+            if !existing.security_downgraded {
                 existing.trust_level = trust_level;
             }
             // Compliance may degrade independently of trust level (e.g. an
@@ -903,7 +910,7 @@ impl ContinuousAuthService for ZeroTrustManager {
                 TrustLevel::High => 0.1,
                 TrustLevel::Medium => 0.3,
                 TrustLevel::Low => 0.6,
-                TrustLevel::None => 0.9,
+                TrustLevel::None => 1.0,
             }
         } else {
             // No device trust info - elevated risk
@@ -913,11 +920,11 @@ impl ContinuousAuthService for ZeroTrustManager {
         // Step 3: Conservative baseline for behavioral risk.
         // We cannot run full behavioral analysis without an AuthContext, so use
         // a fixed value regardless of anomaly detector presence.  0.7 ensures
-        // untrusted devices (device_risk >= 0.9) can exceed the 0.6 rejection
-        // threshold (matches verify_session_with_score).
+        // untrusted devices (device_risk >= 1.0) can exceed the 0.6 rejection
+        // threshold (matches verify_session_with_score and calculate_risk_score).
         //
-        // With behavioral_risk = 0.7 and device_risk = 0.9 (TrustLevel::None):
-        //   combined = 0.9*0.4 + 0.7*0.3 + 0.2*0.3 = 0.63 > 0.6 ✓
+        // With behavioral_risk = 0.7 and device_risk = 1.0 (TrustLevel::None):
+        //   combined = 1.0*0.4 + 0.7*0.3 + 0.2*0.3 = 0.67 > 0.6 ✓
         let behavioral_risk = 0.7;
 
         // Step 4: Calculate location risk (placeholder - would use IP geolocation in production)
