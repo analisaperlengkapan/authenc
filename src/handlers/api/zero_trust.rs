@@ -296,6 +296,7 @@ pub async fn verify_session(
 /// Get risk analytics
 pub async fn get_risk_analytics(
     State(_state): State<Arc<AppState>>,
+    axum::Extension(_auth_user): axum::Extension<AuthUser>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Placeholder response — not wired to real data yet.
@@ -313,6 +314,7 @@ pub async fn get_risk_analytics(
 /// Get security dashboard data
 pub async fn get_security_dashboard(
     State(_state): State<Arc<AppState>>,
+    axum::Extension(_auth_user): axum::Extension<AuthUser>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Placeholder response — not wired to real data yet.

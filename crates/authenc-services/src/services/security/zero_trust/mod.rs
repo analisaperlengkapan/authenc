@@ -934,11 +934,18 @@ impl ContinuousAuthService for ZeroTrustManager {
 
         // Step 6: Verify based on risk threshold
         // Risk threshold: 0.0-0.3 = safe, 0.3-0.6 = elevated, 0.6-1.0 = high risk
+        //
+        // Semantics aligned with `verify_session_with_score`:
+        //   Ok(true)  — low risk, session valid
+        //   Ok(false) — elevated or high risk, additional verification recommended
+        //   Err(...)  — internal/lock error only (never for risk-based rejection)
+        //
+        // Callers that need the actual score should use `verify_session_with_score`.
         if combined_risk > 0.6 {
-            Err(format!(
-                "Session verification failed: high risk detected (score: {:.2})",
-                combined_risk
-            ))
+            // High risk — session invalid, but return Ok(false) so callers can
+            // handle it gracefully (e.g. step-up auth) instead of treating it as
+            // an internal error.
+            Ok(false)
         } else if combined_risk > 0.3 {
             // Elevated risk - may require additional verification
             // Returning Ok(false) indicates verification passed but with caution
@@ -1035,10 +1042,17 @@ impl ContinuousAuthService for ZeroTrustManager {
                 }
                 device_trust.last_seen = Utc::now();
 
-                eprintln!(
-                    "[SECURITY ACTION] Device trust updated for session {}: {:?} -> {:?}",
-                    activity.session_id, old_trust_level, new_trust_level
-                );
+                if device_trust.trust_level != old_trust_level {
+                    eprintln!(
+                        "[SECURITY ACTION] Device trust updated for device {}: {:?} -> {:?}",
+                        activity.device_id, old_trust_level, device_trust.trust_level
+                    );
+                } else {
+                    eprintln!(
+                        "[SECURITY ACTION] Device trust unchanged for device {} (remains {:?}, security_downgraded={})",
+                        activity.device_id, device_trust.trust_level, device_trust.security_downgraded
+                    );
+                }
             }
         }
 
