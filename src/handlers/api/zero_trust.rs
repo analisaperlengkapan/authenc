@@ -165,6 +165,10 @@ pub async fn assess_risk(
     let server_fingerprint = ZeroTrustManager::compute_device_fingerprint(&device_info);
     let last_activity = state.zero_trust_manager
         .get_device_last_seen(&server_fingerprint)
+        .unwrap_or_else(|e| {
+            eprintln!("[SECURITY] Failed to read device last_seen: {}", e);
+            None
+        })
         .unwrap_or_else(chrono::Utc::now);
 
     // Evaluate device trust (reuses existing entry for the same server-generated fingerprint).

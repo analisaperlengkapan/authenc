@@ -586,34 +586,30 @@ impl ZeroTrustManager {
         }
     }
 
-    /// Check if device is trusted
-    pub fn is_device_trusted(&self, device_id: &str) -> bool {
-        let store = match self.device_trust_store.read() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[SECURITY] Device trust store lock poisoned during read: {}", e);
-                return false;
-            }
-        };
+    /// Check if device is trusted.
+    ///
+    /// Returns `Err` if the internal lock is poisoned.  Callers should treat
+    /// an error as "not trusted" (fail closed).
+    pub fn is_device_trusted(&self, device_id: &str) -> Result<bool, String> {
+        let store = self.device_trust_store.read()
+            .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during read: {}", e))?;
         if let Some(device_trust) = store.get(device_id) {
-            matches!(
+            Ok(matches!(
                 device_trust.trust_level,
                 TrustLevel::High | TrustLevel::Maximum
-            )
+            ))
         } else {
-            false
+            Ok(false)
         }
     }
 
     /// Register device trust, evicting the oldest entry if the store exceeds its capacity.
-    pub fn register_device_trust(&self, device_trust: DeviceTrust) {
-        let mut store = match self.device_trust_store.write() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[SECURITY] Device trust store lock poisoned during write: {}", e);
-                return;
-            }
-        };
+    ///
+    /// Returns `Err` if the internal lock is poisoned — callers should treat
+    /// this as a degraded security state (the device trust entry was NOT stored).
+    pub fn register_device_trust(&self, device_trust: DeviceTrust) -> Result<(), String> {
+        let mut store = self.device_trust_store.write()
+            .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during write: {}", e))?;
 
         // If the device already exists, update it in-place (no eviction needed).
         // We must preserve the `security_downgraded` flag set by
@@ -629,12 +625,13 @@ impl ZeroTrustManager {
             if !existing.security_downgraded {
                 existing.trust_level = device_trust.trust_level;
             }
-            return;
+            return Ok(());
         }
 
         Self::evict_oldest_if_at_capacity(&mut store);
 
         store.insert(device_trust.device_id.clone(), device_trust);
+        Ok(())
     }
 
     /// Update device trust level (explicit administrative action).
@@ -642,31 +639,26 @@ impl ZeroTrustManager {
     /// This also clears the `security_downgraded` flag so that future
     /// `evaluate_device_trust` calls can upgrade the trust level again
     /// based on device characteristics.
-    pub fn update_device_trust(&self, device_id: &str, new_level: TrustLevel) {
-        let mut store = match self.device_trust_store.write() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[SECURITY] Device trust store lock poisoned during write: {}", e);
-                return;
-            }
-        };
+    ///
+    /// Returns `Err` if the internal lock is poisoned.
+    pub fn update_device_trust(&self, device_id: &str, new_level: TrustLevel) -> Result<(), String> {
+        let mut store = self.device_trust_store.write()
+            .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during write: {}", e))?;
         if let Some(device_trust) = store.get_mut(device_id) {
             device_trust.trust_level = new_level;
             device_trust.security_downgraded = false;
             device_trust.last_seen = Utc::now();
         }
+        Ok(())
     }
 
-    /// Get the last_seen timestamp for a device, if it exists in the store
-    pub fn get_device_last_seen(&self, device_id: &str) -> Option<DateTime<Utc>> {
-        let store = match self.device_trust_store.read() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[SECURITY] Device trust store lock poisoned during read: {}", e);
-                return None;
-            }
-        };
-        store.get(device_id).map(|d| d.last_seen)
+    /// Get the last_seen timestamp for a device, if it exists in the store.
+    ///
+    /// Returns `Err` if the internal lock is poisoned.
+    pub fn get_device_last_seen(&self, device_id: &str) -> Result<Option<DateTime<Utc>>, String> {
+        let store = self.device_trust_store.read()
+            .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during read: {}", e))?;
+        Ok(store.get(device_id).map(|d| d.last_seen))
     }
 
     /// Verify a session/device and return the combined risk score.
@@ -677,20 +669,24 @@ impl ZeroTrustManager {
     ///
     /// Returns `(is_valid, combined_risk_score)`.
     pub fn verify_session_with_score(&self, device_id: &str) -> Result<(bool, f64), String> {
-        let store = self.device_trust_store.read()
-            .map_err(|e| format!("Failed to read device trust store: {}", e))?;
-        let device_trust = store.get(device_id);
-
-        let device_risk = if let Some(trust) = device_trust {
-            match trust.trust_level {
-                TrustLevel::Maximum => 0.0,
-                TrustLevel::High => 0.1,
-                TrustLevel::Medium => 0.3,
-                TrustLevel::Low => 0.6,
-                TrustLevel::None => 1.0,
+        // Extract the device risk score under the read lock, then drop the guard
+        // immediately so we don't hold it during the subsequent arithmetic.
+        // This reduces write-lock contention from concurrent callers of
+        // `evaluate_device_trust`, `handle_suspicious_activity`, etc.
+        let device_risk = {
+            let store = self.device_trust_store.read()
+                .map_err(|e| format!("Failed to read device trust store: {}", e))?;
+            if let Some(trust) = store.get(device_id) {
+                match trust.trust_level {
+                    TrustLevel::Maximum => 0.0,
+                    TrustLevel::High => 0.1,
+                    TrustLevel::Medium => 0.3,
+                    TrustLevel::Low => 0.6,
+                    TrustLevel::None => 1.0,
+                }
+            } else {
+                0.5
             }
-        } else {
-            0.5
         };
 
         // Conservative baseline for behavioural risk.  We cannot run the full
@@ -898,23 +894,23 @@ impl ContinuousAuthService for ZeroTrustManager {
         // Note: In production, this would query session from database. Here we demonstrate
         // the risk assessment integration logic using the existing zero trust components.
 
-        // Step 1: Check if we have cached device trust for this device
-        let store = self.device_trust_store.read()
-            .map_err(|e| format!("Failed to read device trust store: {}", e))?;
-        let device_trust = store.get(device_id);
-
-        // Step 2: Evaluate device trust
-        let device_risk = if let Some(trust) = device_trust {
-            match trust.trust_level {
-                TrustLevel::Maximum => 0.0,
-                TrustLevel::High => 0.1,
-                TrustLevel::Medium => 0.3,
-                TrustLevel::Low => 0.6,
-                TrustLevel::None => 1.0,
+        // Step 1+2: Extract device risk under a scoped read lock, then drop the
+        // guard immediately so we don't hold it during the subsequent arithmetic.
+        let device_risk = {
+            let store = self.device_trust_store.read()
+                .map_err(|e| format!("Failed to read device trust store: {}", e))?;
+            if let Some(trust) = store.get(device_id) {
+                match trust.trust_level {
+                    TrustLevel::Maximum => 0.0,
+                    TrustLevel::High => 0.1,
+                    TrustLevel::Medium => 0.3,
+                    TrustLevel::Low => 0.6,
+                    TrustLevel::None => 1.0,
+                }
+            } else {
+                // No device trust info - elevated risk
+                0.5
             }
-        } else {
-            // No device trust info - elevated risk
-            0.5
         };
 
         // Step 3: Conservative baseline for behavioral risk.
