@@ -223,6 +223,10 @@ pub trait ContinuousAuthService: Send + Sync {
     ///
     /// `device_id` is the server-generated fingerprint (returned as `device_id`
     /// by `evaluate_device_trust`), **not** the application-level session ID.
+    ///
+    /// **Note:** This uses a simplified fixed risk model (see
+    /// `verify_session_with_score` docs).  Scores are not directly comparable
+    /// to those from `assess_risk` / `calculate_risk_score`.
     async fn verify_session(&self, device_id: &str) -> Result<bool, String>;
 
     /// Handle suspicious activity
@@ -582,6 +586,15 @@ impl ZeroTrustManager {
     /// or above `MAX_DEVICE_TRUST_ENTRIES`.  This is the single source of truth
     /// for eviction policy — used by both `register_device_trust` and
     /// `evaluate_device_trust` to avoid divergence.
+    ///
+    /// # Performance
+    ///
+    /// This performs an O(n) scan of the entire HashMap to find the oldest entry.
+    /// The scan runs under the caller's write lock, so it blocks all concurrent
+    /// readers and writers while iterating.  At `MAX_DEVICE_TRUST_ENTRIES` (10,000)
+    /// this is acceptable for typical workloads, but if contention becomes an issue
+    /// consider migrating to a `BTreeMap<(DateTime, String), DeviceTrust>` or an
+    /// LRU cache for O(1) / O(log n) eviction.
     fn evict_oldest_if_at_capacity(store: &mut HashMap<String, DeviceTrust>) {
         if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
             if let Some(oldest_key) = store
@@ -675,6 +688,18 @@ impl ZeroTrustManager {
     /// this method exposes the actual computed risk score so callers can feed it into
     /// `generate_adaptive_controls` without losing precision.
     ///
+    /// # Scoring model divergence from `calculate_risk_score`
+    ///
+    /// This method uses a **simplified fixed model** (40% device / 30% behavioral /
+    /// 30% location with hardcoded `behavioral_risk=0.7`, `location_risk=0.2`)
+    /// because it lacks an `AuthContext` and cannot run the full dynamic analysis.
+    /// In contrast, `calculate_risk_score` (used by `assess_risk`) uses a dynamic
+    /// model (40/20/15/25 weights, with normalization and real anomaly detection).
+    ///
+    /// This means scores from `assess_risk` and `verify_session` are **not directly
+    /// comparable**.  The conservative fixed baseline ensures `verify_session` errs
+    /// on the side of caution (higher scores) when full context is unavailable.
+    ///
     /// Returns `(is_valid, combined_risk_score)`.
     pub fn verify_session_with_score(&self, device_id: &str) -> Result<(bool, f64), String> {
         // Extract the device risk score under the read lock, then drop the guard
@@ -727,6 +752,17 @@ impl ZeroTrustManager {
     /// `evaluate_device_trust` and any handler that needs to look up a device
     /// before calling `evaluate_device_trust` (e.g. to fetch `last_seen`)
     /// **must** use this method to avoid format divergence.
+    ///
+    /// # Known limitation: IP-based fingerprint instability
+    ///
+    /// The fingerprint includes `ip_address`, so any IP change (WiFi→cellular,
+    /// DHCP renewal, VPN toggle) produces a new fingerprint and a new device
+    /// trust entry.  The `verify_session` handler correctly rejects mismatches
+    /// with `device_mismatch` so the client can re-assess.  This is the secure
+    /// default (never trust client-provided fingerprints as cache keys), but
+    /// causes frequent re-assessments for mobile clients.  A future improvement
+    /// could incorporate a server-issued opaque device token (stored in a
+    /// secure cookie) to provide stable identity across IP changes.
     pub fn compute_device_fingerprint(device_info: &DeviceInfo) -> String {
         let raw = format!(
             "fp_{}_{}_{}",
@@ -1064,6 +1100,13 @@ impl ContinuousAuthService for ZeroTrustManager {
         match severity {
             "CRITICAL" => {
                 // Critical: Immediate action required
+                //
+                // NOTE: The trust demotion and `security_downgraded` flag have
+                // **already been committed** to the device trust store above.
+                // The `Err` returned here signals to the caller that the session
+                // must be terminated — it does NOT mean "no action was taken".
+                // Callers should NOT retry on this error; the security response
+                // is already in effect.
                 eprintln!(
                     "[SECURITY ACTION - CRITICAL] Recommended actions:\n\
                      1. REVOKE session {} immediately\n\
@@ -1075,7 +1118,8 @@ impl ContinuousAuthService for ZeroTrustManager {
                 );
                 // In production: Actually revoke session, block user, send alerts
                 Err(format!(
-                    "Critical security threat detected (risk: {:.2}). Session must be terminated.",
+                    "Critical security threat detected (risk: {:.2}). Session must be terminated. \
+                     Device trust has been downgraded.",
                     activity.risk_score
                 ))
             }

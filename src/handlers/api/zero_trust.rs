@@ -147,6 +147,13 @@ pub async fn assess_risk(
         .to_string();
 
     // Create device info, parsing OS and browser from the real HTTP User-Agent header
+    //
+    // NOTE: `location` is always `None` because we never trust client-provided
+    // location data.  This means `calculate_location_risk` always returns 0.3
+    // (the "no location data" fallback) and the high-risk country / VPN detection
+    // logic in that function is currently dead code.  To activate location-based
+    // risk detection, integrate a server-side IP geolocation service here and
+    // populate `location` from the resolved `real_ip`.
     let device_info = DeviceInfo {
         user_agent: real_user_agent.clone(),
         ip_address: real_ip.clone(),
@@ -162,6 +169,12 @@ pub async fn assess_risk(
     // This gives calculate_time_risk a meaningful inactivity duration instead of
     // always seeing ~0 (which would pin the time risk at the minimum 0.1).
     // Uses the shared helper to stay in sync with evaluate_device_trust.
+    //
+    // NOTE: There is a benign TOCTOU between this read and the subsequent
+    // `evaluate_device_trust` write — a concurrent request could create or
+    // update the entry in between.  In the worst case, `last_activity` defaults
+    // to `Utc::now()` (for a new device), resulting in the minimum time risk
+    // score of 0.1.  This errs on the safe side (under-counting time risk).
     let server_fingerprint = ZeroTrustManager::compute_device_fingerprint(&device_info);
     let last_activity = state.zero_trust_manager
         .get_device_last_seen(&server_fingerprint)
