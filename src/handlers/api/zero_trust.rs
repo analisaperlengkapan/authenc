@@ -366,7 +366,10 @@ pub async fn verify_session(
         Ok((true, score)) if score <= 0.3 => (true, score, false, None),           // Low risk — no extra auth needed
         Ok((true, score)) => (true, score, true, None),                            // Elevated risk — step-up auth recommended
         Ok((false, score)) => (false, score, true, Some("high_risk".to_string())), // High risk — session invalid
-        Err(_) => (false, 0.8, true, Some("internal_error".to_string())),          // Lock/internal error — fail closed
+        Err(e) => {                                                                // Lock/internal error — fail closed
+            eprintln!("[SECURITY] verify_session_with_score failed for device '{}': {}", request.device_id, e);
+            (false, 0.8, true, Some("internal_error".to_string()))
+        }
     };
 
     let response = SessionVerificationResponse {
@@ -385,16 +388,15 @@ pub async fn get_risk_analytics(
     axum::Extension(auth_user): axum::Extension<AuthUser>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
-    // Only administrators should access security analytics.
+    // Only global administrators should access security analytics.
     //
-    // TODO: When real data is wired up, `realm-admin` users must be restricted
-    // to their own realm.  Currently `AuthUser` does not carry a `realm_id`, so
-    // a realm-admin for realm A can query analytics for realm B by passing a
-    // different `realm_id` in the query params.  The `admin` (global) role is
-    // unaffected.  Until `AuthUser` is extended with realm context, consider
-    // restricting this endpoint to the `admin` role only.
-    if !auth_user.roles.iter().any(|r| r == "admin" || r == "realm-admin") {
-        return Err(AuthencError::forbidden("Admin role required to access risk analytics"));
+    // `realm-admin` is intentionally excluded here because `AuthUser` does not
+    // carry a `realm_id`, so a realm-admin for realm A could query analytics
+    // for realm B by passing a different `realm_id` in the query params.
+    // Once `AuthUser` is extended with realm context, re-enable `realm-admin`
+    // with a check that `query.realm_id` matches the admin's own realm.
+    if !auth_user.roles.iter().any(|r| r == "admin") {
+        return Err(AuthencError::forbidden("Global admin role required to access risk analytics"));
     }
 
     // Placeholder response — not wired to real data yet.
@@ -415,12 +417,13 @@ pub async fn get_security_dashboard(
     axum::Extension(auth_user): axum::Extension<AuthUser>,
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
-    // Only administrators should access the security dashboard.
+    // Only global administrators should access the security dashboard.
     //
-    // TODO: Same realm-admin authorization gap as `get_risk_analytics` — see
-    // the comment there for details.
-    if !auth_user.roles.iter().any(|r| r == "admin" || r == "realm-admin") {
-        return Err(AuthencError::forbidden("Admin role required to access security dashboard"));
+    // `realm-admin` is intentionally excluded — same reasoning as
+    // `get_risk_analytics`: AuthUser lacks realm_id, so realm-admin
+    // could access data for any realm.
+    if !auth_user.roles.iter().any(|r| r == "admin") {
+        return Err(AuthencError::forbidden("Global admin role required to access security dashboard"));
     }
 
     // Placeholder response — not wired to real data yet.
