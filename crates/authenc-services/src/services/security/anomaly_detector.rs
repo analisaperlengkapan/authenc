@@ -8,7 +8,8 @@ pub trait AnomalyDetectorTrait: Send + Sync {
 }
 
 /// Maximum number of users tracked in the anomaly detector.
-/// When exceeded, the oldest user entry (fewest IPs, then alphabetical) is evicted.
+/// When exceeded, the user with the fewest tracked IPs is evicted.
+/// Ties are broken by `HashMap` iteration order (non-deterministic).
 const MAX_TRACKED_USERS: usize = 50_000;
 
 /// Maximum number of IPs tracked per user.

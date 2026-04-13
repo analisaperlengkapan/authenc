@@ -614,11 +614,24 @@ impl ZeroTrustManager {
                 // the oldest one.  This is a degraded state that should not
                 // occur in practice (it would require 10,000 distinct devices
                 // all flagged as suspicious).
+                //
+                // WARNING: evicting a security-downgraded entry means the
+                // device can reconnect and receive a fresh entry with
+                // `security_downgraded: false`, silently undoing the trust
+                // demotion applied by `handle_suspicious_activity`.  For
+                // high-security deployments, consider persisting security
+                // downgrades externally (e.g. in the database) so they
+                // survive eviction.
                 if let Some(oldest_key) = store
                     .iter()
                     .min_by_key(|(_, v)| v.last_seen)
                     .map(|(k, _)| k.clone())
                 {
+                    eprintln!(
+                        "[SECURITY WARNING] Evicting security-downgraded device trust entry '{}'. \
+                         If this device reconnects, its security_downgraded flag will be lost.",
+                        oldest_key
+                    );
                     store.remove(&oldest_key);
                 }
             }
