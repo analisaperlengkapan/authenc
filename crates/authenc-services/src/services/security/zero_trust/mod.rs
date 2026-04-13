@@ -610,30 +610,27 @@ impl ZeroTrustManager {
             {
                 store.remove(&oldest_key);
             } else {
-                // All entries are security-downgraded — fall back to evicting
-                // the oldest one.  This is a degraded state that should not
-                // occur in practice (it would require 10,000 distinct devices
-                // all flagged as suspicious).
-                //
-                // WARNING: evicting a security-downgraded entry means the
-                // device can reconnect and receive a fresh entry with
+                // All entries are security-downgraded — refuse to evict any of
+                // them.  Evicting a downgraded entry would allow the device to
+                // reconnect and receive a fresh entry with
                 // `security_downgraded: false`, silently undoing the trust
-                // demotion applied by `handle_suspicious_activity`.  For
-                // high-security deployments, consider persisting security
-                // downgrades externally (e.g. in the database) so they
-                // survive eviction.
-                if let Some(oldest_key) = store
-                    .iter()
-                    .min_by_key(|(_, v)| v.last_seen)
-                    .map(|(k, _)| k.clone())
-                {
-                    eprintln!(
-                        "[SECURITY WARNING] Evicting security-downgraded device trust entry '{}'. \
-                         If this device reconnects, its security_downgraded flag will be lost.",
-                        oldest_key
-                    );
-                    store.remove(&oldest_key);
-                }
+                // demotion applied by `handle_suspicious_activity`.
+                //
+                // The caller will fail to insert the new entry (the store is
+                // full).  This is the safe default: the new device simply won't
+                // get a trust entry and will be treated as unknown (high risk).
+                //
+                // This degraded state should not occur in practice (it would
+                // require 10,000 distinct devices all flagged as suspicious).
+                // For high-security deployments, consider persisting security
+                // downgrades externally (e.g. in the database) so they survive
+                // eviction and normal entries can be evicted instead.
+                eprintln!(
+                    "[SECURITY WARNING] Device trust store at capacity ({}) with ALL entries \
+                     security-downgraded.  Refusing to evict to preserve trust demotions.  \
+                     New device entry will not be stored.",
+                    MAX_DEVICE_TRUST_ENTRIES
+                );
             }
         }
     }
@@ -681,6 +678,17 @@ impl ZeroTrustManager {
         }
 
         Self::evict_oldest_if_at_capacity(&mut store);
+
+        // If the store is still at capacity after eviction (all entries are
+        // security-downgraded), skip the insert to avoid exceeding the cap.
+        if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
+            eprintln!(
+                "[SECURITY] Cannot register device trust entry for '{}': \
+                 store at capacity with all entries security-downgraded.",
+                device_trust.device_id
+            );
+            return Ok(());
+        }
 
         store.insert(device_trust.device_id.clone(), device_trust);
         Ok(())
@@ -924,6 +932,29 @@ impl ContinuousAuthService for ZeroTrustManager {
         }
 
         Self::evict_oldest_if_at_capacity(&mut store);
+
+        // If the store is still at capacity after eviction (all entries are
+        // security-downgraded), skip the insert to avoid exceeding the cap.
+        // The device will be treated as unknown (high risk) by verify_session.
+        if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
+            eprintln!(
+                "[SECURITY] Cannot store new device trust entry for '{}': \
+                 store at capacity with all entries security-downgraded.",
+                device_fingerprint
+            );
+            // Return a transient entry so the caller still gets a DeviceTrust,
+            // but it won't be persisted or looked up on subsequent calls.
+            return Ok(DeviceTrust {
+                device_id: device_fingerprint.clone(),
+                device_fingerprint,
+                trust_level,
+                last_seen: Utc::now(),
+                first_seen: Utc::now(),
+                device_info: device_info.clone(),
+                compliance_status,
+                security_downgraded: false,
+            });
+        }
 
         // Use the fingerprint as the device_id for stable lookups
         let device_trust = DeviceTrust {

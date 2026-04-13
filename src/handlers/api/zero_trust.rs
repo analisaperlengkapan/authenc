@@ -19,6 +19,56 @@ use authenc_services::services::security::zero_trust::{
     extract_os, extract_browser,
 };
 
+/// Extract the real client IP address, preferring trusted proxy headers over the
+/// raw connection address.
+///
+/// Behind a reverse proxy (nginx, AWS ALB, Cloudflare, etc.), `ConnectInfo`
+/// returns the **proxy's** IP, not the end-user's.  This function checks
+/// `X-Forwarded-For` and `X-Real-IP` headers first, falling back to the
+/// connection address only when neither header is present.
+///
+/// # Security considerations
+///
+/// These headers are trivially spoofable by direct clients.  In production,
+/// the application **must** be deployed behind a trusted reverse proxy that
+/// strips or overwrites `X-Forwarded-For` / `X-Real-IP` before forwarding.
+/// Without that guarantee, an attacker can inject arbitrary IPs to:
+///   - inherit another device's trust entry,
+///   - inflate trust scores by claiming a private IP,
+///   - evade rate limiting.
+///
+/// When `X-Forwarded-For` contains multiple IPs (comma-separated), the
+/// **leftmost** (first) value is used — this is the original client IP
+/// appended by the first proxy in the chain.  If your proxy chain uses
+/// a right-to-left convention, adjust accordingly.
+fn extract_client_ip(headers: &HeaderMap, addr: &SocketAddr) -> String {
+    // Prefer X-Forwarded-For (de-facto standard, set by most reverse proxies).
+    // Take the first (leftmost) IP — the original client address.
+    if let Some(forwarded_for) = headers.get("x-forwarded-for") {
+        if let Ok(value) = forwarded_for.to_str() {
+            if let Some(first_ip) = value.split(',').next() {
+                let trimmed = first_ip.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+    }
+
+    // Fall back to X-Real-IP (set by nginx with `proxy_set_header X-Real-IP`).
+    if let Some(real_ip) = headers.get("x-real-ip") {
+        if let Ok(value) = real_ip.to_str() {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+
+    // No proxy headers — use the raw connection address.
+    addr.ip().to_string()
+}
+
 #[derive(Deserialize)]
 /// Request payload for assessing security risk of a user action
 pub struct AssessRiskRequest {
@@ -134,11 +184,16 @@ pub async fn assess_risk(
     let authenticated_user_id: Uuid = auth_user.id.parse()
         .map_err(|_| AuthencError::internal("Invalid user ID in auth token".to_string()))?;
 
-    // Always use the real connection IP for security decisions, never the
+    // Always use the real client IP for security decisions, never the
     // client-provided ip_address.  A malicious client could spoof a private IP
     // (e.g. 192.168.1.1) to gain higher trust scores, or send another user's
     // IP to inherit their device trust entry.
-    let real_ip = addr.ip().to_string();
+    //
+    // extract_client_ip checks X-Forwarded-For / X-Real-IP headers first so
+    // that deployments behind a reverse proxy see the actual client IP instead
+    // of the proxy's IP (which would cause all clients to share a single
+    // device fingerprint and trust entry).
+    let real_ip = extract_client_ip(&headers, &addr);
 
     // Use the real HTTP User-Agent header for trust scoring, not the client-provided
     // JSON field.  While the UA header is also client-controlled, it is the canonical
@@ -272,7 +327,7 @@ pub async fn verify_session(
     // This prevents authenticated users from probing other devices' trust
     // levels — the fingerprint is derived from the real IP + UA + OS, so
     // only the device that originally called assess_risk can verify itself.
-    let real_ip = addr.ip().to_string();
+    let real_ip = extract_client_ip(&headers, &addr);
     let real_user_agent = headers
         .get(axum::http::header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
