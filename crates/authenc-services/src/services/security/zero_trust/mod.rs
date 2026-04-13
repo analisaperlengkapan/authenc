@@ -718,7 +718,10 @@ impl ZeroTrustManager {
                     TrustLevel::None => 1.0,
                 }
             } else {
-                0.5
+                // Unknown device — must be riskier than a known Low-trust device
+                // (0.6) but below an explicitly untrusted device (1.0).  Using 0.8
+                // ensures unknown devices are treated with appropriate suspicion.
+                0.8
             }
         };
 
@@ -730,6 +733,8 @@ impl ZeroTrustManager {
         //
         // With behavioral_risk = 0.7 and device_risk = 1.0 (TrustLevel::None):
         //   combined = 1.0*0.4 + 0.7*0.3 + 0.2*0.3 = 0.67 > 0.6 ✓
+        // With behavioral_risk = 0.7 and device_risk = 0.8 (unknown device):
+        //   combined = 0.8*0.4 + 0.7*0.3 + 0.2*0.3 = 0.59 (elevated, not rejected) ✓
         // With behavioral_risk = 0.7 and device_risk = 0.6 (TrustLevel::Low):
         //   combined = 0.6*0.4 + 0.7*0.3 + 0.2*0.3 = 0.51 (elevated, not rejected) ✓
         let behavioral_risk = 0.7;
@@ -952,8 +957,10 @@ impl ContinuousAuthService for ZeroTrustManager {
                     TrustLevel::None => 1.0,
                 }
             } else {
-                // No device trust info - elevated risk
-                0.5
+                // No device trust info — unknown device is riskier than a known
+                // Low-trust device (0.6) but below explicitly untrusted (1.0).
+                // Matches verify_session_with_score.
+                0.8
             }
         };
 
