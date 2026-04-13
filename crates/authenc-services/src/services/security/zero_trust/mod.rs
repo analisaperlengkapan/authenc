@@ -424,6 +424,14 @@ impl ZeroTrustManager {
         // making RiskLevel::Critical unreachable.
         if total_weight > 0.0 {
             total_score /= total_weight;
+
+            // Also normalize factor weights so they sum to 1.0 and reflect
+            // each component's actual contribution ratio.  Without this,
+            // consumers of `RiskAssessment.factors` would see raw weights
+            // summing to 0.75 when the anomaly detector is absent.
+            for factor in &mut factors {
+                factor.weight /= total_weight;
+            }
         }
 
         // Clamp score between 0 and 1
@@ -1029,7 +1037,7 @@ impl ContinuousAuthService for ZeroTrustManager {
                     // response.  The risk-score-to-level mapping above can
                     // produce a level *higher* than the current one (e.g.
                     // TrustLevel::Low for a HIGH alert on a device already at
-                    // TrustLevel::None).  Using `min` guarantees we only
+                    // TrustLevel::None).  The guard below guarantees we only
                     // downgrade or stay the same.
                     if new_trust_level < old_trust_level {
                         device_trust.trust_level = new_trust_level.clone();
