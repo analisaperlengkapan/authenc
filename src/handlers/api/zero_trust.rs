@@ -24,15 +24,19 @@ use authenc_services::services::security::zero_trust::{
 pub struct AssessRiskRequest {
     /// Session identifier
     pub session_id: String,
-    /// User identifier
-    pub user_id: Uuid,
+    /// User identifier (ignored — the authenticated user's ID from the JWT token is used instead)
+    #[serde(default)]
+    pub user_id: Option<Uuid>,
     /// Device fingerprint for tracking
     pub device_fingerprint: String,
-    /// User agent string
-    pub user_agent: String,
-    /// IP address of the request
-    pub ip_address: String,
-    /// Geographic location information
+    /// User agent string (ignored — the HTTP User-Agent header is used instead)
+    #[serde(default)]
+    pub user_agent: Option<String>,
+    /// IP address of the request (ignored — the real connection IP is used instead)
+    #[serde(default)]
+    pub ip_address: Option<String>,
+    /// Geographic location information (ignored — server-side geolocation should be used)
+    #[serde(default)]
     pub location: Option<Location>,
 }
 
@@ -58,8 +62,9 @@ pub struct RiskAssessmentResponse {
 pub struct UpdateAdaptiveControlsRequest {
     /// Session identifier
     pub session_id: String,
-    /// User identifier
-    pub user_id: Uuid,
+    /// User identifier (ignored — the authenticated user's ID from the JWT token is used instead)
+    #[serde(default)]
+    pub user_id: Option<Uuid>,
     /// Adaptive controls to apply
     pub controls: AdaptiveControls,
 }

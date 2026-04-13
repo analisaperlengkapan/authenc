@@ -800,9 +800,19 @@ impl ZeroTrustManager {
     /// could incorporate a server-issued opaque device token (stored in a
     /// secure cookie) to provide stable identity across IP changes.
     pub fn compute_device_fingerprint(device_info: &DeviceInfo) -> String {
+        // Use length-prefixed fields to prevent ambiguity between inputs.
+        // Without length prefixes, UA="a_b" + IP="c" produces the same
+        // pre-hash string as UA="a" + IP="b_c" when using `_` as delimiter.
+        // SHA-256 makes accidental collision negligible, but length-prefixing
+        // eliminates the theoretical class entirely at near-zero cost.
         let raw = format!(
-            "fp_{}_{}_{}",
-            device_info.user_agent, device_info.ip_address, device_info.os
+            "fp:{}:{}:{}:{}:{}:{}",
+            device_info.user_agent.len(),
+            device_info.user_agent,
+            device_info.ip_address.len(),
+            device_info.ip_address,
+            device_info.os.len(),
+            device_info.os,
         );
         let hash = Sha256::digest(raw.as_bytes());
         format!("fp_{}", hex::encode(hash))
