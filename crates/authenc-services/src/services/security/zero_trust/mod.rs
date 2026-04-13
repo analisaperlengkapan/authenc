@@ -597,12 +597,30 @@ impl ZeroTrustManager {
     /// LRU cache for O(1) / O(log n) eviction.
     fn evict_oldest_if_at_capacity(store: &mut HashMap<String, DeviceTrust>) {
         if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
+            // Prefer evicting entries that are NOT security-downgraded.
+            // Evicting a downgraded entry would silently clear the flag on
+            // the next `evaluate_device_trust` call (which creates a fresh
+            // entry with `security_downgraded: false`), effectively undoing
+            // a trust demotion applied by `handle_suspicious_activity`.
             if let Some(oldest_key) = store
                 .iter()
+                .filter(|(_, v)| !v.security_downgraded)
                 .min_by_key(|(_, v)| v.last_seen)
                 .map(|(k, _)| k.clone())
             {
                 store.remove(&oldest_key);
+            } else {
+                // All entries are security-downgraded — fall back to evicting
+                // the oldest one.  This is a degraded state that should not
+                // occur in practice (it would require 10,000 distinct devices
+                // all flagged as suspicious).
+                if let Some(oldest_key) = store
+                    .iter()
+                    .min_by_key(|(_, v)| v.last_seen)
+                    .map(|(k, _)| k.clone())
+                {
+                    store.remove(&oldest_key);
+                }
             }
         }
     }

@@ -7,6 +7,14 @@ pub trait AnomalyDetectorTrait: Send + Sync {
     fn is_new_ip(&self, user_id: &str, ip: &str) -> Result<bool, String>;
 }
 
+/// Maximum number of users tracked in the anomaly detector.
+/// When exceeded, the oldest user entry (fewest IPs, then alphabetical) is evicted.
+const MAX_TRACKED_USERS: usize = 50_000;
+
+/// Maximum number of IPs tracked per user.
+/// When exceeded, the oldest IP (front of the Vec) is removed.
+const MAX_IPS_PER_USER: usize = 100;
+
 /// Anomaly detector for tracking user IP addresses and detecting suspicious activity
 #[derive(Clone)]
 pub struct AnomalyDetector {
@@ -38,7 +46,30 @@ impl AnomalyDetectorTrait for AnomalyDetector {
             .map_err(|e| format!("Lock poisoned: {e}"))?;
         let ips = map.entry(user_id.to_string()).or_default();
         if !ips.contains(&ip.to_string()) {
+            // Cap per-user IP list to prevent unbounded growth from users
+            // that rotate IPs frequently (mobile clients, VPN toggles).
+            // The oldest IP (front of the Vec) is dropped so the newest
+            // IPs are always retained for anomaly detection accuracy.
+            if ips.len() >= MAX_IPS_PER_USER {
+                ips.remove(0);
+            }
             ips.push(ip.to_string());
+
+            // Cap total tracked users to prevent unbounded memory growth.
+            // Evict the user with the fewest tracked IPs (least valuable
+            // for anomaly detection) when we exceed the limit.  We only
+            // need to check after inserting a new user entry.
+            if map.len() > MAX_TRACKED_USERS {
+                if let Some(evict_key) = map
+                    .iter()
+                    .filter(|(k, _)| k.as_str() != user_id)
+                    .min_by_key(|(_, v)| v.len())
+                    .map(|(k, _)| k.clone())
+                {
+                    map.remove(&evict_key);
+                }
+            }
+
             Ok(true)
         } else {
             Ok(false)
@@ -213,7 +244,9 @@ mod tests {
         }
 
         let ips = detector.known_ips.lock().unwrap();
-        assert_eq!(ips["user1"].len(), 1000);
+        // Per-user IP list is capped at MAX_IPS_PER_USER (100).
+        // The oldest IPs are evicted to keep the list bounded.
+        assert_eq!(ips["user1"].len(), MAX_IPS_PER_USER);
     }
 
     #[test]
