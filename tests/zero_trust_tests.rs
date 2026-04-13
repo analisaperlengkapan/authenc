@@ -345,27 +345,23 @@ async fn test_risk_level_mapping() {
         }
     };
 
-    // Test risk level mappings from scores
+    // Test risk level mappings from scores using the actual determine_risk_level function.
+    // Thresholds: >= 0.8 → Critical, >= 0.6 → High, >= 0.4 → Medium, < 0.4 → Low.
     let test_cases = vec![
         (0.0, RiskLevel::Low),
         (0.2, RiskLevel::Low),
-        (0.3, RiskLevel::Medium),
+        (0.39, RiskLevel::Low),
+        (0.4, RiskLevel::Medium),
         (0.5, RiskLevel::Medium),
         (0.6, RiskLevel::High),
-        (0.8, RiskLevel::High),
+        (0.79, RiskLevel::High),
+        (0.8, RiskLevel::Critical),
         (0.9, RiskLevel::Critical),
         (1.0, RiskLevel::Critical),
     ];
 
     for (score, expected_level) in test_cases {
-        // In a real implementation, this would be done by a function
-        // For testing, we verify the mapping logic
-        let level = match score {
-            s if s < 0.3 => RiskLevel::Low,
-            s if s < 0.6 => RiskLevel::Medium,
-            s if s < 0.8 => RiskLevel::High,
-            _ => RiskLevel::Critical,
-        };
+        let level = ZeroTrustManager::determine_risk_level(score);
 
         // Can't use assert_eq! since RiskLevel doesn't implement PartialEq
         match (level, expected_level.clone()) {

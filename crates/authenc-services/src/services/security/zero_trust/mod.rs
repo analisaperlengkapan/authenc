@@ -739,7 +739,9 @@ impl ZeroTrustManager {
     /// comparable**.  The conservative fixed baseline ensures `verify_session` errs
     /// on the side of caution (higher scores) when full context is unavailable.
     ///
-    /// Returns `(is_valid, combined_risk_score)`.
+    /// Returns `(is_valid, combined_risk_score)` where `is_valid` is `false`
+    /// when `combined_risk_score >= 0.6` (aligned with `determine_risk_level`
+    /// and `generate_adaptive_controls`).
     pub fn verify_session_with_score(&self, device_id: &str) -> Result<(bool, f64), String> {
         // Extract the device risk score under the read lock, then drop the guard
         // immediately so we don't hold it during the subsequent arithmetic.
@@ -768,10 +770,10 @@ impl ZeroTrustManager {
         // `calculate_behavioral_risk` here (no AuthContext available), so we use
         // a fixed value regardless of whether an anomaly detector is configured.
         // 0.7 is high enough that untrusted devices (device_risk >= 1.0) can
-        // still exceed the 0.6 rejection threshold:
+        // still exceed the 0.6 rejection threshold (>= 0.6):
         //
         // With behavioral_risk = 0.7 and device_risk = 1.0 (TrustLevel::None):
-        //   combined = 1.0*0.4 + 0.7*0.3 + 0.2*0.3 = 0.67 > 0.6 ✓
+        //   combined = 1.0*0.4 + 0.7*0.3 + 0.2*0.3 = 0.67 >= 0.6 ✓
         // With behavioral_risk = 0.7 and device_risk = 0.8 (unknown device):
         //   combined = 0.8*0.4 + 0.7*0.3 + 0.2*0.3 = 0.59 (elevated, not rejected) ✓
         // With behavioral_risk = 0.7 and device_risk = 0.6 (TrustLevel::Low):
@@ -781,8 +783,11 @@ impl ZeroTrustManager {
 
         let combined_risk = (device_risk * 0.4) + (behavioral_risk * 0.3) + (location_risk * 0.3);
 
-        if combined_risk > 0.6 {
-            // High risk — session is invalid
+        if combined_risk >= 0.6 {
+            // High risk — session is invalid.
+            // Uses `>= 0.6` to align with `determine_risk_level` which
+            // classifies 0.6 as `RiskLevel::High`, and `generate_adaptive_controls`
+            // which applies high-risk controls (MFA, 30min timeout) at `>= 0.6`.
             Ok((false, combined_risk))
         } else {
             // Valid (possibly with elevated risk)
@@ -1043,7 +1048,7 @@ impl ContinuousAuthService for ZeroTrustManager {
         // threshold (matches verify_session_with_score and calculate_risk_score).
         //
         // With behavioral_risk = 0.7 and device_risk = 1.0 (TrustLevel::None):
-        //   combined = 1.0*0.4 + 0.7*0.3 + 0.2*0.3 = 0.67 > 0.6 ✓
+        //   combined = 1.0*0.4 + 0.7*0.3 + 0.2*0.3 = 0.67 >= 0.6 ✓
         let behavioral_risk = 0.7;
 
         // Step 4: Calculate location risk (placeholder - would use IP geolocation in production)
@@ -1057,12 +1062,16 @@ impl ContinuousAuthService for ZeroTrustManager {
         // Risk threshold: 0.0-0.3 = safe, 0.3-0.6 = elevated, 0.6-1.0 = high risk
         //
         // Semantics aligned with `verify_session_with_score`:
-        //   Ok(true)  — low or elevated risk (combined_risk <= 0.6), session valid
-        //   Ok(false) — high risk (combined_risk > 0.6), session invalid
+        //   Ok(true)  — low or elevated risk (combined_risk < 0.6), session valid
+        //   Ok(false) — high risk (combined_risk >= 0.6), session invalid
         //   Err(...)  — internal/lock error only (never for risk-based rejection)
         //
+        // Uses `>= 0.6` to align with `determine_risk_level` which classifies
+        // 0.6 as `RiskLevel::High`, and `generate_adaptive_controls` which
+        // applies high-risk controls (MFA, 30min timeout) at `>= 0.6`.
+        //
         // Callers that need the actual score should use `verify_session_with_score`.
-        if combined_risk > 0.6 {
+        if combined_risk >= 0.6 {
             // High risk — session invalid, but return Ok(false) so callers can
             // handle it gracefully (e.g. step-up auth) instead of treating it as
             // an internal error.

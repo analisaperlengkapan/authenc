@@ -386,6 +386,13 @@ pub async fn get_risk_analytics(
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Only administrators should access security analytics.
+    //
+    // TODO: When real data is wired up, `realm-admin` users must be restricted
+    // to their own realm.  Currently `AuthUser` does not carry a `realm_id`, so
+    // a realm-admin for realm A can query analytics for realm B by passing a
+    // different `realm_id` in the query params.  The `admin` (global) role is
+    // unaffected.  Until `AuthUser` is extended with realm context, consider
+    // restricting this endpoint to the `admin` role only.
     if !auth_user.roles.iter().any(|r| r == "admin" || r == "realm-admin") {
         return Err(AuthencError::forbidden("Admin role required to access risk analytics"));
     }
@@ -409,6 +416,9 @@ pub async fn get_security_dashboard(
     Query(_query): Query<GetRiskAnalyticsQuery>,
 ) -> Result<Json<serde_json::Value>, AuthencError> {
     // Only administrators should access the security dashboard.
+    //
+    // TODO: Same realm-admin authorization gap as `get_risk_analytics` — see
+    // the comment there for details.
     if !auth_user.roles.iter().any(|r| r == "admin" || r == "realm-admin") {
         return Err(AuthencError::forbidden("Admin role required to access security dashboard"));
     }
