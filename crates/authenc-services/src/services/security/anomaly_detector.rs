@@ -45,6 +45,28 @@ impl AnomalyDetectorTrait for AnomalyDetector {
             .known_ips
             .lock()
             .map_err(|e| format!("Lock poisoned: {e}"))?;
+
+        // Track whether this is a brand-new user so we only run global
+        // eviction when the map actually grew.
+        let is_new_user = !map.contains_key(user_id);
+
+        // Cap total tracked users to prevent unbounded memory growth.
+        // Only evict when we are about to insert a *new* user and the map
+        // is already at capacity.  Without the `is_new_user` guard, every
+        // new-IP event from an existing user at capacity would evict the
+        // user with the fewest tracked IPs, destroying their IP history
+        // even though the map didn't grow.
+        if is_new_user && map.len() >= MAX_TRACKED_USERS {
+            if let Some(evict_key) = map
+                .iter()
+                .filter(|(k, _)| k.as_str() != user_id)
+                .min_by_key(|(_, v)| v.len())
+                .map(|(k, _)| k.clone())
+            {
+                map.remove(&evict_key);
+            }
+        }
+
         let ips = map.entry(user_id.to_string()).or_default();
         if !ips.contains(&ip.to_string()) {
             // Cap per-user IP list to prevent unbounded growth from users
@@ -55,23 +77,6 @@ impl AnomalyDetectorTrait for AnomalyDetector {
                 ips.remove(0);
             }
             ips.push(ip.to_string());
-
-            // Cap total tracked users to prevent unbounded memory growth.
-            // Evict the user with the fewest tracked IPs (least valuable
-            // for anomaly detection) when we are at or above the limit.
-            // Uses `>=` (evict-at-capacity) to match the convention in
-            // `ZeroTrustManager::evict_oldest_if_at_capacity`, ensuring
-            // the store never exceeds `MAX_TRACKED_USERS` entries.
-            if map.len() >= MAX_TRACKED_USERS {
-                if let Some(evict_key) = map
-                    .iter()
-                    .filter(|(k, _)| k.as_str() != user_id)
-                    .min_by_key(|(_, v)| v.len())
-                    .map(|(k, _)| k.clone())
-                {
-                    map.remove(&evict_key);
-                }
-            }
 
             Ok(true)
         } else {
