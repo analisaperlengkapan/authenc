@@ -1212,33 +1212,139 @@ impl ContinuousAuthService for ZeroTrustManager {
         // If the device is not in memory but has a persisted security downgrade,
         // re-create the entry with the downgraded flag set.  This covers the case
         // where the in-memory entry was evicted but the DB record survives.
-        if let Some((persisted_level, downgraded_at)) = persisted_downgrade {
-            Self::evict_oldest_if_at_capacity(&mut store);
-            if store.len() < MAX_DEVICE_TRUST_ENTRIES {
-                let restored = DeviceTrust {
+        //
+        // TOCTOU mitigation: the `persisted_downgrade` was read from the DB
+        // *before* we acquired the write lock.  A concurrent `update_device_trust`
+        // could have cleared the downgrade (both in-memory and DB) in between.
+        // To avoid resurrecting a stale downgrade, we drop the write lock,
+        // re-query the DB, and re-acquire the lock.  The second DB read is
+        // authoritative because `update_device_trust` deletes the DB row
+        // *after* clearing the in-memory flag, so if the row still exists the
+        // downgrade is genuinely active.
+        if persisted_downgrade.is_some() {
+            // Drop the write lock before the async DB re-check.
+            drop(store);
+
+            // Re-query the DB to confirm the downgrade is still active.
+            let confirmed_downgrade: Option<(TrustLevel, DateTime<Utc>)> = if let Some(db) = &self.database {
+                match db
+                    .query_raw(
+                        "SELECT trust_level, downgraded_at FROM device_security_downgrades WHERE device_fingerprint = $1",
+                        &[&device_fingerprint],
+                    )
+                    .await
+                {
+                    Ok(rows) if !rows.is_empty() => {
+                        let tl: i32 = rows[0].try_get(0).unwrap_or(0);
+                        let da: DateTime<Utc> = rows[0].try_get(1).unwrap_or_else(|_| Utc::now());
+                        let level = match tl {
+                            0 => TrustLevel::None,
+                            1 => TrustLevel::Low,
+                            2 => TrustLevel::Medium,
+                            3 => TrustLevel::High,
+                            4 => TrustLevel::Maximum,
+                            _ => TrustLevel::None,
+                        };
+                        Some((level, da))
+                    }
+                    Ok(_) => None, // Row was deleted — downgrade was cleared
+                    Err(e) => {
+                        return Err(format!(
+                            "[SECURITY] Cannot evaluate device trust for '{}': \
+                             failed to re-check persisted security downgrade: {}. \
+                             Failing closed to prevent potential trust bypass.",
+                            device_fingerprint, e
+                        ));
+                    }
+                }
+            } else {
+                None
+            };
+
+            // Re-acquire the write lock and re-check the in-memory store.
+            // Another thread may have inserted an entry while we were awaiting.
+            let mut store = self.device_trust_store.write()
+                .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+
+            // Re-check: if the entry appeared in memory while we re-queried,
+            // update it in-place (same logic as the primary check above).
+            if let Some(existing) = store.get_mut(&device_fingerprint) {
+                existing.last_seen = Utc::now();
+                existing.device_info = device_info.clone();
+                if !existing.security_downgraded {
+                    existing.trust_level = trust_level;
+                }
+                existing.compliance_status = compliance_status;
+                return Ok(existing.clone());
+            }
+
+            // If the DB re-check confirmed the downgrade is still active,
+            // restore the entry with the downgraded flag.
+            if let Some((persisted_level, downgraded_at)) = confirmed_downgrade {
+                Self::evict_oldest_if_at_capacity(&mut store);
+                if store.len() < MAX_DEVICE_TRUST_ENTRIES {
+                    let restored = DeviceTrust {
+                        device_id: device_fingerprint.clone(),
+                        device_fingerprint: device_fingerprint.clone(),
+                        trust_level: persisted_level,
+                        last_seen: Utc::now(),
+                        first_seen: downgraded_at,
+                        device_info: device_info.clone(),
+                        compliance_status,
+                        security_downgraded: true,
+                    };
+                    store.insert(device_fingerprint.clone(), restored.clone());
+                    return Ok(restored);
+                }
+                // Store full — return transient entry with downgrade honoured.
+                return Ok(DeviceTrust {
                     device_id: device_fingerprint.clone(),
-                    device_fingerprint: device_fingerprint.clone(),
+                    device_fingerprint,
                     trust_level: persisted_level,
                     last_seen: Utc::now(),
                     first_seen: downgraded_at,
                     device_info: device_info.clone(),
                     compliance_status,
                     security_downgraded: true,
-                };
-                store.insert(device_fingerprint.clone(), restored.clone());
-                return Ok(restored);
+                });
             }
-            // Store full — return transient entry with downgrade honoured.
-            return Ok(DeviceTrust {
+
+            // The downgrade was cleared between our first and second DB reads.
+            // Fall through to create a fresh (non-downgraded) entry below.
+            // `store` is the re-acquired write guard — used by the code below.
+            Self::evict_oldest_if_at_capacity(&mut store);
+
+            if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
+                eprintln!(
+                    "[SECURITY] Cannot store new device trust entry for '{}': \
+                     store at capacity with all entries security-downgraded.",
+                    device_fingerprint
+                );
+                return Ok(DeviceTrust {
+                    device_id: device_fingerprint.clone(),
+                    device_fingerprint,
+                    trust_level,
+                    last_seen: Utc::now(),
+                    first_seen: Utc::now(),
+                    device_info: device_info.clone(),
+                    compliance_status,
+                    security_downgraded: false,
+                });
+            }
+
+            let device_trust = DeviceTrust {
                 device_id: device_fingerprint.clone(),
                 device_fingerprint,
-                trust_level: persisted_level,
+                trust_level,
                 last_seen: Utc::now(),
-                first_seen: downgraded_at,
+                first_seen: Utc::now(),
                 device_info: device_info.clone(),
                 compliance_status,
-                security_downgraded: true,
-            });
+                security_downgraded: false,
+            };
+
+            store.insert(device_trust.device_id.clone(), device_trust.clone());
+            return Ok(device_trust);
         }
 
         Self::evict_oldest_if_at_capacity(&mut store);
