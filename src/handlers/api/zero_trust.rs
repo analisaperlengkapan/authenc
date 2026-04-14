@@ -37,6 +37,16 @@ use authenc_services::services::security::zero_trust::{
 ///   - inflate trust scores by claiming a private IP,
 ///   - evade rate limiting.
 ///
+/// # TODO: Configuration-gated proxy header trust
+///
+/// This function unconditionally trusts `X-Forwarded-For` / `X-Real-IP`.
+/// A `trust_proxy_headers: bool` flag should be added to `AppConfig` (or
+/// passed as a parameter) so that deployments without a reverse proxy can
+/// disable header trust entirely.  Until then, exposing this application
+/// directly to the internet (without a proxy that sanitizes these headers)
+/// allows any client to spoof their IP address for all zero-trust security
+/// decisions.
+///
 /// When `X-Forwarded-For` contains multiple IPs (comma-separated), the
 /// **leftmost** (first) value is used — this is the original client IP
 /// appended by the first proxy in the chain.  If your proxy chain uses

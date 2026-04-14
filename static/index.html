@@ -1988,7 +1988,14 @@
                     tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--error);">Failed to load policies</td></tr>';
                 }
             } catch (err) {
-                tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--error);">${err.message}</td></tr>`;
+                tbody.innerHTML = '';
+                const errTr = document.createElement('tr');
+                const errTd = document.createElement('td');
+                errTd.colSpan = 5;
+                errTd.style.cssText = 'text-align: center; color: var(--error);';
+                errTd.textContent = err.message;
+                errTr.appendChild(errTd);
+                tbody.appendChild(errTr);
             }
         }
 
