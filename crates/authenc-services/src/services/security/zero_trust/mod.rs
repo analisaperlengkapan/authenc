@@ -83,7 +83,7 @@ pub struct Location {
 }
 
 /// Device compliance status
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ComplianceStatus {
     /// Device is compliant with security policies
     Compliant,
@@ -111,7 +111,7 @@ pub struct RiskAssessment {
 }
 
 /// Risk levels
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum RiskLevel {
     /// Low risk level
     Low,

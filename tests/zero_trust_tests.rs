@@ -105,11 +105,7 @@ async fn test_device_trust_structure() {
     assert_eq!(device_trust.device_id, "device_123");
     assert_eq!(device_trust.trust_level, TrustLevel::High);
 
-    // Check compliance status (can't use assert_eq! since ComplianceStatus doesn't implement PartialEq)
-    match device_trust.compliance_status {
-        ComplianceStatus::Compliant => assert!(true),
-        _ => panic!("Expected Compliant status"),
-    }
+    assert_eq!(device_trust.compliance_status, ComplianceStatus::Compliant);
 
     assert!(device_trust.device_fingerprint.len() > 0);
     assert!(device_trust.last_seen >= device_trust.first_seen);
@@ -362,15 +358,7 @@ async fn test_risk_level_mapping() {
 
     for (score, expected_level) in test_cases {
         let level = ZeroTrustManager::determine_risk_level(score);
-
-        // Can't use assert_eq! since RiskLevel doesn't implement PartialEq
-        match (level, expected_level.clone()) {
-            (RiskLevel::Low, RiskLevel::Low) => assert!(true),
-            (RiskLevel::Medium, RiskLevel::Medium) => assert!(true),
-            (RiskLevel::High, RiskLevel::High) => assert!(true),
-            (RiskLevel::Critical, RiskLevel::Critical) => assert!(true),
-            _ => panic!("Score {} should map to {:?}", score, expected_level),
-        }
+        assert_eq!(level, expected_level, "Score {} should map to {:?}", score, expected_level);
     }
 }
 
