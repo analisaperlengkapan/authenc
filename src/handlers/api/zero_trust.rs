@@ -14,7 +14,7 @@ use crate::app::AppState;
 use crate::error::AuthencError;
 use crate::middleware::auth::AuthUser;
 use authenc_services::services::security::zero_trust::{
-    AdaptiveControls, AuthContext, RiskAssessment, RiskLevel,
+    AdaptiveControls, AuthContext, RiskAssessment, RiskLevel, SuspiciousActivity,
     ContinuousAuthService, Location, DeviceInfo, ZeroTrustManager,
     extract_os, extract_browser,
 };
@@ -149,6 +149,12 @@ pub struct VerifySessionRequest {
     pub session_id: String,
     /// Server-generated device identifier (returned by assess_risk)
     pub device_id: String,
+    /// Client-provided device fingerprint (same value sent to assess_risk).
+    /// Required to recompute the stable fingerprint hash for verification.
+    /// When absent, the server falls back to IP-based fingerprinting which
+    /// will mismatch if the client's IP changed since assess_risk.
+    #[serde(default)]
+    pub client_fingerprint: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -351,7 +357,11 @@ pub async fn verify_session(
         browser: extract_browser(&real_user_agent),
         screen_resolution: None,
         timezone: None,
-        fingerprint: None,
+        // Pass the client fingerprint so compute_device_fingerprint uses
+        // the same stable (UA + client_fp + OS) hash that assess_risk used.
+        // Without this, verify_session would fall back to the IP-based hash
+        // and always mismatch the device_id returned by assess_risk.
+        fingerprint: request.client_fingerprint.clone(),
     };
     let expected_device_id = ZeroTrustManager::compute_device_fingerprint(&caller_device_info);
     if request.device_id != expected_device_id {
@@ -449,12 +459,81 @@ pub async fn get_security_dashboard(
     Ok(Json(dashboard))
 }
 
+/// Request payload for reporting suspicious activity (admin-only)
+#[derive(Deserialize)]
+pub struct ReportSuspiciousActivityRequest {
+    /// Type of suspicious activity (e.g. "brute_force", "credential_stuffing")
+    pub activity_type: String,
+    /// User ID associated with the activity
+    pub user_id: Uuid,
+    /// Session ID where the activity occurred
+    pub session_id: String,
+    /// Device ID (server-generated fingerprint) of the suspicious device
+    pub device_id: String,
+    /// Additional details about the activity
+    #[serde(default)]
+    pub details: std::collections::HashMap<String, String>,
+    /// Risk score (0.0–1.0) assigned to this activity
+    pub risk_score: f64,
+}
+
+/// Report suspicious activity (admin-only).
+///
+/// Triggers `handle_suspicious_activity` which downgrades device trust and
+/// persists the security downgrade to the database.
+pub async fn report_suspicious_activity(
+    State(state): State<Arc<AppState>>,
+    axum::Extension(auth_user): axum::Extension<AuthUser>,
+    Json(request): Json<ReportSuspiciousActivityRequest>,
+) -> Result<Json<serde_json::Value>, AuthencError> {
+    // Only global administrators can report suspicious activity.
+    if !auth_user.roles.iter().any(|r| r == "admin") {
+        return Err(AuthencError::forbidden("Global admin role required to report suspicious activity"));
+    }
+
+    // Validate risk_score range
+    if !(0.0..=1.0).contains(&request.risk_score) {
+        return Err(AuthencError::validation("risk_score must be between 0.0 and 1.0"));
+    }
+
+    let activity = SuspiciousActivity {
+        activity_type: request.activity_type,
+        user_id: request.user_id,
+        session_id: request.session_id,
+        device_id: request.device_id,
+        details: request.details,
+        timestamp: chrono::Utc::now(),
+        risk_score: request.risk_score,
+    };
+
+    match state.zero_trust_manager.handle_suspicious_activity(&activity).await {
+        Ok(()) => {
+            Ok(Json(serde_json::json!({
+                "status": "processed",
+                "message": "Suspicious activity reported and security controls applied."
+            })))
+        }
+        Err(e) => {
+            // handle_suspicious_activity returns Err for CRITICAL threats to signal
+            // that the session must be terminated.  The trust demotion has already
+            // been committed — return a 200 with the termination instruction rather
+            // than a 500, since the operation succeeded.
+            Ok(Json(serde_json::json!({
+                "status": "critical",
+                "message": e,
+                "action_required": "terminate_session"
+            })))
+        }
+    }
+}
+
 /// Create zero trust routes
 pub fn create_zero_trust_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/risk/assess", post(assess_risk))
         .route("/adaptive-controls", put(update_adaptive_controls))
         .route("/session/verify", post(verify_session))
+        .route("/suspicious-activity", post(report_suspicious_activity))
         .route("/analytics/risk", get(get_risk_analytics))
         .route("/dashboard/security", get(get_security_dashboard))
 }

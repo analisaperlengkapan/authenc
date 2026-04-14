@@ -58,9 +58,11 @@ impl AnomalyDetectorTrait for AnomalyDetector {
 
             // Cap total tracked users to prevent unbounded memory growth.
             // Evict the user with the fewest tracked IPs (least valuable
-            // for anomaly detection) when we exceed the limit.  We only
-            // need to check after inserting a new user entry.
-            if map.len() > MAX_TRACKED_USERS {
+            // for anomaly detection) when we are at or above the limit.
+            // Uses `>=` (evict-at-capacity) to match the convention in
+            // `ZeroTrustManager::evict_oldest_if_at_capacity`, ensuring
+            // the store never exceeds `MAX_TRACKED_USERS` entries.
+            if map.len() >= MAX_TRACKED_USERS {
                 if let Some(evict_key) = map
                     .iter()
                     .filter(|(k, _)| k.as_str() != user_id)

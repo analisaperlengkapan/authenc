@@ -1026,31 +1026,75 @@ impl ZeroTrustManager {
     /// before calling `evaluate_device_trust` (e.g. to fetch `last_seen`)
     /// **must** use this method to avoid format divergence.
     ///
-    /// # Known limitation: IP-based fingerprint instability
+    /// # Fingerprint stability
     ///
-    /// The fingerprint includes `ip_address`, so any IP change (WiFi→cellular,
-    /// DHCP renewal, VPN toggle) produces a new fingerprint and a new device
-    /// trust entry.  The `verify_session` handler correctly rejects mismatches
-    /// with `device_mismatch` so the client can re-assess.  This is the secure
-    /// default (never trust client-provided fingerprints as cache keys), but
-    /// causes frequent re-assessments for mobile clients.  A future improvement
-    /// could incorporate a server-issued opaque device token (stored in a
-    /// secure cookie) to provide stable identity across IP changes.
+    /// When `device_info.fingerprint` is `Some(non_empty)`, the hash is
+    /// computed from `(user_agent, client_fingerprint, os)` — the IP address
+    /// is excluded.  This provides stable device identity across IP changes
+    /// (WiFi→cellular, DHCP renewal, VPN toggle) while still binding the
+    /// fingerprint to server-observed characteristics (UA, OS).
+    ///
+    /// When `device_info.fingerprint` is `None` or empty, the hash falls
+    /// back to `(user_agent, ip_address, os)` for backward compatibility.
+    /// In this mode, any IP change produces a new fingerprint.
     pub fn compute_device_fingerprint(device_info: &DeviceInfo) -> String {
         // Use length-prefixed fields to prevent ambiguity between inputs.
         // Without length prefixes, UA="a_b" + IP="c" produces the same
         // pre-hash string as UA="a" + IP="b_c" when using `_` as delimiter.
         // SHA-256 makes accidental collision negligible, but length-prefixing
         // eliminates the theoretical class entirely at near-zero cost.
-        let raw = format!(
-            "fp:{}:{}:{}:{}:{}:{}",
-            device_info.user_agent.len(),
-            device_info.user_agent,
-            device_info.ip_address.len(),
-            device_info.ip_address,
-            device_info.os.len(),
-            device_info.os,
-        );
+        //
+        // When a client-provided fingerprint is available (set during
+        // `assess_risk`), it is included in the hash to provide stable
+        // device identity across IP changes.  Without this, any IP change
+        // (WiFi→cellular, DHCP renewal, VPN toggle) produces a completely
+        // new fingerprint, causing `verify_session` to reject with
+        // `device_mismatch` and forcing a full re-assessment.  Including
+        // the client fingerprint means the hash only changes when the
+        // *combination* of (UA, client_fp, OS) changes — IP changes alone
+        // no longer invalidate the device identity.
+        //
+        // Security note: the client fingerprint is NOT trusted as a cache
+        // key on its own — it is mixed into the SHA-256 hash alongside
+        // server-observed UA and OS.  A malicious client that changes its
+        // fingerprint simply gets a different device trust entry (no
+        // privilege escalation).  The IP address is intentionally excluded
+        // from the hash when a client fingerprint is present.
+        let raw = if let Some(ref client_fp) = device_info.fingerprint {
+            if !client_fp.is_empty() {
+                format!(
+                    "fp:{}:{}:{}:{}:{}:{}",
+                    device_info.user_agent.len(),
+                    device_info.user_agent,
+                    client_fp.len(),
+                    client_fp,
+                    device_info.os.len(),
+                    device_info.os,
+                )
+            } else {
+                // Empty client fingerprint — fall back to IP-based identity
+                format!(
+                    "fp:{}:{}:{}:{}:{}:{}",
+                    device_info.user_agent.len(),
+                    device_info.user_agent,
+                    device_info.ip_address.len(),
+                    device_info.ip_address,
+                    device_info.os.len(),
+                    device_info.os,
+                )
+            }
+        } else {
+            // No client fingerprint — use IP for backward compatibility
+            format!(
+                "fp:{}:{}:{}:{}:{}:{}",
+                device_info.user_agent.len(),
+                device_info.user_agent,
+                device_info.ip_address.len(),
+                device_info.ip_address,
+                device_info.os.len(),
+                device_info.os,
+            )
+        };
         let hash = Sha256::digest(raw.as_bytes());
         format!("fp_{}", hex::encode(hash))
     }
