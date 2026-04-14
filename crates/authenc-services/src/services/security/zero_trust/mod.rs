@@ -394,8 +394,9 @@ impl ZeroTrustManager {
 
         let rows = db
             .query_raw(
-                "SELECT device_fingerprint, trust_level, downgraded_at FROM device_security_downgrades",
-                &[],
+                "SELECT device_fingerprint, trust_level, downgraded_at FROM device_security_downgrades \
+                 ORDER BY downgraded_at DESC LIMIT $1",
+                &[&(MAX_DEVICE_TRUST_ENTRIES as i64)],
             )
             .await
             .map_err(|e| format!("Failed to load security downgrades: {}", e))?;
@@ -1157,13 +1158,17 @@ impl ContinuousAuthService for ZeroTrustManager {
                 }
                 Ok(_) => None,
                 Err(e) => {
-                    // DB read failed — fail open (treat as no persisted downgrade).
-                    // The in-memory path below will still create a fresh entry.
-                    eprintln!(
-                        "[SECURITY WARNING] Failed to check persisted downgrade for '{}': {}",
+                    // DB read failed — fail closed (reject the request).
+                    // A previously-flagged device whose in-memory entry was evicted
+                    // could bypass its security downgrade if we silently treat a DB
+                    // error as "no persisted downgrade".  Returning an error forces
+                    // the caller to retry when the DB is available again.
+                    return Err(format!(
+                        "[SECURITY] Cannot evaluate device trust for '{}': \
+                         failed to check persisted security downgrades: {}. \
+                         Failing closed to prevent potential trust bypass.",
                         device_fingerprint, e
-                    );
-                    None
+                    ));
                 }
             }
         } else {
@@ -1490,7 +1495,32 @@ impl ContinuousAuthService for ZeroTrustManager {
                     None
                 }
             } else {
-                None
+                // Device not found in the in-memory store.  This can happen if:
+                //   (a) the device was never assessed via `assess_risk`,
+                //   (b) the entry was evicted due to capacity limits, or
+                //   (c) the server restarted and the entry was not a persisted downgrade.
+                //
+                // For cases (b) and (c), the suspicious activity report would be
+                // silently lost — the device could reconnect and receive a fresh
+                // entry with `security_downgraded: false`.  To prevent this, we
+                // persist the downgrade to the database directly so that
+                // `evaluate_device_trust`'s DB-check path can pick it up later.
+                if activity.risk_score >= 0.3 {
+                    let trust_level = match activity.risk_score {
+                        score if score >= 0.8 => TrustLevel::None,
+                        score if score >= 0.6 => TrustLevel::Low,
+                        _ => TrustLevel::Low, // Conservative: cap at Low for evicted devices
+                    };
+                    eprintln!(
+                        "[SECURITY WARNING] Device '{}' not found in trust store during \
+                         suspicious activity handling (risk: {:.2}).  Persisting downgrade \
+                         to database so it is honoured when the device reconnects.",
+                        activity.device_id, activity.risk_score
+                    );
+                    Some((activity.device_id.clone(), trust_level))
+                } else {
+                    None
+                }
             }
         }; // write lock dropped here — safe to .await below
 
