@@ -710,10 +710,20 @@ impl AppState {
         // Preload policies (best effort)
         let _ = authorization_manager.reload().await;
 
-        // Initialize zero trust manager
-        let mut zero_trust_manager = authenc_services::services::security::zero_trust::ZeroTrustManager::new();
+        // Initialize zero trust manager with database persistence for security downgrades
+        let mut zero_trust_manager = authenc_services::services::security::zero_trust::ZeroTrustManager::new_with_database(database.clone());
         // Integration with anomaly detector if available (as trait object)
         zero_trust_manager.set_anomaly_detector(Box::new((*anomaly_detector).clone()));
+
+        // Ensure the device_security_downgrades table exists and load persisted entries.
+        // Best-effort: if the table creation or load fails, the manager still works
+        // in purely in-memory mode — security downgrades just won't survive restarts.
+        if let Err(e) = zero_trust_manager.ensure_table().await {
+            tracing::warn!("Failed to create device_security_downgrades table: {}. Security downgrades will not persist across restarts.", e);
+        } else if let Err(e) = zero_trust_manager.load_security_downgrades().await {
+            tracing::warn!("Failed to load persisted security downgrades: {}. Devices flagged before restart may regain trust.", e);
+        }
+
         let zero_trust_manager = Arc::new(zero_trust_manager);
 
         // Initialize admin service for JIT
