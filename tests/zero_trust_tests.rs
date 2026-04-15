@@ -95,19 +95,17 @@ async fn test_device_trust_structure() {
             browser: "Chrome".to_string(),
             screen_resolution: Some("1920x1080".to_string()),
             timezone: Some("America/Los_Angeles".to_string()),
+            fingerprint: None,
         },
         compliance_status: ComplianceStatus::Compliant,
+        security_downgraded: false,
     };
 
     // Verify DeviceTrust structure
     assert_eq!(device_trust.device_id, "device_123");
     assert_eq!(device_trust.trust_level, TrustLevel::High);
 
-    // Check compliance status (can't use assert_eq! since ComplianceStatus doesn't implement PartialEq)
-    match device_trust.compliance_status {
-        ComplianceStatus::Compliant => assert!(true),
-        _ => panic!("Expected Compliant status"),
-    }
+    assert_eq!(device_trust.compliance_status, ComplianceStatus::Compliant);
 
     assert!(device_trust.device_fingerprint.len() > 0);
     assert!(device_trust.last_seen >= device_trust.first_seen);
@@ -343,36 +341,24 @@ async fn test_risk_level_mapping() {
         }
     };
 
-    // Test risk level mappings from scores
+    // Test risk level mappings from scores using the actual determine_risk_level function.
+    // Thresholds: >= 0.8 → Critical, >= 0.6 → High, >= 0.4 → Medium, < 0.4 → Low.
     let test_cases = vec![
         (0.0, RiskLevel::Low),
         (0.2, RiskLevel::Low),
-        (0.3, RiskLevel::Medium),
+        (0.39, RiskLevel::Low),
+        (0.4, RiskLevel::Medium),
         (0.5, RiskLevel::Medium),
         (0.6, RiskLevel::High),
-        (0.8, RiskLevel::High),
+        (0.79, RiskLevel::High),
+        (0.8, RiskLevel::Critical),
         (0.9, RiskLevel::Critical),
         (1.0, RiskLevel::Critical),
     ];
 
     for (score, expected_level) in test_cases {
-        // In a real implementation, this would be done by a function
-        // For testing, we verify the mapping logic
-        let level = match score {
-            s if s < 0.3 => RiskLevel::Low,
-            s if s < 0.6 => RiskLevel::Medium,
-            s if s < 0.8 => RiskLevel::High,
-            _ => RiskLevel::Critical,
-        };
-
-        // Can't use assert_eq! since RiskLevel doesn't implement PartialEq
-        match (level, expected_level.clone()) {
-            (RiskLevel::Low, RiskLevel::Low) => assert!(true),
-            (RiskLevel::Medium, RiskLevel::Medium) => assert!(true),
-            (RiskLevel::High, RiskLevel::High) => assert!(true),
-            (RiskLevel::Critical, RiskLevel::Critical) => assert!(true),
-            _ => panic!("Score {} should map to {:?}", score, expected_level),
-        }
+        let level = ZeroTrustManager::determine_risk_level(score);
+        assert_eq!(level, expected_level, "Score {} should map to {:?}", score, expected_level);
     }
 }
 
@@ -415,6 +401,7 @@ async fn test_device_fingerprint_generation() {
         browser: "Chrome".to_string(),
         screen_resolution: Some("1920x1080".to_string()),
         timezone: Some("America/Los_Angeles".to_string()),
+        fingerprint: None,
     };
 
     let device_info2 = device_info1.clone();
@@ -466,6 +453,7 @@ async fn test_zero_trust_context_evaluation() {
         browser: "Chrome".to_string(),
         screen_resolution: Some("1920x1080".to_string()),
         timezone: Some("America/Los_Angeles".to_string()),
+        fingerprint: None,
     };
 
     let device_trust = DeviceTrust {
@@ -476,6 +464,7 @@ async fn test_zero_trust_context_evaluation() {
         first_seen: Utc::now(),
         device_info,
         compliance_status: ComplianceStatus::Compliant,
+        security_downgraded: false,
     };
 
     let risk_assessment = RiskAssessment {

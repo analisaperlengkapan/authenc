@@ -60,3 +60,6 @@ pub mod authorization;
 pub use authorization::create_authorization_routes;
 /// WebAuthn API handlers for FIDO2 authentication
 pub mod webauthn;
+/// Zero Trust security model API handlers
+pub mod zero_trust;
+pub use zero_trust::create_zero_trust_routes;

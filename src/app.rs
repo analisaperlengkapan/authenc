@@ -91,6 +91,8 @@ pub struct AppState {
     pub social_login_manager: Arc<authenc_services::services::social::SocialLoginManager>,
     /// Authorization manager for fine-grained permissions
     pub authorization_manager: Arc<authenc_services::services::authorization::AuthorizationManager>,
+    /// Zero trust security manager
+    pub zero_trust_manager: Arc<authenc_services::services::security::zero_trust::ZeroTrustManager>,
     /// JIT provisioning service for federated users
     pub jit_provisioning_service: Arc<dyn authenc_services::services::federation::jit_provisioning::JITProvisioningService>,
     /// OAuth2 client validator
@@ -708,6 +710,22 @@ impl AppState {
         // Preload policies (best effort)
         let _ = authorization_manager.reload().await;
 
+        // Initialize zero trust manager with database persistence for security downgrades
+        let mut zero_trust_manager = authenc_services::services::security::zero_trust::ZeroTrustManager::new_with_database(database.clone());
+        // Integration with anomaly detector if available (as trait object)
+        zero_trust_manager.set_anomaly_detector(Box::new((*anomaly_detector).clone()));
+
+        // Ensure the device_security_downgrades table exists and load persisted entries.
+        // Best-effort: if the table creation or load fails, the manager still works
+        // in purely in-memory mode — security downgrades just won't survive restarts.
+        if let Err(e) = zero_trust_manager.ensure_table().await {
+            tracing::warn!("Failed to create device_security_downgrades table: {}. Security downgrades will not persist across restarts.", e);
+        } else if let Err(e) = zero_trust_manager.load_security_downgrades().await {
+            tracing::warn!("Failed to load persisted security downgrades: {}. Devices flagged before restart may regain trust.", e);
+        }
+
+        let zero_trust_manager = Arc::new(zero_trust_manager);
+
         // Initialize admin service for JIT
         let admin_service = Arc::new(authenc_services::services::admin::AdminManager::new(database.clone()));
 
@@ -768,6 +786,7 @@ impl AppState {
             fips_provider,
             social_login_manager,
             authorization_manager,
+            zero_trust_manager,
             jit_provisioning_service,
             client_validator,
             password_reset_service,

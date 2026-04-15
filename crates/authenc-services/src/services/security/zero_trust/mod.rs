@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 /// Zero Trust security levels
@@ -36,6 +38,11 @@ pub struct DeviceTrust {
     pub device_info: DeviceInfo,
     /// Compliance status of the device
     pub compliance_status: ComplianceStatus,
+    /// Whether the trust level was explicitly downgraded by `handle_suspicious_activity`.
+    /// When `true`, `evaluate_device_trust` will **never** upgrade the trust level —
+    /// only an explicit call to `update_device_trust` can clear this flag.
+    #[serde(default)]
+    pub security_downgraded: bool,
 }
 
 /// Device information
@@ -55,6 +62,9 @@ pub struct DeviceInfo {
     pub screen_resolution: Option<String>,
     /// Timezone of the device
     pub timezone: Option<String>,
+    /// Client-provided device fingerprint for stable identity across IP changes
+    #[serde(default)]
+    pub fingerprint: Option<String>,
 }
 
 /// Location information
@@ -73,7 +83,7 @@ pub struct Location {
 }
 
 /// Device compliance status
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ComplianceStatus {
     /// Device is compliant with security policies
     Compliant,
@@ -101,7 +111,7 @@ pub struct RiskAssessment {
 }
 
 /// Risk levels
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum RiskLevel {
     /// Low risk level
     Low,
@@ -209,8 +219,15 @@ pub trait ContinuousAuthService: Send + Sync {
     /// Update adaptive controls based on risk
     async fn update_adaptive_controls(&self, context: &mut AuthContext) -> Result<(), String>;
 
-    /// Verify session integrity
-    async fn verify_session(&self, session_id: &str) -> Result<bool, String>;
+    /// Verify session integrity by looking up the device trust entry.
+    ///
+    /// `device_id` is the server-generated fingerprint (returned as `device_id`
+    /// by `evaluate_device_trust`), **not** the application-level session ID.
+    ///
+    /// **Note:** This uses a simplified fixed risk model (see
+    /// `verify_session_with_score` docs).  Scores are not directly comparable
+    /// to those from `assess_risk` / `calculate_risk_score`.
+    async fn verify_session(&self, device_id: &str) -> Result<bool, String>;
 
     /// Handle suspicious activity
     async fn handle_suspicious_activity(&self, activity: &SuspiciousActivity)
@@ -236,16 +253,39 @@ pub struct SuspiciousActivity {
     pub risk_score: f64,
 }
 
+/// Maximum number of entries in the device trust store before eviction kicks in.
+/// This prevents unbounded memory growth from unique fingerprints.
+const MAX_DEVICE_TRUST_ENTRIES: usize = 10_000;
+
 /// Zero Trust Manager - main service
+///
+/// # Note on `std::sync::RwLock`
+/// `device_trust_store` uses `std::sync::RwLock` (not `tokio::sync::RwLock`).
+/// This is safe **only** because no `RwLockReadGuard` or `RwLockWriteGuard` is
+/// held across an `.await` point.  If a future change introduces an `.await`
+/// while a guard is alive, it will either fail to compile (due to `Send` bounds
+/// from `#[async_trait]`) or block the tokio runtime thread under contention.
+/// If that becomes necessary, migrate to `tokio::sync::RwLock`.
+///
+/// # Persistence
+/// When constructed with `new_with_database`, security-critical state
+/// (`security_downgraded` flag and the frozen trust level) is persisted to the
+/// `device_security_downgrades` table.  This ensures that a server restart
+/// cannot silently undo a trust demotion applied by `handle_suspicious_activity`.
+/// Non-security fields (full `DeviceTrust` entries) remain in-memory only and
+/// are re-evaluated on the next `assess_risk` call after a restart.
 pub struct ZeroTrustManager {
-    // Internal storage for device trust information
-    device_trust_store: HashMap<String, DeviceTrust>,
+    // Internal storage for device trust information (wrapped in RwLock for interior mutability behind Arc)
+    device_trust_store: RwLock<HashMap<String, DeviceTrust>>,
     // Risk assessment policies
     risk_policies: Vec<ZeroTrustPolicy>,
     // Adaptive control policies
     adaptive_policies: Vec<ZeroTrustPolicy>,
     // Anomaly detector for detecting unusual patterns
     anomaly_detector: Option<Box<dyn crate::services::security::anomaly_detector::AnomalyDetectorTrait>>,
+    // Optional database for persisting security downgrades across restarts.
+    // When `None`, the manager is purely in-memory (test/dev mode).
+    database: Option<Arc<authenc_database::database::Database>>,
 }
 
 impl Default for ZeroTrustManager {
@@ -288,10 +328,206 @@ impl ZeroTrustManager {
     /// ```
     pub fn new() -> Self {
         Self {
-            device_trust_store: HashMap::new(),
+            device_trust_store: RwLock::new(HashMap::new()),
             risk_policies: Vec::new(),
             adaptive_policies: Vec::new(),
             anomaly_detector: None,
+            database: None,
+        }
+    }
+
+    /// Create a new zero trust manager backed by a database for persistence.
+    ///
+    /// Security downgrades applied by `handle_suspicious_activity` will be
+    /// persisted to the `device_security_downgrades` table and survive server
+    /// restarts.  Call `load_security_downgrades` after construction to seed
+    /// the in-memory store from the database.
+    pub fn new_with_database(database: Arc<authenc_database::database::Database>) -> Self {
+        Self {
+            device_trust_store: RwLock::new(HashMap::new()),
+            risk_policies: Vec::new(),
+            adaptive_policies: Vec::new(),
+            anomaly_detector: None,
+            database: Some(database),
+        }
+    }
+
+    /// Ensure the `device_security_downgrades` table exists.
+    ///
+    /// This is idempotent (`CREATE TABLE IF NOT EXISTS`) and should be called
+    /// once during application startup before any other zero-trust operations.
+    pub async fn ensure_table(&self) -> Result<(), String> {
+        let db = match &self.database {
+            Some(db) => db,
+            None => return Ok(()), // No database — nothing to create
+        };
+
+        db.execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS device_security_downgrades (
+                device_fingerprint TEXT PRIMARY KEY,
+                trust_level        INTEGER NOT NULL DEFAULT 0,
+                downgraded_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            "#,
+            &[],
+        )
+        .await
+        .map_err(|e| format!("Failed to create device_security_downgrades table: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Load persisted security downgrades from the database into the in-memory
+    /// store so that `evaluate_device_trust` honours them after a restart.
+    ///
+    /// Each loaded entry is inserted with `security_downgraded: true` and the
+    /// frozen `trust_level`.  The remaining fields (`device_info`, `compliance_status`,
+    /// etc.) are set to safe defaults — they will be refreshed on the next
+    /// `evaluate_device_trust` call for that device.
+    pub async fn load_security_downgrades(&self) -> Result<usize, String> {
+        let db = match &self.database {
+            Some(db) => db,
+            None => return Ok(0),
+        };
+
+        let rows = db
+            .query_raw(
+                "SELECT device_fingerprint, trust_level, downgraded_at FROM device_security_downgrades \
+                 ORDER BY downgraded_at DESC LIMIT $1",
+                &[&(MAX_DEVICE_TRUST_ENTRIES as i64)],
+            )
+            .await
+            .map_err(|e| format!("Failed to load security downgrades: {}", e))?;
+
+        let mut store = self.device_trust_store.write()
+            .map_err(|e| format!("Lock poisoned during load_security_downgrades: {}", e))?;
+
+        let mut count = 0usize;
+        for row in &rows {
+            let fingerprint: String = row.try_get(0)
+                .map_err(|e| format!("Failed to read device_fingerprint: {}", e))?;
+            let trust_level_int: i32 = row.try_get(1)
+                .map_err(|e| format!("Failed to read trust_level: {}", e))?;
+            let downgraded_at: DateTime<Utc> = row.try_get(2)
+                .map_err(|e| format!("Failed to read downgraded_at: {}", e))?;
+
+            let trust_level = match trust_level_int {
+                0 => TrustLevel::None,
+                1 => TrustLevel::Low,
+                2 => TrustLevel::Medium,
+                3 => TrustLevel::High,
+                4 => TrustLevel::Maximum,
+                _ => TrustLevel::None,
+            };
+
+            // Only insert if not already present (in-memory state takes precedence
+            // if somehow populated before this call).
+            if !store.contains_key(&fingerprint) && store.len() < MAX_DEVICE_TRUST_ENTRIES {
+                store.insert(fingerprint.clone(), DeviceTrust {
+                    device_id: fingerprint.clone(),
+                    device_fingerprint: fingerprint,
+                    trust_level,
+                    last_seen: downgraded_at,
+                    first_seen: downgraded_at,
+                    device_info: DeviceInfo {
+                        user_agent: String::new(),
+                        ip_address: String::new(),
+                        location: None,
+                        os: String::new(),
+                        browser: String::new(),
+                        screen_resolution: None,
+                        timezone: None,
+                        fingerprint: None,
+                    },
+                    compliance_status: ComplianceStatus::Unknown,
+                    security_downgraded: true,
+                });
+                count += 1;
+            }
+        }
+
+        if count > 0 {
+            eprintln!(
+                "[SECURITY] Loaded {} persisted security downgrades from database",
+                count
+            );
+        }
+
+        Ok(count)
+    }
+
+    /// Persist a security downgrade to the database (upsert).
+    ///
+    /// This is a fire-and-forget best-effort write — if the DB is unavailable
+    /// the in-memory flag is still set, and the downgrade will be lost on
+    /// restart.  The `eprintln!` ensures operators are alerted.
+    async fn persist_security_downgrade(
+        &self,
+        device_fingerprint: &str,
+        trust_level: &TrustLevel,
+    ) {
+        let db = match &self.database {
+            Some(db) => db,
+            None => return,
+        };
+
+        let trust_level_int = match trust_level {
+            TrustLevel::None => 0i32,
+            TrustLevel::Low => 1,
+            TrustLevel::Medium => 2,
+            TrustLevel::High => 3,
+            TrustLevel::Maximum => 4,
+        };
+
+        let now = Utc::now();
+
+        let fp = device_fingerprint.to_string();
+        if let Err(e) = db
+            .execute(
+                r#"
+                INSERT INTO device_security_downgrades
+                    (device_fingerprint, trust_level, downgraded_at, updated_at)
+                VALUES ($1, $2, $3, $3)
+                ON CONFLICT (device_fingerprint)
+                DO UPDATE SET trust_level = $2, updated_at = $3
+                "#,
+                &[&fp, &trust_level_int, &now],
+            )
+            .await
+        {
+            eprintln!(
+                "[SECURITY WARNING] Failed to persist security downgrade for '{}': {}. \
+                 The downgrade is active in-memory but will be lost on restart.",
+                device_fingerprint, e
+            );
+        }
+    }
+
+    /// Remove a persisted security downgrade from the database.
+    ///
+    /// Called by `update_device_trust` (explicit admin action) to clear the
+    /// persisted flag so it does not resurrect after a restart.
+    async fn remove_persisted_security_downgrade(&self, device_fingerprint: &str) {
+        let db = match &self.database {
+            Some(db) => db,
+            None => return,
+        };
+
+        let fp = device_fingerprint.to_string();
+        if let Err(e) = db
+            .execute(
+                "DELETE FROM device_security_downgrades WHERE device_fingerprint = $1",
+                &[&fp],
+            )
+            .await
+        {
+            eprintln!(
+                "[SECURITY WARNING] Failed to remove persisted security downgrade for '{}': {}. \
+                 The downgrade was cleared in-memory but may resurrect on restart.",
+                device_fingerprint, e
+            );
         }
     }
 
@@ -313,9 +549,14 @@ impl ZeroTrustManager {
         self.adaptive_policies.push(policy);
     }
 
-    /// Calculate risk score based on multiple factors
-    pub async fn calculate_risk_score(&self, context: &AuthContext) -> f64 {
+    /// Calculate risk score and contributing factors based on multiple signals.
+    ///
+    /// Returns `(score, factors)` where `score` is in `[0, 1]` and `factors`
+    /// contains per-component breakdowns.  `assess_risk` uses both to build
+    /// the full `RiskAssessment`.
+    pub async fn calculate_risk_score(&self, context: &AuthContext) -> (f64, Vec<RiskFactor>) {
         let mut total_score = 0.0;
+        let mut total_weight = 0.0;
         let mut factors = Vec::new();
 
         // Device trust factor
@@ -327,6 +568,7 @@ impl ZeroTrustManager {
             TrustLevel::None => 1.0,
         };
         total_score += device_score * 0.4; // 40% weight
+        total_weight += 0.4;
         factors.push(RiskFactor {
             factor_type: "device_trust".to_string(),
             description: format!("Device trust level: {:?}", context.device_trust.trust_level),
@@ -341,6 +583,7 @@ impl ZeroTrustManager {
         // Location anomaly factor
         let location_score = self.calculate_location_risk(context).await;
         total_score += location_score * 0.2; // 20% weight
+        total_weight += 0.2;
         factors.push(RiskFactor {
             factor_type: "location".to_string(),
             description: "Location-based risk assessment".to_string(),
@@ -355,6 +598,7 @@ impl ZeroTrustManager {
         // Time-based factor
         let time_score = self.calculate_time_risk(context);
         total_score += time_score * 0.15; // 15% weight
+        total_weight += 0.15;
         factors.push(RiskFactor {
             factor_type: "time".to_string(),
             description: "Time-based access patterns".to_string(),
@@ -372,6 +616,7 @@ impl ZeroTrustManager {
                 .calculate_behavioral_risk(context, detector.as_ref())
                 .await;
             total_score += behavioral_score * 0.25; // 25% weight
+            total_weight += 0.25;
             factors.push(RiskFactor {
                 factor_type: "behavioral".to_string(),
                 description: "Behavioral anomaly detection".to_string(),
@@ -384,8 +629,24 @@ impl ZeroTrustManager {
             });
         }
 
+        // Normalize by the sum of active weights so that the score stays in
+        // [0, 1] even when the anomaly detector is absent (total_weight = 0.75).
+        // Without normalization the maximum possible score would be ~0.66,
+        // making RiskLevel::Critical unreachable.
+        if total_weight > 0.0 {
+            total_score /= total_weight;
+
+            // Also normalize factor weights so they sum to 1.0 and reflect
+            // each component's actual contribution ratio.  Without this,
+            // consumers of `RiskAssessment.factors` would see raw weights
+            // summing to 0.75 when the anomaly detector is absent.
+            for factor in &mut factors {
+                factor.weight /= total_weight;
+            }
+        }
+
         // Clamp score between 0 and 1
-        total_score.clamp(0.0, 1.0)
+        (total_score.clamp(0.0, 1.0), factors)
     }
 
     /// Calculate location-based risk
@@ -528,43 +789,338 @@ impl ZeroTrustManager {
         controls
     }
 
-    /// Check if device is trusted
-    pub fn is_device_trusted(&self, device_id: &str) -> bool {
-        if let Some(device_trust) = self.device_trust_store.get(device_id) {
-            matches!(
+    /// Evict the oldest entry (by `last_seen`) from the given store if it is at
+    /// or above `MAX_DEVICE_TRUST_ENTRIES`.  This is the single source of truth
+    /// for eviction policy — used by both `register_device_trust` and
+    /// `evaluate_device_trust` to avoid divergence.
+    ///
+    /// # Performance
+    ///
+    /// This performs an O(n) scan of the entire HashMap to find the oldest entry.
+    /// The scan runs under the caller's write lock, so it blocks all concurrent
+    /// readers and writers while iterating.  At `MAX_DEVICE_TRUST_ENTRIES` (10,000)
+    /// this is acceptable for typical workloads, but if contention becomes an issue
+    /// consider migrating to a `BTreeMap<(DateTime, String), DeviceTrust>` or an
+    /// LRU cache for O(1) / O(log n) eviction.
+    fn evict_oldest_if_at_capacity(store: &mut HashMap<String, DeviceTrust>) {
+        if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
+            // Prefer evicting entries that are NOT security-downgraded.
+            // Evicting a downgraded entry would silently clear the flag on
+            // the next `evaluate_device_trust` call (which creates a fresh
+            // entry with `security_downgraded: false`), effectively undoing
+            // a trust demotion applied by `handle_suspicious_activity`.
+            if let Some(oldest_key) = store
+                .iter()
+                .filter(|(_, v)| !v.security_downgraded)
+                .min_by_key(|(_, v)| v.last_seen)
+                .map(|(k, _)| k.clone())
+            {
+                store.remove(&oldest_key);
+            } else {
+                // All entries are security-downgraded — refuse to evict any of
+                // them.  Evicting a downgraded entry would allow the device to
+                // reconnect and receive a fresh entry with
+                // `security_downgraded: false`, silently undoing the trust
+                // demotion applied by `handle_suspicious_activity`.
+                //
+                // The caller will fail to insert the new entry (the store is
+                // full).  This is the safe default: the new device simply won't
+                // get a trust entry and will be treated as unknown (high risk).
+                //
+                // This degraded state should not occur in practice (it would
+                // require 10,000 distinct devices all flagged as suspicious).
+                // For high-security deployments, consider persisting security
+                // downgrades externally (e.g. in the database) so they survive
+                // eviction and normal entries can be evicted instead.
+                eprintln!(
+                    "[SECURITY WARNING] Device trust store at capacity ({}) with ALL entries \
+                     security-downgraded.  Refusing to evict to preserve trust demotions.  \
+                     New device entry will not be stored.",
+                    MAX_DEVICE_TRUST_ENTRIES
+                );
+            }
+        }
+    }
+
+    /// Check if device is trusted.
+    ///
+    /// Returns `Err` if the internal lock is poisoned.  Callers should treat
+    /// an error as "not trusted" (fail closed).
+    pub fn is_device_trusted(&self, device_id: &str) -> Result<bool, String> {
+        let store = self.device_trust_store.read()
+            .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during read: {}", e))?;
+        if let Some(device_trust) = store.get(device_id) {
+            Ok(matches!(
                 device_trust.trust_level,
                 TrustLevel::High | TrustLevel::Maximum
-            )
+            ))
         } else {
-            false
+            Ok(false)
         }
     }
 
-    /// Register device trust
-    pub fn register_device_trust(&mut self, device_trust: DeviceTrust) {
-        self.device_trust_store
-            .insert(device_trust.device_id.clone(), device_trust);
+    /// Register device trust, evicting the oldest entry if the store exceeds its capacity.
+    ///
+    /// Returns `Err` if the internal lock is poisoned — callers should treat
+    /// this as a degraded security state (the device trust entry was NOT stored).
+    pub fn register_device_trust(&self, device_trust: DeviceTrust) -> Result<(), String> {
+        let mut store = self.device_trust_store.write()
+            .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during write: {}", e))?;
+
+        // If the device already exists, update it in-place (no eviction needed).
+        // We must preserve the `security_downgraded` flag set by
+        // `handle_suspicious_activity` — a blind insert would reset it to
+        // `false`, silently undoing a trust demotion.
+        if let Some(existing) = store.get_mut(&device_trust.device_id) {
+            existing.last_seen = device_trust.last_seen;
+            existing.device_info = device_trust.device_info;
+            existing.compliance_status = device_trust.compliance_status;
+            // When the device has been security-downgraded, freeze the trust
+            // level.  Otherwise, apply the new trust level in both directions
+            // (mirrors the guard in `evaluate_device_trust`).
+            if !existing.security_downgraded {
+                existing.trust_level = device_trust.trust_level;
+            }
+            return Ok(());
+        }
+
+        Self::evict_oldest_if_at_capacity(&mut store);
+
+        // If the store is still at capacity after eviction (all entries are
+        // security-downgraded), skip the insert to avoid exceeding the cap.
+        if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
+            eprintln!(
+                "[SECURITY] Cannot register device trust entry for '{}': \
+                 store at capacity with all entries security-downgraded.",
+                device_trust.device_id
+            );
+            return Ok(());
+        }
+
+        store.insert(device_trust.device_id.clone(), device_trust);
+        Ok(())
     }
 
-    /// Update device trust level
-    pub fn update_device_trust(&mut self, device_id: &str, new_level: TrustLevel) {
-        if let Some(device_trust) = self.device_trust_store.get_mut(device_id) {
-            device_trust.trust_level = new_level;
-            device_trust.last_seen = Utc::now();
+    /// Update device trust level (explicit administrative action).
+    ///
+    /// This also clears the `security_downgraded` flag so that future
+    /// `evaluate_device_trust` calls can upgrade the trust level again
+    /// based on device characteristics.  The persisted downgrade (if any)
+    /// is also removed from the database.
+    ///
+    /// Returns `Err` if the internal lock is poisoned.
+    pub async fn update_device_trust(&self, device_id: &str, new_level: TrustLevel) -> Result<(), String> {
+        {
+            let mut store = self.device_trust_store.write()
+                .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during write: {}", e))?;
+            if let Some(device_trust) = store.get_mut(device_id) {
+                device_trust.trust_level = new_level;
+                device_trust.security_downgraded = false;
+                device_trust.last_seen = Utc::now();
+            }
+            // else: Device not in memory — it may have been evicted while a
+            // persisted downgrade still exists in the database (written by
+            // `handle_suspicious_activity` for evicted devices).  We must
+            // still attempt to remove the DB row; otherwise the stale row
+            // will resurrect the downgrade on the next
+            // `evaluate_device_trust` call, effectively ignoring this
+            // explicit admin trust restoration.
+        } // write lock dropped here — safe to .await below
+
+        // Always attempt to remove the persisted downgrade from the database.
+        // When the device was in memory, this clears the row that was written
+        // by `handle_suspicious_activity`.
+        // When the device was NOT in memory, a DB-only row may still exist
+        // (written by `handle_suspicious_activity` for evicted devices).
+        // Skipping the DELETE in that case would leave the row intact, causing
+        // `evaluate_device_trust` to resurrect the downgrade on the device's
+        // next connection — silently ignoring the admin's explicit trust
+        // restoration.
+        //
+        // The DELETE is a no-op when no row exists, so this is always safe.
+        self.remove_persisted_security_downgrade(device_id).await;
+
+        Ok(())
+    }
+
+    /// Get the last_seen timestamp for a device, if it exists in the store.
+    ///
+    /// Returns `Err` if the internal lock is poisoned.
+    pub fn get_device_last_seen(&self, device_id: &str) -> Result<Option<DateTime<Utc>>, String> {
+        let store = self.device_trust_store.read()
+            .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during read: {}", e))?;
+        Ok(store.get(device_id).map(|d| d.last_seen))
+    }
+
+    /// Verify a session/device and return the combined risk score.
+    ///
+    /// Unlike the trait method `verify_session` (which returns `Result<bool, String>`),
+    /// this method exposes the actual computed risk score so callers can feed it into
+    /// `generate_adaptive_controls` without losing precision.
+    ///
+    /// # Scoring model divergence from `calculate_risk_score`
+    ///
+    /// This method uses a **simplified fixed model** (40% device / 30% behavioral /
+    /// 30% location with hardcoded `behavioral_risk=0.7`, `location_risk=0.2`)
+    /// because it lacks an `AuthContext` and cannot run the full dynamic analysis.
+    /// In contrast, `calculate_risk_score` (used by `assess_risk`) uses a dynamic
+    /// model (40/20/15/25 weights, with normalization and real anomaly detection).
+    ///
+    /// This means scores from `assess_risk` and `verify_session` are **not directly
+    /// comparable**.  The conservative fixed baseline ensures `verify_session` errs
+    /// on the side of caution (higher scores) when full context is unavailable.
+    ///
+    /// Returns `(is_valid, combined_risk_score)` where `is_valid` is `false`
+    /// when `combined_risk_score >= 0.6` (aligned with `determine_risk_level`
+    /// and `generate_adaptive_controls`).
+    pub fn verify_session_with_score(&self, device_id: &str) -> Result<(bool, f64), String> {
+        // Extract the device risk score under the read lock, then drop the guard
+        // immediately so we don't hold it during the subsequent arithmetic.
+        // This reduces write-lock contention from concurrent callers of
+        // `evaluate_device_trust`, `handle_suspicious_activity`, etc.
+        let device_risk = {
+            let store = self.device_trust_store.read()
+                .map_err(|e| format!("Failed to read device trust store: {}", e))?;
+            if let Some(trust) = store.get(device_id) {
+                match trust.trust_level {
+                    TrustLevel::Maximum => 0.0,
+                    TrustLevel::High => 0.1,
+                    TrustLevel::Medium => 0.3,
+                    TrustLevel::Low => 0.6,
+                    TrustLevel::None => 1.0,
+                }
+            } else {
+                // Unknown device — no entry in the trust store.  This should only
+                // happen if: (a) the device was never assessed via `assess_risk`,
+                // (b) the entry was evicted due to capacity limits, or (c) the
+                // server restarted (in-memory store).
+                //
+                // In all cases, the device has no established trust and should be
+                // treated as invalid.  Using 1.0 (same as TrustLevel::None) ensures
+                // unknown devices are always rejected, forcing the client to call
+                // `assess_risk` first to establish a trust entry.
+                1.0
+            }
+        };
+
+        // Conservative baseline for behavioural risk.  We cannot run the full
+        // `calculate_behavioral_risk` here (no AuthContext available), so we use
+        // a fixed value regardless of whether an anomaly detector is configured.
+        // 0.7 is high enough that untrusted devices (device_risk >= 1.0) can
+        // still exceed the 0.6 rejection threshold (>= 0.6):
+        //
+        // With behavioral_risk = 0.7 and device_risk = 1.0 (TrustLevel::None or unknown):
+        //   combined = 1.0*0.4 + 0.7*0.3 + 0.2*0.3 = 0.67 >= 0.6 ✓ (rejected)
+        // With behavioral_risk = 0.7 and device_risk = 0.6 (TrustLevel::Low):
+        //   combined = 0.6*0.4 + 0.7*0.3 + 0.2*0.3 = 0.51 (elevated, not rejected) ✓
+        let behavioral_risk = 0.7;
+        let location_risk = 0.2;
+
+        let combined_risk = (device_risk * 0.4) + (behavioral_risk * 0.3) + (location_risk * 0.3);
+
+        if combined_risk >= 0.6 {
+            // High risk — session is invalid.
+            // Uses `>= 0.6` to align with `determine_risk_level` which
+            // classifies 0.6 as `RiskLevel::High`, and `generate_adaptive_controls`
+            // which applies high-risk controls (MFA, 30min timeout) at `>= 0.6`.
+            Ok((false, combined_risk))
+        } else {
+            // Valid (possibly with elevated risk)
+            Ok((true, combined_risk))
         }
+    }
+
+    /// Compute the server-side device fingerprint from device characteristics.
+    ///
+    /// This is the single source of truth for fingerprint generation.  Both
+    /// `evaluate_device_trust` and any handler that needs to look up a device
+    /// before calling `evaluate_device_trust` (e.g. to fetch `last_seen`)
+    /// **must** use this method to avoid format divergence.
+    ///
+    /// # Fingerprint stability
+    ///
+    /// When `device_info.fingerprint` is `Some(non_empty)`, the hash is
+    /// computed from `(user_agent, client_fingerprint, os)` — the IP address
+    /// is excluded.  This provides stable device identity across IP changes
+    /// (WiFi→cellular, DHCP renewal, VPN toggle) while still binding the
+    /// fingerprint to server-observed characteristics (UA, OS).
+    ///
+    /// When `device_info.fingerprint` is `None` or empty, the hash falls
+    /// back to `(user_agent, ip_address, os)` for backward compatibility.
+    /// In this mode, any IP change produces a new fingerprint.
+    pub fn compute_device_fingerprint(device_info: &DeviceInfo) -> String {
+        // Use length-prefixed fields to prevent ambiguity between inputs.
+        // Without length prefixes, UA="a_b" + IP="c" produces the same
+        // pre-hash string as UA="a" + IP="b_c" when using `_` as delimiter.
+        // SHA-256 makes accidental collision negligible, but length-prefixing
+        // eliminates the theoretical class entirely at near-zero cost.
+        //
+        // When a client-provided fingerprint is available (set during
+        // `assess_risk`), it is included in the hash to provide stable
+        // device identity across IP changes.  Without this, any IP change
+        // (WiFi→cellular, DHCP renewal, VPN toggle) produces a completely
+        // new fingerprint, causing `verify_session` to reject with
+        // `device_mismatch` and forcing a full re-assessment.  Including
+        // the client fingerprint means the hash only changes when the
+        // *combination* of (UA, client_fp, OS) changes — IP changes alone
+        // no longer invalidate the device identity.
+        //
+        // Security note: the client fingerprint is NOT trusted as a cache
+        // key on its own — it is mixed into the SHA-256 hash alongside
+        // server-observed UA and OS.  A malicious client that changes its
+        // fingerprint simply gets a different device trust entry (no
+        // privilege escalation).  The IP address is intentionally excluded
+        // from the hash when a client fingerprint is present.
+        let raw = if let Some(ref client_fp) = device_info.fingerprint {
+            if !client_fp.is_empty() {
+                format!(
+                    "fp:{}:{}:{}:{}:{}:{}",
+                    device_info.user_agent.len(),
+                    device_info.user_agent,
+                    client_fp.len(),
+                    client_fp,
+                    device_info.os.len(),
+                    device_info.os,
+                )
+            } else {
+                // Empty client fingerprint — fall back to IP-based identity
+                format!(
+                    "fp:{}:{}:{}:{}:{}:{}",
+                    device_info.user_agent.len(),
+                    device_info.user_agent,
+                    device_info.ip_address.len(),
+                    device_info.ip_address,
+                    device_info.os.len(),
+                    device_info.os,
+                )
+            }
+        } else {
+            // No client fingerprint — use IP for backward compatibility
+            format!(
+                "fp:{}:{}:{}:{}:{}:{}",
+                device_info.user_agent.len(),
+                device_info.user_agent,
+                device_info.ip_address.len(),
+                device_info.ip_address,
+                device_info.os.len(),
+                device_info.os,
+            )
+        };
+        let hash = Sha256::digest(raw.as_bytes());
+        format!("fp_{}", hex::encode(hash))
     }
 }
 
 #[async_trait]
 impl ContinuousAuthService for ZeroTrustManager {
     async fn evaluate_device_trust(&self, device_info: &DeviceInfo) -> Result<DeviceTrust, String> {
-        // Generate device fingerprint from device characteristics
-        let device_fingerprint = format!(
-            "fp_{}_{}_{}",
-            device_info.user_agent, device_info.ip_address, device_info.os
-        );
+        // Always generate the fingerprint server-side from device characteristics.
+        // Never trust a client-provided fingerprint as the cache key — a malicious
+        // client could send another device's fingerprint and inherit its trust level.
+        let device_fingerprint = Self::compute_device_fingerprint(device_info);
 
-        // Calculate trust level based on device characteristics
+        // Calculate trust level based on device characteristics (done before locking
+        // so we don't hold the write lock longer than necessary for the insert).
         let mut trust_score = 0;
         let mut compliance_status = ComplianceStatus::Compliant;
 
@@ -625,29 +1181,312 @@ impl ContinuousAuthService for ZeroTrustManager {
             TrustLevel::None
         };
 
+        // Fast path: check the in-memory store first under a read lock.
+        // If the device already exists, update it in-place and return without
+        // touching the database.  This ensures that a DB outage does NOT block
+        // risk assessments for devices that already have in-memory trust entries.
+        //
+        // We upgrade to a write lock only for the update (not the initial check)
+        // to minimize contention.  The brief window between the read-lock check
+        // and the write-lock re-check is harmless: the worst case is that a
+        // concurrent insert creates the entry between the two locks, and we
+        // simply update it in-place under the write lock.
+        {
+            let store = self.device_trust_store.read()
+                .map_err(|e| format!("Failed to read device trust store: {}", e))?;
+            if store.contains_key(&device_fingerprint) {
+                drop(store); // release read lock before acquiring write lock
+
+                let mut store = self.device_trust_store.write()
+                    .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+
+                // Re-check under write lock (entry may have been evicted between
+                // the read and write lock acquisitions).
+                if let Some(existing) = store.get_mut(&device_fingerprint) {
+                    existing.last_seen = Utc::now();
+                    existing.device_info = device_info.clone();
+                    if !existing.security_downgraded {
+                        existing.trust_level = trust_level;
+                    }
+                    existing.compliance_status = compliance_status;
+                    return Ok(existing.clone());
+                }
+                // Entry was evicted between locks — fall through to the DB check
+                // and new-entry creation path below.
+            }
+        }
+
+        // Slow path: device is not in the in-memory store.  Check the database
+        // for a persisted security downgrade that may have been evicted from
+        // memory.  This prevents the scenario where:
+        //   1. Device is flagged → persisted to DB + in-memory
+        //   2. In-memory entry is evicted (capacity pressure)
+        //   3. Device reconnects → evaluate_device_trust sees "not found" in memory
+        //   4. Without this check, a fresh entry with security_downgraded=false is created
+        //
+        // The DB read happens before the write lock to avoid holding the lock across .await.
+        let persisted_downgrade: Option<(TrustLevel, DateTime<Utc>)> = if let Some(db) = &self.database {
+            match db
+                .query_raw(
+                    "SELECT trust_level, downgraded_at FROM device_security_downgrades WHERE device_fingerprint = $1",
+                    &[&device_fingerprint],
+                )
+                .await
+            {
+                Ok(rows) if !rows.is_empty() => {
+                    let tl: i32 = rows[0].try_get(0).unwrap_or(0);
+                    let da: DateTime<Utc> = rows[0].try_get(1).unwrap_or_else(|_| Utc::now());
+                    let level = match tl {
+                        0 => TrustLevel::None,
+                        1 => TrustLevel::Low,
+                        2 => TrustLevel::Medium,
+                        3 => TrustLevel::High,
+                        4 => TrustLevel::Maximum,
+                        _ => TrustLevel::None,
+                    };
+                    Some((level, da))
+                }
+                Ok(_) => None,
+                Err(e) => {
+                    // DB read failed — fail closed (reject the request).
+                    // A previously-flagged device whose in-memory entry was evicted
+                    // could bypass its security downgrade if we silently treat a DB
+                    // error as "no persisted downgrade".  Returning an error forces
+                    // the caller to retry when the DB is available again.
+                    //
+                    // NOTE: This only affects devices NOT found in the in-memory
+                    // store.  Devices with existing in-memory entries are handled
+                    // by the fast path above and are unaffected by DB outages.
+                    return Err(format!(
+                        "[SECURITY] Cannot evaluate device trust for '{}': \
+                         failed to check persisted security downgrades: {}. \
+                         Failing closed to prevent potential trust bypass.",
+                        device_fingerprint, e
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+
+        // Atomically check-then-insert under a single write lock to prevent the
+        // TOCTOU race where two concurrent first-time requests for the same
+        // fingerprint could both observe "not found" and overwrite each other.
+        let mut store = self.device_trust_store.write()
+            .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+
+        // Re-check: the entry may have been inserted by a concurrent request
+        // between the fast-path read lock and this write lock acquisition.
+        // We must never overwrite a security downgrade applied by
+        // `handle_suspicious_activity`.  The `security_downgraded` flag
+        // is set when suspicious activity triggers a trust demotion;
+        // while it is set, we skip trust-level changes entirely so that
+        // repeated `assess_risk` calls cannot silently rehabilitate a
+        // device that was flagged as suspicious.
+        if let Some(existing) = store.get_mut(&device_fingerprint) {
+            existing.last_seen = Utc::now();
+            existing.device_info = device_info.clone();
+            // When the device has been security-downgraded by
+            // `handle_suspicious_activity`, freeze the trust level until an
+            // administrator explicitly clears it via `update_device_trust`.
+            //
+            // Otherwise, apply the freshly-computed trust level in both
+            // directions (upgrade *and* downgrade).  The old code only
+            // upgraded, which meant a device whose characteristics degraded
+            // (e.g. switched to an unknown OS or lost location data) would
+            // keep its previous high-water-mark trust level indefinitely.
+            if !existing.security_downgraded {
+                existing.trust_level = trust_level;
+            }
+            // Compliance may degrade independently of trust level (e.g. an
+            // unknown OS), so always apply the freshly-computed status.
+            existing.compliance_status = compliance_status;
+            return Ok(existing.clone());
+        }
+
+        // If the device is not in memory but has a persisted security downgrade,
+        // re-create the entry with the downgraded flag set.  This covers the case
+        // where the in-memory entry was evicted but the DB record survives.
+        //
+        // TOCTOU mitigation: the `persisted_downgrade` was read from the DB
+        // *before* we acquired the write lock.  A concurrent `update_device_trust`
+        // could have cleared the downgrade (both in-memory and DB) in between.
+        // To avoid resurrecting a stale downgrade, we drop the write lock,
+        // re-query the DB, and re-acquire the lock.  The second DB read is
+        // authoritative because `update_device_trust` deletes the DB row
+        // *after* clearing the in-memory flag, so if the row still exists the
+        // downgrade is genuinely active.
+        if persisted_downgrade.is_some() {
+            // Drop the write lock before the async DB re-check.
+            drop(store);
+
+            // Re-query the DB to confirm the downgrade is still active.
+            let confirmed_downgrade: Option<(TrustLevel, DateTime<Utc>)> = if let Some(db) = &self.database {
+                match db
+                    .query_raw(
+                        "SELECT trust_level, downgraded_at FROM device_security_downgrades WHERE device_fingerprint = $1",
+                        &[&device_fingerprint],
+                    )
+                    .await
+                {
+                    Ok(rows) if !rows.is_empty() => {
+                        let tl: i32 = rows[0].try_get(0).unwrap_or(0);
+                        let da: DateTime<Utc> = rows[0].try_get(1).unwrap_or_else(|_| Utc::now());
+                        let level = match tl {
+                            0 => TrustLevel::None,
+                            1 => TrustLevel::Low,
+                            2 => TrustLevel::Medium,
+                            3 => TrustLevel::High,
+                            4 => TrustLevel::Maximum,
+                            _ => TrustLevel::None,
+                        };
+                        Some((level, da))
+                    }
+                    Ok(_) => None, // Row was deleted — downgrade was cleared
+                    Err(e) => {
+                        return Err(format!(
+                            "[SECURITY] Cannot evaluate device trust for '{}': \
+                             failed to re-check persisted security downgrade: {}. \
+                             Failing closed to prevent potential trust bypass.",
+                            device_fingerprint, e
+                        ));
+                    }
+                }
+            } else {
+                None
+            };
+
+            // Re-acquire the write lock and re-check the in-memory store.
+            // Another thread may have inserted an entry while we were awaiting.
+            let mut store = self.device_trust_store.write()
+                .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+
+            // Re-check: if the entry appeared in memory while we re-queried,
+            // update it in-place (same logic as the primary check above).
+            if let Some(existing) = store.get_mut(&device_fingerprint) {
+                existing.last_seen = Utc::now();
+                existing.device_info = device_info.clone();
+                if !existing.security_downgraded {
+                    existing.trust_level = trust_level;
+                }
+                existing.compliance_status = compliance_status;
+                return Ok(existing.clone());
+            }
+
+            // If the DB re-check confirmed the downgrade is still active,
+            // restore the entry with the downgraded flag.
+            if let Some((persisted_level, downgraded_at)) = confirmed_downgrade {
+                Self::evict_oldest_if_at_capacity(&mut store);
+                if store.len() < MAX_DEVICE_TRUST_ENTRIES {
+                    let restored = DeviceTrust {
+                        device_id: device_fingerprint.clone(),
+                        device_fingerprint: device_fingerprint.clone(),
+                        trust_level: persisted_level,
+                        last_seen: Utc::now(),
+                        first_seen: downgraded_at,
+                        device_info: device_info.clone(),
+                        compliance_status,
+                        security_downgraded: true,
+                    };
+                    store.insert(device_fingerprint.clone(), restored.clone());
+                    return Ok(restored);
+                }
+                // Store full — return transient entry with downgrade honoured.
+                return Ok(DeviceTrust {
+                    device_id: device_fingerprint.clone(),
+                    device_fingerprint,
+                    trust_level: persisted_level,
+                    last_seen: Utc::now(),
+                    first_seen: downgraded_at,
+                    device_info: device_info.clone(),
+                    compliance_status,
+                    security_downgraded: true,
+                });
+            }
+
+            // The downgrade was cleared between our first and second DB reads.
+            // Fall through to create a fresh (non-downgraded) entry below.
+            // `store` is the re-acquired write guard — used by the code below.
+            Self::evict_oldest_if_at_capacity(&mut store);
+
+            if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
+                eprintln!(
+                    "[SECURITY] Cannot store new device trust entry for '{}': \
+                     store at capacity with all entries security-downgraded.",
+                    device_fingerprint
+                );
+                return Ok(DeviceTrust {
+                    device_id: device_fingerprint.clone(),
+                    device_fingerprint,
+                    trust_level,
+                    last_seen: Utc::now(),
+                    first_seen: Utc::now(),
+                    device_info: device_info.clone(),
+                    compliance_status,
+                    security_downgraded: false,
+                });
+            }
+
+            let device_trust = DeviceTrust {
+                device_id: device_fingerprint.clone(),
+                device_fingerprint,
+                trust_level,
+                last_seen: Utc::now(),
+                first_seen: Utc::now(),
+                device_info: device_info.clone(),
+                compliance_status,
+                security_downgraded: false,
+            };
+
+            store.insert(device_trust.device_id.clone(), device_trust.clone());
+            return Ok(device_trust);
+        }
+
+        Self::evict_oldest_if_at_capacity(&mut store);
+
+        // If the store is still at capacity after eviction (all entries are
+        // security-downgraded), skip the insert to avoid exceeding the cap.
+        // The device will be treated as unknown (high risk) by verify_session.
+        if store.len() >= MAX_DEVICE_TRUST_ENTRIES {
+            eprintln!(
+                "[SECURITY] Cannot store new device trust entry for '{}': \
+                 store at capacity with all entries security-downgraded.",
+                device_fingerprint
+            );
+            // Return a transient entry so the caller still gets a DeviceTrust,
+            // but it won't be persisted or looked up on subsequent calls.
+            return Ok(DeviceTrust {
+                device_id: device_fingerprint.clone(),
+                device_fingerprint,
+                trust_level,
+                last_seen: Utc::now(),
+                first_seen: Utc::now(),
+                device_info: device_info.clone(),
+                compliance_status,
+                security_downgraded: false,
+            });
+        }
+
+        // Use the fingerprint as the device_id for stable lookups
         let device_trust = DeviceTrust {
-            device_id: format!("device_{}", uuid::Uuid::new_v4()),
+            device_id: device_fingerprint.clone(),
             device_fingerprint,
             trust_level,
             last_seen: Utc::now(),
             first_seen: Utc::now(),
             device_info: device_info.clone(),
             compliance_status,
+            security_downgraded: false,
         };
+
+        store.insert(device_trust.device_id.clone(), device_trust.clone());
 
         Ok(device_trust)
     }
 
     async fn assess_risk(&self, context: &AuthContext) -> Result<RiskAssessment, String> {
-        let score = self.calculate_risk_score(context).await;
+        let (score, factors) = self.calculate_risk_score(context).await;
         let level = Self::determine_risk_level(score);
-
-        let factors = vec![RiskFactor {
-            factor_type: "device".to_string(),
-            description: format!("Device trust: {:?}", context.device_trust.trust_level),
-            weight: 0.4,
-            severity: level.clone(),
-        }];
 
         let recommendations = match level {
             RiskLevel::Critical => vec![
@@ -681,38 +1520,42 @@ impl ContinuousAuthService for ZeroTrustManager {
         Ok(())
     }
 
-    async fn verify_session(&self, session_id: &str) -> Result<bool, String> {
+    async fn verify_session(&self, device_id: &str) -> Result<bool, String> {
         // Integration 20: Zero Trust Session Verification
         // This integrates device trust evaluation, anomaly detection, and geolocation risk assessment
         // Note: In production, this would query session from database. Here we demonstrate
         // the risk assessment integration logic using the existing zero trust components.
 
-        // Step 1: Check if we have cached device trust for this session
-        let device_trust = self.device_trust_store.get(session_id);
-
-        // Step 2: Evaluate device trust
-        let device_risk = if let Some(trust) = device_trust {
-            match trust.trust_level {
-                TrustLevel::Maximum => 0.0,
-                TrustLevel::High => 0.1,
-                TrustLevel::Medium => 0.3,
-                TrustLevel::Low => 0.6,
-                TrustLevel::None => 0.9,
+        // Step 1+2: Extract device risk under a scoped read lock, then drop the
+        // guard immediately so we don't hold it during the subsequent arithmetic.
+        let device_risk = {
+            let store = self.device_trust_store.read()
+                .map_err(|e| format!("Failed to read device trust store: {}", e))?;
+            if let Some(trust) = store.get(device_id) {
+                match trust.trust_level {
+                    TrustLevel::Maximum => 0.0,
+                    TrustLevel::High => 0.1,
+                    TrustLevel::Medium => 0.3,
+                    TrustLevel::Low => 0.6,
+                    TrustLevel::None => 1.0,
+                }
+            } else {
+                // No device trust info — unknown device has no established trust.
+                // Using 1.0 (same as TrustLevel::None) ensures unknown devices are
+                // always rejected, matching verify_session_with_score.
+                1.0
             }
-        } else {
-            // No device trust info - elevated risk
-            0.5
         };
 
-        // Step 3: Calculate behavioral risk using anomaly detector if available
-        let behavioral_risk = if let Some(ref _detector) = self.anomaly_detector {
-            // In production, would use detector.is_new_ip() and other checks
-            // For now, use medium risk when detector is available
-            0.3
-        } else {
-            // No anomaly detector - use medium risk
-            0.3
-        };
+        // Step 3: Conservative baseline for behavioral risk.
+        // We cannot run full behavioral analysis without an AuthContext, so use
+        // a fixed value regardless of anomaly detector presence.  0.7 ensures
+        // untrusted devices (device_risk >= 1.0) can exceed the 0.6 rejection
+        // threshold (matches verify_session_with_score and calculate_risk_score).
+        //
+        // With behavioral_risk = 0.7 and device_risk = 1.0 (TrustLevel::None or unknown):
+        //   combined = 1.0*0.4 + 0.7*0.3 + 0.2*0.3 = 0.67 >= 0.6 ✓
+        let behavioral_risk = 0.7;
 
         // Step 4: Calculate location risk (placeholder - would use IP geolocation in production)
         let location_risk = 0.2; // Default low-medium risk
@@ -723,17 +1566,26 @@ impl ContinuousAuthService for ZeroTrustManager {
 
         // Step 6: Verify based on risk threshold
         // Risk threshold: 0.0-0.3 = safe, 0.3-0.6 = elevated, 0.6-1.0 = high risk
-        if combined_risk > 0.6 {
-            Err(format!(
-                "Session verification failed: high risk detected (score: {:.2})",
-                combined_risk
-            ))
-        } else if combined_risk > 0.3 {
-            // Elevated risk - may require additional verification
-            // Returning Ok(false) indicates verification passed but with caution
-            Ok(false) // Indicates additional verification recommended
+        //
+        // Semantics aligned with `verify_session_with_score`:
+        //   Ok(true)  — low or elevated risk (combined_risk < 0.6), session valid
+        //   Ok(false) — high risk (combined_risk >= 0.6), session invalid
+        //   Err(...)  — internal/lock error only (never for risk-based rejection)
+        //
+        // Uses `>= 0.6` to align with `determine_risk_level` which classifies
+        // 0.6 as `RiskLevel::High`, and `generate_adaptive_controls` which
+        // applies high-risk controls (MFA, 30min timeout) at `>= 0.6`.
+        //
+        // Callers that need the actual score should use `verify_session_with_score`.
+        if combined_risk >= 0.6 {
+            // High risk — session invalid, but return Ok(false) so callers can
+            // handle it gracefully (e.g. step-up auth) instead of treating it as
+            // an internal error.
+            Ok(false)
         } else {
-            // Low risk - session is valid
+            // Low or elevated risk — session is valid.
+            // Callers that need to distinguish elevated (0.3-0.6) from low (<= 0.3)
+            // should use `verify_session_with_score` instead.
             Ok(true)
         }
     }
@@ -773,43 +1625,122 @@ impl ContinuousAuthService for ZeroTrustManager {
             activity.details
         );
 
-        // Step 3: Update device trust based on severity
-        if let Some(mut device_trust) = self.device_trust_store.get(&activity.session_id).cloned() {
-            // Save old trust level before modification
-            let old_trust_level = device_trust.trust_level.clone();
+        // Step 3: Update device trust based on severity.
+        // Capture the final trust level for DB persistence after the lock is dropped.
+        let downgrade_to_persist: Option<(String, TrustLevel)> = {
+            let mut store = self.device_trust_store.write()
+                .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+            if let Some(device_trust) = store.get_mut(&activity.device_id) {
+                let old_trust_level = device_trust.trust_level.clone();
 
-            // Downgrade trust level based on risk score
-            let new_trust_level = match activity.risk_score {
-                score if score >= 0.8 => TrustLevel::None,
-                score if score >= 0.6 => TrustLevel::Low,
-                score if score >= 0.3 => {
-                    // Downgrade by one level
-                    match old_trust_level {
-                        TrustLevel::Maximum => TrustLevel::High,
-                        TrustLevel::High => TrustLevel::Medium,
-                        TrustLevel::Medium => TrustLevel::Low,
-                        TrustLevel::Low => TrustLevel::None,
-                        TrustLevel::None => TrustLevel::None,
+                // Downgrade trust level based on risk score
+                let new_trust_level = match activity.risk_score {
+                    score if score >= 0.8 => TrustLevel::None,
+                    score if score >= 0.6 => TrustLevel::Low,
+                    score if score >= 0.3 => {
+                        // Downgrade by one level
+                        match old_trust_level {
+                            TrustLevel::Maximum => TrustLevel::High,
+                            TrustLevel::High => TrustLevel::Medium,
+                            TrustLevel::Medium => TrustLevel::Low,
+                            TrustLevel::Low => TrustLevel::None,
+                            TrustLevel::None => TrustLevel::None,
+                        }
                     }
+                    _ => old_trust_level.clone(), // Keep current level for low risk
+                };
+
+                // Mark the device as security-downgraded so that
+                // `evaluate_device_trust` will not silently undo this
+                // demotion on the next `assess_risk` call.
+                //
+                // We guard on `risk_score >= 0.3` (not `new < old`) because
+                // the device may already be at or below the target level
+                // (e.g. TrustLevel::None receiving a CRITICAL alert where
+                // new == old == None).  Without the flag in that case, a
+                // subsequent `evaluate_device_trust` could upgrade the
+                // device despite the active security alert.  The `_ =>`
+                // branch (risk_score < 0.3) keeps the current level and
+                // should not lock the device.
+                if activity.risk_score >= 0.3 {
+                    device_trust.security_downgraded = true;
+                    // Never upgrade the trust level during a suspicious-activity
+                    // response.  The risk-score-to-level mapping above can
+                    // produce a level *higher* than the current one (e.g.
+                    // TrustLevel::Low for a HIGH alert on a device already at
+                    // TrustLevel::None).  The guard below guarantees we only
+                    // downgrade or stay the same.
+                    if new_trust_level < old_trust_level {
+                        device_trust.trust_level = new_trust_level.clone();
+                    }
+                    // else: keep current (already at or below target)
                 }
-                _ => old_trust_level.clone(), // Keep current level for low risk
-            };
+                device_trust.last_seen = Utc::now();
 
-            device_trust.trust_level = new_trust_level.clone();
-            device_trust.last_seen = Utc::now();
+                if device_trust.trust_level != old_trust_level {
+                    eprintln!(
+                        "[SECURITY ACTION] Device trust updated for device {}: {:?} -> {:?}",
+                        activity.device_id, old_trust_level, device_trust.trust_level
+                    );
+                } else {
+                    eprintln!(
+                        "[SECURITY ACTION] Device trust unchanged for device {} (remains {:?}, security_downgraded={})",
+                        activity.device_id, device_trust.trust_level, device_trust.security_downgraded
+                    );
+                }
 
-            // Update the store (would need mutable access in production)
-            // For now, log the intended update
-            eprintln!(
-                "[SECURITY ACTION] Device trust updated for session {}: {:?} -> {:?}",
-                activity.session_id, old_trust_level, new_trust_level
-            );
+                // If we set the security_downgraded flag, schedule a DB persist.
+                if device_trust.security_downgraded {
+                    Some((activity.device_id.clone(), device_trust.trust_level.clone()))
+                } else {
+                    None
+                }
+            } else {
+                // Device not found in the in-memory store.  This can happen if:
+                //   (a) the device was never assessed via `assess_risk`,
+                //   (b) the entry was evicted due to capacity limits, or
+                //   (c) the server restarted and the entry was not a persisted downgrade.
+                //
+                // For cases (b) and (c), the suspicious activity report would be
+                // silently lost — the device could reconnect and receive a fresh
+                // entry with `security_downgraded: false`.  To prevent this, we
+                // persist the downgrade to the database directly so that
+                // `evaluate_device_trust`'s DB-check path can pick it up later.
+                if activity.risk_score >= 0.3 {
+                    let trust_level = match activity.risk_score {
+                        score if score >= 0.8 => TrustLevel::None,
+                        score if score >= 0.6 => TrustLevel::Low,
+                        _ => TrustLevel::Low, // Conservative: cap at Low for evicted devices
+                    };
+                    eprintln!(
+                        "[SECURITY WARNING] Device '{}' not found in trust store during \
+                         suspicious activity handling (risk: {:.2}).  Persisting downgrade \
+                         to database so it is honoured when the device reconnects.",
+                        activity.device_id, activity.risk_score
+                    );
+                    Some((activity.device_id.clone(), trust_level))
+                } else {
+                    None
+                }
+            }
+        }; // write lock dropped here — safe to .await below
+
+        // Persist the security downgrade to the database so it survives restarts.
+        if let Some((fingerprint, trust_level)) = downgrade_to_persist {
+            self.persist_security_downgrade(&fingerprint, &trust_level).await;
         }
 
         // Step 4: Take action based on severity level
         match severity {
             "CRITICAL" => {
                 // Critical: Immediate action required
+                //
+                // NOTE: The trust demotion and `security_downgraded` flag have
+                // **already been committed** to the device trust store above.
+                // The `Err` returned here signals to the caller that the session
+                // must be terminated — it does NOT mean "no action was taken".
+                // Callers should NOT retry on this error; the security response
+                // is already in effect.
                 eprintln!(
                     "[SECURITY ACTION - CRITICAL] Recommended actions:\n\
                      1. REVOKE session {} immediately\n\
@@ -821,7 +1752,8 @@ impl ContinuousAuthService for ZeroTrustManager {
                 );
                 // In production: Actually revoke session, block user, send alerts
                 Err(format!(
-                    "Critical security threat detected (risk: {:.2}). Session must be terminated.",
+                    "Critical security threat detected (risk: {:.2}). Session must be terminated. \
+                     Device trust has been downgraded.",
                     activity.risk_score
                 ))
             }
@@ -864,17 +1796,16 @@ impl ContinuousAuthService for ZeroTrustManager {
 // Helper functions for session verification
 
 /// Extract operating system from user agent string
-#[allow(dead_code)]
-fn extract_os(user_agent: &str) -> String {
+pub fn extract_os(user_agent: &str) -> String {
     let ua_lower = user_agent.to_lowercase();
     if ua_lower.contains("windows") {
         "Windows".to_string()
     } else if ua_lower.contains("mac os") || ua_lower.contains("macos") {
         "macOS".to_string()
-    } else if ua_lower.contains("linux") {
-        "Linux".to_string()
     } else if ua_lower.contains("android") {
         "Android".to_string()
+    } else if ua_lower.contains("linux") {
+        "Linux".to_string()
     } else if ua_lower.contains("iphone") || ua_lower.contains("ipad") {
         "iOS".to_string()
     } else {
@@ -883,8 +1814,7 @@ fn extract_os(user_agent: &str) -> String {
 }
 
 /// Extract browser from user agent string
-#[allow(dead_code)]
-fn extract_browser(user_agent: &str) -> String {
+pub fn extract_browser(user_agent: &str) -> String {
     let ua_lower = user_agent.to_lowercase();
     if ua_lower.contains("firefox") {
         "Firefox".to_string()
