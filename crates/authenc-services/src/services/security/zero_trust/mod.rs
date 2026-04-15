@@ -920,14 +920,30 @@ impl ZeroTrustManager {
                 device_trust.last_seen = Utc::now();
                 was
             } else {
+                // Device not in memory — it may have been evicted while a
+                // persisted downgrade still exists in the database (written by
+                // `handle_suspicious_activity` for evicted devices).  We must
+                // still attempt to remove the DB row; otherwise the stale row
+                // will resurrect the downgrade on the next
+                // `evaluate_device_trust` call, effectively ignoring this
+                // explicit admin trust restoration.
                 false
             }
         }; // write lock dropped here — safe to .await below
 
-        // Remove the persisted downgrade so it doesn't resurrect on restart.
-        if was_downgraded {
-            self.remove_persisted_security_downgrade(device_id).await;
-        }
+        // Always attempt to remove the persisted downgrade from the database.
+        // When the device was in memory and `was_downgraded` is true, this
+        // clears the row that was written by `handle_suspicious_activity`.
+        // When the device was NOT in memory (`was_downgraded` is false), a
+        // DB-only row may still exist (written by `handle_suspicious_activity`
+        // for evicted devices at lines 1647-1674).  Skipping the DELETE in
+        // that case would leave the row intact, causing
+        // `evaluate_device_trust` to resurrect the downgrade on the device's
+        // next connection — silently ignoring the admin's explicit trust
+        // restoration.
+        //
+        // The DELETE is a no-op when no row exists, so this is always safe.
+        self.remove_persisted_security_downgrade(device_id).await;
 
         Ok(())
     }
