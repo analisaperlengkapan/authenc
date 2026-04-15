@@ -1181,9 +1181,44 @@ impl ContinuousAuthService for ZeroTrustManager {
             TrustLevel::None
         };
 
-        // Before acquiring the write lock, check the database for a persisted
-        // security downgrade that may have been evicted from the in-memory store.
-        // This prevents the scenario where:
+        // Fast path: check the in-memory store first under a read lock.
+        // If the device already exists, update it in-place and return without
+        // touching the database.  This ensures that a DB outage does NOT block
+        // risk assessments for devices that already have in-memory trust entries.
+        //
+        // We upgrade to a write lock only for the update (not the initial check)
+        // to minimize contention.  The brief window between the read-lock check
+        // and the write-lock re-check is harmless: the worst case is that a
+        // concurrent insert creates the entry between the two locks, and we
+        // simply update it in-place under the write lock.
+        {
+            let store = self.device_trust_store.read()
+                .map_err(|e| format!("Failed to read device trust store: {}", e))?;
+            if store.contains_key(&device_fingerprint) {
+                drop(store); // release read lock before acquiring write lock
+
+                let mut store = self.device_trust_store.write()
+                    .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+
+                // Re-check under write lock (entry may have been evicted between
+                // the read and write lock acquisitions).
+                if let Some(existing) = store.get_mut(&device_fingerprint) {
+                    existing.last_seen = Utc::now();
+                    existing.device_info = device_info.clone();
+                    if !existing.security_downgraded {
+                        existing.trust_level = trust_level;
+                    }
+                    existing.compliance_status = compliance_status;
+                    return Ok(existing.clone());
+                }
+                // Entry was evicted between locks — fall through to the DB check
+                // and new-entry creation path below.
+            }
+        }
+
+        // Slow path: device is not in the in-memory store.  Check the database
+        // for a persisted security downgrade that may have been evicted from
+        // memory.  This prevents the scenario where:
         //   1. Device is flagged → persisted to DB + in-memory
         //   2. In-memory entry is evicted (capacity pressure)
         //   3. Device reconnects → evaluate_device_trust sees "not found" in memory
@@ -1218,6 +1253,10 @@ impl ContinuousAuthService for ZeroTrustManager {
                     // could bypass its security downgrade if we silently treat a DB
                     // error as "no persisted downgrade".  Returning an error forces
                     // the caller to retry when the DB is available again.
+                    //
+                    // NOTE: This only affects devices NOT found in the in-memory
+                    // store.  Devices with existing in-memory entries are handled
+                    // by the fast path above and are unaffected by DB outages.
                     return Err(format!(
                         "[SECURITY] Cannot evaluate device trust for '{}': \
                          failed to check persisted security downgrades: {}. \
@@ -1236,7 +1275,8 @@ impl ContinuousAuthService for ZeroTrustManager {
         let mut store = self.device_trust_store.write()
             .map_err(|e| format!("Failed to write device trust store: {}", e))?;
 
-        // If the fingerprint already exists, update in-place and return.
+        // Re-check: the entry may have been inserted by a concurrent request
+        // between the fast-path read lock and this write lock acquisition.
         // We must never overwrite a security downgrade applied by
         // `handle_suspicious_activity`.  The `security_downgraded` flag
         // is set when suspicious activity triggers a trust demotion;
