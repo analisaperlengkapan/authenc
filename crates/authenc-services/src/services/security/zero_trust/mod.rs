@@ -910,34 +910,29 @@ impl ZeroTrustManager {
     ///
     /// Returns `Err` if the internal lock is poisoned.
     pub async fn update_device_trust(&self, device_id: &str, new_level: TrustLevel) -> Result<(), String> {
-        let was_downgraded = {
+        {
             let mut store = self.device_trust_store.write()
                 .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during write: {}", e))?;
             if let Some(device_trust) = store.get_mut(device_id) {
-                let was = device_trust.security_downgraded;
                 device_trust.trust_level = new_level;
                 device_trust.security_downgraded = false;
                 device_trust.last_seen = Utc::now();
-                was
-            } else {
-                // Device not in memory — it may have been evicted while a
-                // persisted downgrade still exists in the database (written by
-                // `handle_suspicious_activity` for evicted devices).  We must
-                // still attempt to remove the DB row; otherwise the stale row
-                // will resurrect the downgrade on the next
-                // `evaluate_device_trust` call, effectively ignoring this
-                // explicit admin trust restoration.
-                false
             }
-        }; // write lock dropped here — safe to .await below
+            // else: Device not in memory — it may have been evicted while a
+            // persisted downgrade still exists in the database (written by
+            // `handle_suspicious_activity` for evicted devices).  We must
+            // still attempt to remove the DB row; otherwise the stale row
+            // will resurrect the downgrade on the next
+            // `evaluate_device_trust` call, effectively ignoring this
+            // explicit admin trust restoration.
+        } // write lock dropped here — safe to .await below
 
         // Always attempt to remove the persisted downgrade from the database.
-        // When the device was in memory and `was_downgraded` is true, this
-        // clears the row that was written by `handle_suspicious_activity`.
-        // When the device was NOT in memory (`was_downgraded` is false), a
-        // DB-only row may still exist (written by `handle_suspicious_activity`
-        // for evicted devices at lines 1647-1674).  Skipping the DELETE in
-        // that case would leave the row intact, causing
+        // When the device was in memory, this clears the row that was written
+        // by `handle_suspicious_activity`.
+        // When the device was NOT in memory, a DB-only row may still exist
+        // (written by `handle_suspicious_activity` for evicted devices).
+        // Skipping the DELETE in that case would leave the row intact, causing
         // `evaluate_device_trust` to resurrect the downgrade on the device's
         // next connection — silently ignoring the admin's explicit trust
         // restoration.
