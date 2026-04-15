@@ -151,10 +151,10 @@ pub struct VerifySessionRequest {
     pub device_id: String,
     /// Client-provided device fingerprint (same value sent to assess_risk).
     /// Required to recompute the stable fingerprint hash for verification.
-    /// When absent, the server falls back to IP-based fingerprinting which
-    /// will mismatch if the client's IP changed since assess_risk.
-    #[serde(default)]
-    pub client_fingerprint: Option<String>,
+    /// Must match the `device_fingerprint` value originally sent to
+    /// `assess_risk`; otherwise the server-side hash will differ and the
+    /// check will fail with `device_mismatch`.
+    pub client_fingerprint: String,
 }
 
 #[derive(Serialize)]
@@ -361,7 +361,7 @@ pub async fn verify_session(
         // the same stable (UA + client_fp + OS) hash that assess_risk used.
         // Without this, verify_session would fall back to the IP-based hash
         // and always mismatch the device_id returned by assess_risk.
-        fingerprint: request.client_fingerprint.clone(),
+        fingerprint: Some(request.client_fingerprint.clone()),
     };
     let expected_device_id = ZeroTrustManager::compute_device_fingerprint(&caller_device_info);
     if request.device_id != expected_device_id {
