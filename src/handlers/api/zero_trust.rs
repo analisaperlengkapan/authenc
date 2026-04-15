@@ -527,6 +527,47 @@ pub async fn report_suspicious_activity(
     }
 }
 
+/// Request payload for restoring device trust (admin-only).
+///
+/// This is the only way to clear a `security_downgraded` flag set by
+/// `handle_suspicious_activity`.  Without this endpoint the flag persists
+/// indefinitely (the DB row has no TTL).
+#[derive(Deserialize)]
+pub struct RestoreDeviceTrustRequest {
+    /// Device ID (server-generated fingerprint) to restore
+    pub device_id: String,
+    /// New trust level to assign.  Accepted values (case-sensitive):
+    /// `"None"`, `"Low"`, `"Medium"`, `"High"`, `"Maximum"`.
+    pub trust_level: authenc_services::services::security::zero_trust::TrustLevel,
+}
+
+/// Restore device trust level (admin-only).
+///
+/// Clears the `security_downgraded` flag so that future `evaluate_device_trust`
+/// calls can adjust the trust level based on device characteristics again.
+/// Also removes the persisted downgrade row from the database.
+pub async fn restore_device_trust(
+    State(state): State<Arc<AppState>>,
+    axum::Extension(auth_user): axum::Extension<AuthUser>,
+    Json(request): Json<RestoreDeviceTrustRequest>,
+) -> Result<Json<serde_json::Value>, AuthencError> {
+    // Only global administrators can restore device trust.
+    if !auth_user.roles.iter().any(|r| r == "admin") {
+        return Err(AuthencError::forbidden("Global admin role required to restore device trust"));
+    }
+
+    state.zero_trust_manager
+        .update_device_trust(&request.device_id, request.trust_level)
+        .await
+        .map_err(|e| AuthencError::internal(e))?;
+
+    Ok(Json(serde_json::json!({
+        "status": "restored",
+        "device_id": request.device_id,
+        "message": "Device trust restored and security downgrade cleared."
+    })))
+}
+
 /// Create zero trust routes
 pub fn create_zero_trust_routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -534,6 +575,7 @@ pub fn create_zero_trust_routes() -> Router<Arc<AppState>> {
         .route("/adaptive-controls", put(update_adaptive_controls))
         .route("/session/verify", post(verify_session))
         .route("/suspicious-activity", post(report_suspicious_activity))
+        .route("/device-trust", put(restore_device_trust))
         .route("/analytics/risk", get(get_risk_analytics))
         .route("/dashboard/security", get(get_security_dashboard))
 }

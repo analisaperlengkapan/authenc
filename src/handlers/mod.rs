@@ -196,7 +196,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                         jwt_secret: state.config.security.jwt_secret.clone(),
                     }),
                     crate::middleware::auth::auth_middleware,
-                )),
+                ))
+                .with_state(state.clone()),
         )
         .nest(
             "/broker",
