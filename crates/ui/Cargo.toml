@@ -19,6 +19,7 @@ gloo-net = "0.6" # For API requests
 gloo-utils = "0.2"
 web-sys = { version = "0.3", features = ["Storage", "Window"] }
 qrcodegen = "1.8"
+uuid = { version = "1.0", features = ["serde", "v4"] }
 
 [profile.release]
 codegen-units = 1

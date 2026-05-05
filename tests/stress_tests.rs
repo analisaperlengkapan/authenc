@@ -19,6 +19,7 @@ type SharedState = Arc<Mutex<HashMap<String, serde_json::Value>>>;
 
 #[derive(Clone)]
 struct AppState {
+    pub zero_trust_manager: Arc<authenc::services::security::zero_trust::ZeroTrustManager>,
     data: SharedState,
 }
 
@@ -285,11 +286,14 @@ async fn memory_intensive_operation(State(state): State<AppState>) -> Json<serde
 
 #[tokio::test]
 async fn test_high_concurrency_resource_operations() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/resources", post(create_resource).get(list_resources))
         .route(
             "/resources/{id}",
@@ -379,11 +383,14 @@ async fn test_high_concurrency_resource_operations() {
 
 #[tokio::test]
 async fn test_bulk_operations_under_load() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/resources/bulk", post(bulk_create_resources))
         .route("/resources", get(list_resources))
         .with_state(state);
@@ -427,11 +434,14 @@ async fn test_bulk_operations_under_load() {
 
 #[tokio::test]
 async fn test_memory_and_cpu_stress() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/stress/memory", get(memory_intensive_operation))
         .route("/stress/cpu", get(simulate_slow_operation))
         .with_state(state);
@@ -498,11 +508,14 @@ async fn test_memory_and_cpu_stress() {
 
 #[tokio::test]
 async fn test_failure_recovery_and_resilience() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/unstable", get(simulate_failure))
         .route("/resources", post(create_resource).get(list_resources))
         .with_state(state);
@@ -545,11 +558,14 @@ async fn test_failure_recovery_and_resilience() {
 
 #[tokio::test]
 async fn test_resource_versioning_and_conflict_resolution() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/resources", post(create_resource))
         .route("/resources/{id}", get(get_resource).put(update_resource))
         .with_state(state);
@@ -601,11 +617,14 @@ async fn test_resource_versioning_and_conflict_resolution() {
 
 #[tokio::test]
 async fn test_data_consistency_under_extreme_load() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/resources", post(create_resource).get(list_resources))
         .route("/resources/stats", get(resource_stats))
         .with_state(state);
@@ -663,11 +682,14 @@ async fn test_data_consistency_under_extreme_load() {
 
 #[tokio::test]
 async fn test_rate_limiting_under_load() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/resources", post(create_resource).get(list_resources))
         .with_state(state);
 
@@ -714,11 +736,14 @@ async fn test_rate_limiting_under_load() {
 
 #[tokio::test]
 async fn test_long_running_operations_and_timeouts() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/slow", get(simulate_slow_operation))
         .route("/resources", post(create_resource).get(list_resources))
         .with_state(state);
@@ -790,11 +815,14 @@ async fn test_long_running_operations_and_timeouts() {
 
 #[tokio::test]
 async fn test_resource_cleanup_and_garbage_collection() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/resources", post(create_resource).get(list_resources))
         .route("/resources/{id}", get(get_resource).delete(delete_resource))
         .with_state(state);

@@ -24,6 +24,7 @@ use authenc_services::services::stores::consent_store::ConsentStoreTrait;
 use authenc_services::services::stores::social_account_store::{SocialAccountStore, SocialAccountStoreTrait};
 use authenc_services::services::stores::user_store::UserStoreTrait;
 use authenc_services::services::stores::totp_store::TotpStore;
+use authenc_services::services::stores::realm_store::RealmStore;
 use authenc_services::services::oauth2::OAuth2Service;
 use authenc_services::services::protocols::webauthn::WebAuthnService;
 
@@ -54,6 +55,24 @@ pub struct TotpStatusResponse {
     pub configured_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// Response for security status
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SecurityStatusResponse {
+    /// Whether TOTP is enabled
+    pub totp_enabled: bool,
+    /// Whether WebAuthn (Passkeys) are enabled
+    pub webauthn_enabled: bool,
+    /// Count of active sessions
+    pub active_sessions: usize,
+}
+
+/// Request to rename a passkey
+#[derive(Debug, Deserialize)]
+pub struct RenamePasskeyRequest {
+    /// New name for the passkey
+    pub name: String,
+}
+
 /// Response for user consent information
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ConsentResponse {
@@ -72,15 +91,36 @@ pub struct ConsentResponse {
 /// State for account handlers
 #[derive(Clone)]
 pub struct AccountState {
+    /// Store for user data
+    /// Store for user data
     pub user_store: Arc<dyn UserStoreTrait>,
+    /// Store for session data
+    /// Store for session data
     pub session_store: Arc<dyn SessionStoreTrait>,
+    /// Store for OIDC clients
+    /// Store for OIDC clients
     pub oidc_client_store: Arc<OidcClientStore>,
+    /// Store for TOTP secrets
+    /// Store for TOTP secrets
     pub totp_store: Arc<TotpStore>,
+    /// Store for audit logs
+    /// Store for audit logs
     pub audit_log_store: Arc<PgAuditLogStore>,
+    /// Store for social account links
+    /// Store for social account links
     pub social_account_store: Arc<SocialAccountStore>,
+    /// Store for user consents
+    /// Store for user consents
     pub consent_store: Arc<dyn ConsentStoreTrait>,
+    /// Service for OAuth2 operations
+    /// Service for OAuth2 operations
     pub oauth2_service: Arc<OAuth2Service>,
+    /// Service for WebAuthn operations
+    /// Service for WebAuthn operations
     pub webauthn_service: Arc<WebAuthnService>,
+    /// Store for realms
+    /// Store for realms
+    pub realm_store: Arc<RealmStore>,
 }
 
 /// Create account management routes for user self-service
@@ -105,6 +145,9 @@ pub fn create_account_routes() -> Router<AccountState> {
         .route("/account/totp", delete(disable_totp))
         .route("/account/social", get(get_linked_social_accounts))
         .route("/account/social/{provider}", delete(unlink_social_account))
+        .route("/account/security-status", get(get_my_security_status))
+        .route("/account/passkeys", get(list_my_passkeys))
+        .route("/account/passkeys/{id}", delete(delete_my_passkey).patch(rename_my_passkey))
 }
 
 /// Create consent management routes
@@ -112,6 +155,113 @@ pub fn create_consent_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/account/consents", get(get_user_consents))
         .route("/account/consents/{client_id}", delete(revoke_consent))
+}
+
+/// Get current user's security status
+pub async fn get_my_security_status(
+    State(state): State<AccountState>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
+) -> Result<Json<SecurityStatusResponse>, AuthencError> {
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    let user = state.user_store
+        .get_user(user_id)
+        .await?
+        .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+
+    let totp_enabled = state.totp_store
+        .get_secret(&user_id.to_string())
+        .ok()
+        .flatten()
+        .is_some()
+        || user.totp_secret.is_some();
+
+    // In a self-service context, default to nil UUID if realm not assigned
+    let realm_id = user.realm_id.unwrap_or_else(Uuid::nil);
+
+    let passkeys = state.webauthn_service.list_user_credentials(&realm_id, &user_id).await?;
+    let webauthn_enabled = !passkeys.is_empty();
+
+    let sessions = state.session_store.get_user_sessions(user_id).await?;
+
+    Ok(Json(SecurityStatusResponse {
+        totp_enabled,
+        webauthn_enabled,
+        active_sessions: sessions.len(),
+    }))
+}
+
+/// List current user's passkeys
+pub async fn list_my_passkeys(
+    State(state): State<AccountState>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
+) -> Result<Json<serde_json::Value>, AuthencError> {
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    let user = state.user_store
+        .get_user(user_id)
+        .await?
+        .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+
+    let realm_id = user.realm_id.unwrap_or_else(Uuid::nil);
+
+    let credentials = state.webauthn_service.list_user_credentials(&realm_id, &user_id).await?;
+
+    let result: Vec<serde_json::Value> = credentials.into_iter().map(|c| {
+        serde_json::json!({
+            "id": c.id,
+            "name": c.name.as_deref().unwrap_or("Unnamed Passkey"),
+            "created_at": c.created_at,
+            "last_used": c.last_used_at
+        })
+    }).collect();
+
+    Ok(Json(serde_json::json!(result)))
+}
+
+/// Rename one of the current user's passkeys
+pub async fn rename_my_passkey(
+    State(state): State<AccountState>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
+    Path(credential_id): Path<Uuid>,
+    Json(req): Json<RenamePasskeyRequest>,
+) -> Result<StatusCode, AuthencError> {
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    let user = state.user_store
+        .get_user(user_id)
+        .await?
+        .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+
+    let realm_id = user.realm_id.unwrap_or_else(Uuid::nil);
+
+    state.webauthn_service.update_credential_name(&realm_id, &user_id, &credential_id, &req.name).await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Delete one of the current user's passkeys
+pub async fn delete_my_passkey(
+    State(state): State<AccountState>,
+    Extension(auth_user): Extension<crate::middleware::auth::AuthUser>,
+    Path(credential_id): Path<Uuid>,
+) -> Result<StatusCode, AuthencError> {
+    let user_id = Uuid::parse_str(&auth_user.id)
+        .map_err(|_| AuthencError::unauthorized("Invalid user ID in token"))?;
+
+    let user = state.user_store
+        .get_user(user_id)
+        .await?
+        .ok_or_else(|| AuthencError::resource_not_found("User not found"))?;
+
+    let realm_id = user.realm_id.unwrap_or_else(Uuid::nil);
+
+    state.webauthn_service.delete_credential(&realm_id, &user_id, &credential_id).await?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Get current user's account profile

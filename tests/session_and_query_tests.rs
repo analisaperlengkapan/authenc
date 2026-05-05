@@ -37,6 +37,9 @@ async fn test_bulk_create_users() {
             realm_id: Some(realm_id),
             organization_id: None,
             attributes: None,
+            email_verified: Some(true),
+            enabled: Some(true),
+            require_password_change: Some(false),
         },
         CreateUserRequest {
             username: "testuser2".to_string(),
@@ -48,6 +51,9 @@ async fn test_bulk_create_users() {
             realm_id: Some(realm_id),
             organization_id: None,
             attributes: None,
+            email_verified: Some(true),
+            enabled: Some(true),
+            require_password_change: Some(false),
         },
     ];
 

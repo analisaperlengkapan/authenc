@@ -98,6 +98,9 @@ async fn test_user_store_comprehensive_operations() {
     let users = vec![
         CreateUserRequest {
             username: format!("alice{}", unique_suffix),
+            email_verified: Some(true),
+            enabled: Some(true),
+            require_password_change: Some(false),
             email: format!("alice{}@example.com", unique_suffix),
             password: Some("hash1".into()),
             first_name: Some("Alice".into()),
@@ -106,12 +109,12 @@ async fn test_user_store_comprehensive_operations() {
             realm_id: Some(realm_id),
             organization_id: None,
             attributes: None,
-            email_verified: Some(true),
-            enabled: Some(true),
-            require_password_change: Some(false),
         },
         CreateUserRequest {
             username: format!("bob{}", unique_suffix),
+            email_verified: Some(true),
+            enabled: Some(true),
+            require_password_change: Some(false),
             email: format!("bob{}@example.com", unique_suffix),
             password: Some("hash2".into()),
             first_name: Some("Bob".into()),
@@ -120,9 +123,6 @@ async fn test_user_store_comprehensive_operations() {
             realm_id: Some(realm_id),
             organization_id: None,
             attributes: None,
-            email_verified: Some(true),
-            enabled: Some(true),
-            require_password_change: Some(false),
         },
     ];
 
@@ -319,7 +319,10 @@ async fn test_user_store_bulk_operations() {
     let mut bulk_users = Vec::new();
     for i in 0..10 {
         let user_req = CreateUserRequest {
-            username: format!("bulk_user_{}{}", i, unique_suffix),
+            username: format!("bulk_user_{}", i),
+            email_verified: Some(true),
+            enabled: Some(true),
+            require_password_change: Some(false),
             email: format!("bulk{}_user{}@example.com", i, unique_suffix),
             password: Some(format!("hash_{}", i)),
             first_name: Some(format!("Bulk{}", i)),
@@ -328,9 +331,6 @@ async fn test_user_store_bulk_operations() {
             realm_id: Some(realm_id),
             organization_id: None,
             attributes: None,
-            email_verified: Some(true),
-            enabled: Some(true),
-            require_password_change: Some(false),
         };
         bulk_users.push(user_req);
     }

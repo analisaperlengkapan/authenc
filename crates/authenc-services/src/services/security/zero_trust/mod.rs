@@ -3,7 +3,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 /// Zero Trust security levels
@@ -401,8 +402,7 @@ impl ZeroTrustManager {
             .await
             .map_err(|e| format!("Failed to load security downgrades: {}", e))?;
 
-        let mut store = self.device_trust_store.write()
-            .map_err(|e| format!("Lock poisoned during load_security_downgrades: {}", e))?;
+        let mut store = self.device_trust_store.write().await;
 
         let mut count = 0usize;
         for row in &rows {
@@ -846,9 +846,8 @@ impl ZeroTrustManager {
     ///
     /// Returns `Err` if the internal lock is poisoned.  Callers should treat
     /// an error as "not trusted" (fail closed).
-    pub fn is_device_trusted(&self, device_id: &str) -> Result<bool, String> {
-        let store = self.device_trust_store.read()
-            .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during read: {}", e))?;
+    pub async fn is_device_trusted(&self, device_id: &str) -> Result<bool, String> {
+        let store = self.device_trust_store.read().await;
         if let Some(device_trust) = store.get(device_id) {
             Ok(matches!(
                 device_trust.trust_level,
@@ -863,9 +862,8 @@ impl ZeroTrustManager {
     ///
     /// Returns `Err` if the internal lock is poisoned — callers should treat
     /// this as a degraded security state (the device trust entry was NOT stored).
-    pub fn register_device_trust(&self, device_trust: DeviceTrust) -> Result<(), String> {
-        let mut store = self.device_trust_store.write()
-            .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during write: {}", e))?;
+    pub async fn register_device_trust(&self, device_trust: DeviceTrust) -> Result<(), String> {
+        let mut store = self.device_trust_store.write().await;
 
         // If the device already exists, update it in-place (no eviction needed).
         // We must preserve the `security_downgraded` flag set by
@@ -911,8 +909,7 @@ impl ZeroTrustManager {
     /// Returns `Err` if the internal lock is poisoned.
     pub async fn update_device_trust(&self, device_id: &str, new_level: TrustLevel) -> Result<(), String> {
         {
-            let mut store = self.device_trust_store.write()
-                .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during write: {}", e))?;
+            let mut store = self.device_trust_store.write().await;
             if let Some(device_trust) = store.get_mut(device_id) {
                 device_trust.trust_level = new_level;
                 device_trust.security_downgraded = false;
@@ -946,9 +943,8 @@ impl ZeroTrustManager {
     /// Get the last_seen timestamp for a device, if it exists in the store.
     ///
     /// Returns `Err` if the internal lock is poisoned.
-    pub fn get_device_last_seen(&self, device_id: &str) -> Result<Option<DateTime<Utc>>, String> {
-        let store = self.device_trust_store.read()
-            .map_err(|e| format!("[SECURITY] Device trust store lock poisoned during read: {}", e))?;
+    pub async fn get_device_last_seen(&self, device_id: &str) -> Result<Option<DateTime<Utc>>, String> {
+        let store = self.device_trust_store.read().await;
         Ok(store.get(device_id).map(|d| d.last_seen))
     }
 
@@ -973,14 +969,13 @@ impl ZeroTrustManager {
     /// Returns `(is_valid, combined_risk_score)` where `is_valid` is `false`
     /// when `combined_risk_score >= 0.6` (aligned with `determine_risk_level`
     /// and `generate_adaptive_controls`).
-    pub fn verify_session_with_score(&self, device_id: &str) -> Result<(bool, f64), String> {
+    pub async fn verify_session_with_score(&self, device_id: &str) -> Result<(bool, f64), String> {
         // Extract the device risk score under the read lock, then drop the guard
         // immediately so we don't hold it during the subsequent arithmetic.
         // This reduces write-lock contention from concurrent callers of
         // `evaluate_device_trust`, `handle_suspicious_activity`, etc.
         let device_risk = {
-            let store = self.device_trust_store.read()
-                .map_err(|e| format!("Failed to read device trust store: {}", e))?;
+            let store = self.device_trust_store.read().await;
             if let Some(trust) = store.get(device_id) {
                 match trust.trust_level {
                     TrustLevel::Maximum => 0.0,
@@ -1192,13 +1187,11 @@ impl ContinuousAuthService for ZeroTrustManager {
         // concurrent insert creates the entry between the two locks, and we
         // simply update it in-place under the write lock.
         {
-            let store = self.device_trust_store.read()
-                .map_err(|e| format!("Failed to read device trust store: {}", e))?;
+            let store = self.device_trust_store.read().await;
             if store.contains_key(&device_fingerprint) {
                 drop(store); // release read lock before acquiring write lock
 
-                let mut store = self.device_trust_store.write()
-                    .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+                let mut store = self.device_trust_store.write().await;
 
                 // Re-check under write lock (entry may have been evicted between
                 // the read and write lock acquisitions).
@@ -1272,8 +1265,7 @@ impl ContinuousAuthService for ZeroTrustManager {
         // Atomically check-then-insert under a single write lock to prevent the
         // TOCTOU race where two concurrent first-time requests for the same
         // fingerprint could both observe "not found" and overwrite each other.
-        let mut store = self.device_trust_store.write()
-            .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+        let mut store = self.device_trust_store.write().await;
 
         // Re-check: the entry may have been inserted by a concurrent request
         // between the fast-path read lock and this write lock acquisition.
@@ -1358,8 +1350,7 @@ impl ContinuousAuthService for ZeroTrustManager {
 
             // Re-acquire the write lock and re-check the in-memory store.
             // Another thread may have inserted an entry while we were awaiting.
-            let mut store = self.device_trust_store.write()
-                .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+            let mut store = self.device_trust_store.write().await;
 
             // Re-check: if the entry appeared in memory while we re-queried,
             // update it in-place (same logic as the primary check above).
@@ -1529,8 +1520,7 @@ impl ContinuousAuthService for ZeroTrustManager {
         // Step 1+2: Extract device risk under a scoped read lock, then drop the
         // guard immediately so we don't hold it during the subsequent arithmetic.
         let device_risk = {
-            let store = self.device_trust_store.read()
-                .map_err(|e| format!("Failed to read device trust store: {}", e))?;
+            let store = self.device_trust_store.read().await;
             if let Some(trust) = store.get(device_id) {
                 match trust.trust_level {
                     TrustLevel::Maximum => 0.0,
@@ -1628,8 +1618,7 @@ impl ContinuousAuthService for ZeroTrustManager {
         // Step 3: Update device trust based on severity.
         // Capture the final trust level for DB persistence after the lock is dropped.
         let downgrade_to_persist: Option<(String, TrustLevel)> = {
-            let mut store = self.device_trust_store.write()
-                .map_err(|e| format!("Failed to write device trust store: {}", e))?;
+            let mut store = self.device_trust_store.write().await;
             if let Some(device_trust) = store.get_mut(&activity.device_id) {
                 let old_trust_level = device_trust.trust_level.clone();
 

@@ -36,10 +36,14 @@ pub async fn generate_registration_challenge(
 /// Wrapper for verification request to include context
 #[derive(serde::Deserialize)]
 pub struct RegistrationVerificationRequest {
+    /// Realm ID for registration
     pub realm_id: String,
+    /// Username to register
     pub username: String,
+    /// WebAuthn registration response
     #[serde(flatten)]
     pub response: WebauthnRegistrationResponse,
+    /// Optional device ID for trust scoring
     pub device_id: Option<Uuid>,
 }
 
@@ -73,8 +77,11 @@ pub async fn generate_authentication_challenge(
 /// Wrapper for authentication verification to include context
 #[derive(serde::Deserialize)]
 pub struct AuthenticationVerificationRequest {
+    /// Realm ID for authentication
     pub realm_id: String,
+    /// Username to authenticate
     pub username: String,
+    /// WebAuthn authentication response
     #[serde(flatten)]
     pub response: WebauthnAuthenticationResponse,
 }
@@ -91,7 +98,7 @@ pub async fn verify_authentication(
     };
 
     // Verify via service
-    state.webauthn_service.verify_authentication(
+    let _ = state.webauthn_service.verify_authentication(
         &parsed_realm,
         &req.username,
         req.response

@@ -208,6 +208,7 @@ pub async fn process_ldap_authentication(
                     last_name: user_info.last_name.clone(),
                     external_attributes: user_info.attributes.clone(),
                     realm_id,
+                    roles: vec![],
                 };
 
                 // Provision user

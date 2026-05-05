@@ -4,6 +4,8 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use ldap3::{LdapConnAsync, Scope, SearchEntry};
 use std::collections::HashMap;
+use std::sync::Arc;
+use chrono::Utc;
 
 use super::{AuthRequest, AuthResponse, IdentityProvider, IdentityProviderConfig, UserInfo};
 
@@ -16,6 +18,8 @@ use super::{AuthRequest, AuthResponse, IdentityProvider, IdentityProviderConfig,
 pub struct LdapIdentityProvider {
     /// Provider configuration
     config: IdentityProviderConfig,
+    /// Database for audit logging
+    db: Option<Arc<authenc_database::database::Database>>,
     /// LDAP server URL
     url: String,
     /// Base DN for searches
@@ -32,7 +36,7 @@ pub struct LdapIdentityProvider {
 
 impl LdapIdentityProvider {
     /// Create new LDAP identity provider
-    pub async fn new(config: IdentityProviderConfig) -> Result<Self> {
+    pub async fn new(config: IdentityProviderConfig, db: Option<Arc<authenc_database::database::Database>>) -> Result<Self> {
         // Support both 'server_url' (new) and 'url' (legacy)
         let url = config
             .config
@@ -60,7 +64,7 @@ impl LdapIdentityProvider {
             // Role mappings are stored as a stringified JSON object in the config map
             let trimmed = json.trim();
             if trimmed.starts_with('{') {
-                serde_json::from_str(trimmed).map_err(|e| {
+                ::serde_json::from_str(trimmed).map_err(|e| {
                     tracing::error!("Failed to parse role_mappings: {}", e);
                     anyhow!("Invalid role_mappings JSON")
                 })?
@@ -75,6 +79,7 @@ impl LdapIdentityProvider {
 
         Ok(Self {
             config,
+            db,
             url,
             base_dn,
             bind_dn,
@@ -169,9 +174,17 @@ impl LdapIdentityProvider {
             if let Some(role) = self.role_mappings.get(group) {
                 user_info.roles.push(role.clone());
             } else {
-                 // Try mapping using partial match (e.g. if group is a DN)
-                 // e.g. "CN=Admins,OU=Groups,DC=example,DC=com" -> map key "Admins"
-                 // For now, we only support exact match as defined in the mapping
+                // Try mapping using partial match (e.g. if group is a DN)
+                // e.g. "CN=Admins,OU=Groups,DC=example,DC=com" -> map key "Admins"
+                for (ldap_group, authenc_role) in &self.role_mappings {
+                    if group.contains(&format!("CN={},", ldap_group))
+                        || group.starts_with(&format!("CN={}", ldap_group))
+                        || group.eq_ignore_ascii_case(ldap_group)
+                    {
+                        user_info.roles.push(authenc_role.clone());
+                        break;
+                    }
+                }
             }
         }
 
@@ -450,6 +463,33 @@ impl IdentityProvider for LdapIdentityProvider {
         // 6. Success - Map attributes (from service account search)
         let user_info = self.map_attributes(&entry);
 
+        // Audit Logging
+        if let Some(db) = &self.db {
+            let audit_event = authenc_models::models::audit::AuditEvent {
+                timestamp: Utc::now(),
+                event_type: "LDAP_LOGIN".to_string(),
+                user_id: None, // Will be linked during JIT provisioning
+                session_id: None,
+                client_id: None,
+                resource_type: Some("USER".to_string()),
+                resource_id: user_info.username.clone(),
+                action: "AUTHENTICATE".to_string(),
+                status: "SUCCESS".to_string(),
+                details: Some(::serde_json::json!({
+                    "provider": self.config.name,
+                    "dn": entry.dn
+                })),
+                ip_address: None,
+                user_agent: None,
+                location_data: None,
+                error_message: None,
+                request_id: None,
+                correlation_id: None,
+                realm_id: Some(self.config.realm_id),
+            };
+            let _ = authenc_database::database::operations::audit::create_audit_log(db, &audit_event).await;
+        }
+
         Ok(AuthResponse {
             success: true,
             user_id: Some(user_info.id),
@@ -515,7 +555,7 @@ mod tests {
             keystore_path: None,
         };
 
-        let provider = LdapIdentityProvider::new(config).await.unwrap();
+        let provider = LdapIdentityProvider::new(config, None).await.unwrap();
         assert_eq!(provider.role_mappings.len(), 2);
         assert_eq!(provider.role_mappings.get("Admins").unwrap(), "admin");
         assert_eq!(provider.role_mappings.get("Developers").unwrap(), "dev");

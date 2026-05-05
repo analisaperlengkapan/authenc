@@ -19,6 +19,7 @@ type SharedState = Arc<Mutex<HashMap<String, serde_json::Value>>>;
 
 #[derive(Clone)]
 struct AppState {
+    pub zero_trust_manager: Arc<authenc::services::security::zero_trust::ZeroTrustManager>,
     data: SharedState,
 }
 
@@ -258,11 +259,14 @@ async fn user_stats(State(state): State<AppState>) -> Json<serde_json::Value> {
 
 #[tokio::test]
 async fn test_health_check_endpoint() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/health", get(health_check))
         .with_state(state);
 
@@ -279,11 +283,14 @@ async fn test_health_check_endpoint() {
 
 #[tokio::test]
 async fn test_user_crud_operations() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/users", post(create_user))
         .route(
             "/users/{id}",
@@ -343,11 +350,14 @@ async fn test_user_crud_operations() {
 
 #[tokio::test]
 async fn test_user_listing_and_pagination() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/users", get(list_users).post(create_user))
         .with_state(state);
 
@@ -392,11 +402,14 @@ async fn test_user_listing_and_pagination() {
 
 #[tokio::test]
 async fn test_user_search_functionality() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/users", post(create_user))
         .route("/users/search", get(search_users))
         .with_state(state);
@@ -446,11 +459,14 @@ async fn test_user_search_functionality() {
 
 #[tokio::test]
 async fn test_bulk_user_operations() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/users/bulk", post(bulk_create_users))
         .route("/users", post(create_user))
         .with_state(state);
@@ -514,11 +530,14 @@ async fn test_bulk_user_operations() {
 
 #[tokio::test]
 async fn test_user_statistics() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/users", post(create_user))
         .route("/users/stats", get(user_stats))
         .with_state(state);
@@ -555,11 +574,14 @@ async fn test_user_statistics() {
 
 #[tokio::test]
 async fn test_error_handling_and_edge_cases() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/users", post(create_user))
         .route(
             "/users/{id}",
@@ -620,11 +642,14 @@ async fn test_error_handling_and_edge_cases() {
 
 #[tokio::test]
 async fn test_concurrent_user_operations() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/users", post(create_user))
         .route("/users/{id}", get(get_user))
         .with_state(state);
@@ -677,11 +702,14 @@ async fn test_concurrent_user_operations() {
 
 #[tokio::test]
 async fn test_data_integrity_and_consistency() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/users", post(create_user))
         .route("/users/{id}", get(get_user).put(update_user))
         .with_state(state);

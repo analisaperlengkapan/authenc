@@ -7,7 +7,7 @@ use axum::{
     Router,
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, post},
+    routing::post,
 };
 use std::sync::Arc;
 use uuid::Uuid;

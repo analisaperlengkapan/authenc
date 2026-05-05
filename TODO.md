@@ -54,10 +54,10 @@ Authenc v0.4.0 is a production-ready identity management platform with comprehen
 - [x] Social account linking and management UI
 
 ### LDAP/Active Directory Federation
-- [ ] LDAP client implementation
-- [ ] Active Directory integration
-- [ ] User synchronization and provisioning
-- [ ] Group mapping and role synchronization
+- [x] LDAP client implementation
+- [x] Active Directory integration
+- [x] User synchronization and provisioning
+- [x] Group mapping and role synchronization
 
 ## 📋 Planned Features (v0.5.0+)
 

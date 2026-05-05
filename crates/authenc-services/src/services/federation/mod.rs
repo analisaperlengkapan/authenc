@@ -333,7 +333,7 @@ pub mod jit_provisioning {
                 phone_number: None,
                 realm_id: request.realm_id, // Mandatory in AdminService
                 organization_id: None,
-                roles: vec![], // JIT usually assigns default roles separately or via config
+                roles: request.roles.clone(),
                 groups: vec![],
                 attributes: request.external_attributes.clone(),
                 email_verified: true, // Trusted from external provider
@@ -470,7 +470,7 @@ impl FederationService {
                 Box::new(OidcIdentityProvider::new(config.clone()).await?)
             }
             IdentityProviderType::LDAP => {
-                Box::new(LdapIdentityProvider::new(config.clone()).await?)
+                Box::new(LdapIdentityProvider::new(config.clone(), Some(Arc::clone(&self.db))).await?)
             }
             _ => return Err(anyhow::anyhow!("Unsupported provider type")),
         };

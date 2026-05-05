@@ -280,6 +280,54 @@
                 <button id="tab-authorization" class="tab-button" onclick="switchTab('authorization')">Authorization</button>
                 <button id="tab-security" class="tab-button" onclick="switchTab('security')">Security</button>
                 <button id="tab-audit" class="tab-button" onclick="switchTab('audit')">Audit Logs</button>
+                <button id="tab-account" class="tab-button" onclick="switchTab('account')">My Account</button>
+            </div>
+
+            <div id="account-section" class="hidden">
+                <div style="margin-bottom: 2rem;">
+                    <h3>My Account & Security</h3>
+                    <p style="color: var(--text-light);">Manage your personal security settings and passkeys.</p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                    <div class="card" style="margin: 0; max-width: none;">
+                        <h4>Security Status</h4>
+                        <div id="account-status-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Two-Factor (TOTP):</span>
+                                <span id="acc-totp-status" class="badge">Checking...</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Passkeys:</span>
+                                <span id="acc-webauthn-status" class="badge">Checking...</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Active Sessions:</span>
+                                <span id="acc-sessions-count" style="font-weight: bold;">-</span>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem;">
+                            <button id="acc-setup-totp" class="success" style="width: auto; font-size: 0.85rem; background-color: var(--success);">Setup TOTP</button>
+                            <button onclick="registerWebAuthn(currentUser, '', currentRealmId, fetchAccountSecurityStatus)" style="width: auto; font-size: 0.85rem;">Add Passkey</button>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin: 0; max-width: none;">
+                        <h4>Your Passkeys</h4>
+                        <div id="account-passkeys-container" style="margin-top: 0.5rem;">
+                            <p id="account-passkeys-empty" style="color: var(--text-light); font-size: 0.9rem;">No passkeys registered.</p>
+                            <table id="account-passkeys-table" class="hidden" style="width: 100%; margin-top: 0.5rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="account-passkeys-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div id="organizations-section" class="hidden">
@@ -666,6 +714,23 @@
                 </div>
 
                 <div style="margin-top: 1rem; margin-bottom: 1rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
+                    <h3 style="margin-bottom: 0.5rem;">Managed Passkeys</h3>
+                    <div id="passkeys-container" style="margin-bottom: 1rem;">
+                        <p style="color: var(--text-light); font-size: 0.9rem;">Loading passkeys...</p>
+                    </div>
+                    <table id="passkeys-table" class="hidden" style="margin-top: 0; margin-bottom: 1rem;">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="passkeys-body"></tbody>
+                    </table>
+                    <div id="passkey-registration-container"></div>
+                </div>
+
+                <div style="margin-top: 1rem; margin-bottom: 1rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                         <h3 style="margin: 0;">Linked Social Accounts</h3>
                         <button type="button" onclick="openLinkSocialAccountModal()" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background-color: var(--success);">Link Account</button>
@@ -686,7 +751,6 @@
                 <button type="submit">Save Changes</button>
                 <button type="button" class="secondary" onclick="closeEditModal()">Cancel</button>
             </form>
-            <div id="passkey-registration-container"></div>
             <div id="edit-user-error" class="error-message"></div>
         </div>
     </div>
@@ -1195,6 +1259,8 @@
             document.getElementById('tab-authorization').classList.remove('active');
             document.getElementById('tab-security').classList.remove('active');
             document.getElementById('tab-audit').classList.remove('active');
+            document.getElementById('tab-account').classList.remove('active');
+
             document.getElementById('realms-section').classList.add('hidden');
             document.getElementById('organizations-section').classList.add('hidden');
             document.getElementById('users-section').classList.add('hidden');
@@ -1205,6 +1271,7 @@
             document.getElementById('authorization-section').classList.add('hidden');
             document.getElementById('security-section').classList.add('hidden');
             document.getElementById('audit-section').classList.add('hidden');
+            document.getElementById('account-section').classList.add('hidden');
 
             if (tabName === 'realms') {
                 document.getElementById('tab-realms').classList.add('active');
@@ -1247,6 +1314,11 @@
                 document.getElementById('tab-audit').classList.add('active');
                 document.getElementById('audit-section').classList.remove('hidden');
                 fetchAuditLogs();
+            } else if (tabName === 'account') {
+                document.getElementById('tab-account').classList.add('active');
+                document.getElementById('account-section').classList.remove('hidden');
+                fetchAccountSecurityStatus();
+                fetchAccountPasskeys();
             }
         }
 
@@ -1597,9 +1669,9 @@
             }
         }
 
-        async function registerWebAuthn(username, email, realm_id) {
+        async function registerWebAuthn(username, email, realm_id, callback = null) {
             const errorDiv = document.getElementById('edit-user-error');
-            errorDiv.style.display = 'none';
+            if (errorDiv) errorDiv.style.display = 'none';
 
             try {
                 // 1. Get registration challenge
@@ -1656,11 +1728,161 @@
 
                 if (!verifyRes.ok) throw new Error("Passkey registration verification failed");
                 alert("Passkey registered successfully!");
+                if (callback) callback();
             } catch (err) {
                 console.error(err);
                 errorDiv.textContent = err.message || "Passkey registration failed";
                 errorDiv.style.display = 'block';
             }
+        }
+
+        async function fetchAccountSecurityStatus() {
+            const totpBadge = document.getElementById('acc-totp-status');
+            const webauthnBadge = document.getElementById('acc-webauthn-status');
+            const sessionCount = document.getElementById('acc-sessions-count');
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/account/security-status`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const status = await response.json();
+                    totpBadge.textContent = status.totp_enabled ? 'Enabled' : 'Disabled';
+                    totpBadge.className = 'badge ' + (status.totp_enabled ? 'badge-success' : 'badge-error');
+                    webauthnBadge.textContent = status.webauthn_enabled ? 'Enabled' : 'Disabled';
+                    webauthnBadge.className = 'badge ' + (status.webauthn_enabled ? 'badge-success' : 'badge-error');
+                    sessionCount.textContent = status.active_sessions || 0;
+                }
+            } catch (err) { console.error('Failed to fetch security status', err); }
+        }
+
+        async function fetchAccountPasskeys() {
+            const container = document.getElementById('account-passkeys-empty');
+            const table = document.getElementById('account-passkeys-table');
+            const tbody = document.getElementById('account-passkeys-body');
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/account/passkeys`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const passkeys = await response.json();
+                    tbody.innerHTML = '';
+                    if (passkeys.length > 0) {
+                        container.classList.add('hidden');
+                        table.classList.remove('hidden');
+                        passkeys.forEach(pk => {
+                            const tr = document.createElement('tr');
+                            const tdName = document.createElement('td');
+                            tdName.textContent = pk.name || 'Unnamed Key';
+                            const tdActions = document.createElement('td');
+                            tdActions.style.display = 'flex';
+                            tdActions.style.gap = '0.5rem';
+
+                            const renameBtn = document.createElement('button');
+                            renameBtn.textContent = 'Rename';
+                            renameBtn.style.width = 'auto';
+                            renameBtn.style.fontSize = '0.75rem';
+                            renameBtn.onclick = () => renameAccountPasskey(pk.id, pk.name);
+
+                            const delBtn = document.createElement('button');
+                            delBtn.textContent = 'Delete';
+                            delBtn.style.width = 'auto';
+                            delBtn.style.fontSize = '0.75rem';
+                            delBtn.style.backgroundColor = 'var(--error)';
+                            delBtn.onclick = () => deleteAccountPasskey(pk.id);
+
+                            tdActions.append(renameBtn, delBtn);
+                            tr.append(tdName, tdActions);
+                            tbody.appendChild(tr);
+                        });
+                    } else {
+                        container.classList.remove('hidden');
+                        table.classList.add('hidden');
+                    }
+                }
+            } catch (err) { console.error('Failed to fetch account passkeys', err); }
+        }
+
+        async function renameAccountPasskey(id, currentName) {
+            const newName = prompt('Enter new name for passkey:', currentName);
+            if (!newName || newName === currentName) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/account/passkeys/${id}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ name: newName })
+                });
+                if (response.ok) fetchAccountPasskeys();
+            } catch (err) { alert('Rename failed'); }
+        }
+
+        async function deleteAccountPasskey(id) {
+            if (!confirm('Delete this passkey?')) return;
+            try {
+                const response = await fetch(`${API_BASE}/auth/account/passkeys/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    fetchAccountPasskeys();
+                    fetchAccountSecurityStatus();
+                }
+            } catch (err) { alert('Delete failed'); }
+        }
+
+        async function fetchUserPasskeys(userId) {
+            const container = document.getElementById('passkeys-container');
+            const table = document.getElementById('passkeys-table');
+            const tbody = document.getElementById('passkeys-body');
+
+            container.innerHTML = '<p style="color: var(--text-light); font-size: 0.9rem;">Loading passkeys...</p>';
+            container.classList.remove('hidden');
+            table.classList.add('hidden');
+            tbody.innerHTML = '';
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/realms/${currentRealmId}/users/${userId}/passkeys`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const passkeys = await response.json();
+                    if (passkeys.length > 0) {
+                        container.classList.add('hidden');
+                        table.classList.remove('hidden');
+                        passkeys.forEach(pk => {
+                            const tr = document.createElement('tr');
+                            const tdName = document.createElement('td');
+                            tdName.textContent = pk.name || 'Unnamed Key';
+                            const tdActions = document.createElement('td');
+                            const delBtn = document.createElement('button');
+                            delBtn.textContent = 'Delete';
+                            delBtn.type = 'button';
+                            delBtn.style.cssText = 'background-color: var(--error); padding: 0.25rem 0.5rem; font-size: 0.8rem; width: auto;';
+                            delBtn.onclick = async () => {
+                                if (confirm('Delete user passkey?')) {
+                                    await fetch(`${API_BASE}/auth/realms/${currentRealmId}/users/${userId}/passkeys/${pk.id}`, {
+                                        method: 'DELETE',
+                                        headers: { 'Authorization': `Bearer ${token}` }
+                                    });
+                                    fetchUserPasskeys(userId);
+                                }
+                            };
+                            tdActions.appendChild(delBtn);
+                            tr.append(tdName, tdActions);
+                            tbody.appendChild(tr);
+                        });
+                    } else {
+                        container.innerHTML = '<p style="color: var(--text-light); font-size: 0.9rem;">No passkeys registered.</p>';
+                    }
+                } else {
+                    container.innerHTML = '<p style="color: var(--error); font-size: 0.9rem;">Failed to load passkeys.</p>';
+                }
+            } catch (err) { container.innerHTML = '<p style="color: var(--error); font-size: 0.9rem;">Error loading passkeys.</p>'; }
         }
 
         async function fetchUserTotpStatus(userId) {
@@ -1872,7 +2094,7 @@
                 btn.className = 'secondary';
                 btn.style.marginTop = '10px';
                 btn.textContent = 'Register Passkey';
-                btn.addEventListener('click', () => registerWebAuthn(user.username, user.email, user.realm_id));
+                btn.addEventListener('click', () => registerWebAuthn(user.username, user.email, user.realm_id, () => fetchUserPasskeys(user.id)));
                 passkeyBtnContainer.replaceChildren(btn);
             }
             document.getElementById('edit-first-name').value = user.first_name || '';
@@ -1885,8 +2107,9 @@
             document.getElementById('edit-attributes').value = JSON.stringify(user.attributes || {}, null, 2);
             document.getElementById('edit-user-error').style.display = 'none';
 
-            // Fetch TOTP status and social accounts
+            // Fetch TOTP status, passkeys and social accounts
             fetchUserTotpStatus(user.id);
+            fetchUserPasskeys(user.id);
             fetchUserSocialAccounts(user.id);
         }
 
