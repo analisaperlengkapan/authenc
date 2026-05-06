@@ -31,7 +31,13 @@ pub fn Users() -> impl IntoView {
     let (email, set_email) = create_signal(String::new());
     let (first_name, set_first_name) = create_signal(String::new());
     let (last_name, set_last_name) = create_signal(String::new());
+    let (phone_number, set_phone_number) = create_signal(String::new());
+    let (org_id, set_org_id) = create_signal(String::new());
     let (enabled, set_enabled) = create_signal(true);
+    let (email_verified, set_email_verified) = create_signal(false);
+    let (phone_verified, set_phone_verified) = create_signal(false);
+    let (require_password_change, set_require_password_change) = create_signal(false);
+    let (attributes, set_attributes) = create_signal(String::new());
 
     // Social signals
     let (social_provider, set_social_provider) = create_signal("google".to_string());
@@ -97,18 +103,21 @@ pub fn Users() -> impl IntoView {
     let update_user_action = create_action(move |_: &()| async move {
         let Some(user) = selected_user.get() else { return };
         let realm_id = get_realm_id();
+        let attr_val = attributes.get();
+        let attr_json = if attr_val.is_empty() { None } else { serde_json::from_str(&attr_val).ok() };
+
         let req = UpdateUserRequest {
             username: Some(username.get()),
             email: Some(email.get()),
             first_name: Some(first_name.get()),
             last_name: Some(last_name.get()),
-            phone_number: None,
+            phone_number: Some(phone_number.get()),
             enabled: Some(enabled.get()),
-            email_verified: None,
-            phone_verified: None,
-            require_password_change: None,
-            organization_id: None,
-            attributes: None,
+            email_verified: Some(email_verified.get()),
+            phone_verified: Some(phone_verified.get()),
+            require_password_change: Some(require_password_change.get()),
+            organization_id: Some(Some(Uuid::parse_str(&org_id.get()).ok()).flatten()),
+            attributes: attr_json,
         };
 
         let url = format!("/api/v1/auth/realms/{}/users/{}", realm_id, user.id);
@@ -214,7 +223,13 @@ pub fn Users() -> impl IntoView {
                                                                         set_email.set(user_for_edit.email.clone());
                                                                         set_first_name.set(user_for_edit.first_name.clone().unwrap_or_default());
                                                                         set_last_name.set(user_for_edit.last_name.clone().unwrap_or_default());
+                                                                        set_phone_number.set(user_for_edit.phone_number.clone().unwrap_or_default());
+                                                                        set_org_id.set(user_for_edit.organization_id.map(|id| id.to_string()).unwrap_or_default());
                                                                         set_enabled.set(user_for_edit.enabled);
+                                                                        set_email_verified.set(user_for_edit.email_verified);
+                                                                        set_phone_verified.set(user_for_edit.phone_verified);
+                                                                        set_require_password_change.set(user_for_edit.require_password_change);
+                                                                        set_attributes.set(user_for_edit.attributes.as_ref().map(|a| serde_json::to_string_pretty(a).unwrap_or_default()).unwrap_or_default());
                                                                         set_selected_user.set(Some(user_for_edit.clone()));
                                                                         set_show_edit_modal.set(true);
                                                                     }
@@ -275,6 +290,41 @@ pub fn Users() -> impl IntoView {
                             <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Last Name"</label>
                             <input type="text" on:input=move |ev| set_last_name.set(event_target_value(&ev)) prop:value=last_name style="width: 100%; padding: 8px;" />
                         </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Phone Number"</label>
+                            <input type="text" on:input=move |ev| set_phone_number.set(event_target_value(&ev)) prop:value=phone_number style="width: 100%; padding: 8px;" />
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Organization ID"</label>
+                            <input type="text" on:input=move |ev| set_org_id.set(event_target_value(&ev)) prop:value=org_id style="width: 100%; padding: 8px;" />
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                        <label style="display: flex; align-items: center; gap: 10px; font-size: 0.9em;">
+                            <input type="checkbox" on:change=move |ev| set_enabled.set(event_target_checked(&ev)) prop:checked=enabled />
+                            "Enabled"
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; font-size: 0.9em;">
+                            <input type="checkbox" on:change=move |ev| set_email_verified.set(event_target_checked(&ev)) prop:checked=email_verified />
+                            "Email Verified"
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; font-size: 0.9em;">
+                            <input type="checkbox" on:change=move |ev| set_phone_verified.set(event_target_checked(&ev)) prop:checked=phone_verified />
+                            "Phone Verified"
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; font-size: 0.9em;">
+                            <input type="checkbox" on:change=move |ev| set_require_password_change.set(event_target_checked(&ev)) prop:checked=require_password_change />
+                            "Require Password Change"
+                        </label>
+                    </div>
+
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Attributes (JSON)"</label>
+                        <textarea on:input=move |ev| set_attributes.set(event_target_value(&ev)) prop:value=attributes style="width: 100%; padding: 8px; min-height: 100px; font-family: monospace;"></textarea>
                     </div>
 
                     <div style="margin-top: 10px; padding-top: 15px; border-top: 1px solid #eee;">

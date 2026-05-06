@@ -25,6 +25,11 @@ pub fn IdentityProviders() -> impl IntoView {
     let (ldap_bind_pw, set_ldap_bind_pw) = create_signal(String::new());
     let (ldap_username_attr, set_ldap_username_attr) = create_signal("uid".to_string());
     let (ldap_email_attr, set_ldap_email_attr) = create_signal("mail".to_string());
+    let (ldap_first_name_attr, set_ldap_first_name_attr) = create_signal("givenName".to_string());
+    let (ldap_last_name_attr, set_ldap_last_name_attr) = create_signal("sn".to_string());
+    let (ldap_group_attr, set_ldap_group_attr) = create_signal("memberOf".to_string());
+    let (ldap_search_filter, set_ldap_search_filter) = create_signal("(uid={0})".to_string());
+    let (ldap_import_enabled, set_ldap_import_enabled) = create_signal(true);
     let (ldap_role_mappings, set_ldap_role_mappings) = create_signal::<Vec<(String, String)>>(vec![]);
 
     // OIDC/SAML Config signals
@@ -68,6 +73,11 @@ pub fn IdentityProviders() -> impl IntoView {
             config.insert("base_dn".to_string(), ldap_base_dn.get());
             config.insert("username_attribute".to_string(), ldap_username_attr.get());
             config.insert("email_attribute".to_string(), ldap_email_attr.get());
+            config.insert("first_name_attribute".to_string(), ldap_first_name_attr.get());
+            config.insert("last_name_attribute".to_string(), ldap_last_name_attr.get());
+            config.insert("group_attribute".to_string(), ldap_group_attr.get());
+            config.insert("user_search_filter".to_string(), ldap_search_filter.get());
+            config.insert("import_enabled".to_string(), ldap_import_enabled.get().to_string());
             if !ldap_bind_dn.get().is_empty() {
                 config.insert("bind_dn".to_string(), ldap_bind_dn.get());
                 config.insert("bind_password".to_string(), ldap_bind_pw.get());
@@ -204,6 +214,11 @@ pub fn IdentityProviders() -> impl IntoView {
                                                                             set_ldap_base_dn.set(p.config["base_dn"].as_str().unwrap_or_default().to_string());
                                                                             set_ldap_username_attr.set(p.config["username_attribute"].as_str().unwrap_or("uid").to_string());
                                                                             set_ldap_email_attr.set(p.config["email_attribute"].as_str().unwrap_or("mail").to_string());
+                                                                            set_ldap_first_name_attr.set(p.config["first_name_attribute"].as_str().unwrap_or("givenName").to_string());
+                                                                            set_ldap_last_name_attr.set(p.config["last_name_attribute"].as_str().unwrap_or("sn").to_string());
+                                                                            set_ldap_group_attr.set(p.config["group_attribute"].as_str().unwrap_or("memberOf").to_string());
+                                                                            set_ldap_search_filter.set(p.config["user_search_filter"].as_str().unwrap_or("(uid={0})").to_string());
+                                                                            set_ldap_import_enabled.set(p.config["import_enabled"].as_str().unwrap_or("true") == "true");
 
                                                                             let mappings_json = p.config["role_mappings"].as_str().unwrap_or("{}");
                                                                             let mappings: HashMap<String, String> = serde_json::from_str(mappings_json).unwrap_or_default();
@@ -307,6 +322,32 @@ pub fn IdentityProviders() -> impl IntoView {
                                     <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Email Attribute"</label>
                                     <input type="text" on:input=move |ev| set_ldap_email_attr.set(event_target_value(&ev)) prop:value=ldap_email_attr style="width: 100%; padding: 6px;" />
                                 </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"First Name Attribute"</label>
+                                    <input type="text" on:input=move |ev| set_ldap_first_name_attr.set(event_target_value(&ev)) prop:value=ldap_first_name_attr style="width: 100%; padding: 6px;" />
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Last Name Attribute"</label>
+                                    <input type="text" on:input=move |ev| set_ldap_last_name_attr.set(event_target_value(&ev)) prop:value=ldap_last_name_attr style="width: 100%; padding: 6px;" />
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Group Attribute"</label>
+                                    <input type="text" on:input=move |ev| set_ldap_group_attr.set(event_target_value(&ev)) prop:value=ldap_group_attr style="width: 100%; padding: 6px;" />
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"User Search Filter"</label>
+                                    <input type="text" on:input=move |ev| set_ldap_search_filter.set(event_target_value(&ev)) prop:value=ldap_search_filter style="width: 100%; padding: 6px;" />
+                                </div>
+                            </div>
+                            <div>
+                                <label style="display: flex; align-items: center; gap: 10px; font-size: 0.85em;">
+                                    <input type="checkbox" on:change=move |ev| set_ldap_import_enabled.set(event_target_checked(&ev)) prop:checked=ldap_import_enabled />
+                                    "Enable User Import"
+                                </label>
                             </div>
 
                             <div style="margin-top: 10px;">

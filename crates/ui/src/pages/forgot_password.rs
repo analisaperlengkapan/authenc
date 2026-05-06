@@ -1,4 +1,5 @@
 use leptos::*;
+use leptos_router::*;
 use serde::{Deserialize, Serialize};
 use gloo_net::http::Request;
 
@@ -35,44 +36,41 @@ pub fn ForgotPassword() -> impl IntoView {
     };
 
     view! {
-        <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
-            <div class="sm:mx-auto sm:w-full sm:max-w-sm">
-                <h2 class="mt-10 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900">
-                    "Forgot password?"
-                </h2>
-            </div>
+        <div class="auth-page" style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f3f4f6;">
+            <div class="card" style="background: white; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px;">
+                <h1 style="text-align: center; margin-bottom: 0.5rem;">"Recovery"</h1>
+                <p style="text-align: center; color: #6b7280; margin-bottom: 2rem;">"Enter your email to reset password"</p>
 
-            <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
                 <form class="space-y-6" on:submit=on_submit>
-                    <div>
-                        <label for="email" class="block text-sm font-medium leading-6 text-gray-900">
+                    <div style="margin-bottom: 1.5rem;">
+                        <label for="email" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">
                             "Email address"
                         </label>
-                        <div class="mt-2">
-                            <input
-                                id="email"
-                                name="email"
-                                type="email"
-                                autocomplete="email"
-                                required
-                                class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-                                on:input=move |ev| set_email.set(event_target_value(&ev))
-                                prop:value=email
-                            />
-                        </div>
+                        <input
+                            id="email"
+                            name="email"
+                            type="email"
+                            autocomplete="email"
+                            required
+                            style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.25rem;"
+                            on:input=move |ev| set_email.set(event_target_value(&ev))
+                            prop:value=email
+                        />
                     </div>
 
-                    <div>
-                        <button
-                            type="submit"
-                            class="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-                        >
-                            "Send Reset Link"
-                        </button>
-                    </div>
+                    <button
+                        type="submit"
+                        style="width: 100%; background: #2563eb; color: white; padding: 0.75rem; border: none; border-radius: 0.25rem; cursor: pointer; font-weight: 600; margin-bottom: 1rem;"
+                    >
+                        "Send Reset Link"
+                    </button>
+
+                    <A href="/login" class="bg-gray-500 text-white p-2 rounded block text-center">
+                        "Back to Login"
+                    </A>
                 </form>
 
-                <p class="mt-10 text-center text-sm text-gray-500">
+                <p style="margin-top: 1.5rem; text-align: center; color: #6b7280; font-size: 0.875rem;">
                     {move || status_msg.get()}
                 </p>
             </div>

@@ -27,6 +27,7 @@ pub fn Organizations() -> impl IntoView {
     let (enforce_mfa, set_enforce_mfa) = create_signal(false);
     let (pwd_policy, set_pwd_policy) = create_signal(String::new());
     let (timeout, set_timeout) = create_signal(3600u64);
+    let (max_users, set_max_users) = create_signal(String::new());
 
     let members_resource = create_resource(
         move || selected_org.get(),
@@ -145,7 +146,7 @@ pub fn Organizations() -> impl IntoView {
             enable_two_factor: enforce_mfa.get(),
             password_policy: pwd_policy.get(),
             session_timeout: timeout.get(),
-            max_users: None,
+            max_users: max_users.get().parse().ok(),
             features: vec![],
         };
 
@@ -254,6 +255,7 @@ pub fn Organizations() -> impl IntoView {
                                                                                     set_enforce_mfa.set(s.enable_two_factor);
                                                                                     set_pwd_policy.set(s.password_policy);
                                                                                     set_timeout.set(s.session_timeout);
+                                                    set_max_users.set(s.max_users.map(|m| m.to_string()).unwrap_or_default());
                                                                                     set_show_settings_modal.set(true);
                                                                                 }
                                                                             }
@@ -344,6 +346,10 @@ pub fn Organizations() -> impl IntoView {
                     <div>
                         <label style="display: block; margin-bottom: 5px;">"Session Timeout (sec)"</label>
                         <input type="number" on:input=move |ev| set_timeout.set(event_target_value(&ev).parse().unwrap_or(3600)) prop:value=timeout style="width: 100%; padding: 8px;" />
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px;">"Max Users"</label>
+                        <input type="number" on:input=move |ev| set_max_users.set(event_target_value(&ev)) prop:value=max_users style="width: 100%; padding: 8px;" />
                     </div>
                     <button on:click=move |_| save_settings_action.dispatch(()) style="padding: 10px; background: #007bff; color: white; border: none; cursor: pointer;">"Save Settings"</button>
                 </div>

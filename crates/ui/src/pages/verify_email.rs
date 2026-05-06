@@ -45,23 +45,25 @@ pub fn VerifyEmail() -> impl IntoView {
     });
 
     view! {
-        <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
-            <div class="sm:mx-auto sm:w-full sm:max-w-sm">
-                <h2 class="mt-10 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900">
-                    "Verify Email"
-                </h2>
-            </div>
+        <div class="auth-page" style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f3f4f6;">
+            <div class="card" style="background: white; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center;">
+                <h1 style="margin-bottom: 0.5rem;">"Verify Email"</h1>
+                <p style="color: #6b7280; margin-bottom: 2rem;">"Verifying your email address..."</p>
 
-            <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-sm text-center">
-                {move || loading.get().then(|| view! { <p>"Verifying your email..."</p> })}
+                {move || loading.get().then(|| view! { <div class="spinner" style="margin: 1rem auto; border: 4px solid #f3f3f3; border-top: 4px solid #2563eb; border-radius: 50%; width: 30px; height: 30px; animation: spin 2s linear infinite;"></div> })}
 
-                <p class="text-green-600 font-semibold">{move || status_msg.get()}</p>
-                <p class="text-red-600 font-semibold">{move || error_msg.get()}</p>
+                <p style="color: #10b981; font-weight: 600;">{move || status_msg.get()}</p>
+                <p style="color: #ef4444; font-weight: 600;">{move || error_msg.get()}</p>
 
-                <div class="mt-6">
-                    <A href="/login" class="text-indigo-600 hover:text-indigo-500 font-semibold">"Back to Login"</A>
+                <div style="margin-top: 2rem;">
+                    <A href="/login" class="bg-blue-600 text-white p-2 rounded block text-center">
+                        "Back to Login"
+                    </A>
                 </div>
             </div>
+            <style>
+                "@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }"
+            </style>
         </div>
     }
 }
