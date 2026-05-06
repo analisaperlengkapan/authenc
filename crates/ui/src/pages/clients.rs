@@ -1,5 +1,5 @@
 use leptos::*;
-use crate::models::{ClientResponse, CreateClientRequest};
+use crate::models::{ClientResponse, CreateClientRequest, UpdateClientRequest};
 use crate::api_client::authenticated_request;
 use crate::components::modal::Modal;
 use crate::utils::get_realm_id;
@@ -8,12 +8,15 @@ use crate::utils::get_realm_id;
 pub fn Clients() -> impl IntoView {
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
     let (show_create_modal, set_show_create_modal) = create_signal(false);
+    let (show_edit_modal, set_show_edit_modal) = create_signal(false);
+    let (selected_client, set_selected_client) = create_signal::<Option<ClientResponse>>(None);
 
     // Form signals
     let (client_id, set_client_id) = create_signal(String::new());
     let (client_name, set_client_name) = create_signal(String::new());
     let (client_secret, set_client_secret) = create_signal(String::new());
     let (redirect_uris, set_redirect_uris) = create_signal(String::new());
+    let (enabled, set_enabled) = create_signal(true);
 
     let clients_resource = create_resource(
         || (),
@@ -53,7 +56,7 @@ pub fn Clients() -> impl IntoView {
             name: client_name.get(),
             client_secret: client_secret.get(),
             redirect_uris: uris,
-            enabled: true,
+            enabled: enabled.get(),
         };
 
         let url = format!("/api/v1/auth/realms/{}/clients", realm_id);
@@ -61,16 +64,38 @@ pub fn Clients() -> impl IntoView {
             Ok(response) => {
                 if response.ok() {
                     set_show_create_modal.set(false);
-                    set_client_id.set(String::new());
-                    set_client_name.set(String::new());
-                    set_client_secret.set(String::new());
-                    set_redirect_uris.set(String::new());
                     clients_resource.refetch();
                 } else {
                     set_error_message.set(Some(format!("Failed to create client: {}", response.status())));
                 }
             }
             Err(e) => set_error_message.set(Some(e)),
+        }
+    });
+
+    let update_client_action = create_action(move |_: &()| async move {
+        let Some(client) = selected_client.get() else { return };
+        let realm_id = get_realm_id();
+        let uris = redirect_uris.get()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let req = UpdateClientRequest {
+            name: Some(client_name.get()),
+            enabled: Some(enabled.get()),
+            redirect_uris: Some(uris),
+            client_secret: Some(client_secret.get()).filter(|s| !s.is_empty()),
+        };
+
+        let url = format!("/api/v1/auth/realms/{}/clients/{}", realm_id, client.client_id);
+        match authenticated_request("PUT", &url, Some(&req)).await {
+            Ok(res) if res.ok() => {
+                set_show_edit_modal.set(false);
+                clients_resource.refetch();
+            }
+            _ => set_error_message.set(Some("Failed to update client".to_string())),
         }
     });
 
@@ -97,7 +122,14 @@ pub fn Clients() -> impl IntoView {
             <div class="header-actions" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="margin: 0;">"Clients"</h2>
                 <button
-                    on:click=move |_| set_show_create_modal.set(true)
+                    on:click=move |_| {
+                        set_client_id.set(String::new());
+                        set_client_name.set(String::new());
+                        set_client_secret.set(String::new());
+                        set_redirect_uris.set(String::new());
+                        set_enabled.set(true);
+                        set_show_create_modal.set(true);
+                    }
                     style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">
                     <i class="fas fa-plus" style="margin-right: 5px;"></i> "Create Client"
                 </button>
@@ -134,6 +166,7 @@ pub fn Clients() -> impl IntoView {
                                             </thead>
                                             <tbody>
                                                 {clients.into_iter().map(|client| {
+                                                    let c1 = client.clone();
                                                     let id = client.client_id.clone();
                                                     let id_for_delete = id.clone();
                                                     view! {
@@ -150,6 +183,18 @@ pub fn Clients() -> impl IntoView {
                                                                 </span>
                                                             </td>
                                                             <td style="padding: 15px;">
+                                                                <button
+                                                                    on:click=move |_| {
+                                                                        set_client_name.set(c1.name.clone());
+                                                                        set_redirect_uris.set(c1.redirect_uris.join(", "));
+                                                                        set_enabled.set(c1.enabled);
+                                                                        set_client_secret.set(String::new());
+                                                                        set_selected_client.set(Some(c1.clone()));
+                                                                        set_show_edit_modal.set(true);
+                                                                    }
+                                                                    style="margin-right: 8px; padding: 6px 12px; border: 1px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; color: #495057;">
+                                                                    "Edit"
+                                                                </button>
                                                                 <button
                                                                     on:click=move |_| {
                                                                         if gloo_utils::window().confirm_with_message(&format!("Are you sure you want to delete client '{}'?", id_for_delete)).unwrap_or(false) {
@@ -179,61 +224,30 @@ pub fn Clients() -> impl IntoView {
                 </Suspense>
             </div>
 
-            <Modal
-                is_open=show_create_modal
-                on_close=move |_| set_show_create_modal.set(false)
-                title="Create Client"
-            >
+            <Modal is_open=show_create_modal on_close=move |_| set_show_create_modal.set(false) title="Create Client">
                 <div style="display: flex; flex-direction: column; gap: 15px;">
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Client ID"</label>
-                        <input
-                            type="text"
-                            style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;"
-                            on:input=move |ev| set_client_id.set(event_target_value(&ev))
-                            prop:value=client_id
-                        />
-                    </div>
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Name"</label>
-                        <input
-                            type="text"
-                            style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;"
-                            on:input=move |ev| set_client_name.set(event_target_value(&ev))
-                            prop:value=client_name
-                        />
-                    </div>
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Client Secret"</label>
-                        <input
-                            type="password"
-                            style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;"
-                            on:input=move |ev| set_client_secret.set(event_target_value(&ev))
-                            prop:value=client_secret
-                        />
-                    </div>
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Redirect URIs (comma separated)"</label>
-                        <input
-                            type="text"
-                            placeholder="https://app.com/callback, http://localhost:8080"
-                            style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;"
-                            on:input=move |ev| set_redirect_uris.set(event_target_value(&ev))
-                            prop:value=redirect_uris
-                        />
-                    </div>
-                    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
-                        <button
-                            on:click=move |_| set_show_create_modal.set(false)
-                            style="padding: 10px 20px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer;">
-                            "Cancel"
-                        </button>
-                        <button
-                            on:click=move |_| create_client_action.dispatch(())
-                            style="padding: 10px 20px; border: none; background: #28a745; color: white; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                            "Create"
-                        </button>
-                    </div>
+                    <input type="text" placeholder="Client ID" on:input=move |ev| set_client_id.set(event_target_value(&ev)) prop:value=client_id style="padding: 8px;" />
+                    <input type="text" placeholder="Name" on:input=move |ev| set_client_name.set(event_target_value(&ev)) prop:value=client_name style="padding: 8px;" />
+                    <input type="password" placeholder="Client Secret" on:input=move |ev| set_client_secret.set(event_target_value(&ev)) prop:value=client_secret style="padding: 8px;" />
+                    <input type="text" placeholder="Redirect URIs (comma separated)" on:input=move |ev| set_redirect_uris.set(event_target_value(&ev)) prop:value=redirect_uris style="padding: 8px;" />
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" on:change=move |ev| set_enabled.set(event_target_checked(&ev)) prop:checked=enabled />
+                        "Enabled"
+                    </label>
+                    <button on:click=move |_| create_client_action.dispatch(()) style="padding: 10px; background: #28a745; color: white; border: none; cursor: pointer;">"Create"</button>
+                </div>
+            </Modal>
+
+            <Modal is_open=show_edit_modal on_close=move |_| set_show_edit_modal.set(false) title="Edit Client">
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <input type="text" placeholder="Name" on:input=move |ev| set_client_name.set(event_target_value(&ev)) prop:value=client_name style="padding: 8px;" />
+                    <input type="password" placeholder="Client Secret (optional)" on:input=move |ev| set_client_secret.set(event_target_value(&ev)) prop:value=client_secret style="padding: 8px;" />
+                    <input type="text" placeholder="Redirect URIs (comma separated)" on:input=move |ev| set_redirect_uris.set(event_target_value(&ev)) prop:value=redirect_uris style="padding: 8px;" />
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" on:change=move |ev| set_enabled.set(event_target_checked(&ev)) prop:checked=enabled />
+                        "Enabled"
+                    </label>
+                    <button on:click=move |_| update_client_action.dispatch(()) style="padding: 10px; background: #007bff; color: white; border: none; cursor: pointer;">"Save Changes"</button>
                 </div>
             </Modal>
         </div>

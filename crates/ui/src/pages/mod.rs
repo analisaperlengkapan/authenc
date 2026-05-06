@@ -1,7 +1,9 @@
 pub mod home;
+pub mod login;
 pub mod users;
 pub mod forgot_password;
 pub mod reset_password;
+pub mod verify_email;
 pub mod realms;
 pub mod clients;
 pub mod roles;

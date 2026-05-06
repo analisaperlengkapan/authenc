@@ -1,6 +1,7 @@
 use leptos::*;
 use crate::models::{UserResponse, UpdateUserRequest, WebauthnCredential};
 use crate::api_client::authenticated_request;
+use uuid::Uuid;
 use crate::components::modal::Modal;
 use crate::utils::get_realm_id;
 use serde::{Deserialize, Serialize};
@@ -11,11 +12,19 @@ pub struct SocialAccount {
     pub provider_user_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkSocialRequest {
+    pub provider: String,
+    pub provider_user_id: String,
+    pub email: Option<String>,
+}
+
 #[component]
 pub fn Users() -> impl IntoView {
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
     let (selected_user, set_selected_user) = create_signal::<Option<UserResponse>>(None);
     let (show_edit_modal, set_show_edit_modal) = create_signal(false);
+    let (show_link_social_modal, set_show_link_social_modal) = create_signal(false);
 
     // Form signals
     let (username, set_username) = create_signal(String::new());
@@ -23,6 +32,10 @@ pub fn Users() -> impl IntoView {
     let (first_name, set_first_name) = create_signal(String::new());
     let (last_name, set_last_name) = create_signal(String::new());
     let (enabled, set_enabled) = create_signal(true);
+
+    // Social signals
+    let (social_provider, set_social_provider) = create_signal("google".to_string());
+    let (social_user_id, set_social_user_id) = create_signal(String::new());
 
     let users_resource = create_resource(
         || (),
@@ -108,8 +121,27 @@ pub fn Users() -> impl IntoView {
         }
     });
 
-    let delete_user_action = create_action(move |id: &String| {
-        let id = id.clone();
+    let link_social_action = create_action(move |_: &()| async move {
+        let Some(user) = selected_user.get() else { return };
+        let realm_id = get_realm_id();
+        let req = LinkSocialRequest {
+            provider: social_provider.get(),
+            provider_user_id: social_user_id.get(),
+            email: None,
+        };
+
+        let url = format!("/api/v1/auth/realms/{}/users/{}/social", realm_id, user.id);
+        match authenticated_request("POST", &url, Some(&req)).await {
+            Ok(res) if res.ok() => {
+                set_show_link_social_modal.set(false);
+                social_accounts_resource.refetch();
+            }
+            _ => set_error_message.set(Some("Failed to link account".to_string())),
+        }
+    });
+
+    let delete_user_action = create_action(move |id: &Uuid| {
+        let id = *id;
         async move {
             let realm_id = get_realm_id();
             let url = format!("/api/v1/auth/realms/{}/users/{}", realm_id, id);
@@ -192,7 +224,7 @@ pub fn Users() -> impl IntoView {
                                                                 <button
                                                                     on:click=move |_| {
                                                                         if gloo_utils::window().confirm_with_message("Delete user?").unwrap_or(false) {
-                                                                            delete_user_action.dispatch(id.clone());
+                                                                            delete_user_action.dispatch(id);
                                                                         }
                                                                     }
                                                                     style="padding: 6px 12px; border: 1px solid #dc3545; background: white; border-radius: 4px; cursor: pointer; color: #dc3545;">
@@ -248,27 +280,65 @@ pub fn Users() -> impl IntoView {
                     <div style="margin-top: 10px; padding-top: 15px; border-top: 1px solid #eee;">
                         <h4 style="margin: 0 0 10px 0;">"Security & Credentials"</h4>
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 4px;">
-                            <p style="margin: 0 0 10px 0; font-weight: 600; font-size: 0.9em;">"MFA Status: "
-                                <span style={move || if selected_user.get().map(|u| u.totp_enabled).unwrap_or(false) { "color: green" } else { "color: gray" }}>
-                                    {move || if selected_user.get().map(|u| u.totp_enabled).unwrap_or(false) { "Enabled" } else { "Not Configured" }}
-                                </span>
-                            </p>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <p style="margin: 0; font-weight: 600; font-size: 0.9em;">"MFA Status: "
+                                    <span style={move || if selected_user.get().map(|u| u.totp_enabled).unwrap_or(false) { "color: green" } else { "color: gray" }}>
+                                        {move || if selected_user.get().map(|u| u.totp_enabled).unwrap_or(false) { "Enabled" } else { "Not Configured" }}
+                                    </span>
+                                </p>
+                                {move || selected_user.get().map(|u| u.totp_enabled).unwrap_or(false).then(|| {
+                                    let uid = selected_user.get().map(|u| u.id).unwrap_or_default();
+                                    view! {
+                                        <button
+                                            on:click=move |_| {
+                                                if gloo_utils::window().confirm_with_message("Disable TOTP for this user?").unwrap_or(false) {
+                                                    let realm_id = get_realm_id();
+                                                    let url = format!("/api/v1/auth/realms/{}/users/{}/totp", realm_id, uid);
+                                                    spawn_local(async move {
+                                                        let _ = authenticated_request("DELETE", &url, None::<&()>).await;
+                                                        users_resource.refetch();
+                                                    });
+                                                }
+                                            }
+                                            style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75em; cursor: pointer;">
+                                            "Disable TOTP"
+                                        </button>
+                                    }
+                                })}
+                            </div>
 
                             <div style="margin-top: 15px;">
                                 <label style="display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 5px;">"Registered Passkeys"</label>
                                 <Suspense fallback=move || view! { <p>"Loading..."</p> }>
                                     {move || passkeys_resource.get().map(|res| match res {
                                         Ok(pks) if pks.is_empty() => view! { <p style="color: #6c757d; font-size: 0.85em; margin: 0;">"No passkeys registered."</p> }.into_view(),
-                                        Ok(pks) => view! {
+                                        Ok(pks) => {
+                                            let uid = selected_user.get().map(|u| u.id).unwrap_or_default();
+                                            view! {
                                             <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.85em;">
-                                                {pks.into_iter().map(|pk| view! {
+                                                {pks.into_iter().map(|pk| {
+                                                    let kid = pk.id.clone();
+                                                    let uid_clone = uid.clone();
+                                                    view! {
                                                     <li style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #eee;">
                                                         <span>{pk.name.unwrap_or_else(|| "Unnamed Key".to_string())}</span>
-                                                        <button style="color: red; background: none; border: none; cursor: pointer;"><i class="fas fa-trash"></i></button>
+                                                        <button
+                                                            on:click=move |_| {
+                                                                if gloo_utils::window().confirm_with_message("Delete this passkey?").unwrap_or(false) {
+                                                                    let rid = get_realm_id();
+                                                                    let url = format!("/api/v1/auth/realms/{}/users/{}/passkeys/{}", rid, uid_clone, kid);
+                                                                    spawn_local(async move {
+                                                                        let _ = authenticated_request("DELETE", &url, None::<&()>).await;
+                                                                        passkeys_resource.refetch();
+                                                                    });
+                                                                }
+                                                            }
+                                                            style="color: red; background: none; border: none; cursor: pointer;"><i class="fas fa-trash"></i></button>
                                                     </li>
-                                                }).collect_view()}
+                                                }}).collect_view()}
                                             </ul>
-                                        }.into_view(),
+                                        }.into_view()
+                                        },
                                         _ => view! { <p>"Error loading passkeys"</p> }.into_view()
                                     })}
                                 </Suspense>
@@ -277,21 +347,45 @@ pub fn Users() -> impl IntoView {
                     </div>
 
                     <div style="margin-top: 10px; padding-top: 15px; border-top: 1px solid #eee;">
-                        <h4 style="margin: 0 0 10px 0;">"Linked Social Accounts"</h4>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="margin: 0;">"Linked Social Accounts"</h4>
+                            <button
+                                on:click=move |_| set_show_link_social_modal.set(true)
+                                style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75em; cursor: pointer;">
+                                "Link Account"
+                            </button>
+                        </div>
                         <Suspense fallback=move || view! { <p>"Loading..."</p> }>
                             {move || social_accounts_resource.get().map(|res| match res {
                                 Ok(accs) if accs.is_empty() => view! { <p style="color: #6c757d; font-size: 0.85em; margin: 0;">"No linked accounts."</p> }.into_view(),
-                                Ok(accs) => view! {
+                                Ok(accs) => {
+                                    let uid = selected_user.get().map(|u| u.id).unwrap_or_default();
+                                    view! {
                                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                                        {accs.into_iter().map(|acc| view! {
+                                        {accs.into_iter().map(|acc| {
+                                            let prov = acc.provider.clone();
+                                            let uid_clone = uid.clone();
+                                            view! {
                                             <span style="background: #e9ecef; padding: 4px 10px; border-radius: 4px; font-size: 0.85em; display: flex; align-items: center; gap: 5px;">
-                                                <i class={format!("fab fa-{}", acc.provider)}></i>
-                                                {acc.provider}
-                                                <button style="border: none; background: none; cursor: pointer; color: #6c757d;">"×"</button>
+                                                <i class={format!("fab fa-{}", prov)}></i>
+                                                {prov.clone()}
+                                                <button
+                                                    on:click=move |_| {
+                                                        if gloo_utils::window().confirm_with_message(&format!("Unlink {} account?", prov)).unwrap_or(false) {
+                                                            let rid = get_realm_id();
+                                                            let url = format!("/api/v1/auth/realms/{}/users/{}/social/{}", rid, uid_clone, prov);
+                                                            spawn_local(async move {
+                                                                let _ = authenticated_request("DELETE", &url, None::<&()>).await;
+                                                                social_accounts_resource.refetch();
+                                                            });
+                                                        }
+                                                    }
+                                                    style="border: none; background: none; cursor: pointer; color: #6c757d;">"×"</button>
                                             </span>
-                                        }).collect_view()}
+                                        }}).collect_view()}
                                     </div>
-                                }.into_view(),
+                                }.into_view()
+                                },
                                 _ => view! { <p>"Error loading social accounts"</p> }.into_view()
                             })}
                         </Suspense>
@@ -301,6 +395,18 @@ pub fn Users() -> impl IntoView {
                         <button on:click=move |_| set_show_edit_modal.set(false) style="padding: 10px 20px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer;">"Cancel"</button>
                         <button on:click=move |_| update_user_action.dispatch(()) style="padding: 10px 20px; border: none; background: #007bff; color: white; border-radius: 4px; cursor: pointer; font-weight: bold;">"Save Changes"</button>
                     </div>
+                </div>
+            </Modal>
+
+            <Modal is_open=show_link_social_modal on_close=move |_| set_show_link_social_modal.set(false) title="Link Social Account">
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <select on:change=move |ev| set_social_provider.set(event_target_value(&ev)) style="padding: 8px;">
+                        <option value="google">"Google"</option>
+                        <option value="github">"GitHub"</option>
+                        <option value="facebook">"Facebook"</option>
+                    </select>
+                    <input type="text" placeholder="Provider User ID" on:input=move |ev| set_social_user_id.set(event_target_value(&ev)) prop:value=social_user_id style="padding: 8px;" />
+                    <button on:click=move |_| link_social_action.dispatch(()) style="padding: 10px; background: #28a745; color: white; border: none; cursor: pointer;">"Link Account"</button>
                 </div>
             </Modal>
         </div>
