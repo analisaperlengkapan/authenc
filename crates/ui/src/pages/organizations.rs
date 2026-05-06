@@ -1,5 +1,5 @@
 use leptos::*;
-use crate::models::{Organization, ListOrganizationsResponse, CreateOrganizationRequest, OrganizationResponse, OrganizationMember, OrganizationMembersResponse};
+use crate::models::{ListOrganizationsResponse, CreateOrganizationRequest, OrganizationMembersResponse};
 use crate::api_client::authenticated_request;
 use crate::components::modal::Modal;
 

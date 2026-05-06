@@ -11,6 +11,8 @@ use crate::pages::{
     audit::Audit,
     identity_providers::IdentityProviders,
     organizations::Organizations,
+    security::SecurityDashboard,
+    authorization::Authorization,
     forgot_password::ForgotPassword,
     reset_password::ResetPassword,
     account::{profile::Profile, security::Security}
@@ -30,6 +32,8 @@ pub fn App() -> impl IntoView {
                     <Route path="roles" view=Roles/>
                     <Route path="identity-providers" view=IdentityProviders/>
                     <Route path="organizations" view=Organizations/>
+                    <Route path="security" view=SecurityDashboard/>
+                    <Route path="authorization" view=Authorization/>
                     <Route path="audit" view=Audit/>
                 </Route>
 

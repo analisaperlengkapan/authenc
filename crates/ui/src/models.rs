@@ -83,6 +83,87 @@ pub struct CreateGroupRequest {
     pub realm_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RealmResponse {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub display_name: Option<String>,
+    pub description: Option<String>,
+    pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Role {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub realm_id: Option<uuid::Uuid>,
+    pub composite: bool,
+    pub client_role: bool,
+    pub client_id: Option<String>,
+    pub attributes: Option<serde_json::Value>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateRoleRequest {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ClientResponse {
+    pub client_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub enabled: bool,
+    pub redirect_uris: Vec<String>,
+    pub web_origins: Vec<String>,
+    pub client_authenticator_type: String,
+    pub secret: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateClientRequest {
+    pub client_id: String,
+    pub name: String,
+    pub client_secret: String,
+    pub redirect_uris: Vec<String>,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateClientRequest {
+    pub name: Option<String>,
+    pub enabled: Option<bool>,
+    pub redirect_uris: Option<Vec<String>>,
+    pub client_secret: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct IdentityProviderResponse {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub display_name: String,
+    pub provider_type: String,
+    pub enabled: bool,
+    pub config: serde_json::Value,
+    pub realm_id: uuid::Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateIdentityProviderRequest {
+    pub name: String,
+    pub display_name: String,
+    pub provider_type: String,
+    pub enabled: bool,
+    pub config: serde_json::Value,
+    pub realm_id: uuid::Uuid,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateGroupRequest {
     pub name: Option<String>,

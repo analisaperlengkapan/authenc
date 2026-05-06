@@ -10,3 +10,5 @@ pub mod groups;
 pub mod audit;
 pub mod identity_providers;
 pub mod organizations;
+pub mod security;
+pub mod authorization;

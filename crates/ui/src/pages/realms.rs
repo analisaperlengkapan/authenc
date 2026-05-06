@@ -1,22 +1,11 @@
 use leptos::*;
-use serde::{Deserialize, Serialize};
 use crate::api_client::authenticated_request;
 use uuid::Uuid;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct RealmResponse {
-    pub id: Uuid,
-    pub name: String,
-    pub display_name: Option<String>,
-    pub description: Option<String>,
-    pub enabled: bool,
-    pub created_at: String,
-    pub updated_at: String,
-}
+use crate::models::RealmResponse;
 
 fn switch_realm(realm_id: Uuid) {
     if let Ok(Some(storage)) = gloo_utils::window().local_storage() {
-        let _ = storage.set_item("authenc_selected_realm_id", &realm_id.to_string());
+        let _ = storage.set_item("authenc_realm_id", &realm_id.to_string());
         // Reload page to refresh all components with the new realm context
         let _ = gloo_utils::window().location().reload();
     }
