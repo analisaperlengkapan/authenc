@@ -123,9 +123,6 @@ async fn test_account_lockout_logic() {
         admin_manager
     ));
 
-    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
-
-
     let state = AppState {
         config: Arc::new(config),
         database,

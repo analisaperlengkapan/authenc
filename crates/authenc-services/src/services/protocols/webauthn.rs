@@ -329,21 +329,21 @@ impl WebAuthnService {
     pub async fn delete_credential(
         &self,
         _realm_id: &Uuid,
-        _user_id: &Uuid,
+        user_id: &Uuid,
         credential_id: &Uuid,
     ) -> Result<()> {
         use authenc_database::database::operations::webauthn as webauthn_db;
-        webauthn_db::delete_credential(&self.db, credential_id).await
+        webauthn_db::delete_credential(&self.db, credential_id, user_id).await
     }
 
     pub async fn update_credential_name(
         &self,
         _realm_id: &Uuid,
-        _user_id: &Uuid,
+        user_id: &Uuid,
         credential_id: &Uuid,
         name: &str,
     ) -> Result<()> {
         use authenc_database::database::operations::webauthn as webauthn_db;
-        webauthn_db::update_credential_name(&self.db, credential_id, name).await
+        webauthn_db::update_credential_name(&self.db, credential_id, user_id, name).await
     }
 }

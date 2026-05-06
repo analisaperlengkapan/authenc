@@ -97,9 +97,6 @@ async fn test_auth_flow_end_to_end() {
         authenc::services::sso::session::DefaultSsoSessionManager::new(),
     );
 
-    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
-
-
     let state = AppState {
         config: Arc::new(config),
         database,

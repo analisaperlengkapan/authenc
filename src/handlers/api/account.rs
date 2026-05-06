@@ -92,33 +92,23 @@ pub struct ConsentResponse {
 #[derive(Clone)]
 pub struct AccountState {
     /// Store for user data
-    /// Store for user data
     pub user_store: Arc<dyn UserStoreTrait>,
-    /// Store for session data
     /// Store for session data
     pub session_store: Arc<dyn SessionStoreTrait>,
     /// Store for OIDC clients
-    /// Store for OIDC clients
     pub oidc_client_store: Arc<OidcClientStore>,
-    /// Store for TOTP secrets
     /// Store for TOTP secrets
     pub totp_store: Arc<TotpStore>,
     /// Store for audit logs
-    /// Store for audit logs
     pub audit_log_store: Arc<PgAuditLogStore>,
-    /// Store for social account links
     /// Store for social account links
     pub social_account_store: Arc<SocialAccountStore>,
     /// Store for user consents
-    /// Store for user consents
     pub consent_store: Arc<dyn ConsentStoreTrait>,
-    /// Service for OAuth2 operations
     /// Service for OAuth2 operations
     pub oauth2_service: Arc<OAuth2Service>,
     /// Service for WebAuthn operations
-    /// Service for WebAuthn operations
     pub webauthn_service: Arc<WebAuthnService>,
-    /// Store for realms
     /// Store for realms
     pub realm_store: Arc<RealmStore>,
 }

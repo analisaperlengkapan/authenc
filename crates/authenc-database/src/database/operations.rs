@@ -7048,17 +7048,17 @@ pub mod webauthn {
         Ok(())
     }
 
-    /// Delete a specific WebAuthn credential by internal ID
-    pub async fn delete_credential(db: &Database, id: &Uuid) -> Result<()> {
-        let query = "DELETE FROM webauthn_credentials WHERE id = $1";
-        db.execute(query, &[id]).await?;
+    /// Delete a specific WebAuthn credential by internal ID, scoped to the owning user
+    pub async fn delete_credential(db: &Database, id: &Uuid, user_id: &Uuid) -> Result<()> {
+        let query = "DELETE FROM webauthn_credentials WHERE id = $1 AND user_id = $2";
+        db.execute(query, &[id, user_id]).await?;
         Ok(())
     }
 
-    /// Update the display name of a WebAuthn credential
-    pub async fn update_credential_name(db: &Database, id: &Uuid, name: &str) -> Result<()> {
-        let query = "UPDATE webauthn_credentials SET name = $2 WHERE id = $1";
-        db.execute(query, &[id, &name]).await?;
+    /// Update the display name of a WebAuthn credential, scoped to the owning user
+    pub async fn update_credential_name(db: &Database, id: &Uuid, user_id: &Uuid, name: &str) -> Result<()> {
+        let query = "UPDATE webauthn_credentials SET name = $3 WHERE id = $1 AND user_id = $2";
+        db.execute(query, &[id, user_id, &name]).await?;
         Ok(())
     }
 }
