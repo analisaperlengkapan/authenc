@@ -791,6 +791,7 @@ mod tests {
             last_name: Some("Doe".to_string()),
             external_attributes: Some(json!({"verified_email": true})),
             realm_id,
+            roles: vec![],
         };
 
         assert_eq!(request.identity_provider_id, provider_id);

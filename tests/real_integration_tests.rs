@@ -83,6 +83,7 @@ async fn test_auth_flow_end_to_end() {
     let social_login_manager = Arc::new(authenc::services::social::SocialLoginManager::new());
     let authorization_manager = Arc::new(authenc::services::authorization::AuthorizationManager::new(database.clone()));
     let admin_service = Arc::new(authenc::services::admin::AdminManager::new(database.clone()));
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
     let jit_provisioning_service: Arc<dyn authenc::services::federation::jit_provisioning::JITProvisioningService> = Arc::new(
         authenc::services::federation::jit_provisioning::DefaultJITProvisioningService::new(
             database.clone(),
@@ -135,6 +136,7 @@ async fn test_auth_flow_end_to_end() {
         fips_provider,
         social_login_manager,
         authorization_manager,
+        zero_trust_manager,
         jit_provisioning_service,
         client_validator,
         password_reset_service: Arc::new(authenc::services::password_reset::PasswordResetService::new(
@@ -144,6 +146,8 @@ async fn test_auth_flow_end_to_end() {
         email_verification_service: Arc::new(authenc::services::email_verification::EmailVerificationService::new(
             mock_user_store.clone(),
         )),
+
+
     };
 
     // Create Realm (using mock service)

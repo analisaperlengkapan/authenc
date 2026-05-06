@@ -228,6 +228,7 @@ async fn test_ldap_jit_provisioning_success() {
     let anomaly_detector = Arc::new(authenc::services::security::anomaly_detector::AnomalyDetector::new());
     let federation_registry = Arc::new(authenc::services::federation_provider::FederationRegistry::new());
     let audit_log_store = Arc::new(authenc::services::stores::pg_audit_log_store::PgAuditLogStore::with_pool(database.get_pool()));
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
     let state = AppState {
         config: Arc::new(config),
@@ -268,6 +269,7 @@ async fn test_ldap_jit_provisioning_success() {
         social_login_manager,
         authorization_manager,
         sso_session_manager,
+        zero_trust_manager,
         jit_provisioning_service: mock_jit_service,
         client_validator: Arc::new(MockClientValidator),
         password_reset_service: Arc::new(authenc::services::password_reset::PasswordResetService::new(

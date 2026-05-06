@@ -6952,7 +6952,7 @@ pub mod webauthn {
                 id, user_id, credential_id, public_key, public_key_algorithm,
                 signature_counter, attestation_object, authenticator_data, user_handle,
                 credential_type, transports, aaguid, attestation_format,
-                device_id, created_at, last_used_at, enabled
+                device_id, created_at, last_used_at, enabled, name
             FROM webauthn_credentials
             WHERE credential_id = $1
         "#;
@@ -6977,6 +6977,7 @@ pub mod webauthn {
             created_at: r.get("created_at"),
             last_used_at: r.get("last_used_at"),
             enabled: r.get("enabled"),
+            name: r.get("name"),
         }))
     }
 
@@ -6990,7 +6991,7 @@ pub mod webauthn {
                 id, user_id, credential_id, public_key, public_key_algorithm,
                 signature_counter, attestation_object, authenticator_data, user_handle,
                 credential_type, transports, aaguid, attestation_format,
-                device_id, created_at, last_used_at, enabled
+                device_id, created_at, last_used_at, enabled, name
             FROM webauthn_credentials
             WHERE user_id = $1
             ORDER BY created_at DESC
@@ -7017,6 +7018,7 @@ pub mod webauthn {
                 created_at: row.get("created_at"),
                 last_used_at: row.get("last_used_at"),
                 enabled: row.get("enabled"),
+                name: row.get("name"),
             })
             .collect();
         Ok(credentials)
@@ -7046,8 +7048,20 @@ pub mod webauthn {
         Ok(())
     }
 
-}
+    /// Delete a specific WebAuthn credential by internal ID, scoped to the owning user
+    pub async fn delete_credential(db: &Database, id: &Uuid, user_id: &Uuid) -> Result<()> {
+        let query = "DELETE FROM webauthn_credentials WHERE id = $1 AND user_id = $2";
+        db.execute(query, &[id, user_id]).await?;
+        Ok(())
+    }
 
+    /// Update the display name of a WebAuthn credential, scoped to the owning user
+    pub async fn update_credential_name(db: &Database, id: &Uuid, user_id: &Uuid, name: &str) -> Result<()> {
+        let query = "UPDATE webauthn_credentials SET name = $3 WHERE id = $1 AND user_id = $2";
+        db.execute(query, &[id, user_id, &name]).await?;
+        Ok(())
+    }
+}
 /// Database operations for identity provider management
 pub mod identity_providers {
     use authenc_core::error::Result;
@@ -11481,4 +11495,3 @@ pub mod spi {
         Ok(Some((row.get(0), row.get(1))))
     }
 }
-

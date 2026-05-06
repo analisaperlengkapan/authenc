@@ -254,6 +254,7 @@ pub async fn assess_risk(
     let server_fingerprint = ZeroTrustManager::compute_device_fingerprint(&device_info);
     let last_activity = state.zero_trust_manager
         .get_device_last_seen(&server_fingerprint)
+        .await
         .unwrap_or_else(|e| {
             eprintln!("[SECURITY] Failed to read device last_seen: {}", e);
             None
@@ -382,7 +383,7 @@ pub async fn verify_session(
 
     // verify_session_with_score returns the actual combined risk score so we
     // can feed it into generate_adaptive_controls without losing precision.
-    let (valid, risk_score, requires_additional_auth, reason) = match state.zero_trust_manager.verify_session_with_score(&request.device_id) {
+    let (valid, risk_score, requires_additional_auth, reason) = match state.zero_trust_manager.verify_session_with_score(&request.device_id).await {
         Ok((true, score)) if score <= 0.3 => (true, score, false, None),           // Low risk — no extra auth needed
         Ok((true, score)) => (true, score, true, None),                            // Elevated risk — step-up auth recommended
         Ok((false, score)) => (false, score, true, Some("high_risk".to_string())), // High risk — session invalid

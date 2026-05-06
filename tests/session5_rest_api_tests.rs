@@ -12,10 +12,7 @@ mod common;
 
 /// Setup test environment
 async fn setup_test_env() -> (Database, Uuid) {
-    let config = AppConfig::from_env().expect("Failed to load config");
-    let db = Database::new(&config.database)
-        .await
-        .expect("Failed to connect to database");
+    let db = Database::mock().await;
 
     // Create test realm
     let realm_id = Uuid::new_v4();

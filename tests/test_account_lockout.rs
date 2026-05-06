@@ -76,6 +76,7 @@ async fn test_account_lockout_logic() {
     let totp_store = Arc::new(authenc::services::stores::totp_store::TotpStore::new());
     let brute_force_protector = Arc::new(authenc::services::security::brute_force_protector::BruteForceProtector::new(10, 60));
     let anomaly_detector = Arc::new(authenc::services::security::anomaly_detector::AnomalyDetector::new());
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
     let federation_registry = Arc::new(authenc::services::federation_provider::FederationRegistry::new());
     let audit_log_store = Arc::new(authenc::services::stores::pg_audit_log_store::PgAuditLogStore::with_pool(database.get_pool()));
     let realm_store = Arc::new(authenc::services::stores::realm_store::RealmStore::new());
@@ -130,6 +131,7 @@ async fn test_account_lockout_logic() {
         totp_store,
         brute_force_protector,
         anomaly_detector,
+        zero_trust_manager,
         federation_registry,
         audit_log_store,
         consent_store: mock_consent_store.clone(),
@@ -170,6 +172,8 @@ async fn test_account_lockout_logic() {
         email_verification_service: Arc::new(authenc::services::email_verification::EmailVerificationService::new(
             mock_user_store_dyn.clone(),
         )),
+
+
     };
 
     let router = authenc::handlers::create_router(Arc::new(state.clone()));

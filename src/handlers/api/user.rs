@@ -13,7 +13,6 @@ use axum::{
 use authenc_models::models::user::deserialize_optional_nullable;
 use serde::Deserialize;
 use authenc_models::models::social_account::{CreateSocialAccountRequest, SocialAccountResponse};
-use authenc_services::services::social::SocialProvider;
 use authenc_services::services::stores::social_account_store::SocialAccountStoreTrait;
 use std::sync::Arc;
 use uuid::Uuid;

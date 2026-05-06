@@ -17,6 +17,7 @@ type SharedState = Arc<Mutex<HashMap<String, serde_json::Value>>>;
 
 #[derive(Clone)]
 struct AppState {
+    pub zero_trust_manager: Arc<authenc::services::security::zero_trust::ZeroTrustManager>,
     data: SharedState,
 }
 
@@ -393,11 +394,14 @@ async fn reset_password(
 
 #[tokio::test]
 async fn test_complete_user_registration_workflow() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/auth/register", post(register_user))
         .route("/auth/verify/{token}", get(verify_email))
         .route("/auth/login", post(login))
@@ -487,11 +491,14 @@ async fn test_complete_user_registration_workflow() {
 
 #[tokio::test]
 async fn test_password_reset_workflow() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/auth/register", post(register_user))
         .route("/auth/forgot-password", post(request_password_reset))
         .route("/auth/reset-password", post(reset_password))
@@ -572,11 +579,14 @@ async fn test_password_reset_workflow() {
 
 #[tokio::test]
 async fn test_password_change_workflow() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/auth/register", post(register_user))
         .route("/auth/login", post(login))
         .route("/user/change-password", post(change_password))
@@ -658,11 +668,14 @@ async fn test_password_change_workflow() {
 
 #[tokio::test]
 async fn test_security_features_and_edge_cases() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/auth/register", post(register_user))
         .route("/auth/login", post(login))
         .route("/user/profile", get(get_profile))
@@ -729,11 +742,14 @@ async fn test_security_features_and_edge_cases() {
 
 #[tokio::test]
 async fn test_account_lockout_after_failed_attempts() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/auth/register", post(register_user))
         .route("/auth/login", post(login))
         .with_state(state.clone());
@@ -796,11 +812,14 @@ async fn test_account_lockout_after_failed_attempts() {
 
 #[tokio::test]
 async fn test_session_management_and_token_expiration() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/auth/register", post(register_user))
         .route("/auth/login", post(login))
         .route("/user/profile", get(get_profile))
@@ -869,11 +888,14 @@ async fn test_session_management_and_token_expiration() {
 
 #[tokio::test]
 async fn test_concurrent_user_sessions() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/auth/register", post(register_user))
         .route("/auth/login", post(login))
         .route("/user/profile", get(get_profile))
@@ -961,11 +983,14 @@ async fn test_concurrent_user_sessions() {
 
 #[tokio::test]
 async fn test_data_consistency_under_load() {
-    let state = AppState {
-        data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/auth/register", post(register_user))
         .route("/auth/login", post(login))
         .route("/user/profile", get(get_profile).put(update_profile))

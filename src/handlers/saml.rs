@@ -218,6 +218,7 @@ pub async fn saml_acs(
                         .map_err(|_| AuthencError::internal("Failed to serialize attributes"))?,
                 ),
                 realm_id: idp_data.realm_id,
+                roles: vec![], // SAML role mapping can be added here later
             };
 
             match jit_service.provision_user(jit_request).await {

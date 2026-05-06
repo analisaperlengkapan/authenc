@@ -33,8 +33,11 @@ pub struct CreateAuditLogRequest {
 }
 
 #[derive(Serialize)]
+/// Response payload for retrieving audit logs
 pub struct AuditLogResponse {
+    /// Total number of audit logs matching the filter
     pub total: u64,
+    /// List of audit log entries for the current page
     pub logs: Vec<AuditLog>,
 }
 

@@ -18,6 +18,7 @@ type SharedState = Arc<Mutex<HashMap<String, serde_json::Value>>>;
 
 #[derive(Clone)]
 struct AppState {
+    pub zero_trust_manager: Arc<authenc::services::security::zero_trust::ZeroTrustManager>,
     data: SharedState,
     metrics: Arc<Mutex<HashMap<String, serde_json::Value>>>,
 }
@@ -311,12 +312,15 @@ async fn dependency_health() -> Json<serde_json::Value> {
 
 #[tokio::test]
 async fn test_health_check_endpoints() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
+
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         data: Arc::new(Mutex::new(HashMap::new())),
         metrics: Arc::new(Mutex::new(HashMap::new())),
-    };
+};
 
-    let app = Router::new()
+let app = Router::new()
         .route("/health", get(health_check))
         .route("/ready", get(readiness_check))
         .route("/live", get(liveness_check))
@@ -349,12 +353,15 @@ async fn test_health_check_endpoints() {
 
 #[tokio::test]
 async fn test_metrics_collection_and_reporting() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
+
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         data: Arc::new(Mutex::new(HashMap::new())),
         metrics: Arc::new(Mutex::new(HashMap::new())),
-    };
+};
 
-    let app = Router::new()
+let app = Router::new()
         .route("/metrics", get(metrics_endpoint))
         .route("/resources", post(create_monitored_resource))
         .route("/resources/{id}", get(get_monitored_resource))
@@ -407,12 +414,15 @@ async fn test_metrics_collection_and_reporting() {
 
 #[tokio::test]
 async fn test_system_monitoring_and_info() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
+
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         data: Arc::new(Mutex::new(HashMap::new())),
         metrics: Arc::new(Mutex::new(HashMap::new())),
-    };
+};
 
-    let app = Router::new()
+let app = Router::new()
         .route("/system/info", get(system_info))
         .route("/system/performance", get(performance_snapshot))
         .with_state(state);
@@ -489,12 +499,15 @@ async fn test_dependency_health_monitoring() {
 
 #[tokio::test]
 async fn test_comprehensive_monitoring_workflow() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
+
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         data: Arc::new(Mutex::new(HashMap::new())),
         metrics: Arc::new(Mutex::new(HashMap::new())),
-    };
+};
 
-    let app = Router::new()
+let app = Router::new()
         .route("/health", get(health_check))
         .route("/ready", get(readiness_check))
         .route("/live", get(liveness_check))
@@ -591,12 +604,16 @@ async fn test_monitoring_under_load() {
         let metrics_clone = Arc::clone(&shared_metrics);
         let data_clone = Arc::clone(&shared_data);
 
+        let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
+
+
         let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
             data: data_clone,
             metrics: metrics_clone,
-        };
+};
 
-        let app = Router::new()
+let app = Router::new()
             .route("/metrics", get(metrics_endpoint))
             .route("/resources", post(create_monitored_resource))
             .route("/health", get(health_check))
@@ -631,12 +648,15 @@ async fn test_monitoring_under_load() {
     sleep(Duration::from_millis(100)).await;
 
     // Check final metrics using a new server instance with the same shared state
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
+
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         data: Arc::clone(&shared_data),
         metrics: Arc::clone(&shared_metrics),
-    };
+};
 
-    let app = Router::new()
+let app = Router::new()
         .route("/metrics", get(metrics_endpoint))
         .with_state(state);
 
@@ -677,12 +697,15 @@ async fn test_monitoring_under_load() {
 
 #[tokio::test]
 async fn test_monitoring_data_consistency() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
+
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         data: Arc::new(Mutex::new(HashMap::new())),
         metrics: Arc::new(Mutex::new(HashMap::new())),
-    };
+};
 
-    let app = Router::new()
+let app = Router::new()
         .route("/metrics", get(metrics_endpoint))
         .route("/system/performance", get(performance_snapshot))
         .route("/resources", post(create_monitored_resource))
@@ -738,12 +761,15 @@ async fn test_monitoring_data_consistency() {
 
 #[tokio::test]
 async fn test_monitoring_error_scenarios() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
+
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         data: Arc::new(Mutex::new(HashMap::new())),
         metrics: Arc::new(Mutex::new(HashMap::new())),
-    };
+};
 
-    let app = Router::new()
+let app = Router::new()
         .route("/metrics", get(metrics_endpoint))
         .route("/resources/{id}", get(get_monitored_resource))
         .with_state(state);
@@ -778,12 +804,15 @@ async fn test_monitoring_error_scenarios() {
 
 #[tokio::test]
 async fn test_monitoring_response_time_tracking() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
+
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         data: Arc::new(Mutex::new(HashMap::new())),
         metrics: Arc::new(Mutex::new(HashMap::new())),
-    };
+};
 
-    let app = Router::new()
+let app = Router::new()
         .route("/metrics", get(metrics_endpoint))
         .route("/resources", post(create_monitored_resource))
         .with_state(state);

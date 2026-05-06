@@ -967,6 +967,8 @@ pub struct JITUserProvisioningRequest {
     pub external_attributes: Option<serde_json::Value>,
     /// ID of the realm where the user should be created
     pub realm_id: Uuid,
+    /// Roles to assign to the user (optional)
+    pub roles: Vec<String>,
 }
 
 /// JIT user provisioning response

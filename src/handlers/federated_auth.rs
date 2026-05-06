@@ -69,6 +69,7 @@ pub async fn federated_auth(
         last_name: request.last_name,
         external_attributes: request.external_attributes,
         realm_id: request.realm_id,
+        roles: vec![],
     };
 
     // Provision user using JIT

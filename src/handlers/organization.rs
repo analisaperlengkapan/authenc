@@ -33,9 +33,13 @@ pub fn create_organization_routes() -> Router<Arc<AppState>> {
 /// Create organization request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateOrganizationRequest {
+    /// Internal name of the organization
     pub name: String,
+    /// Human-readable display name
     pub display_name: String,
+    /// Optional organization description
     pub description: Option<String>,
+    /// Optional primary domain for the organization
     pub domain: Option<String>,
 }
 
@@ -193,7 +197,10 @@ pub async fn get_members(
 /// Add member request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AddMemberRequest {
+    /// ID of the user to add
     pub user_id: Uuid,
+    /// Role to assign (owner, admin, member, guest)
+    /// The role of the member within the organization
     pub role: String,
 }
 
@@ -281,6 +288,7 @@ pub async fn remove_member(
 /// Update member role request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateMemberRoleRequest {
+    /// The role of the member within the organization
     pub role: String,
 }
 
@@ -326,8 +334,12 @@ pub async fn update_member_role(
 /// Create invitation request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateInvitationRequest {
+    /// Email address to invite
     pub email: String,
+    /// Role to assign (owner, admin, member, guest)
+    /// The role of the member within the organization
     pub role: String,
+    /// Invitation expiration in days
     pub expires_in_days: u32,
 }
 
@@ -392,6 +404,7 @@ pub async fn create_invitation(
 /// Accept invitation request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AcceptInvitationRequest {
+    /// Invitation token
     pub token: String,
 }
 

@@ -104,3 +104,73 @@ pub struct AuditLogResponse {
     pub total: u64,
     pub logs: Vec<AuditLog>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Organization {
+    pub id: String,
+    pub name: String,
+    pub display_name: Option<String>,
+    pub description: Option<String>,
+    pub domain: Option<String>,
+    pub owner_id: String,
+    pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OrganizationMember {
+    pub id: String,
+    pub organization_id: String,
+    pub user_id: String,
+    pub role: String,
+    pub invited_by: Option<String>,
+    pub joined_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OrganizationSettings {
+    pub organization_id: String,
+    pub allow_public_signup: bool,
+    pub require_email_verification: bool,
+    pub enable_two_factor: bool,
+    pub password_policy: String,
+    pub session_timeout: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateOrganizationRequest {
+    pub name: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub domain: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListOrganizationsResponse {
+    pub success: bool,
+    pub organizations: Vec<Organization>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizationResponse {
+    pub success: bool,
+    pub organization: Organization,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizationMembersResponse {
+    pub success: bool,
+    pub members: Vec<OrganizationMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WebauthnCredential {
+    pub id: String,
+    pub user_id: String,
+    pub credential_type: String,
+    pub created_at: String,
+    pub last_used_at: Option<String>,
+    pub enabled: bool,
+    pub name: Option<String>,
+}

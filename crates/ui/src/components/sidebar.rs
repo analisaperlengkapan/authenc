@@ -47,6 +47,18 @@ pub fn Sidebar() -> impl IntoView {
                         </A>
                     </li>
                     <li style="margin-bottom: 5px;">
+                        <A href="/admin/console/identity-providers" class="nav-link" active_class="active">
+                            <i class="fas fa-id-card" style="margin-right: 10px; width: 20px;"></i>
+                            "Identity Providers"
+                        </A>
+                    </li>
+                    <li style="margin-bottom: 5px;">
+                        <A href="/admin/console/organizations" class="nav-link" active_class="active">
+                            <i class="fas fa-building" style="margin-right: 10px; width: 20px;"></i>
+                            "Organizations"
+                        </A>
+                    </li>
+                    <li style="margin-bottom: 5px;">
                         <A href="/admin/console/audit" class="nav-link" active_class="active">
                             <i class="fas fa-list-alt" style="margin-right: 10px; width: 20px;"></i>
                             "Audit Logs"

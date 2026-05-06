@@ -171,6 +171,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 consent_store: state.consent_store.clone(),
                 oauth2_service: state.oauth2_service.clone(),
                 webauthn_service: state.webauthn_service.clone(),
+                realm_store: state.realm_store.clone(),
             }
         ))
         .merge(api::account::create_consent_routes().with_state(state.clone()))

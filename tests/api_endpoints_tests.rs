@@ -19,6 +19,7 @@ type SharedState = Arc<Mutex<HashMap<String, serde_json::Value>>>;
 
 #[derive(Clone)]
 struct AppState {
+    pub zero_trust_manager: Arc<authenc::services::security::zero_trust::ZeroTrustManager>,
     users: SharedState,
     roles: SharedState,
     permissions: SharedState,
@@ -389,7 +390,9 @@ async fn invalidate_session(
 
 #[tokio::test]
 async fn test_user_crud_operations() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         users: Arc::new(Mutex::new(HashMap::new())),
         roles: Arc::new(Mutex::new(HashMap::new())),
         permissions: Arc::new(Mutex::new(HashMap::new())),
@@ -461,7 +464,9 @@ async fn test_user_crud_operations() {
 
 #[tokio::test]
 async fn test_user_validation_and_conflicts() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         users: Arc::new(Mutex::new(HashMap::new())),
         roles: Arc::new(Mutex::new(HashMap::new())),
         permissions: Arc::new(Mutex::new(HashMap::new())),
@@ -520,7 +525,9 @@ async fn test_user_validation_and_conflicts() {
 
 #[tokio::test]
 async fn test_user_listing_and_search() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         users: Arc::new(Mutex::new(HashMap::new())),
         roles: Arc::new(Mutex::new(HashMap::new())),
         permissions: Arc::new(Mutex::new(HashMap::new())),
@@ -599,7 +606,9 @@ async fn test_user_listing_and_search() {
 
 #[tokio::test]
 async fn test_role_management() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         users: Arc::new(Mutex::new(HashMap::new())),
         roles: Arc::new(Mutex::new(HashMap::new())),
         permissions: Arc::new(Mutex::new(HashMap::new())),
@@ -667,7 +676,9 @@ async fn test_role_management() {
 
 #[tokio::test]
 async fn test_permission_system() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         users: Arc::new(Mutex::new(HashMap::new())),
         roles: Arc::new(Mutex::new(HashMap::new())),
         permissions: Arc::new(Mutex::new(HashMap::new())),
@@ -709,7 +720,9 @@ async fn test_permission_system() {
 
 #[tokio::test]
 async fn test_client_management() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         users: Arc::new(Mutex::new(HashMap::new())),
         roles: Arc::new(Mutex::new(HashMap::new())),
         permissions: Arc::new(Mutex::new(HashMap::new())),
@@ -755,7 +768,9 @@ async fn test_client_management() {
 
 #[tokio::test]
 async fn test_session_management() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         users: Arc::new(Mutex::new(HashMap::new())),
         roles: Arc::new(Mutex::new(HashMap::new())),
         permissions: Arc::new(Mutex::new(HashMap::new())),
@@ -797,7 +812,9 @@ async fn test_session_management() {
 
 #[tokio::test]
 async fn test_concurrent_api_operations() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         users: Arc::new(Mutex::new(HashMap::new())),
         roles: Arc::new(Mutex::new(HashMap::new())),
         permissions: Arc::new(Mutex::new(HashMap::new())),
@@ -846,7 +863,9 @@ async fn test_concurrent_api_operations() {
 
 #[tokio::test]
 async fn test_api_error_handling() {
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
     let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
         users: Arc::new(Mutex::new(HashMap::new())),
         roles: Arc::new(Mutex::new(HashMap::new())),
         permissions: Arc::new(Mutex::new(HashMap::new())),

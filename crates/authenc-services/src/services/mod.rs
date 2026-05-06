@@ -26,18 +26,21 @@ use authenc_models::models::user::User;
 pub mod admin;
 pub mod auth_flow;
 pub mod authorization;
+pub mod advanced_federation;
 pub mod device;
 pub mod password_reset;
 pub mod email_verification;
 // pub mod saml; // Located in protocols::saml
 pub mod social;
 pub mod sso;
+pub mod token;
 // pub mod zero_trust; // Located in security::zero_trust
 pub mod oauth2;
 pub mod broker;
 pub mod realm;
 pub mod client_registration;
 pub mod fips;
+pub mod vault;
 pub mod federation_provider;
 pub mod clustering;
 pub mod observability;

@@ -8,3 +8,5 @@ pub mod roles;
 pub mod account;
 pub mod groups;
 pub mod audit;
+pub mod identity_providers;
+pub mod organizations;

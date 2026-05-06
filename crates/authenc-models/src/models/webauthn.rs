@@ -94,6 +94,8 @@ pub struct WebauthnCredential {
     pub last_used_at: Option<DateTime<Utc>>,
     /// Whether this credential is enabled
     pub enabled: bool,
+    /// Human-readable name for the credential
+    pub name: Option<String>,
 }
 
 /// WebAuthn registration challenge for database storage

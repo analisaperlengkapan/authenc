@@ -15,6 +15,7 @@ type SharedState = Arc<Mutex<HashMap<String, serde_json::Value>>>;
 
 #[derive(Clone)]
 struct AppState {
+    pub zero_trust_manager: Arc<authenc::services::security::zero_trust::ZeroTrustManager>,
     _data: SharedState,
 }
 
@@ -49,11 +50,14 @@ async fn jwks_endpoint() -> Json<serde_json::Value> {
 }
 
 async fn create_test_app() -> TestServer {
-    let state = AppState {
-        _data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        _data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/.well-known/openid-configuration", get(oidc_discovery))
         .route("/oauth2/jwks", get(jwks_endpoint))
         .with_state(state);
@@ -135,11 +139,14 @@ async fn device_authorization() -> Json<serde_json::Value> {
 
 #[tokio::test]
 async fn test_device_authorization_flow() {
-    let state = AppState {
-        _data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        _data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/oauth2/device/auth", post(device_authorization))
         .route("/oauth2/authorize", get(authorize_endpoint))
         .with_state(state);
@@ -206,11 +213,14 @@ async fn authorize_endpoint(
 
 #[tokio::test]
 async fn test_token_exchange_rfc8693() {
-    let state = AppState {
-        _data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        _data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/oauth2/token", post(token_exchange))
         .with_state(state);
 
@@ -264,11 +274,14 @@ async fn test_ed25519_signature_verification() {
 
 #[tokio::test]
 async fn test_authorization_code_flow() {
-    let state = AppState {
-        _data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        _data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route("/oauth2/authorize", get(authorize_endpoint))
         .route("/oauth2/token", post(token_exchange))
         .with_state(state);
@@ -331,11 +344,14 @@ async fn webauthn_register_challenge() -> Json<serde_json::Value> {
 
 #[tokio::test]
 async fn test_webauthn_endpoints_security() {
-    let state = AppState {
-        _data: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let zero_trust_manager = Arc::new(authenc::services::security::zero_trust::ZeroTrustManager::new());
 
-    let app = Router::new()
+    let state = AppState {
+        zero_trust_manager: zero_trust_manager.clone(),
+        _data: Arc::new(Mutex::new(HashMap::new())),
+};
+
+let app = Router::new()
         .route(
             "/api/public/webauthn/register/challenge",
             post(webauthn_register_challenge),
