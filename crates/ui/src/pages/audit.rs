@@ -1,16 +1,7 @@
 use leptos::*;
-use crate::models::{AuditLog, AuditLogResponse};
+use crate::models::AuditLogResponse;
 use crate::api_client::authenticated_request;
-
-fn get_realm_id() -> String {
-    if let Ok(Some(storage)) = gloo_utils::window().local_storage() {
-        if let Ok(Some(id)) = storage.get_item("authenc_selected_realm_id") {
-            return id;
-        }
-    }
-    // Fallback to default/master realm ID
-    "550e8400-e29b-41d4-a716-446655440000".to_string()
-}
+use crate::utils::get_realm_id;
 
 #[component]
 pub fn Audit() -> impl IntoView {

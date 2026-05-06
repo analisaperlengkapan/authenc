@@ -1,55 +1,41 @@
 use leptos::*;
-use serde::{Deserialize, Serialize};
 use crate::api_client::authenticated_request;
 use uuid::Uuid;
 use crate::components::modal::Modal;
 use std::collections::HashMap;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct IdentityProviderResponse {
-    pub id: Uuid,
-    pub name: String,
-    pub display_name: String,
-    pub provider_type: String,
-    pub enabled: bool,
-    pub config: serde_json::Value,
-    pub realm_id: Uuid,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateIdentityProviderRequest {
-    pub name: String,
-    pub display_name: String,
-    pub provider_type: String,
-    pub enabled: bool,
-    pub config: serde_json::Value,
-    pub realm_id: Uuid,
-}
-
-fn get_realm_id() -> String {
-    if let Ok(Some(storage)) = gloo_utils::window().local_storage() {
-        if let Ok(Some(id)) = storage.get_item("authenc_selected_realm_id") {
-            return id;
-        }
-    }
-    "550e8400-e29b-41d4-a716-446655440000".to_string()
-}
+use crate::models::{IdentityProviderResponse, CreateIdentityProviderRequest};
+use crate::utils::get_realm_id;
 
 #[component]
 pub fn IdentityProviders() -> impl IntoView {
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
-    let (show_add_modal, set_show_add_modal) = create_signal(false);
+    let (show_modal, set_show_modal) = create_signal(false);
+    let (selected_provider, set_selected_provider) = create_signal::<Option<IdentityProviderResponse>>(None);
 
     // Form signals
     let (new_name, set_new_name) = create_signal(String::new());
     let (new_display_name, set_new_display_name) = create_signal(String::new());
     let (new_type, set_new_type) = create_signal("LDAP".to_string());
+    let (enabled, set_enabled) = create_signal(true);
 
     // LDAP Config signals
     let (ldap_url, set_ldap_url) = create_signal(String::new());
     let (ldap_base_dn, set_ldap_base_dn) = create_signal(String::new());
     let (ldap_bind_dn, set_ldap_bind_dn) = create_signal(String::new());
     let (ldap_bind_pw, set_ldap_bind_pw) = create_signal(String::new());
+    let (ldap_username_attr, set_ldap_username_attr) = create_signal("uid".to_string());
+    let (ldap_email_attr, set_ldap_email_attr) = create_signal("mail".to_string());
+    let (ldap_first_name_attr, set_ldap_first_name_attr) = create_signal("givenName".to_string());
+    let (ldap_last_name_attr, set_ldap_last_name_attr) = create_signal("sn".to_string());
+    let (ldap_group_attr, set_ldap_group_attr) = create_signal("memberOf".to_string());
+    let (ldap_search_filter, set_ldap_search_filter) = create_signal("(uid={0})".to_string());
+    let (ldap_import_enabled, set_ldap_import_enabled) = create_signal(true);
+    let (ldap_role_mappings, set_ldap_role_mappings) = create_signal::<Vec<(String, String)>>(vec![]);
+
+    // OIDC/SAML Config signals
+    let (oidc_client_id, set_oidc_client_id) = create_signal(String::new());
+    let (oidc_client_secret, set_oidc_client_secret) = create_signal(String::new());
+    let (oidc_issuer, set_oidc_issuer) = create_signal(String::new());
 
     let providers_resource = create_resource(
         || (),
@@ -76,34 +62,62 @@ pub fn IdentityProviders() -> impl IntoView {
         }
     );
 
-    let add_provider_action = create_action(move |_: &()| async move {
+    let save_provider_action = create_action(move |_: &()| async move {
         let realm_id = Uuid::parse_str(&get_realm_id()).unwrap();
 
         let mut config = HashMap::new();
-        if new_type.get() == "LDAP" {
+        let provider_type = new_type.get();
+
+        if provider_type == "LDAP" {
             config.insert("server_url".to_string(), ldap_url.get());
             config.insert("base_dn".to_string(), ldap_base_dn.get());
+            config.insert("username_attribute".to_string(), ldap_username_attr.get());
+            config.insert("email_attribute".to_string(), ldap_email_attr.get());
+            config.insert("first_name_attribute".to_string(), ldap_first_name_attr.get());
+            config.insert("last_name_attribute".to_string(), ldap_last_name_attr.get());
+            config.insert("group_attribute".to_string(), ldap_group_attr.get());
+            config.insert("user_search_filter".to_string(), ldap_search_filter.get());
+            config.insert("import_enabled".to_string(), ldap_import_enabled.get().to_string());
             if !ldap_bind_dn.get().is_empty() {
                 config.insert("bind_dn".to_string(), ldap_bind_dn.get());
                 config.insert("bind_password".to_string(), ldap_bind_pw.get());
             }
+
+            let mut mappings = HashMap::new();
+            for (group, role) in ldap_role_mappings.get() {
+                if !group.is_empty() && !role.is_empty() {
+                    mappings.insert(group, role);
+                }
+            }
+            config.insert("role_mappings".to_string(), serde_json::to_string(&mappings).unwrap_or_default());
+        } else if provider_type == "OIDC" {
+            config.insert("client_id".to_string(), oidc_client_id.get());
+            config.insert("client_secret".to_string(), oidc_client_secret.get());
+            config.insert("issuer".to_string(), oidc_issuer.get());
         }
 
         let req = CreateIdentityProviderRequest {
             name: new_name.get(),
             display_name: new_display_name.get(),
-            provider_type: new_type.get(),
-            enabled: true,
+            provider_type: provider_type.clone(),
+            enabled: enabled.get(),
             config: serde_json::to_value(config).unwrap(),
             realm_id,
         };
 
-        match authenticated_request("POST", "/api/v1/admin/identity-providers", Some(&req)).await {
+        let method = if selected_provider.get().is_some() { "PUT" } else { "POST" };
+        let url = if let Some(p) = selected_provider.get() {
+            format!("/api/v1/admin/identity-providers/{}", p.id)
+        } else {
+            "/api/v1/admin/identity-providers".to_string()
+        };
+
+        match authenticated_request(method, &url, Some(&req)).await {
             Ok(res) if res.ok() => {
-                set_show_add_modal.set(false);
+                set_show_modal.set(false);
                 providers_resource.refetch();
             }
-            _ => set_error_message.set(Some("Failed to create provider".to_string())),
+            _ => set_error_message.set(Some("Failed to save provider".to_string())),
         }
     });
 
@@ -123,7 +137,14 @@ pub fn IdentityProviders() -> impl IntoView {
             <div class="header-actions" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="margin: 0;">"Identity Providers"</h2>
                 <button
-                    on:click=move |_| set_show_add_modal.set(true)
+                    on:click=move |_| {
+                        set_selected_provider.set(None);
+                        set_new_name.set(String::new());
+                        set_new_display_name.set(String::new());
+                        set_new_type.set("LDAP".to_string());
+                        set_enabled.set(true);
+                        set_show_modal.set(true);
+                    }
                     style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">
                     <i class="fas fa-plus" style="margin-right: 5px;"></i> "Add Provider"
                 </button>
@@ -160,6 +181,7 @@ pub fn IdentityProviders() -> impl IntoView {
                                             </thead>
                                             <tbody>
                                                 {providers.into_iter().map(|provider| {
+                                                    let p1 = provider.clone();
                                                     let id = provider.id;
                                                     view! {
                                                         <tr style="border-bottom: 1px solid #dee2e6;">
@@ -178,7 +200,37 @@ pub fn IdentityProviders() -> impl IntoView {
                                                                 </span>
                                                             </td>
                                                             <td style="padding: 15px;">
-                                                                <button style="margin-right: 8px; padding: 6px 12px; border: 1px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; color: #495057;">
+                                                                <button
+                                                                    on:click=move |_| {
+                                                                        let p = p1.clone();
+                                                                        set_selected_provider.set(Some(p.clone()));
+                                                                        set_new_name.set(p.name);
+                                                                        set_new_display_name.set(p.display_name);
+                                                                        set_new_type.set(p.provider_type.clone());
+                                                                        set_enabled.set(p.enabled);
+
+                                                                        if p.provider_type == "LDAP" {
+                                                                            set_ldap_url.set(p.config["server_url"].as_str().unwrap_or_default().to_string());
+                                                                            set_ldap_base_dn.set(p.config["base_dn"].as_str().unwrap_or_default().to_string());
+                                                                            set_ldap_username_attr.set(p.config["username_attribute"].as_str().unwrap_or("uid").to_string());
+                                                                            set_ldap_email_attr.set(p.config["email_attribute"].as_str().unwrap_or("mail").to_string());
+                                                                            set_ldap_first_name_attr.set(p.config["first_name_attribute"].as_str().unwrap_or("givenName").to_string());
+                                                                            set_ldap_last_name_attr.set(p.config["last_name_attribute"].as_str().unwrap_or("sn").to_string());
+                                                                            set_ldap_group_attr.set(p.config["group_attribute"].as_str().unwrap_or("memberOf").to_string());
+                                                                            set_ldap_search_filter.set(p.config["user_search_filter"].as_str().unwrap_or("(uid={0})").to_string());
+                                                                            set_ldap_import_enabled.set(p.config["import_enabled"].as_str().unwrap_or("true") == "true");
+
+                                                                            let mappings_json = p.config["role_mappings"].as_str().unwrap_or("{}");
+                                                                            let mappings: HashMap<String, String> = serde_json::from_str(mappings_json).unwrap_or_default();
+                                                                            set_ldap_role_mappings.set(mappings.into_iter().collect());
+                                                                        } else if p.provider_type == "OIDC" {
+                                                                            set_oidc_issuer.set(p.config["issuer"].as_str().unwrap_or_default().to_string());
+                                                                            set_oidc_client_id.set(p.config["client_id"].as_str().unwrap_or_default().to_string());
+                                                                        }
+
+                                                                        set_show_modal.set(true);
+                                                                    }
+                                                                    style="margin-right: 8px; padding: 6px 12px; border: 1px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; color: #495057;">
                                                                     <i class="fas fa-edit"></i> " Edit"
                                                                 </button>
                                                                 <button
@@ -211,82 +263,152 @@ pub fn IdentityProviders() -> impl IntoView {
             </div>
 
             <Modal
-                is_open=show_add_modal
-                on_close=move |_| set_show_add_modal.set(false)
-                title="Add Identity Provider"
+                is_open=show_modal
+                on_close=move |_| set_show_modal.set(false)
+                title=if selected_provider.get().is_some() { "Edit Identity Provider".to_string() } else { "Add Identity Provider".to_string() }
             >
-                <div style="display: flex; flex-direction: column; gap: 15px; min-width: 400px;">
+                <div style="display: flex; flex-direction: column; gap: 15px; min-width: 450px; max-height: 80vh; overflow-y: auto;">
                     <div>
                         <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Type"</label>
                         <select
                             on:change=move |ev| set_new_type.set(event_target_value(&ev))
+                            prop:value=new_type
                             style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc;"
+                            disabled=move || selected_provider.get().is_some()
                         >
                             <option value="LDAP">"LDAP"</option>
                             <option value="OIDC">"OIDC"</option>
-                            <option value="SAML">"SAML"</option>
                         </select>
                     </div>
 
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Alias / ID"</label>
-                        <input
-                            type="text"
-                            on:input=move |ev| set_new_name.set(event_target_value(&ev))
-                            prop:value=new_name
-                            placeholder="e.g. corp-ldap"
-                            style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc;"
-                        />
-                    </div>
-
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Display Name"</label>
-                        <input
-                            type="text"
-                            on:input=move |ev| set_new_display_name.set(event_target_value(&ev))
-                            prop:value=new_display_name
-                            placeholder="e.g. Corporate LDAP"
-                            style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc;"
-                        />
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Alias / ID"</label>
+                            <input type="text" on:input=move |ev| set_new_name.set(event_target_value(&ev)) prop:value=new_name placeholder="e.g. corp-ldap" style="width: 100%; padding: 8px;" />
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">"Display Name"</label>
+                            <input type="text" on:input=move |ev| set_new_display_name.set(event_target_value(&ev)) prop:value=new_display_name placeholder="e.g. Corporate LDAP" style="width: 100%; padding: 8px;" />
+                        </div>
                     </div>
 
                     {move || (new_type.get() == "LDAP").then(|| view! {
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; border: 1px solid #e9ecef;">
-                            <h4 style="margin-top: 0; margin-bottom: 10px;">"LDAP Configuration"</h4>
-                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; border: 1px solid #e9ecef; display: flex; flex-direction: column; gap: 10px;">
+                            <h4 style="margin: 0;">"LDAP Configuration Wizard"</h4>
+                            <div>
+                                <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Server URL"</label>
+                                <input type="text" on:input=move |ev| set_ldap_url.set(event_target_value(&ev)) prop:value=ldap_url placeholder="ldap://localhost:389" style="width: 100%; padding: 6px;" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Base DN"</label>
+                                <input type="text" on:input=move |ev| set_ldap_base_dn.set(event_target_value(&ev)) prop:value=ldap_base_dn placeholder="dc=example,dc=org" style="width: 100%; padding: 6px;" />
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                                 <div>
-                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Server URL"</label>
-                                    <input type="text" on:input=move |ev| set_ldap_url.set(event_target_value(&ev)) prop:value=ldap_url placeholder="ldap://localhost:389" style="width: 100%; padding: 6px;" />
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Bind DN"</label>
+                                    <input type="text" on:input=move |ev| set_ldap_bind_dn.set(event_target_value(&ev)) prop:value=ldap_bind_dn placeholder="cn=admin,..." style="width: 100%; padding: 6px;" />
                                 </div>
                                 <div>
-                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Base DN"</label>
-                                    <input type="text" on:input=move |ev| set_ldap_base_dn.set(event_target_value(&ev)) prop:value=ldap_base_dn placeholder="dc=example,dc=org" style="width: 100%; padding: 6px;" />
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Bind Password"</label>
+                                    <input type="password" on:input=move |ev| set_ldap_bind_pw.set(event_target_value(&ev)) prop:value=ldap_bind_pw style="width: 100%; padding: 6px;" />
                                 </div>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                                    <div>
-                                        <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Bind DN"</label>
-                                        <input type="text" on:input=move |ev| set_ldap_bind_dn.set(event_target_value(&ev)) prop:value=ldap_bind_dn placeholder="cn=admin,..." style="width: 100%; padding: 6px;" />
-                                    </div>
-                                    <div>
-                                        <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Bind Password"</label>
-                                        <input type="password" on:input=move |ev| set_ldap_bind_pw.set(event_target_value(&ev)) prop:value=ldap_bind_pw style="width: 100%; padding: 6px;" />
-                                    </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Username Attribute"</label>
+                                    <input type="text" on:input=move |ev| set_ldap_username_attr.set(event_target_value(&ev)) prop:value=ldap_username_attr style="width: 100%; padding: 6px;" />
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Email Attribute"</label>
+                                    <input type="text" on:input=move |ev| set_ldap_email_attr.set(event_target_value(&ev)) prop:value=ldap_email_attr style="width: 100%; padding: 6px;" />
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"First Name Attribute"</label>
+                                    <input type="text" on:input=move |ev| set_ldap_first_name_attr.set(event_target_value(&ev)) prop:value=ldap_first_name_attr style="width: 100%; padding: 6px;" />
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Last Name Attribute"</label>
+                                    <input type="text" on:input=move |ev| set_ldap_last_name_attr.set(event_target_value(&ev)) prop:value=ldap_last_name_attr style="width: 100%; padding: 6px;" />
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Group Attribute"</label>
+                                    <input type="text" on:input=move |ev| set_ldap_group_attr.set(event_target_value(&ev)) prop:value=ldap_group_attr style="width: 100%; padding: 6px;" />
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"User Search Filter"</label>
+                                    <input type="text" on:input=move |ev| set_ldap_search_filter.set(event_target_value(&ev)) prop:value=ldap_search_filter style="width: 100%; padding: 6px;" />
+                                </div>
+                            </div>
+                            <div>
+                                <label style="display: flex; align-items: center; gap: 10px; font-size: 0.85em;">
+                                    <input type="checkbox" on:change=move |ev| set_ldap_import_enabled.set(event_target_checked(&ev)) prop:checked=ldap_import_enabled />
+                                    "Enable User Import"
+                                </label>
+                            </div>
+
+                            <div style="margin-top: 10px;">
+                                <label style="display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 5px;">"Role Mappings (LDAP Group → Role)"</label>
+                                <div style="display: flex; flex-direction: column; gap: 5px;">
+                                    {move || ldap_role_mappings.get().into_iter().enumerate().map(|(idx, (group, role))| {
+                                        view! {
+                                            <div style="display: flex; gap: 5px;">
+                                                <input type="text" placeholder="LDAP Group"
+                                                    on:input=move |ev| {
+                                                        let mut m = ldap_role_mappings.get();
+                                                        m[idx].0 = event_target_value(&ev);
+                                                        set_ldap_role_mappings.set(m);
+                                                    }
+                                                    prop:value=group style="flex: 1; padding: 4px;" />
+                                                <input type="text" placeholder="Role"
+                                                    on:input=move |ev| {
+                                                        let mut m = ldap_role_mappings.get();
+                                                        m[idx].1 = event_target_value(&ev);
+                                                        set_ldap_role_mappings.set(m);
+                                                    }
+                                                    prop:value=role style="flex: 1; padding: 4px;" />
+                                                <button on:click=move |_| {
+                                                    let mut m = ldap_role_mappings.get();
+                                                    m.remove(idx);
+                                                    set_ldap_role_mappings.set(m);
+                                                } style="background: #dc3545; color: white; border: none; padding: 0 8px; cursor: pointer;">"×"</button>
+                                            </div>
+                                        }
+                                    }).collect_view()}
+                                    <button on:click=move |_| {
+                                        let mut m = ldap_role_mappings.get();
+                                        m.push(("".to_string(), "".to_string()));
+                                        set_ldap_role_mappings.set(m);
+                                    } style="padding: 4px; background: #28a745; color: white; border: none; font-size: 0.8em; cursor: pointer;">"+ Add Mapping"</button>
                                 </div>
                             </div>
                         </div>
                     })}
 
-                    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
-                        <button
-                            on:click=move |_| set_show_add_modal.set(false)
-                            style="padding: 10px 20px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer;">
-                            "Cancel"
-                        </button>
-                        <button
-                            on:click=move |_| add_provider_action.dispatch(())
-                            style="padding: 10px 20px; border: none; background: #007bff; color: white; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                            "Save Provider"
-                        </button>
+                    {move || (new_type.get() == "OIDC").then(|| view! {
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; border: 1px solid #e9ecef; display: flex; flex-direction: column; gap: 10px;">
+                            <h4 style="margin: 0;">"OIDC Configuration"</h4>
+                            <div>
+                                <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Issuer URL"</label>
+                                <input type="text" on:input=move |ev| set_oidc_issuer.set(event_target_value(&ev)) prop:value=oidc_issuer placeholder="https://accounts.google.com" style="width: 100%; padding: 6px;" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Client ID"</label>
+                                <input type="text" on:input=move |ev| set_oidc_client_id.set(event_target_value(&ev)) prop:value=oidc_client_id style="width: 100%; padding: 6px;" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.85em; margin-bottom: 3px;">"Client Secret"</label>
+                                <input type="password" on:input=move |ev| set_oidc_client_secret.set(event_target_value(&ev)) prop:value=oidc_client_secret style="width: 100%; padding: 6px;" />
+                            </div>
+                        </div>
+                    })}
+
+                    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; padding-top: 15px; border-top: 1px solid #eee;">
+                        <button on:click=move |_| set_show_modal.set(false) style="padding: 10px 20px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer;">"Cancel"</button>
+                        <button on:click=move |_| save_provider_action.dispatch(()) style="padding: 10px 20px; border: none; background: #007bff; color: white; border-radius: 4px; cursor: pointer; font-weight: bold;">"Save Provider"</button>
                     </div>
                 </div>
             </Modal>

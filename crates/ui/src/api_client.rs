@@ -12,7 +12,7 @@ pub async fn authenticated_request(
         .local_storage()
         .ok()
         .flatten()
-        .and_then(|s: Storage| s.get_item("authenc_admin_token").ok())
+        .and_then(|s: Storage| s.get_item("authenc_token").ok())
         .flatten()
         .unwrap_or_default();
 

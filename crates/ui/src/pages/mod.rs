@@ -1,7 +1,9 @@
 pub mod home;
+pub mod login;
 pub mod users;
 pub mod forgot_password;
 pub mod reset_password;
+pub mod verify_email;
 pub mod realms;
 pub mod clients;
 pub mod roles;
@@ -10,3 +12,5 @@ pub mod groups;
 pub mod audit;
 pub mod identity_providers;
 pub mod organizations;
+pub mod security;
+pub mod authorization;
