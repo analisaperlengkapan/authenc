@@ -2,13 +2,13 @@
 resolver = "2"
 members = [
     ".",
-    "crates/authenc-core",
-    "crates/authenc-models",
-    "crates/authenc-crypto",
-    "crates/authenc-database",
-    "crates/authenc-vault",
-    "crates/authenc-spi",
-    "crates/authenc-services",
+    "crates/core",
+    "crates/models",
+    "crates/crypto",
+    "crates/database",
+    "crates/vault",
+    "crates/spi",
+    "crates/services",
     "crates/ui",
 ]
 
@@ -27,13 +27,13 @@ categories = ["authentication", "cryptography", "web-programming"]
 
 [workspace.dependencies]
 # Internal crates
-authenc-core = { path = "crates/authenc-core", features = ["axum-support"] }
-authenc-models = { path = "crates/authenc-models" }
-authenc-crypto = { path = "crates/authenc-crypto" }
-authenc-database = { path = "crates/authenc-database", features = ["test-support"] }
-authenc-vault = { path = "crates/authenc-vault" }
-authenc-spi = { path = "crates/authenc-spi" }
-authenc-services = { path = "crates/authenc-services", features = ["rdkafka"] }
+authenc-core = { path = "crates/core", features = ["axum-support"] }
+authenc-models = { path = "crates/models" }
+authenc-crypto = { path = "crates/crypto" }
+authenc-database = { path = "crates/database", features = ["test-support"] }
+authenc-vault = { path = "crates/vault" }
+authenc-spi = { path = "crates/spi" }
+authenc-services = { path = "crates/services", features = ["rdkafka"] }
 
 # Core async runtime
 anyhow = "1.0.100"
