@@ -8,7 +8,7 @@ members = [
     "crates/database",
     "crates/vault",
     "crates/spi",
-    "crates/authenc",
+    "crates/services",
     "crates/ui",
 ]
 
@@ -33,7 +33,7 @@ authenc-crypto = { path = "crates/crypto" }
 authenc-database = { path = "crates/database", features = ["test-support"] }
 authenc-vault = { path = "crates/vault" }
 authenc-spi = { path = "crates/spi" }
-authenc-services = { path = "crates/authenc", features = ["rdkafka"] }
+authenc-services = { path = "crates/services", features = ["rdkafka"] }
 
 # Core async runtime
 anyhow = "1.0.100"
