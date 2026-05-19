@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use leptos_router::*;
 use serde::{Deserialize, Serialize};
 use gloo_net::http::Request;
@@ -17,9 +17,9 @@ struct ResetPasswordParams {
 #[component]
 pub fn ResetPassword() -> impl IntoView {
     let params = use_params::<ResetPasswordParams>();
-    let (password, set_password) = signal(String::new());
-    let (status_msg, set_status_msg) = signal(String::new());
-    let (token_input, set_token_input) = signal(String::new());
+    let (password, set_password) = create_signal(String::new());
+    let (status_msg, set_status_msg) = create_signal(String::new());
+    let (token_input, set_token_input) = create_signal(String::new());
 
     create_effect(move |_| {
         if let Ok(p) = params.get() {

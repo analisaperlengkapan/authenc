@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use crate::models::{UserResponse, UpdateUserRequest, WebauthnCredential};
 use crate::api_client::authenticated_request;
 use uuid::Uuid;
@@ -23,27 +23,29 @@ pub struct LinkSocialRequest {
 pub fn Users() -> impl IntoView {
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
     let (selected_user, set_selected_user) = create_signal::<Option<UserResponse>>(None);
-    let (show_edit_modal, set_show_edit_modal) = signal(false);
-    let (show_link_social_modal, set_show_link_social_modal) = signal(false);
+    let (show_edit_modal, set_show_edit_modal) = create_signal(false);
+    let (show_link_social_modal, set_show_link_social_modal) = create_signal(false);
 
     // Form signals
-    let (username, set_username) = signal(String::new());
-    let (email, set_email) = signal(String::new());
-    let (first_name, set_first_name) = signal(String::new());
-    let (last_name, set_last_name) = signal(String::new());
-    let (phone_number, set_phone_number) = signal(String::new());
-    let (org_id, set_org_id) = signal(String::new());
-    let (enabled, set_enabled) = signal(true);
-    let (email_verified, set_email_verified) = signal(false);
-    let (phone_verified, set_phone_verified) = signal(false);
-    let (require_password_change, set_require_password_change) = signal(false);
-    let (attributes, set_attributes) = signal(String::new());
+    let (username, set_username) = create_signal(String::new());
+    let (email, set_email) = create_signal(String::new());
+    let (first_name, set_first_name) = create_signal(String::new());
+    let (last_name, set_last_name) = create_signal(String::new());
+    let (phone_number, set_phone_number) = create_signal(String::new());
+    let (org_id, set_org_id) = create_signal(String::new());
+    let (enabled, set_enabled) = create_signal(true);
+    let (email_verified, set_email_verified) = create_signal(false);
+    let (phone_verified, set_phone_verified) = create_signal(false);
+    let (require_password_change, set_require_password_change) = create_signal(false);
+    let (attributes, set_attributes) = create_signal(String::new());
 
     // Social signals
-    let (social_provider, set_social_provider) = signal("google".to_string());
-    let (social_user_id, set_social_user_id) = signal(String::new());
+    let (social_provider, set_social_provider) = create_signal("google".to_string());
+    let (social_user_id, set_social_user_id) = create_signal(String::new());
 
-    let users_resource = LocalResource::new(move |_| async move {
+    let users_resource = create_resource(
+        || (),
+        move |_| async move {
             set_error_message.set(None);
             let realm_id = get_realm_id();
             let url = format!("/api/v1/auth/realms/{}/users", realm_id);
@@ -66,7 +68,9 @@ pub fn Users() -> impl IntoView {
         }
     );
 
-    let passkeys_resource = LocalResource::new(move |user| async move {
+    let passkeys_resource = create_resource(
+        move || selected_user.get(),
+        move |user| async move {
             if let Some(u) = user {
                 let realm_id = get_realm_id();
                 let url = format!("/api/v1/auth/realms/{}/users/{}/passkeys", realm_id, u.id);
@@ -80,7 +84,9 @@ pub fn Users() -> impl IntoView {
         }
     );
 
-    let social_accounts_resource = LocalResource::new(move |user| async move {
+    let social_accounts_resource = create_resource(
+        move || selected_user.get(),
+        move |user| async move {
             if let Some(u) = user {
                 let realm_id = get_realm_id();
                 let url = format!("/api/v1/auth/realms/{}/users/{}/social", realm_id, u.id);
@@ -181,7 +187,7 @@ pub fn Users() -> impl IntoView {
                                         <div style="padding: 20px; text-align: center; color: #6c757d;">
                                             "No users found in this realm."
                                         </div>
-                                    }.into_any()
+                                    }.into_view()
                                 } else {
                                     view! {
                                         <table style="width: 100%; border-collapse: collapse;">
@@ -245,14 +251,14 @@ pub fn Users() -> impl IntoView {
                                                 }).collect_view()}
                                             </tbody>
                                         </table>
-                                    }.into_any()
+                                    }.into_view()
                                 }
                             },
                             Err(_) => view! {
                                 <div style="padding: 20px; text-align: center; color: #dc3545;">
                                     "Error loading users."
                                 </div>
-                            }.into_any()
+                            }.into_view()
                         }
                     })
                 }}
@@ -355,7 +361,7 @@ pub fn Users() -> impl IntoView {
                                 <label style="display: block; font-size: 0.85em; font-weight: 600; margin-bottom: 5px;">"Registered Passkeys"</label>
                                 <Suspense fallback=move || view! { <p>"Loading..."</p> }>
                                     {move || passkeys_resource.get().map(|res| match res {
-                                        Ok(pks) if pks.is_empty() => view! { <p style="color: #6c757d; font-size: 0.85em; margin: 0;">"No passkeys registered."</p> }.into_any(),
+                                        Ok(pks) if pks.is_empty() => view! { <p style="color: #6c757d; font-size: 0.85em; margin: 0;">"No passkeys registered."</p> }.into_view(),
                                         Ok(pks) => {
                                             let uid = selected_user.get().map(|u| u.id).unwrap_or_default();
                                             view! {
@@ -381,9 +387,9 @@ pub fn Users() -> impl IntoView {
                                                     </li>
                                                 }}).collect_view()}
                                             </ul>
-                                        }.into_any()
+                                        }.into_view()
                                         },
-                                        _ => view! { <p>"Error loading passkeys"</p> }.into_any()
+                                        _ => view! { <p>"Error loading passkeys"</p> }.into_view()
                                     })}
                                 </Suspense>
                             </div>
@@ -401,7 +407,7 @@ pub fn Users() -> impl IntoView {
                         </div>
                         <Suspense fallback=move || view! { <p>"Loading..."</p> }>
                             {move || social_accounts_resource.get().map(|res| match res {
-                                Ok(accs) if accs.is_empty() => view! { <p style="color: #6c757d; font-size: 0.85em; margin: 0;">"No linked accounts."</p> }.into_any(),
+                                Ok(accs) if accs.is_empty() => view! { <p style="color: #6c757d; font-size: 0.85em; margin: 0;">"No linked accounts."</p> }.into_view(),
                                 Ok(accs) => {
                                     let uid = selected_user.get().map(|u| u.id).unwrap_or_default();
                                     view! {
@@ -428,9 +434,9 @@ pub fn Users() -> impl IntoView {
                                             </span>
                                         }}).collect_view()}
                                     </div>
-                                }.into_any()
+                                }.into_view()
                                 },
-                                _ => view! { <p>"Error loading social accounts"</p> }.into_any()
+                                _ => view! { <p>"Error loading social accounts"</p> }.into_view()
                             })}
                         </Suspense>
                     </div>

@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use crate::api_client::authenticated_request;
 use uuid::Uuid;
 use crate::components::modal::Modal;
@@ -9,35 +9,37 @@ use crate::utils::get_realm_id;
 #[component]
 pub fn IdentityProviders() -> impl IntoView {
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
-    let (show_modal, set_show_modal) = signal(false);
+    let (show_modal, set_show_modal) = create_signal(false);
     let (selected_provider, set_selected_provider) = create_signal::<Option<IdentityProviderResponse>>(None);
 
     // Form signals
-    let (new_name, set_new_name) = signal(String::new());
-    let (new_display_name, set_new_display_name) = signal(String::new());
-    let (new_type, set_new_type) = signal("LDAP".to_string());
-    let (enabled, set_enabled) = signal(true);
+    let (new_name, set_new_name) = create_signal(String::new());
+    let (new_display_name, set_new_display_name) = create_signal(String::new());
+    let (new_type, set_new_type) = create_signal("LDAP".to_string());
+    let (enabled, set_enabled) = create_signal(true);
 
     // LDAP Config signals
-    let (ldap_url, set_ldap_url) = signal(String::new());
-    let (ldap_base_dn, set_ldap_base_dn) = signal(String::new());
-    let (ldap_bind_dn, set_ldap_bind_dn) = signal(String::new());
-    let (ldap_bind_pw, set_ldap_bind_pw) = signal(String::new());
-    let (ldap_username_attr, set_ldap_username_attr) = signal("uid".to_string());
-    let (ldap_email_attr, set_ldap_email_attr) = signal("mail".to_string());
-    let (ldap_first_name_attr, set_ldap_first_name_attr) = signal("givenName".to_string());
-    let (ldap_last_name_attr, set_ldap_last_name_attr) = signal("sn".to_string());
-    let (ldap_group_attr, set_ldap_group_attr) = signal("memberOf".to_string());
-    let (ldap_search_filter, set_ldap_search_filter) = signal("(uid={0})".to_string());
-    let (ldap_import_enabled, set_ldap_import_enabled) = signal(true);
+    let (ldap_url, set_ldap_url) = create_signal(String::new());
+    let (ldap_base_dn, set_ldap_base_dn) = create_signal(String::new());
+    let (ldap_bind_dn, set_ldap_bind_dn) = create_signal(String::new());
+    let (ldap_bind_pw, set_ldap_bind_pw) = create_signal(String::new());
+    let (ldap_username_attr, set_ldap_username_attr) = create_signal("uid".to_string());
+    let (ldap_email_attr, set_ldap_email_attr) = create_signal("mail".to_string());
+    let (ldap_first_name_attr, set_ldap_first_name_attr) = create_signal("givenName".to_string());
+    let (ldap_last_name_attr, set_ldap_last_name_attr) = create_signal("sn".to_string());
+    let (ldap_group_attr, set_ldap_group_attr) = create_signal("memberOf".to_string());
+    let (ldap_search_filter, set_ldap_search_filter) = create_signal("(uid={0})".to_string());
+    let (ldap_import_enabled, set_ldap_import_enabled) = create_signal(true);
     let (ldap_role_mappings, set_ldap_role_mappings) = create_signal::<Vec<(String, String)>>(vec![]);
 
     // OIDC/SAML Config signals
-    let (oidc_client_id, set_oidc_client_id) = signal(String::new());
-    let (oidc_client_secret, set_oidc_client_secret) = signal(String::new());
-    let (oidc_issuer, set_oidc_issuer) = signal(String::new());
+    let (oidc_client_id, set_oidc_client_id) = create_signal(String::new());
+    let (oidc_client_secret, set_oidc_client_secret) = create_signal(String::new());
+    let (oidc_issuer, set_oidc_issuer) = create_signal(String::new());
 
-    let providers_resource = LocalResource::new(move |_| async move {
+    let providers_resource = create_resource(
+        || (),
+        move |_| async move {
             set_error_message.set(None);
             let realm_id = get_realm_id();
             let url = format!("/api/v1/admin/identity-providers?realm_id={}", realm_id);
@@ -165,7 +167,7 @@ pub fn IdentityProviders() -> impl IntoView {
                                         <div style="padding: 40px; text-align: center; color: #6c757d;">
                                             "No identity providers configured for this realm."
                                         </div>
-                                    }.into_any()
+                                    }.into_view()
                                 } else {
                                     view! {
                                         <table style="width: 100%; border-collapse: collapse;">
@@ -246,14 +248,14 @@ pub fn IdentityProviders() -> impl IntoView {
                                                 }).collect_view()}
                                             </tbody>
                                         </table>
-                                    }.into_any()
+                                    }.into_view()
                                 }
                             },
                             Err(_) => view! {
                                 <div style="padding: 20px; text-align: center; color: #dc3545;">
                                     "Error loading identity providers."
                                 </div>
-                            }.into_any()
+                            }.into_view()
                         }
                     })
                 }}

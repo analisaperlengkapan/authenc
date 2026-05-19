@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use crate::models::AuditLogResponse;
 use crate::api_client::authenticated_request;
 use crate::utils::get_realm_id;
@@ -9,7 +9,9 @@ pub fn Audit() -> impl IntoView {
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
 
     // Resource to fetch audit logs
-    let audit_logs = LocalResource::new(move |_| async move {
+    let audit_logs = create_resource(
+        || (),
+        move |_| async move {
             set_error_message.set(None); // Clear previous errors
 
             let realm_id = get_realm_id();
@@ -71,7 +73,7 @@ pub fn Audit() -> impl IntoView {
                                 <div style="padding: 20px; text-align: center; color: #6c757d;">
                                     "No audit logs found."
                                 </div>
-                            }.into_any()
+                            }.into_view()
                         } else {
                             view! {
                                 <table style="width: 100%; border-collapse: collapse;">
@@ -112,7 +114,7 @@ pub fn Audit() -> impl IntoView {
                                         }).collect_view()}
                                     </tbody>
                                 </table>
-                            }.into_any()
+                            }.into_view()
                         }
                     }}
                 </Suspense>

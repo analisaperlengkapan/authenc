@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use crate::models::{ClientResponse, CreateClientRequest, UpdateClientRequest};
 use crate::api_client::authenticated_request;
 use crate::components::modal::Modal;
@@ -7,18 +7,20 @@ use crate::utils::get_realm_id;
 #[component]
 pub fn Clients() -> impl IntoView {
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
-    let (show_create_modal, set_show_create_modal) = signal(false);
-    let (show_edit_modal, set_show_edit_modal) = signal(false);
+    let (show_create_modal, set_show_create_modal) = create_signal(false);
+    let (show_edit_modal, set_show_edit_modal) = create_signal(false);
     let (selected_client, set_selected_client) = create_signal::<Option<ClientResponse>>(None);
 
     // Form signals
-    let (client_id, set_client_id) = signal(String::new());
-    let (client_name, set_client_name) = signal(String::new());
-    let (client_secret, set_client_secret) = signal(String::new());
-    let (redirect_uris, set_redirect_uris) = signal(String::new());
-    let (enabled, set_enabled) = signal(true);
+    let (client_id, set_client_id) = create_signal(String::new());
+    let (client_name, set_client_name) = create_signal(String::new());
+    let (client_secret, set_client_secret) = create_signal(String::new());
+    let (redirect_uris, set_redirect_uris) = create_signal(String::new());
+    let (enabled, set_enabled) = create_signal(true);
 
-    let clients_resource = LocalResource::new(move |_| async move {
+    let clients_resource = create_resource(
+        || (),
+        move |_| async move {
             set_error_message.set(None);
             let realm_id = get_realm_id();
             let url = format!("/api/v1/auth/realms/{}/clients", realm_id);
@@ -150,7 +152,7 @@ pub fn Clients() -> impl IntoView {
                                         <div style="padding: 20px; text-align: center; color: #6c757d;">
                                             "No clients found."
                                         </div>
-                                    }.into_any()
+                                    }.into_view()
                                 } else {
                                     view! {
                                         <table style="width: 100%; border-collapse: collapse;">
@@ -208,14 +210,14 @@ pub fn Clients() -> impl IntoView {
                                                 }).collect_view()}
                                             </tbody>
                                         </table>
-                                    }.into_any()
+                                    }.into_view()
                                 }
                             },
                             Err(_) => view! {
                                 <div style="padding: 20px; text-align: center; color: #dc3545;">
                                     "Error loading clients."
                                 </div>
-                            }.into_any()
+                            }.into_view()
                         }
                     })
                 }}

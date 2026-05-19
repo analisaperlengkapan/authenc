@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use leptos_router::*;
 use serde::{Deserialize, Serialize};
 use gloo_net::http::Request;
@@ -16,9 +16,9 @@ struct VerifyEmailParams {
 #[component]
 pub fn VerifyEmail() -> impl IntoView {
     let params = use_params::<VerifyEmailParams>();
-    let (status_msg, set_status_msg) = signal(String::new());
-    let (error_msg, set_error_msg) = signal(String::new());
-    let (loading, set_loading) = signal(true);
+    let (status_msg, set_status_msg) = create_signal(String::new());
+    let (error_msg, set_error_msg) = create_signal(String::new());
+    let (loading, set_loading) = create_signal(true);
 
     create_effect(move |_| {
         if let Ok(p) = params.get() {

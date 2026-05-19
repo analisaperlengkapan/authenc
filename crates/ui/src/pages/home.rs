@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use serde::{Deserialize, Serialize};
 use crate::api_client::authenticated_request;
 
@@ -31,7 +31,7 @@ async fn fetch_stats() -> Result<SystemStats, String> {
 
 #[component]
 pub fn Home() -> impl IntoView {
-    let stats = LocalResource::new(|_| fetch_stats());
+    let stats = create_resource(|| (), |_| fetch_stats());
 
     view! {
         <div class="dashboard">
@@ -69,12 +69,12 @@ pub fn Home() -> impl IntoView {
                                         </div>
                                     </div>
                                 </div>
-                            }.into_any(),
+                            }.into_view(),
                             Err(e) => view! {
                                 <div class="error" style="color: red; padding: 20px; background: #fee; border-radius: 4px;">
                                     "Error loading stats: " {e}
                                 </div>
-                            }.into_any()
+                            }.into_view()
                         }
                     })
                 }}

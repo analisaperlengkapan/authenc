@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use crate::models::{Group, CreateGroupRequest, UpdateGroupRequest};
 use crate::api_client::authenticated_request;
 use crate::components::modal::Modal;
@@ -16,18 +16,20 @@ fn get_realm_id() -> String {
 #[component]
 pub fn Groups() -> impl IntoView {
     // State for modals
-    let (show_create_modal, set_show_create_modal) = signal(false);
-    let (show_edit_modal, set_show_edit_modal) = signal(false);
-    let (show_delete_modal, set_show_delete_modal) = signal(false);
+    let (show_create_modal, set_show_create_modal) = create_signal(false);
+    let (show_edit_modal, set_show_edit_modal) = create_signal(false);
+    let (show_delete_modal, set_show_delete_modal) = create_signal(false);
 
     // State for form data
     let (selected_group, set_selected_group) = create_signal::<Option<Group>>(None);
-    let (group_name, set_group_name) = signal(String::new());
-    let (group_description, set_group_description) = signal(String::new());
+    let (group_name, set_group_name) = create_signal(String::new());
+    let (group_description, set_group_description) = create_signal(String::new());
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
 
     // Resource to fetch groups
-    let groups_resource = LocalResource::new(|_| async move {
+    let groups_resource = create_resource(
+        || (),
+        |_| async move {
             let realm_id = get_realm_id();
             let url = format!("/api/v1/auth/realms/{}/groups", realm_id);
 
@@ -189,7 +191,7 @@ pub fn Groups() -> impl IntoView {
                                 groups_resource.get().map(|result| match result {
                                     Ok(groups) => {
                                         if groups.is_empty() {
-                                            view! { <tr><td colspan="5" style="padding: 15px; text-align: center; color: #6c757d;">"No groups found"</td></tr> }.into_any()
+                                            view! { <tr><td colspan="5" style="padding: 15px; text-align: center; color: #6c757d;">"No groups found"</td></tr> }.into_view()
                                         } else {
                                             groups.into_iter().map(|group| {
                                                 let group_clone_edit = group.clone();
@@ -223,7 +225,7 @@ pub fn Groups() -> impl IntoView {
                                             }).collect_view()
                                         }
                                     }
-                                    Err(e) => view! { <tr><td colspan="5" style="padding: 15px; text-align: center; color: #dc3545;">"Error loading groups: " {e}</td></tr> }.into_any()
+                                    Err(e) => view! { <tr><td colspan="5" style="padding: 15px; text-align: center; color: #dc3545;">"Error loading groups: " {e}</td></tr> }.into_view()
                                 })
                             }}
                         </Suspense>

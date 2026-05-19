@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use leptos_router::*;
 
 #[component]

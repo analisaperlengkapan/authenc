@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use leptos_router::*;
 use crate::components::sidebar::Sidebar;
 use crate::components::header::Header;

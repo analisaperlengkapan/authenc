@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use crate::models::{Role, CreateRoleRequest};
 use crate::api_client::authenticated_request;
 use crate::components::modal::Modal;
@@ -7,15 +7,17 @@ use crate::utils::get_realm_id;
 #[component]
 pub fn Roles() -> impl IntoView {
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
-    let (show_create_modal, set_show_create_modal) = signal(false);
-    let (show_edit_modal, set_show_edit_modal) = signal(false);
+    let (show_create_modal, set_show_create_modal) = create_signal(false);
+    let (show_edit_modal, set_show_edit_modal) = create_signal(false);
     let (selected_role, set_selected_role) = create_signal::<Option<Role>>(None);
 
     // Form signals
-    let (role_name, set_role_name) = signal(String::new());
-    let (role_description, set_role_description) = signal(String::new());
+    let (role_name, set_role_name) = create_signal(String::new());
+    let (role_description, set_role_description) = create_signal(String::new());
 
-    let roles_resource = LocalResource::new(move |_| async move {
+    let roles_resource = create_resource(
+        || (),
+        move |_| async move {
             set_error_message.set(None);
             let realm_id = get_realm_id();
             let url = format!("/api/v1/auth/realms/{}/roles", realm_id);
@@ -127,7 +129,7 @@ pub fn Roles() -> impl IntoView {
                                         <div style="padding: 20px; text-align: center; color: #6c757d;">
                                             "No roles found."
                                         </div>
-                                    }.into_any()
+                                    }.into_view()
                                 } else {
                                     view! {
                                         <table style="width: 100%; border-collapse: collapse;">
@@ -175,14 +177,14 @@ pub fn Roles() -> impl IntoView {
                                                 }).collect_view()}
                                             </tbody>
                                         </table>
-                                    }.into_any()
+                                    }.into_view()
                                 }
                             },
                             Err(_) => view! {
                                 <div style="padding: 20px; text-align: center; color: #dc3545;">
                                     "Error loading roles."
                                 </div>
-                            }.into_any()
+                            }.into_view()
                         }
                     })
                 }}

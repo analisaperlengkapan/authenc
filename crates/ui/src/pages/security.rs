@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::*;
 use serde::{Deserialize, Serialize};
 use crate::api_client::authenticated_request;
 
@@ -14,7 +14,9 @@ use crate::utils::get_realm_id;
 
 #[component]
 pub fn SecurityDashboard() -> impl IntoView {
-    let stats = LocalResource::new(|_| async move {
+    let stats = create_resource(
+        || (),
+        |_| async move {
             let realm_id = get_realm_id();
             let url = format!("/api/v1/auth/zero-trust/dashboard/security?realm_id={}", realm_id);
             match authenticated_request("GET", &url, None::<&()>).await {
@@ -49,8 +51,8 @@ pub fn SecurityDashboard() -> impl IntoView {
                                 <div style="font-size: 2rem; font-weight: bold; color: #28a745;">{format!("{:.0}%", data.compliance_rate * 100.0)}</div>
                             </div>
                         </div>
-                    }.into_any(),
-                    _ => view! { <p style="color: red;">"Error loading dashboard data"</p> }.into_any()
+                    }.into_view(),
+                    _ => view! { <p style="color: red;">"Error loading dashboard data"</p> }.into_view()
                 })}
             </Suspense>
         </div>

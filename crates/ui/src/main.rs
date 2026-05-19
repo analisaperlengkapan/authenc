@@ -1,5 +1,5 @@
 use authenc_ui::App;
-use leptos::prelude::*;
+use leptos::*;
 
 pub fn main() {
     console_error_panic_hook::set_once();
