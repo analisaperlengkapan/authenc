@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0] - 2025-10-31
+## [0.1.0] - 2025-08-15
 
 ### Added
 
@@ -85,53 +85,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Legacy Frameworks**: Removed Actix-web dependencies after Axum migration
 - **Unsafe Code**: Eliminated all unsafe code blocks for memory safety
 
-## [0.3.0] - 2025-09-30
-
-### Added
-- Initial Axum framework integration
-- Basic OAuth2/OIDC implementation
-- SAML federation framework
-- WebAuthn authentication support
-- Database connection pooling
-- Basic audit logging
-- SPI architecture foundation
-- Comprehensive test suite foundation
-
-### Changed
-- Migrated core handlers to Axum
-- Updated dependency versions
-- Improved error handling
-
-### Fixed
-- Initial compilation issues
-- Basic integration test failures
-
-## [0.2.0] - 2025-08-31
-
-### Added
-- Basic authentication handlers
-- User management API
-- Session management
-- Basic security middleware
-- Initial test coverage
-
-### Changed
-- Restructured project layout
-- Updated configuration system
-
-## [0.1.0] - 2025-07-31
-
-### Added
-- Initial project structure
-- Basic Rust application setup
-- Core dependencies
-- Development environment configuration
-
 ---
 
 ## Development Roadmap
 
-### Upcoming Features (v0.5.0)
+### Upcoming Features (v0.2.0)
 - **Social Login Providers**: Google, GitHub, Microsoft OAuth2 integrations
 - **LDAP/Active Directory**: Enterprise directory federation
 - **Web Admin UI**: Complete administration console

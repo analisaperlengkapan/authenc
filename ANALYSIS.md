@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Name:** Authenc  
-**Version:** 0.4.0  
+**Version:** 0.1.0
 **Language:** Rust 1.90+  
 **Build Status:** Active Development  
 **Database:** PostgreSQL 14+  
