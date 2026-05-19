@@ -1,6 +1,6 @@
-//! OTP/TOTP Credential Provider Implementation
-//!
-//! Provides time-based one-time password (TOTP) and HMAC-based one-time password (HOTP) support.
+/// OTP/TOTP Credential Provider Implementation
+///
+/// Provides time-based one-time password (TOTP) and HMAC-based one-time password (HOTP) support.
 
 use super::{
     CredentialInput, CredentialInputUpdater, CredentialInputValidator, CredentialModel,
@@ -10,7 +10,7 @@ use authenc_core::error::{AuthencError as Error, Result};
 use async_trait::async_trait;
 use base32;
 use chrono::Utc;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, Mac, KeyInit};
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use sha2::{Sha256, Sha512};
@@ -80,7 +80,7 @@ impl OtpCredentialProvider {
         use rand::Rng;
         let mut rng = rand::thread_rng();
         let bytes: Vec<u8> = (0..20).map(|_| rng.r#gen()).collect();
-        base32::encode(base32::Alphabet::RFC4648 { padding: false }, &bytes)
+        base32::encode(base32::Alphabet::Rfc4648 { padding: true } { padding: false }, &bytes)
     }
 
     /// Generate OTP provisioning URI for QR code
@@ -115,7 +115,7 @@ impl OtpCredentialProvider {
         period: u32,
     ) -> Result<bool> {
         // Decode secret
-        let secret_bytes = base32::decode(base32::Alphabet::RFC4648 { padding: false }, secret)
+        let secret_bytes = base32::decode(base32::Alphabet::Rfc4648 { padding: true } { padding: false }, secret)
             .ok_or_else(|| Error::unauthorized("Invalid OTP secret format"))?;
 
         // Get current time step
@@ -310,7 +310,7 @@ mod tests {
 
         // Generate a code for current time
         let secret_bytes =
-            base32::decode(base32::Alphabet::RFC4648 { padding: false }, &secret).unwrap();
+            base32::decode(base32::Alphabet::Rfc4648 { padding: true } { padding: false }, &secret).unwrap();
         let time_step = Utc::now().timestamp() as u64 / 30;
         let code = provider
             .generate_totp_for_step(&secret_bytes, time_step, OtpAlgorithm::HmacSha1, 6)

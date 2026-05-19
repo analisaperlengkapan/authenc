@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 use leptos_router::*;
 use crate::api_client::authenticated_request;
 use serde::{Deserialize, Serialize};
@@ -18,9 +18,9 @@ struct LoginResponse {
 
 #[component]
 pub fn Login() -> impl IntoView {
-    let (username, set_username) = create_signal("admin".to_string());
-    let (password, set_password) = create_signal(String::new());
-    let (realm, set_realm) = create_signal("master".to_string());
+    let (username, set_username) = signal("admin".to_string());
+    let (password, set_password) = signal(String::new());
+    let (realm, set_realm) = signal("master".to_string());
     let (error_msg, set_error_msg) = create_signal::<Option<String>>(None);
 
     let navigate = use_navigate();
@@ -87,7 +87,7 @@ pub fn Login() -> impl IntoView {
                                     }
                                 }
 
-                                navigate("/admin/console", Default::default());
+                                (use_navigate())("/admin/console", Default::default());
                             }
                         }
                     } else {

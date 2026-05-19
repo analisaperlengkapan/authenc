@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 use crate::api_client::authenticated_request;
 use crate::models::{TotpStatusResponse, TotpSetupResponse, TotpSetupRequest, VerifyTotpSetupRequest};
 use qrcodegen::{QrCode, QrCodeEcc};
@@ -21,12 +21,10 @@ fn render_qr_svg(text: &str) -> String {
 pub fn Security() -> impl IntoView {
     let (setup_data, set_setup_data) = create_signal::<Option<TotpSetupResponse>>(None);
     let (error_msg, set_error_msg) = create_signal::<Option<String>>(None);
-    let (verify_code, set_verify_code) = create_signal(String::new());
+    let (verify_code, set_verify_code) = signal(String::new());
     let (success_msg, set_success_msg) = create_signal::<Option<String>>(None);
 
-    let totp_status = create_resource(
-        || (),
-        |_| async move {
+    let totp_status = LocalResource::new(|_| async move {
             let resp = authenticated_request("GET", "/api/v1/auth/account/totp", None::<&()>).await;
              match resp {
                 Ok(response) => {
@@ -141,7 +139,7 @@ pub fn Security() -> impl IntoView {
                                                     "Disable TOTP"
                                                 </button>
                                             </div>
-                                        }.into_view()
+                                        }.into_any()
                                     } else {
                                         view! {
                                             <div>
@@ -156,10 +154,10 @@ pub fn Security() -> impl IntoView {
                                                     "Setup TOTP"
                                                 </button>
                                             </div>
-                                        }.into_view()
+                                        }.into_any()
                                     }
                                 },
-                                None => view! { <p>"Failed to load TOTP status."</p> }.into_view()
+                                None => view! { <p>"Failed to load TOTP status."</p> }.into_any()
                             }
                         })
                     }}

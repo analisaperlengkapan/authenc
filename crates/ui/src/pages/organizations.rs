@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 use crate::models::{ListOrganizationsResponse, CreateOrganizationRequest, UpdateOrganizationRequest, OrganizationMembersResponse, Organization, OrganizationSettings, OrganizationSettingsResponse};
 use crate::api_client::authenticated_request;
 use crate::components::modal::Modal;
@@ -6,32 +6,30 @@ use crate::components::modal::Modal;
 #[component]
 pub fn Organizations() -> impl IntoView {
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
-    let (show_create_modal, set_show_create_modal) = create_signal(false);
-    let (show_edit_modal, set_show_edit_modal) = create_signal(false);
-    let (show_settings_modal, set_show_settings_modal) = create_signal(false);
+    let (show_create_modal, set_show_create_modal) = signal(false);
+    let (show_edit_modal, set_show_edit_modal) = signal(false);
+    let (show_settings_modal, set_show_settings_modal) = signal(false);
     let (selected_org, set_selected_org) = create_signal::<Option<Organization>>(None);
-    let (show_members_modal, set_show_members_modal) = create_signal(false);
-    let (show_add_member_modal, set_show_add_member_modal) = create_signal(false);
+    let (show_members_modal, set_show_members_modal) = signal(false);
+    let (show_add_member_modal, set_show_add_member_modal) = signal(false);
 
     // Form signals
-    let (org_name, set_org_name) = create_signal(String::new());
-    let (org_display_name, set_org_display_name) = create_signal(String::new());
-    let (org_description, set_org_description) = create_signal(String::new());
-    let (org_domain, set_org_domain) = create_signal(String::new());
+    let (org_name, set_org_name) = signal(String::new());
+    let (org_display_name, set_org_display_name) = signal(String::new());
+    let (org_description, set_org_description) = signal(String::new());
+    let (org_domain, set_org_domain) = signal(String::new());
 
     // Settings signals
-    let (member_user_id, set_member_user_id) = create_signal(String::new());
-    let (member_role, set_member_role) = create_signal("member".to_string());
-    let (allow_signup, set_allow_signup) = create_signal(false);
-    let (require_verify, set_require_verify) = create_signal(false);
-    let (enforce_mfa, set_enforce_mfa) = create_signal(false);
-    let (pwd_policy, set_pwd_policy) = create_signal(String::new());
-    let (timeout, set_timeout) = create_signal(3600u64);
-    let (max_users, set_max_users) = create_signal(String::new());
+    let (member_user_id, set_member_user_id) = signal(String::new());
+    let (member_role, set_member_role) = signal("member".to_string());
+    let (allow_signup, set_allow_signup) = signal(false);
+    let (require_verify, set_require_verify) = signal(false);
+    let (enforce_mfa, set_enforce_mfa) = signal(false);
+    let (pwd_policy, set_pwd_policy) = signal(String::new());
+    let (timeout, set_timeout) = signal(3600u64);
+    let (max_users, set_max_users) = signal(String::new());
 
-    let members_resource = create_resource(
-        move || selected_org.get(),
-        move |org| async move {
+    let members_resource = LocalResource::new(move |org| async move {
             if let Some(o) = org {
                 let url = format!("/api/v1/organizations/{}/members", o.id);
                 match authenticated_request("GET", &url, None::<&()>).await {
@@ -53,9 +51,7 @@ pub fn Organizations() -> impl IntoView {
         }
     );
 
-    let organizations_resource = create_resource(
-        || (),
-        move |_| async move {
+    let organizations_resource = LocalResource::new(move |_| async move {
             set_error_message.set(None);
             let url = "/api/v1/organizations";
 
@@ -208,7 +204,7 @@ pub fn Organizations() -> impl IntoView {
                                         <div style="padding: 40px; text-align: center; color: #6c757d;">
                                             "No organizations found."
                                         </div>
-                                    }.into_view()
+                                    }.into_any()
                                 } else {
                                     view! {
                                         <table style="width: 100%; border-collapse: collapse;">
@@ -291,14 +287,14 @@ pub fn Organizations() -> impl IntoView {
                                                 }).collect_view()}
                                             </tbody>
                                         </table>
-                                    }.into_view()
+                                    }.into_any()
                                 }
                             },
                             Err(_) => view! {
                                 <div style="padding: 20px; text-align: center; color: #dc3545;">
                                     "Error loading organizations."
                                 </div>
-                            }.into_view()
+                            }.into_any()
                         }
                     })
                 }}
@@ -393,9 +389,9 @@ pub fn Organizations() -> impl IntoView {
                                     }}).collect_view()}
                                 </tbody>
                             </table>
-                        }.into_view()
+                        }.into_any()
                         },
-                        _ => view! { <p>"Error loading members"</p> }.into_view()
+                        _ => view! { <p>"Error loading members"</p> }.into_any()
                     })}}
                 </Suspense>
             </Modal>

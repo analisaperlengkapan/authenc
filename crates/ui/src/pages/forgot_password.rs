@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 use leptos_router::*;
 use serde::{Deserialize, Serialize};
 use gloo_net::http::Request;
@@ -11,8 +11,8 @@ struct ForgotPasswordRequest {
 
 #[component]
 pub fn ForgotPassword() -> impl IntoView {
-    let (email, set_email) = create_signal(String::new());
-    let (status_msg, set_status_msg) = create_signal(String::new());
+    let (email, set_email) = signal(String::new());
+    let (status_msg, set_status_msg) = signal(String::new());
 
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();

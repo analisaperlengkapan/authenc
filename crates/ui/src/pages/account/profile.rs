@@ -1,12 +1,10 @@
-use leptos::*;
+use leptos::prelude::*;
 use crate::api_client::authenticated_request;
 use crate::models::UserResponse;
 
 #[component]
 pub fn Profile() -> impl IntoView {
-    let user_resource = create_resource(
-        || (),
-        |_| async move {
+    let user_resource = LocalResource::new(|_| async move {
             let resp = authenticated_request("GET", "/api/v1/auth/account", None::<&()>).await;
             match resp {
                 Ok(response) => {
@@ -61,8 +59,8 @@ pub fn Profile() -> impl IntoView {
                                             </div>
                                         </div>
                                     </div>
-                                }.into_view(),
-                                None => view! { <p style="color: red;">"Failed to load profile. Please verify your login."</p> }.into_view()
+                                }.into_any(),
+                                None => view! { <p style="color: red;">"Failed to load profile. Please verify your login."</p> }.into_any()
                             }
                         })
                     }}

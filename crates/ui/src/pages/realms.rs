@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 use crate::api_client::authenticated_request;
 use uuid::Uuid;
 use crate::models::{RealmResponse, CreateRealmRequest, UpdateRealmRequest};
@@ -15,22 +15,20 @@ fn switch_realm(realm_id: Uuid) {
 #[component]
 pub fn Realms() -> impl IntoView {
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
-    let (show_create_modal, set_show_create_modal) = create_signal(false);
-    let (show_edit_modal, set_show_edit_modal) = create_signal(false);
+    let (show_create_modal, set_show_create_modal) = signal(false);
+    let (show_edit_modal, set_show_edit_modal) = signal(false);
     let (selected_realm, set_selected_realm) = create_signal::<Option<RealmResponse>>(None);
 
     // Form signals
-    let (realm_name, set_realm_name) = create_signal(String::new());
-    let (display_name, set_display_name) = create_signal(String::new());
-    let (description, set_description) = create_signal(String::new());
-    let (enabled, set_enabled) = create_signal(true);
-    let (registration_allowed, set_registration_allowed) = create_signal(false);
-    let (verify_email, set_verify_email) = create_signal(false);
-    let (reset_password_allowed, set_reset_password_allowed) = create_signal(false);
+    let (realm_name, set_realm_name) = signal(String::new());
+    let (display_name, set_display_name) = signal(String::new());
+    let (description, set_description) = signal(String::new());
+    let (enabled, set_enabled) = signal(true);
+    let (registration_allowed, set_registration_allowed) = signal(false);
+    let (verify_email, set_verify_email) = signal(false);
+    let (reset_password_allowed, set_reset_password_allowed) = signal(false);
 
-    let realms_resource = create_resource(
-        || (),
-        move |_| async move {
+    let realms_resource = LocalResource::new(move |_| async move {
             set_error_message.set(None);
             match authenticated_request("GET", "/api/v1/auth/realms", None::<&()>).await {
                 Ok(response) => {
@@ -133,7 +131,7 @@ pub fn Realms() -> impl IntoView {
                                         <div style="grid-column: 1/-1; padding: 40px; text-align: center; background: white; border-radius: 8px;">
                                             "No realms found. Create one to get started."
                                         </div>
-                                    }.into_view()
+                                    }.into_any()
                                 } else {
                                     realms.into_iter().map(|realm| {
                                         let r1 = realm.clone();
@@ -201,7 +199,7 @@ pub fn Realms() -> impl IntoView {
                                 <div style="grid-column: 1/-1; padding: 20px; text-align: center; color: #dc3545; background: white; border-radius: 8px;">
                                     "Error loading realms."
                                 </div>
-                            }.into_view()
+                            }.into_any()
                         }
                     })
                 }}

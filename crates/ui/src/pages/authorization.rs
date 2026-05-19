@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 use crate::api_client::authenticated_request;
 use crate::components::modal::Modal;
 use crate::utils::get_realm_id;
@@ -7,23 +7,21 @@ use crate::models::{PolicyResponse, CreatePolicyRequest, PermissionResponse, Cre
 #[component]
 pub fn Authorization() -> impl IntoView {
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
-    let (show_policy_modal, set_show_policy_modal) = create_signal(false);
-    let (show_permission_modal, set_show_permission_modal) = create_signal(false);
+    let (show_policy_modal, set_show_policy_modal) = signal(false);
+    let (show_permission_modal, set_show_permission_modal) = signal(false);
 
     // Policy Form signals
-    let (policy_name, set_policy_name) = create_signal(String::new());
-    let (policy_type, set_type) = create_signal("RoleBased".to_string());
-    let (policy_logic, set_logic) = create_signal("Positive".to_string());
-    let (policy_config, set_config) = create_signal("{}".to_string());
+    let (policy_name, set_policy_name) = signal(String::new());
+    let (policy_type, set_type) = signal("RoleBased".to_string());
+    let (policy_logic, set_logic) = signal("Positive".to_string());
+    let (policy_config, set_config) = signal("{}".to_string());
 
     // Permission Form signals
-    let (perm_name, set_perm_name) = create_signal(String::new());
-    let (perm_resource, set_perm_resource) = create_signal(String::new());
-    let (perm_action, set_perm_action) = create_signal(String::new());
+    let (perm_name, set_perm_name) = signal(String::new());
+    let (perm_resource, set_perm_resource) = signal(String::new());
+    let (perm_action, set_perm_action) = signal(String::new());
 
-    let policies_resource = create_resource(
-        || (),
-        |_| async move {
+    let policies_resource = LocalResource::new(|_| async move {
             let realm_id = get_realm_id();
             let url = format!("/api/v1/admin/policies?realm_id={}", realm_id);
             match authenticated_request("GET", &url, None::<&()>).await {
@@ -33,9 +31,7 @@ pub fn Authorization() -> impl IntoView {
         }
     );
 
-    let permissions_resource = create_resource(
-        || (),
-        |_| async move {
+    let permissions_resource = LocalResource::new(|_| async move {
             let realm_id = get_realm_id();
             let url = format!("/api/v1/auth/realms/{}/permissions", realm_id);
             match authenticated_request("GET", &url, None::<&()>).await {
@@ -112,7 +108,7 @@ pub fn Authorization() -> impl IntoView {
                 <div class="table-container" style="background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden;">
                     <Suspense fallback=|| view! { <div style="padding: 20px; text-align: center;">"Loading policies..."</div> }>
                         {move || policies_resource.get().map(|res| match res {
-                            Ok(pols) if pols.is_empty() => view! { <div style="padding: 20px; text-align: center;">"No policies defined."</div> }.into_view(),
+                            Ok(pols) if pols.is_empty() => view! { <div style="padding: 20px; text-align: center;">"No policies defined."</div> }.into_any(),
                             Ok(pols) => view! {
                                 <table style="width: 100%; border-collapse: collapse;">
                                     <thead>
@@ -138,8 +134,8 @@ pub fn Authorization() -> impl IntoView {
                                         }).collect_view()}
                                     </tbody>
                                 </table>
-                            }.into_view(),
-                            _ => view! { <div style="padding: 20px; text-align: center; color: red;">"Error loading policies"</div> }.into_view()
+                            }.into_any(),
+                            _ => view! { <div style="padding: 20px; text-align: center; color: red;">"Error loading policies"</div> }.into_any()
                         })}
                     </Suspense>
                 </div>
@@ -150,7 +146,7 @@ pub fn Authorization() -> impl IntoView {
                 <div class="table-container" style="background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden;">
                     <Suspense fallback=|| view! { <div style="padding: 20px; text-align: center;">"Loading permissions..."</div> }>
                         {move || permissions_resource.get().map(|res| match res {
-                            Ok(perms) if perms.is_empty() => view! { <div style="padding: 20px; text-align: center;">"No permissions defined."</div> }.into_view(),
+                            Ok(perms) if perms.is_empty() => view! { <div style="padding: 20px; text-align: center;">"No permissions defined."</div> }.into_any(),
                             Ok(perms) => view! {
                                 <table style="width: 100%; border-collapse: collapse;">
                                     <thead>
@@ -187,8 +183,8 @@ pub fn Authorization() -> impl IntoView {
                                         }}).collect_view()}
                                     </tbody>
                                 </table>
-                            }.into_view(),
-                            _ => view! { <div style="padding: 20px; text-align: center; color: red;">"Error loading permissions"</div> }.into_view()
+                            }.into_any(),
+                            _ => view! { <div style="padding: 20px; text-align: center; color: red;">"Error loading permissions"</div> }.into_any()
                         })}
                     </Suspense>
                 </div>
