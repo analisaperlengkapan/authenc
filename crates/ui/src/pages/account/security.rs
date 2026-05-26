@@ -2,6 +2,17 @@ use leptos::*;
 use crate::api_client::authenticated_request;
 use crate::models::{TotpStatusResponse, TotpSetupResponse, TotpSetupRequest, VerifyTotpSetupRequest};
 use qrcodegen::{QrCode, QrCodeEcc};
+use uuid::Uuid;
+use crate::utils::{get_realm_id, get_username};
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{
+    CredentialCreationOptions,
+    PublicKeyCredentialCreationOptions,
+    AuthenticatorAttestationResponse,
+};
+use js_sys::Uint8Array;
+use base64::Engine;
 
 fn render_qr_svg(text: &str) -> String {
     let qr = QrCode::encode_text(text, QrCodeEcc::Medium).unwrap();
@@ -23,6 +34,8 @@ pub fn Security() -> impl IntoView {
     let (error_msg, set_error_msg) = create_signal::<Option<String>>(None);
     let (verify_code, set_verify_code) = create_signal(String::new());
     let (success_msg, set_success_msg) = create_signal::<Option<String>>(None);
+    let (passkey_name, set_passkey_name) = create_signal(String::new());
+    let (editing_passkey, set_editing_passkey) = create_signal::<Option<(Uuid, String)>>(None);
 
     let totp_status = create_resource(
         || (),
@@ -37,6 +50,19 @@ pub fn Security() -> impl IntoView {
                     }
                 }
                 Err(_) => None,
+            }
+        }
+    );
+
+    let passkeys = create_resource(
+        || (),
+        |_| async move {
+            let resp = authenticated_request("GET", "/api/v1/auth/account/passkeys", None::<&()>).await;
+            match resp {
+                Ok(response) if response.ok() => {
+                    response.json::<Vec<crate::models::WebauthnCredential>>().await.unwrap_or_default()
+                }
+                _ => vec![],
             }
         }
     );
@@ -103,6 +129,122 @@ pub fn Security() -> impl IntoView {
         set_error_msg.set(None);
         set_verify_code.set(String::new());
     };
+
+    let delete_passkey_action = create_action(move |id: &Uuid| {
+        let id = *id;
+        async move {
+            let url = format!("/api/v1/auth/account/passkeys/{}", id);
+            match authenticated_request("DELETE", &url, None::<&()>).await {
+                Ok(res) if res.ok() => passkeys.refetch(),
+                _ => set_error_msg.set(Some("Failed to delete passkey".to_string())),
+            }
+        }
+    });
+
+    let rename_passkey_action = create_action(move |(id, name): &(Uuid, String)| {
+        let id = *id;
+        let name = name.clone();
+        async move {
+            let url = format!("/api/v1/auth/account/passkeys/{}", id);
+            let req = serde_json::json!({ "name": name });
+            match authenticated_request("PATCH", &url, Some(&req)).await {
+                Ok(res) if res.ok() => {
+                    set_editing_passkey.set(None);
+                    passkeys.refetch();
+                }
+                _ => set_error_msg.set(Some("Failed to rename passkey".to_string())),
+            }
+        }
+    });
+
+    let register_passkey_action = create_action(move |_: &()| async move {
+        set_error_msg.set(None);
+        set_success_msg.set(None);
+
+        let username = get_username();
+        let realm_id = get_realm_id();
+        let name = passkey_name.get();
+
+        if name.is_empty() {
+            set_error_msg.set(Some("Please enter a name for this passkey".to_string()));
+            return;
+        }
+
+        // 1. Get challenge
+        let challenge_req = serde_json::json!({
+            "username": username,
+            "display_name": username,
+            "realm_id": realm_id
+        });
+
+        let resp = authenticated_request("POST", "/api/v1/auth/webauthn/register/challenge", Some(&challenge_req)).await;
+        let challenge_json = match resp {
+            Ok(r) if r.ok() => r.json::<serde_json::Value>().await.ok(),
+            _ => None,
+        };
+
+        let Some(challenge) = challenge_json else {
+            set_error_msg.set(Some("Failed to get registration challenge".to_string()));
+            return;
+        };
+
+        // 2. Invoke WebAuthn API
+        let Some(window) = web_sys::window() else { return };
+        let navigator = window.navigator();
+        let credentials = navigator.credentials();
+
+        // Convert challenge to CredentialCreationOptions
+        let js_val = match serde_wasm_bindgen::to_value(&challenge) {
+            Ok(v) => v,
+            Err(e) => {
+                set_error_msg.set(Some(format!("Failed to convert challenge: {}", e)));
+                return;
+            }
+        };
+
+        let options = CredentialCreationOptions::new();
+        options.set_public_key(&PublicKeyCredentialCreationOptions::from(js_val));
+
+        let promise = credentials.create_with_options(&options).map_err(|e| {
+            set_error_msg.set(Some(format!("Failed to start WebAuthn creation: {:?}", e)));
+        });
+
+        let Ok(p) = promise else { return };
+        let result = JsFuture::from(p).await;
+
+        let credential = match result {
+            Ok(c) => web_sys::PublicKeyCredential::from(c),
+            Err(e) => {
+                set_error_msg.set(Some(format!("WebAuthn registration failed: {:?}", e)));
+                return;
+            }
+        };
+
+        let response = AuthenticatorAttestationResponse::from(JsValue::from(credential.response()));
+
+        // 3. Send response back to server
+        let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        let reg_resp = serde_json::json!({
+            "id": credential.id(),
+            "rawId": b64.encode(Uint8Array::new(&credential.raw_id()).to_vec()),
+            "type": credential.type_(),
+            "response": {
+                "attestationObject": b64.encode(Uint8Array::new(&response.attestation_object()).to_vec()),
+                "clientDataJSON": b64.encode(Uint8Array::new(&response.client_data_json()).to_vec()),
+            },
+            "name": name,
+        });
+
+        let url = format!("/api/v1/auth/webauthn/register/verify?realm_id={}&username={}", realm_id, username);
+        match authenticated_request("POST", &url, Some(&reg_resp)).await {
+            Ok(r) if r.ok() => {
+                set_success_msg.set(Some("Passkey registered successfully!".to_string()));
+                set_passkey_name.set(String::new());
+                passkeys.refetch();
+            }
+            _ => set_error_msg.set(Some("Failed to verify passkey registration".to_string())),
+        }
+    });
 
     view! {
         <div class="security-page">
@@ -202,6 +344,101 @@ pub fn Security() -> impl IntoView {
                         </div>
                     }
                 })}
+            </div>
+
+            <div class="card" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px;">
+                <h3 style="margin-top: 0;">"Passkeys (WebAuthn)"</h3>
+                <p>"Passkeys allow for a more secure and convenient way to sign in without passwords."</p>
+
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
+                    <input
+                        type="text"
+                        placeholder="Device Name (e.g. My Phone)"
+                        style="padding: 8px; border-radius: 4px; border: 1px solid #ccc; flex: 1;"
+                        on:input=move |ev| set_passkey_name.set(event_target_value(&ev))
+                        prop:value=passkey_name
+                    />
+                    <button
+                        on:click=move |_| register_passkey_action.dispatch(())
+                        style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                        "Add Passkey"
+                    </button>
+                </div>
+
+                <Suspense fallback=move || view! { <p>"Loading passkeys..."</p> }>
+                    <div class="passkey-list">
+                        {move || {
+                            passkeys.get().map(|list| {
+                                if list.is_empty() {
+                                    view! { <p style="color: #6c757d; font-style: italic;">"No passkeys registered yet."</p> }.into_view()
+                                } else {
+                                    view! {
+                                        <ul style="list-style: none; padding: 0;">
+                                            {list.into_iter().map(|c| {
+                                                let id = Uuid::parse_str(&c.id).unwrap();
+                                                let name = c.name.clone().unwrap_or_else(|| "Unnamed Passkey".to_string());
+                                                let c_name = name.clone();
+                                                view! {
+                                                    <li style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee;">
+                                                        <div>
+                                                            {move || if let Some((edit_id, edit_name)) = editing_passkey.get() {
+                                                                if edit_id == id {
+                                                                    view! {
+                                                                        <div style="display: flex; gap: 5px;">
+                                                                            <input
+                                                                                type="text"
+                                                                                prop:value=edit_name
+                                                                                on:input=move |ev| set_editing_passkey.set(Some((id, event_target_value(&ev))))
+                                                                                style="padding: 4px;"
+                                                                            />
+                                                                            <button on:click=move |_| rename_passkey_action.dispatch((id, editing_passkey.get().unwrap().1)) class="btn-save">"Save"</button>
+                                                                            <button on:click=move |_| set_editing_passkey.set(None) class="btn-cancel">"Cancel"</button>
+                                                                        </div>
+                                                                    }.into_view()
+                                                                } else {
+                                                                    view! { <div style="font-weight: 500;">{c_name.clone()}</div> }.into_view()
+                                                                }
+                                                            } else {
+                                                                view! { <div style="font-weight: 500;">{c_name.clone()}</div> }.into_view()
+                                                            }}
+                                                            <div style="font-size: 0.8em; color: #6c757d;">"Created: " {c.created_at}</div>
+                                                        </div>
+                                                        <div style="display: flex; gap: 10px;">
+                                                            <button
+                                                                on:click=move |_| set_editing_passkey.set(Some((id, name.clone())))
+                                                                style="background: none; border: 1px solid #ccc; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
+                                                                <i class="fas fa-edit"></i>
+                                                            </button>
+                                                            <button
+                                                                on:click=move |_| {
+                                                                    if gloo_utils::window().confirm_with_message("Remove this passkey?").unwrap_or(false) {
+                                                                        delete_passkey_action.dispatch(id);
+                                                                    }
+                                                                }
+                                                                style="background: none; border: 1px solid #dc3545; color: #dc3545; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </div>
+                                                    </li>
+                                                }
+                                            }).collect_view()}
+                                        </ul>
+                                    }.into_view()
+                                }
+                            })
+                        }}
+                    </div>
+                </Suspense>
+            </div>
+
+            <div class="card" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px;">
+                <h3 style="margin-top: 0;">"Linked Social Accounts"</h3>
+                <p>"Link your account to social providers for easier sign-in."</p>
+
+                // Note: Social account linking UI would go here.
+                // For now we show the status based on UserResponse in Profile,
+                // or we can fetch /api/v1/auth/account/social here.
+                <p style="color: #6c757d; font-style: italic;">"Social account management is coming soon."</p>
             </div>
         </div>
     }
