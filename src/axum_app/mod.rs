@@ -92,10 +92,10 @@ impl AxumApp {
             )))
             // Add security middleware layers (order matters!)
             .layer(axum::middleware::from_fn(security_headers_middleware))
-            .layer(axum::middleware::from_fn(move |req, next| {
-                let csrf_state = csrf_state.clone();
-                async move { csrf_protection_middleware(State(csrf_state), req, next).await }
-            }))
+            .layer(axum::middleware::from_fn_with_state(
+                csrf_state.clone(),
+                csrf_protection_middleware,
+            ))
             .layer(axum::middleware::from_fn(move |req, next| {
                 input_validation_middleware(Arc::new(input_validation_config.clone()), req, next)
             }))
