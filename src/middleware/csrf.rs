@@ -1,9 +1,10 @@
 use axum::{
     body::Body,
     extract::{Request, State},
-    http::{Response, StatusCode},
+    http::{Response, StatusCode, header},
     middleware::Next,
 };
+use axum_extra::extract::CookieJar;
 use base64::{Engine as _, engine::general_purpose};
 use rand::{Rng, thread_rng};
 use std::sync::Arc;
@@ -69,9 +70,15 @@ impl CsrfState {
     }
 }
 
-/// Middleware that provides CSRF protection
+/// Middleware that provides CSRF protection using the Double Submit Cookie pattern.
+///
+/// This middleware ensures that:
+/// 1. Safe methods (GET, HEAD, OPTIONS) set a CSRF token cookie if one is missing.
+/// 2. State-changing methods (POST, PUT, DELETE, PATCH) have a CSRF token in the headers
+///    that matches the CSRF token in the cookies.
 pub async fn csrf_protection_middleware(
     State(state): State<Arc<CsrfState>>,
+    jar: CookieJar,
     request: Request<Body>,
     next: Next,
 ) -> Result<Response<Body>, StatusCode> {
@@ -91,36 +98,59 @@ pub async fn csrf_protection_middleware(
         return Ok(next.run(request).await);
     }
 
-    // Skip CSRF protection for GET, HEAD, OPTIONS requests
-    if matches!(
-        request.method(),
+    let method = request.method();
+    let is_safe_method = matches!(
+        method,
         &axum::http::Method::GET | &axum::http::Method::HEAD | &axum::http::Method::OPTIONS
-    ) {
-        return Ok(next.run(request).await);
+    );
+
+    if is_safe_method {
+        let mut response = next.run(request).await;
+
+        // Ensure CSRF cookie is set so the client can use it for subsequent state-changing requests.
+        // We use HttpOnly=false so the client-side JavaScript can read it to include in headers.
+        if jar.get(&state.config.cookie_name).is_none() {
+            let token = state.generate_token();
+            let cookie_val = format!(
+                "{}={}; Path=/; SameSite=Lax",
+                state.config.cookie_name, token
+            );
+            if let Ok(hv) = header::HeaderValue::from_str(&cookie_val) {
+                response.headers_mut().append(header::SET_COOKIE, hv);
+            }
+        }
+
+        return Ok(response);
     }
 
     // Extract CSRF token from header
-    let csrf_token = request
+    let header_token = request
         .headers()
         .get(&state.config.header_name)
         .and_then(|h| h.to_str().ok());
 
-    let csrf_token = match csrf_token {
-        Some(token) => token,
-        None => {
-            warn!("CSRF token missing in request to {}", path);
-            return Err(StatusCode::FORBIDDEN);
+    // Extract CSRF token from cookie
+    let cookie_token = jar.get(&state.config.cookie_name).map(|c| c.value());
+
+    // Double Submit Cookie validation: Header token must match Cookie token
+    match (header_token, cookie_token) {
+        (Some(h_token), Some(c_token)) if h_token == c_token && state.validate_token(h_token) => {
+            debug!("CSRF token validated for request to {}", path);
+            Ok(next.run(request).await)
         }
-    };
-
-    // Validate the token
-    if !state.validate_token(csrf_token) {
-        warn!("Invalid CSRF token in request to {}", path);
-        return Err(StatusCode::FORBIDDEN);
+        (None, _) => {
+            warn!("CSRF token missing in header for request to {}", path);
+            Err(StatusCode::FORBIDDEN)
+        }
+        (_, None) => {
+            warn!("CSRF token missing in cookie for request to {}", path);
+            Err(StatusCode::FORBIDDEN)
+        }
+        _ => {
+            warn!("CSRF token mismatch for request to {}", path);
+            Err(StatusCode::FORBIDDEN)
+        }
     }
-
-    debug!("CSRF token validated for request to {}", path);
-    Ok(next.run(request).await)
 }
 
 /// Generate a CSRF token response header
@@ -137,7 +167,7 @@ mod tests {
         body::Body,
         extract::Request,
         http::{Method, StatusCode},
-        middleware::from_fn,
+        middleware::from_fn_with_state,
         routing::{get, post},
     };
     use tower::ServiceExt;
@@ -147,10 +177,10 @@ mod tests {
         let state = Arc::new(CsrfState::new(CsrfConfig::default()));
         let app = Router::new()
             .route("/test", post(|| async { "OK" }))
-            .layer(from_fn(move |req, next| {
-                let state = state.clone();
-                csrf_protection_middleware(State(state), req, next)
-            }));
+            .layer(from_fn_with_state(
+                state.clone(),
+                csrf_protection_middleware,
+            ));
 
         // Request without CSRF token should fail
         let response = app
@@ -176,10 +206,10 @@ mod tests {
         let state = Arc::new(CsrfState::new(config));
         let app = Router::new()
             .route("/test", post(|| async { "OK" }))
-            .layer(from_fn(move |req, next| {
-                let state = state.clone();
-                csrf_protection_middleware(State(state), req, next)
-            }));
+            .layer(from_fn_with_state(
+                state.clone(),
+                csrf_protection_middleware,
+            ));
 
         // Request without CSRF token should succeed when disabled
         let response = app
@@ -201,10 +231,10 @@ mod tests {
         let state = Arc::new(CsrfState::new(CsrfConfig::default()));
         let app = Router::new()
             .route("/health", post(|| async { "OK" }))
-            .layer(from_fn(move |req, next| {
-                let state = state.clone();
-                csrf_protection_middleware(State(state), req, next)
-            }));
+            .layer(from_fn_with_state(
+                state.clone(),
+                csrf_protection_middleware,
+            ));
 
         // Health endpoint should be excluded from CSRF protection
         let response = app
@@ -226,10 +256,10 @@ mod tests {
         let state = Arc::new(CsrfState::new(CsrfConfig::default()));
         let app = Router::new()
             .route("/test", get(|| async { "OK" }))
-            .layer(from_fn(move |req, next| {
-                let state = state.clone();
-                csrf_protection_middleware(State(state), req, next)
-            }));
+            .layer(from_fn_with_state(
+                state.clone(),
+                csrf_protection_middleware,
+            ));
 
         // GET requests should be allowed without CSRF token
         let response = app
@@ -251,10 +281,10 @@ mod tests {
         let state = Arc::new(CsrfState::new(CsrfConfig::default()));
         let app = Router::new()
             .route("/test", get(|| async { "OK" }))
-            .layer(from_fn(move |req, next| {
-                let state = state.clone();
-                csrf_protection_middleware(State(state), req, next)
-            }));
+            .layer(from_fn_with_state(
+                state.clone(),
+                csrf_protection_middleware,
+            ));
 
         // HEAD requests should be allowed without CSRF token
         let response = app
@@ -276,10 +306,10 @@ mod tests {
         let state = Arc::new(CsrfState::new(CsrfConfig::default()));
         let app = Router::new()
             .route("/test", get(|| async { "OK" }).options(|| async { "OK" }))
-            .layer(from_fn(move |req, next| {
-                let state = state.clone();
-                csrf_protection_middleware(State(state), req, next)
-            }));
+            .layer(from_fn_with_state(
+                state.clone(),
+                csrf_protection_middleware,
+            ));
 
         // OPTIONS requests should be allowed without CSRF token
         let response = app
@@ -303,12 +333,71 @@ mod tests {
 
         let app = Router::new()
             .route("/test", post(|| async { "OK" }))
-            .layer(from_fn(move |req, next| {
-                let state = state.clone();
-                csrf_protection_middleware(State(state), req, next)
-            }));
+            .layer(from_fn_with_state(
+                state.clone(),
+                csrf_protection_middleware,
+            ));
 
-        // Request with valid CSRF token should succeed
+        // Request with matching CSRF token in header and cookie should succeed
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/test")
+                    .header("X-CSRF-Token", &token)
+                    .header("Cookie", format!("csrf_token={}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_csrf_mismatched_token() {
+        let state = Arc::new(CsrfState::new(CsrfConfig::default()));
+        let token1 = state.generate_token();
+        let token2 = state.generate_token();
+
+        let app = Router::new()
+            .route("/test", post(|| async { "OK" }))
+            .layer(from_fn_with_state(
+                state.clone(),
+                csrf_protection_middleware,
+            ));
+
+        // Request with mismatched CSRF token should fail
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/test")
+                    .header("X-CSRF-Token", token1)
+                    .header("Cookie", format!("csrf_token={}", token2))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn test_csrf_missing_cookie() {
+        let state = Arc::new(CsrfState::new(CsrfConfig::default()));
+        let token = state.generate_token();
+
+        let app = Router::new()
+            .route("/test", post(|| async { "OK" }))
+            .layer(from_fn_with_state(
+                state.clone(),
+                csrf_protection_middleware,
+            ));
+
+        // Request with header token but missing cookie should fail
         let response = app
             .oneshot(
                 Request::builder()
@@ -321,7 +410,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -330,45 +419,19 @@ mod tests {
 
         let app = Router::new()
             .route("/test", post(|| async { "OK" }))
-            .layer(from_fn(move |req, next| {
-                let state = state.clone();
-                csrf_protection_middleware(State(state), req, next)
-            }));
+            .layer(from_fn_with_state(
+                state.clone(),
+                csrf_protection_middleware,
+            ));
 
-        // Request with invalid CSRF token should fail
+        // Request with invalid CSRF token format should fail
         let response = app
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
                     .uri("/test")
                     .header("X-CSRF-Token", "invalid-token")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[tokio::test]
-    async fn test_csrf_empty_token() {
-        let state = Arc::new(CsrfState::new(CsrfConfig::default()));
-
-        let app = Router::new()
-            .route("/test", post(|| async { "OK" }))
-            .layer(from_fn(move |req, next| {
-                let state = state.clone();
-                csrf_protection_middleware(State(state), req, next)
-            }));
-
-        // Request with empty CSRF token should fail
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method(Method::POST)
-                    .uri("/test")
-                    .header("X-CSRF-Token", "")
+                    .header("Cookie", "csrf_token=invalid-token")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -389,18 +452,19 @@ mod tests {
 
         let app = Router::new()
             .route("/test", post(|| async { "OK" }))
-            .layer(from_fn(move |req, next| {
-                let state = state.clone();
-                csrf_protection_middleware(State(state), req, next)
-            }));
+            .layer(from_fn_with_state(
+                state.clone(),
+                csrf_protection_middleware,
+            ));
 
-        // Request with custom header name should succeed
+        // Request with custom header name and matching cookie should succeed
         let response = app
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
                     .uri("/test")
-                    .header("X-Custom-CSRF-Token", token)
+                    .header("X-Custom-CSRF-Token", &token)
+                    .header("Cookie", format!("csrf_token={}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
