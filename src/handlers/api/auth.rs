@@ -2,10 +2,12 @@ use crate::error::AuthencError;
 use authenc_services::services::stores::user_store::UserStoreTrait;
 use authenc_crypto::utils::crypto::jwt;
 use authenc_crypto::utils::crypto::password::verify_password;
-use axum::{Router, extract::State, response::Json, routing::post};
+use axum::{Router, extract::{ConnectInfo, State}, response::Json, routing::post};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use uuid::Uuid;
+use chrono::{Utc, Duration};
 
 /// Create authentication routes
 pub fn create_auth_routes() -> Router<Arc<crate::app::AppState>> {
@@ -36,9 +38,26 @@ pub struct LoginResponse {
 
 /// Authenticate a user with username and password
 pub async fn login(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<crate::app::AppState>>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, AuthencError> {
+    let ip = addr.ip().to_string();
+    let rate_limit_key = format!("login:{}", ip);
+
+    // 1. IP-based rate limiting
+    match state.brute_force_protector.register_attempt(&rate_limit_key) {
+        Ok(true) => {
+            tracing::warn!("Rate limit exceeded for login request from IP: {}", ip);
+            return Err(AuthencError::RateLimitExceeded);
+        }
+        Err(e) => {
+            tracing::error!("Brute force protector error: {}", e);
+            // Continue on error to avoid locking everyone out, but log it
+        }
+        _ => {}
+    }
+
     // Determine realm_id. In a real scenario, this should come from the request (header/param)
     // or defaulted to master realm if not present.
     // For this endpoint, let's assume master realm if `req.realm` matches, otherwise error or lookup realm by name.
@@ -66,12 +85,31 @@ pub async fn login(
         .await?
         .ok_or_else(|| AuthencError::unauthorized("Invalid credentials"))?;
 
+    // 2. Account lockout check
+    if user.account_locked {
+        if let Some(until) = user.account_locked_until {
+            if until > Utc::now() {
+                tracing::warn!("Attempted login to locked account: {}", user.username);
+                return Err(AuthencError::forbidden("Account is temporarily locked"));
+            } else {
+                // Lock has expired
+                let _ = state.user_store.unlock_account(user.id).await;
+            }
+        } else {
+            tracing::warn!("Attempted login to permanently locked account: {}", user.username);
+            return Err(AuthencError::forbidden("Account is locked"));
+        }
+    }
+
     // Verify password
     if let Some(ref password_hash) = user.password_hash {
         if verify_password(password_hash, &req.password)
             .await
             .unwrap_or(false)
         {
+            // Reset failed attempts on success
+            let _ = state.user_store.record_login(user.id).await;
+
             let token = jwt::generate_jwt(&user.id.to_string())
                 .map_err(|_| AuthencError::internal("Token generation failed"))?;
             let message = format!("Login successful for user {}", user.username);
@@ -95,6 +133,24 @@ pub async fn login(
                 message,
             }));
         }
+    }
+
+    // 3. Handle failed attempt
+    let failed_attempts = state
+        .user_store
+        .record_failed_login(user.id)
+        .await
+        .unwrap_or(0);
+
+    if failed_attempts >= state.config.security.brute_force_max_attempts as i32 {
+        let lockout_duration = state.config.security.brute_force_window_seconds;
+        let until = Utc::now() + Duration::seconds(lockout_duration as i64);
+        let _ = state.user_store.lock_account(user.id, Some(until)).await;
+        tracing::warn!(
+            "Account locked due to too many failed attempts: {} ({} attempts)",
+            user.username,
+            failed_attempts
+        );
     }
 
     // Fire login error event
