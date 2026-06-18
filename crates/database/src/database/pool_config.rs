@@ -146,8 +146,10 @@ impl PoolConfigBuilder {
 
     /// Build the deadpool PoolConfig
     pub fn build(self) -> PoolConfig {
-        let mut config = PoolConfig::default();
-        config.max_size = self.max_size;
+        let mut config = deadpool_postgres::PoolConfig {
+            max_size: self.max_size,
+            ..Default::default()
+        };
         config.timeouts.wait = Some(self.timeout);
         config.timeouts.create = Some(self.timeout);
         config.timeouts.recycle = Some(Duration::from_secs(5));

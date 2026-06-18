@@ -277,7 +277,6 @@ pub trait BatchUpdateable {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_batch_operations_creation() {

@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 /// Database operations for group management
 pub mod groups {
     use authenc_core::error::{AuthencError, Result};
@@ -6771,6 +6772,7 @@ pub mod roles {
         client.execute(query, &[&user_id, &role_id]).await?;
         Ok(())
     }
+/// Get all roles assigned to a user
     pub async fn get_user_roles(db: &Database, user_id: &Uuid) -> Result<Vec<Role>> {
         let client = db.get_connection().await?;
         let query = r#"
@@ -6888,6 +6890,7 @@ pub mod roles {
     }
 }
 
+/// WebAuthn database operations
 pub mod webauthn {
     use authenc_core::error::Result;
 
@@ -8599,7 +8602,7 @@ pub async fn query_events(db: &Database, query: &EventQuery) -> Result<Vec<Event
         events.push(Event {
             id: row.get::<_, Uuid>(0).to_string(),
             time: row.get(1),
-            event_type: EventType::from_str(&row.get::<_, String>(2)).unwrap_or(EventType::Login),
+            event_type: EventType::parse(&row.get::<_, String>(2)).unwrap_or(EventType::Login),
             realm_id: row.get(3),
             realm_name: row.get(4),
             client_id: row.get(5),
@@ -8736,9 +8739,9 @@ pub async fn query_admin_events(db: &Database, query: &AdminEventQuery) -> Resul
                 ip_address: row.get(6),
                 user_agent: row.get(7),
             },
-            resource_type: ResourceType::from_str(&row.get::<_, String>(8))
+            resource_type: ResourceType::parse(&row.get::<_, String>(8))
                 .unwrap_or(ResourceType::User),
-            operation_type: OperationType::from_str(&row.get::<_, String>(9))
+            operation_type: OperationType::parse(&row.get::<_, String>(9))
                 .unwrap_or(OperationType::Create),
             resource_path: row.get(10),
             representation: row.get(11),
@@ -9269,8 +9272,8 @@ pub mod permission_tickets {
             "#
         };
 
-        let rows = if name_filter.is_some() {
-            let pattern = format!("%{}%", name_filter.unwrap());
+        let rows = if let Some(filter) = name_filter {
+            let pattern = format!("%{}%", filter);
             db.query(
                 query,
                 &[&user_id, &pattern, &(limit as i64), &(offset as i64)],
@@ -10285,8 +10288,8 @@ pub mod sessions {
         expires_in: i64,
         ip_address: Option<&str>,
         user_agent: Option<&str>,
-        authentication_method: Option<&str>,
-        protocol: Option<&str>,
+        _authentication_method: Option<&str>,
+        _protocol: Option<&str>,
     ) -> Result<serde_json::Value> {
         let expires_at = chrono::Utc::now() + chrono::Duration::seconds(expires_in);
         let now = chrono::Utc::now();

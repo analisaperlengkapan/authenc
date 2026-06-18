@@ -219,7 +219,7 @@ impl EventType {
     }
 
     /// Convert string to EventType
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "LOGIN" => Some(EventType::Login),
             "LOGIN_ERROR" => Some(EventType::LoginError),
@@ -403,7 +403,7 @@ impl OperationType {
     }
 
     /// Convert string to OperationType
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "CREATE" => Some(OperationType::Create),
             "UPDATE" => Some(OperationType::Update),
@@ -535,7 +535,7 @@ impl ResourceType {
     }
 
     /// Convert string to ResourceType
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "REALM" => Some(ResourceType::Realm),
             "REALM_ROLE" => Some(ResourceType::RealmRole),

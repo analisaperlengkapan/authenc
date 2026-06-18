@@ -79,10 +79,10 @@ impl Vault for FileVault {
         if self.validate_component(key).is_err() {
             return None;
         }
-        if let Some(realm) = realm {
-            if self.validate_component(realm).is_err() {
-                return None;
-            }
+        if let Some(realm) = realm
+            && self.validate_component(realm).is_err()
+        {
+            return None;
         }
 
         let mut path = self.base_dir.clone();

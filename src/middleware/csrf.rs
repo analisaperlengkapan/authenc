@@ -112,7 +112,7 @@ pub async fn csrf_protection_middleware(
         if jar.get(&state.config.cookie_name).is_none() {
             let token = state.generate_token();
             let cookie_val = format!(
-                "{}={}; Path=/; SameSite=Lax",
+                "{}={}; Path=/; SameSite=Lax; Secure",
                 state.config.cookie_name, token
             );
             if let Ok(hv) = header::HeaderValue::from_str(&cookie_val) {
