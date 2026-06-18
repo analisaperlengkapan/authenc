@@ -644,24 +644,25 @@ impl AppConfig {
             config.server.tls_key_path = Some(key_path);
         }
 
-        if let Ok(db_url) = env::var("DATABASE_URL") {
-            if let Ok(url) = url::Url::parse(&db_url) {
-                if let Some(host) = url.host_str() {
-                    config.database.host = host.to_string();
-                }
-                if let Some(port) = url.port() {
-                    config.database.port = port;
-                }
-                if !url.username().is_empty() {
-                    config.database.username = url.username().to_string();
-                }
-                if let Some(password) = url.password() {
-                    config.database.password = password.to_string();
-                }
-                if let Some(mut segments) = url.path_segments()
-                    && let Some(db) = segments.next() {
-                        config.database.database = db.trim_start_matches('/').to_string();
-                    }
+        if let Ok(db_url) = env::var("DATABASE_URL")
+            && let Ok(url) = url::Url::parse(&db_url)
+        {
+            if let Some(host) = url.host_str() {
+                config.database.host = host.to_string();
+            }
+            if let Some(port) = url.port() {
+                config.database.port = port;
+            }
+            if !url.username().is_empty() {
+                config.database.username = url.username().to_string();
+            }
+            if let Some(password) = url.password() {
+                config.database.password = password.to_string();
+            }
+            if let Some(mut segments) = url.path_segments()
+                && let Some(db) = segments.next()
+            {
+                config.database.database = db.trim_start_matches('/').to_string();
             }
         }
 

@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 use x509_parser::prelude::*;
+type CrlCacheMap = HashMap<String, (Vec<u8>, SystemTime)>;
 
 /// Supported canonicalization methods
 #[derive(Debug, Clone, PartialEq)]
@@ -1500,7 +1501,7 @@ pub enum RevocationStatus {
 #[derive(Clone)]
 pub struct CrlManager {
     /// Cache of downloaded CRL bytes: URL -> (raw_bytes, expiration_time)
-    cache: Arc<Mutex<HashMap<String, (Vec<u8>, SystemTime)>>>,
+    cache: Arc<Mutex<CrlCacheMap>>,
     /// How long to cache CRLs (default: 1 hour)
     cache_duration: Duration,
     /// HTTP client for downloading CRLs
@@ -1861,11 +1862,11 @@ pub enum OcspStatus {
 #[derive(Clone)]
 pub struct OcspClient {
     /// HTTP client for OCSP requests
-    #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    #[cfg(feature = "default")]
     http_client: reqwest::Client,
 
     /// Cache of OCSP responses (cert_id -> (response, expiration))
-    response_cache: Arc<Mutex<HashMap<String, (Vec<u8>, SystemTime)>>>,
+    response_cache: Arc<Mutex<CrlCacheMap>>,
 
     /// How long to cache OCSP responses (default: 5 minutes)
     cache_duration: Duration,
@@ -1882,7 +1883,7 @@ impl OcspClient {
     /// Default settings:
     /// - Cache duration: 5 minutes (OCSP responses are meant to be current)
     /// - HTTP timeout: 10 seconds
-    #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    #[cfg(feature = "default")]
     pub fn new() -> Result<Self> {
         let http_client = reqwest::ClientBuilder::new()
             .timeout(Duration::from_secs(10))
@@ -1898,7 +1899,7 @@ impl OcspClient {
     }
 
     /// Create an OCSP client with custom configuration
-    #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    #[cfg(feature = "default")]
     pub fn with_config(cache_duration: Duration, timeout: Duration) -> Result<Self> {
         let http_client = reqwest::ClientBuilder::new()
             .timeout(timeout)
@@ -1921,7 +1922,7 @@ impl OcspClient {
     /// 3. Send HTTP POST to OCSP responder
     /// 4. Parse and verify OCSP response
     /// 5. Return certificate status
-    #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    #[cfg(feature = "default")]
     pub async fn check_status(&self, cert: &X509, issuer: &X509) -> Result<OcspStatus> {
         // Extract OCSP responder URL from certificate
         let ocsp_url = self.extract_ocsp_url(cert)?;
@@ -1987,7 +1988,7 @@ impl OcspClient {
     }
 
     /// Send OCSP request via HTTP POST
-    #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    #[cfg(feature = "default")]
     async fn send_ocsp_request(&self, url: &str, request_der: &[u8]) -> Result<Vec<u8>> {
         let response = self
             .http_client
@@ -2122,7 +2123,7 @@ impl OcspClient {
     ///
     /// Use this when the certificate doesn't have an AIA extension
     /// or you want to override the default responder
-    #[cfg(any(feature = "test", feature = "dev", feature = "default"))]
+    #[cfg(feature = "default")]
     pub async fn check_status_with_url(
         &self,
         cert: &X509,

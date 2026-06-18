@@ -1014,7 +1014,7 @@ mod tests {
         let secret = b"test-canonical";
         let config = ShamirConfig::new(2, 3).unwrap();
 
-        let (mut shares, commitment) = generate_shares_with_commitments(secret, &config).unwrap();
+        let (mut shares, _commitment) = generate_shares_with_commitments(secret, &config).unwrap();
         validate_shares(&mut shares).unwrap();
 
         // Create a share with non-canonical scalar (all 0xFF bytes - larger than field order)

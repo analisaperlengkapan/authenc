@@ -1,7 +1,6 @@
 /// OTP/TOTP Credential Provider Implementation
 ///
 /// Provides time-based one-time password (TOTP) and HMAC-based one-time password (HOTP) support.
-
 use super::{
     CredentialInput, CredentialInputUpdater, CredentialInputValidator, CredentialModel,
     CredentialTypeCategory, CredentialTypeMetadata,

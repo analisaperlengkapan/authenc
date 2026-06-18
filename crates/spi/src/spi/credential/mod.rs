@@ -7,6 +7,7 @@ use authenc_core::error::{AuthencError as Error, Result};
 use crate::spi::{Provider, ProviderConfig, ProviderFactory, Spi, SpiError};
 use authenc_crypto::utils::crypto::password::{hash_password, verify_password};
 
+/// OTP/TOTP Credential Provider Implementation
 pub mod otp;
 pub mod webauthn;
 
