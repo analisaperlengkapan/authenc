@@ -6,10 +6,10 @@ rather than describing an intention as a property.
 
 ## Status
 
-Stages 1 to 3a of the rebuild. Passwords, sessions, CSRF, brute-force lockout,
-credential recovery, configuration, transport headers, and error handling are
-in place and tested. OAuth 2.0, OpenID Connect, and multi-factor authentication
-do not exist yet.
+Stages 1 to 3b of the rebuild. Passwords, sessions, CSRF, brute-force lockout,
+credential recovery, authorisation, tenant isolation, configuration, transport
+headers, and error handling are in place and tested. OAuth 2.0, OpenID Connect,
+and multi-factor authentication do not exist yet.
 
 ## Threat model
 
