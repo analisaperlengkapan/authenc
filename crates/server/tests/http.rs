@@ -4,6 +4,11 @@
 //! than calling handlers directly, because most of what is asserted here is a
 //! property of the stack rather than of any one handler.
 
+// `allow-unwrap-in-tests` in clippy.toml only covers `#[cfg(test)]` modules;
+// an integration-test crate needs the allowance stated here. `unwrap` in a
+// test is an assertion, which is exactly what we want it to be.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use authenc_identity::Db;
 use axum::http::StatusCode;
 use axum_test::TestServer;

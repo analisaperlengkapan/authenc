@@ -12,6 +12,8 @@
 
 pub mod api;
 pub mod pages;
+#[cfg(feature = "ssr")]
+pub mod server_ctx;
 pub mod ui;
 
 use leptos::prelude::*;
@@ -52,6 +54,7 @@ pub fn App() -> impl IntoView {
         <Router>
             <Routes fallback=pages::NotFound>
                 <Route path=StaticSegment("") view=pages::Home />
+                <Route path=StaticSegment("login") view=pages::Login />
             </Routes>
         </Router>
     }

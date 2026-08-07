@@ -6,10 +6,9 @@ rather than describing an intention as a property.
 
 ## Status
 
-Stage 1 of the rebuild. Passwords, configuration, transport headers, and error
-handling are in place. **Sessions, CSRF, and login land in stage 2** — until
-then there is no authentication to reason about, and the service must not be
-exposed.
+Stages 1 and 2 of the rebuild. Passwords, sessions, CSRF, brute-force lockout,
+configuration, transport headers, and error handling are in place and tested.
+OAuth 2.0, OpenID Connect, and multi-factor authentication do not exist yet.
 
 ## Threat model
 
@@ -44,21 +43,66 @@ enforced by a functional unique index in the schema. Treating `Alice` and
 `alice` as separate accounts is an account-takeover route during password
 reset.
 
-## Sessions (stage 2)
+## Sessions
 
-Design, recorded here so it is reviewable before it is written:
+- The browser holds an **opaque token** in a cookie: `HttpOnly`,
+  `SameSite=Lax`, `Path=/`. Nothing readable by JavaScript authenticates a
+  request, so an injected script has nothing to steal. The previous console
+  kept a JWT in `localStorage`. Under the production profile the cookie is
+  additionally `Secure` and `__Host-` prefixed, binding it to exactly one
+  origin so a sibling subdomain cannot overwrite it. Development uses a plain
+  name because a browser will not store a `Secure` cookie over plain HTTP.
+- The server stores only a **SHA-256 hash** of the token, so a database
+  disclosure yields hashes rather than live sessions. A test asserts the
+  plaintext never appears in the row.
+- Expiry is enforced **on lookup**, not merely recorded, and logging out
+  deletes the server-side row as well as the cookie — clearing only the cookie
+  would leave a working session for anyone who captured the value.
 
-- The browser holds an **opaque identifier** in a cookie: `HttpOnly`, `Secure`,
-  `SameSite=Lax`, `Path=/`, `__Host-` prefixed. Nothing readable by JavaScript
-  authenticates a request, so an injected script has nothing to steal. The
-  previous console kept a JWT in `localStorage`.
-- The server stores only a **hash** of the session token, so a database
-  disclosure does not hand over live sessions.
-- **CSRF** uses double-submit with a token bound to the session — the
-  `csrf_secret` column exists in `0001_identity_core.sql` for this. A token
-  minted for one session must not validate against another. The previous
-  implementation checked only that the submitted value was at least 32
-  characters long, with no server-side state, no HMAC, and no session binding.
+## CSRF
+
+The token is derived from a per-session secret and compared in **constant
+time**; a token minted for one session does not validate against another, and a
+test asserts exactly that. The previous implementation checked only that the
+submitted value was at least 32 characters long, with no server-side state, no
+HMAC, and no session binding, so any string of the right length worked
+everywhere.
+
+Safe methods are exempt. `Sec-Fetch-Site`/`Origin` is checked as well, since a
+browser sets it and page script cannot forge it.
+
+## Resisting brute force and enumeration
+
+- **A wrong password and an unknown user produce the identical response** —
+  same status, same body. The password is verified against a real Argon2 hash
+  even when no such user exists, so response time does not distinguish the two
+  either. An unknown *realm* returns 401 rather than 404, so realm names cannot
+  be probed.
+- **Lockout is checked before the password is**, so a locked account costs an
+  attacker a database lookup rather than an Argon2 verification. It is scoped
+  per identifier and per address over a rolling window, holds even against the
+  correct password, lifts on its own once attempts stop, and does not lock out
+  other accounts.
+- **Every attempt is recorded**, successful or not — that record is both the
+  lockout input and the answer to "was this account attacked?".
+- The client address comes from the transport connection only.
+  `X-Forwarded-For` is deliberately not consulted; the previous code trusted it
+  unconditionally, letting any client choose the address it was judged by.
+
+## Roles
+
+Resolved from the database at the point of use, never carried in a token. The
+previous system minted tokens with `roles: None` and then checked
+`roles.contains("admin")`, so no token it issued could satisfy an admin check —
+every role-gated endpoint was permanently 403 while everything else was
+permanently open.
+
+## Operational tasks
+
+`authenc seed`, `migrate`, and `purge-sessions` are CLI subcommands. Nothing
+equivalent exists as an HTTP endpoint. The previous router served
+`/oauth2/token/test`, `/oauth2/consent/test`, and `/api/v1/auth/test-login`
+unauthenticated in production, granting consent for a hardcoded user id.
 
 ## Secrets
 
@@ -107,10 +151,14 @@ Liveness deliberately touches no dependency.
 
 ## Not yet addressed
 
-Rate limiting is not implemented. The previous implementation was a
+General per-endpoint rate limiting is not implemented; only the login path is
+protected, by the lockout above. The previous implementation was a
 process-local counter keyed per IP *and path*, so the effective budget was the
 configured limit multiplied by the number of paths, and it coordinated across
 no instances. A replacement will be shared-state and keyed on the identity
-being attacked, and will arrive with the login flow in stage 2.
+being attacked.
+
+Password reset and email verification are not implemented — the token
+primitive and schema exist, but nothing sends mail.
 
 No independent security review has been performed.

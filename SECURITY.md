@@ -19,9 +19,9 @@ security fixes.
 
 ## Current status
 
-**This software has not had an independent security review, and the
-authentication slice is not complete.** Do not deploy it as a production
-identity provider yet. [ROADMAP.md](ROADMAP.md) states precisely what is
+**This software has not had an independent security review.** Authentication
+works and is tested; OAuth 2.0, OpenID Connect, and multi-factor authentication
+do not exist yet. Do not deploy it as a production identity provider. [ROADMAP.md](ROADMAP.md) states precisely what is
 implemented.
 
 The tree before August 2026 (tag `archive/pre-refactor`) contains authentication

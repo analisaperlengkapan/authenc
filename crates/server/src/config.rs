@@ -231,7 +231,14 @@ impl Config {
         let config: Self = Figment::from(Serialized::defaults(Self::default()))
             .merge(Toml::file("config/default.toml"))
             .merge(Toml::file(format!("config/{}.toml", profile.as_str())))
-            .merge(Env::prefixed("AUTHENC_").split("__"))
+            // `AUTHENC_SEED_PASSWORD` shares the prefix but is a CLI argument, not
+            // configuration. Excluded explicitly so `deny_unknown_fields` keeps
+            // catching genuine typos instead of being switched off.
+            .merge(
+                Env::prefixed("AUTHENC_")
+                    .split("__")
+                    .ignore(&["SEED_PASSWORD"]),
+            )
             .extract()
             .map_err(Box::new)?;
 

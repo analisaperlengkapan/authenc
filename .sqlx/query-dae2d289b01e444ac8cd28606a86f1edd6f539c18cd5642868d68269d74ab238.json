@@ -1,0 +1,66 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO roles (realm_id, name, description)\n        VALUES ($1, $2, $3)\n        ON CONFLICT (realm_id, name)\n            DO UPDATE SET description = COALESCE(EXCLUDED.description, roles.description)\n        RETURNING id, realm_id, name, description\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "roles",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "realm_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "roles",
+            "name": "realm_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "roles",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "roles",
+            "name": "description"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "dae2d289b01e444ac8cd28606a86f1edd6f539c18cd5642868d68269d74ab238"
+}

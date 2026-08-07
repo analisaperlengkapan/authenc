@@ -5,7 +5,32 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
+### Added — authentication
+
+- Sessions: an opaque token in an `HttpOnly`, `SameSite=Lax` cookie, with only
+  its SHA-256 hash stored. `Secure` and `__Host-` prefixed under the production
+  profile. Expiry enforced on lookup; logout deletes the server-side row.
+- CSRF: a token derived from a per-session secret, compared in constant time,
+  so one session's token does not validate against another. Plus a
+  `Sec-Fetch-Site`/`Origin` check.
+- Brute-force lockout per identifier and per address over a rolling window. It
+  holds even against the correct password, lifts on its own, and does not lock
+  out unrelated accounts.
+- User-enumeration resistance: a wrong password and an unknown user return the
+  identical response, and the password is verified against a real Argon2 hash
+  even when no such user exists so the timing matches. An unknown realm returns
+  401, not 404.
+- `log_in`, `log_out`, and `current_user` server functions, and a
+  server-rendered login page with shared client/server validation.
+- `CurrentUser` extractor; roles resolved from the database at the point of
+  use rather than carried in a token.
+- `authenc` CLI: `serve`, `migrate`, `seed`, `purge-sessions`. Seeding creates
+  the first realm, administrator, and `admin` role — so no test endpoint needs
+  to exist in the router.
+- Server-function failures now carry the correct HTTP status instead of a
+  blanket 500, so a wrong password is a 401 and a lockout is a 429.
+
+### Added — foundation
 
 - Four-crate workspace — `contract`, `identity`, `web`, `server` — with
   dependency directions enforced by a CI job rather than by convention.

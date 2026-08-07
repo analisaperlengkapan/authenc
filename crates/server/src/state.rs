@@ -42,3 +42,9 @@ impl FromRef<AppState> for Db {
         state.db.clone()
     }
 }
+
+impl FromRef<AppState> for Arc<Config> {
+    fn from_ref(state: &AppState) -> Self {
+        state.config.clone()
+    }
+}

@@ -31,6 +31,7 @@ authenc-identity = { workspace = true }
 authenc-web = { workspace = true, features = ["ssr"] }
 
 axum = { workspace = true }
+axum-extra = { workspace = true }
 leptos = { workspace = true, features = ["ssr"] }
 leptos_axum = { workspace = true }
 leptos_router = { workspace = true, features = ["ssr"] }
@@ -52,6 +53,7 @@ tower-http = { workspace = true, features = [
 http = { workspace = true }
 
 figment = { workspace = true }
+clap = { workspace = true }
 zeroize = "1.9.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -59,6 +61,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
+time = { workspace = true }
 
 [dev-dependencies]
 axum-test = { workspace = true }

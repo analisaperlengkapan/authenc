@@ -54,7 +54,7 @@ pub fn router(state: AppState) -> Router {
             routes,
             {
                 let state = state.clone();
-                move || provide_context(state.db.clone())
+                move || provide_app_context(&state)
             },
             {
                 let leptos_options = leptos_options.clone();
@@ -154,9 +154,20 @@ fn cors(config: &Config) -> CorsLayer {
 
 /// Dispatch a server-function call with application context available.
 async fn server_fn_handler(State(state): State<AppState>, request: Request<Body>) -> Response {
-    handle_server_fns_with_context(move || provide_context(state.db.clone()), request)
+    handle_server_fns_with_context(move || provide_app_context(&state), request)
         .await
         .into_response()
+}
+
+/// Make application state reachable from server functions.
+///
+/// Server functions cannot take an `axum::extract::State`, so anything they
+/// need is placed in the Leptos context — here, in exactly one place, so a
+/// function cannot silently depend on something one router forgot to provide.
+fn provide_app_context(state: &AppState) {
+    provide_context(state.db.clone());
+    provide_context(state.hasher.clone());
+    provide_context(crate::auth::cookie_policy(&state.config));
 }
 
 /// Bind address derived from configuration.

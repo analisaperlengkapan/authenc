@@ -135,3 +135,49 @@ pub fn EmptyState(
         </p>
     }
 }
+
+/// A labelled text input.
+///
+/// One component for what the previous console repeated about forty times as
+/// an inline-styled `<input>` with its own `on:input` closure.
+#[component]
+pub fn Field(
+    /// Visible label.
+    #[prop(into)]
+    label: String,
+    /// Field name, also used as the element id.
+    #[prop(into)]
+    name: String,
+    /// Two-way bound value.
+    value: RwSignal<String>,
+    /// `type` attribute.
+    #[prop(default = "text")]
+    kind: &'static str,
+    /// Browser autofill hint. Getting this right is what lets a password
+    /// manager work.
+    #[prop(optional)]
+    autocomplete: Option<&'static str>,
+) -> impl IntoView {
+    view! {
+        <div class="flex flex-col gap-1.5">
+            <label
+                for=name.clone()
+                class="text-sm font-medium text-ink-700 dark:text-ink-300"
+            >
+                {label}
+            </label>
+            <input
+                id=name.clone()
+                name=name
+                type=kind
+                autocomplete=autocomplete
+                class="rounded-md border-0 bg-surface-50 px-3 py-2 text-sm text-ink-900 \
+                       shadow-xs ring-1 ring-inset ring-ink-300 placeholder:text-ink-400 \
+                       focus:ring-2 focus:ring-inset focus:ring-brand-600 \
+                       dark:bg-surface-800 dark:text-ink-100 dark:ring-ink-700"
+                prop:value=move || value.get()
+                on:input=move |ev| value.set(event_target_value(&ev))
+            />
+        </div>
+    }
+}

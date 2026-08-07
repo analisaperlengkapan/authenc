@@ -44,6 +44,7 @@ leptos_axum = "0.8.10"
 
 # Web / async
 axum = "0.8.9"
+axum-extra = { version = "0.12", features = ["cookie"] }
 tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "signal"] }
 tower = "0.5.3"
 tower-http = "0.7.0"
@@ -73,6 +74,7 @@ anyhow = "1.0.104"
 
 # Config
 figment = { version = "0.10.19", features = ["toml", "env"] }
+clap = { version = "4.6", features = ["derive", "env"] }
 secrecy = { version = "0.10.3", features = ["serde"] }
 
 # Observability

@@ -3,10 +3,10 @@
 Identity and access management, built as one Rust workspace: a Leptos
 server-rendered frontend and an Axum backend over PostgreSQL.
 
-> **Status: foundation.** This repository was rebuilt from scratch in August
-> 2026. What is documented below is implemented and tested; everything else is
-> in [ROADMAP.md](ROADMAP.md) and is not claimed to exist. Do not run this in
-> production yet — the authentication slice lands in stage 2.
+> **Status: foundation plus authentication.** This repository was rebuilt from
+> scratch in August 2026. What is documented below is implemented and tested;
+> everything else is in [ROADMAP.md](ROADMAP.md) and is not claimed to exist.
+> It has not had an independent security review — see [SECURITY.md](SECURITY.md).
 
 ## Why it is built this way
 
@@ -24,7 +24,8 @@ Requires Rust 1.94, Docker (for PostgreSQL), and
 git clone https://github.com/analisaperlengkapan/authenc.git
 cd authenc
 just setup    # toolchain, tools, database, migrations
-just dev      # http://localhost:3000
+just seed admin@example.com 'a long passphrase you will remember'
+just dev      # http://localhost:3000/login
 ```
 
 `just setup` copies `.env.example` to `.env`. Every setting is documented
@@ -68,6 +69,13 @@ layer, so the structure is enforced rather than merely intended.
 | Health probes | `/health/live` and `/health/ready`, answering different questions |
 | Middleware | request id, tracing, panic capture, timeout, body limit, CORS from config, security headers |
 | Error responses | RFC 9457 `application/problem+json`, internal detail never leaked |
+| Sessions | opaque token in an `HttpOnly`, `SameSite=Lax` cookie; only its hash is stored |
+| Login and logout | server functions, with the login page rendered server-side |
+| Brute-force protection | per-identifier and per-address lockout over a rolling window |
+| User enumeration resistance | wrong password and unknown user return the identical response |
+| CSRF | token bound to the session, compared in constant time, plus an origin check |
+| RBAC groundwork | roles resolved from the database at the point of use, never from a token |
+| CLI | `authenc seed`, `migrate`, `purge-sessions` — no test endpoints in the router |
 
 ## Development
 

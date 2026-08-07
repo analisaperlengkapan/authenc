@@ -18,21 +18,32 @@ responses. Health and readiness probes. Argon2id password hashing. Docker
 image, compose stack, CI across format, lint (both targets), tests against a
 real PostgreSQL, layer boundaries, wasm bundle, and MSRV.
 
+### Stage 2 — Authentication
+
+Sessions as an opaque token in an `HttpOnly`, `SameSite=Lax` cookie, with only
+its hash stored. CSRF token bound to the session and compared in constant time,
+plus a `Sec-Fetch-Site`/`Origin` check. Brute-force lockout per identifier and
+per address over a rolling window, which holds even against the correct
+password and lifts on its own. Login, logout, and current-user server
+functions; a server-rendered login page. A `CurrentUser` extractor that
+resolves roles from the database. An `authenc` CLI with `seed`, `migrate`, and
+`purge-sessions`, so no test endpoint has to exist in the router.
+
+**Not in this stage:** password reset and email verification over SMTP. They
+were listed here originally and have moved to stage 3 — the schema and the
+token primitive are in place, but nothing sends mail yet, so claiming them
+would be false.
+
 ## Planned
 
 Each stage leaves the repository compiling, linted, and tested.
 
-### Stage 2 — Authentication
+### Stage 3 — Password reset, email verification, administration, RBAC
 
-Sessions as an opaque id in an `HttpOnly` cookie, CSRF bound to the session,
-brute-force protection and account lockout, password reset and email
-verification over SMTP, login and logout pages, a `CurrentUser` extractor.
-
-### Stage 3 — Administration and RBAC
-
-Realm, user, role, and permission management, with permission checks in the use
-case rather than by URL prefix. Admin console pages backed by server functions,
-plus a REST `/api/v1` surface with an OpenAPI document for automation.
+Password reset and email verification over SMTP (MailHog locally). Realm, user,
+role, and permission management, with permission checks in the use case rather
+than by URL prefix. Admin console pages backed by server functions, plus a REST
+`/api/v1` surface with an OpenAPI document for automation.
 
 ### Stage 4 — OAuth 2.0 and OpenID Connect
 
