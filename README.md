@@ -75,6 +75,9 @@ layer, so the structure is enforced rather than merely intended.
 | User enumeration resistance | wrong password and unknown user return the identical response |
 | CSRF | token bound to the session, compared in constant time, plus an origin check |
 | RBAC groundwork | roles resolved from the database at the point of use, never from a token |
+| Password reset | single-use expiring link; completing it revokes every session and lifts the lockout |
+| Email verification | single-use expiring link; a link cannot verify an address changed after it was sent |
+| Mail | SMTP via lettre, or a logging transport for development that production refuses to start with |
 | CLI | `authenc seed`, `migrate`, `purge-sessions` — no test endpoints in the router |
 
 ## Development

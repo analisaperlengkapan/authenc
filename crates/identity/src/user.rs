@@ -177,6 +177,28 @@ pub(crate) async fn credentialed_by_identifier(
     }))
 }
 
+/// Find a user id by email address, case-insensitively.
+///
+/// Returns `Ok(None)` rather than an error when there is no match, so a caller
+/// starting a password reset cannot accidentally turn "no such address" into a
+/// distinguishable response.
+///
+/// # Errors
+///
+/// Returns an internal error if the query fails.
+pub async fn id_by_email(db: &Db, realm_id: RealmId, email: &str) -> Result<Option<UserId>> {
+    let id = sqlx::query_scalar!(
+        "SELECT id FROM users WHERE realm_id = $1 AND lower(email) = lower($2)",
+        realm_id.0,
+        email,
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|e| AppError::internal_from("looking up user by email", e))?;
+
+    Ok(id.map(UserId))
+}
+
 /// The role names granted to a user.
 ///
 /// Resolved from the database at the point of use rather than carried in a

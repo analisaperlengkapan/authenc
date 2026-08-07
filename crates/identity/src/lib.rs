@@ -24,8 +24,10 @@
 
 pub mod db;
 pub mod login;
+pub mod mail;
 pub mod password;
 pub mod realm;
+pub mod recovery;
 pub mod role;
 pub mod session;
 pub mod token;

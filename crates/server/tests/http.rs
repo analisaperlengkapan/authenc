@@ -27,6 +27,7 @@ fn server(db: Db) -> TestServer {
         config: std::sync::Arc::new(authenc_server::config::Config::default()),
         db,
         hasher: authenc_identity::PasswordHasher::new(),
+        mailer: std::sync::Arc::new(authenc_identity::mail::CapturingMailer::new()),
         leptos_options,
     };
 

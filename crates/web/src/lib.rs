@@ -55,6 +55,9 @@ pub fn App() -> impl IntoView {
             <Routes fallback=pages::NotFound>
                 <Route path=StaticSegment("") view=pages::Home />
                 <Route path=StaticSegment("login") view=pages::Login />
+                <Route path=StaticSegment("forgot-password") view=pages::ForgotPassword />
+                <Route path=StaticSegment("reset-password") view=pages::ResetPassword />
+                <Route path=StaticSegment("verify-email") view=pages::VerifyEmail />
             </Routes>
         </Router>
     }

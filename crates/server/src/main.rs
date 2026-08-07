@@ -23,6 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let db = authenc_identity::connect(&config.db_config()).await?;
     let hasher = authenc_identity::PasswordHasher::new();
+    let mailer = build_mailer(&config)?;
 
     match cli.command.unwrap_or(Command::Serve) {
         Command::Migrate => {
@@ -45,7 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
 
         Command::Serve => {
-            serve(config, db, hasher).await?;
+            serve(config, db, hasher, mailer).await?;
         }
     }
 
@@ -57,6 +58,7 @@ async fn serve(
     config: Config,
     db: authenc_identity::Db,
     hasher: authenc_identity::PasswordHasher,
+    mailer: Arc<dyn authenc_identity::mail::Mailer>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
@@ -72,6 +74,7 @@ async fn serve(
         config: Arc::new(config),
         db,
         hasher,
+        mailer,
         leptos_options: http::leptos_options()?,
     };
 
@@ -93,6 +96,24 @@ async fn serve(
 
     tracing::info!("shutdown complete");
     Ok(())
+}
+
+/// Build the configured mail transport.
+///
+/// Done at startup so a malformed relay URL fails here rather than on the
+/// first password reset.
+fn build_mailer(
+    config: &Config,
+) -> Result<Arc<dyn authenc_identity::mail::Mailer>, Box<dyn std::error::Error + Send + Sync>> {
+    use authenc_server::config::MailTransport;
+
+    Ok(match config.mail.transport {
+        MailTransport::Logging => Arc::new(authenc_identity::mail::LoggingMailer),
+        MailTransport::Smtp => Arc::new(authenc_identity::mail::SmtpMailer::new(
+            config.mail.smtp_url.expose(),
+            &config.mail.from,
+        )?),
+    })
 }
 
 /// Resolve when the process is asked to stop.

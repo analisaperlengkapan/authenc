@@ -2,9 +2,11 @@
 
 pub mod home;
 pub mod login;
+pub mod recovery;
 
 pub use home::Home;
 pub use login::Login;
+pub use recovery::{ForgotPassword, ResetPassword, VerifyEmail};
 
 use leptos::prelude::*;
 

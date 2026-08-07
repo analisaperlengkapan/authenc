@@ -6,9 +6,10 @@ rather than describing an intention as a property.
 
 ## Status
 
-Stages 1 and 2 of the rebuild. Passwords, sessions, CSRF, brute-force lockout,
-configuration, transport headers, and error handling are in place and tested.
-OAuth 2.0, OpenID Connect, and multi-factor authentication do not exist yet.
+Stages 1 to 3a of the rebuild. Passwords, sessions, CSRF, brute-force lockout,
+credential recovery, configuration, transport headers, and error handling are
+in place and tested. OAuth 2.0, OpenID Connect, and multi-factor authentication
+do not exist yet.
 
 ## Threat model
 
@@ -89,6 +90,28 @@ browser sets it and page script cannot forge it.
   `X-Forwarded-For` is deliberately not consulted; the previous code trusted it
   unconditionally, letting any client choose the address it was judged by.
 
+## Credential recovery
+
+Reset and verification links carry 256 bits from the OS CSPRNG; only the
+SHA-256 hash is stored. Redemption is a single atomic
+`UPDATE … WHERE used_at IS NULL AND expires_at > now()`, so a link cannot be
+spent twice even under concurrent requests, and unknown, expired, and
+already-used tokens all produce the same 401.
+
+Requesting a reset returns an identical response for a registered address, an
+unregistered one, and an unknown realm — only the mail differs, and only the
+real owner sees it.
+
+Completing a reset **revokes every session** for that user, so an attacker who
+took the password loses their access the moment the owner recovers, and
+**clears the failure history**, so the lockout the attack caused does not keep
+the owner out. A password that fails policy is rejected *before* the token is
+spent, so a weak first guess does not burn the link.
+
+A verification link records the address it was issued for. If the account's
+address changes before the link is used, the link is refused rather than
+confirming the new address.
+
 ## Roles
 
 Resolved from the database at the point of use, never carried in a token. The
@@ -157,8 +180,5 @@ process-local counter keyed per IP *and path*, so the effective budget was the
 configured limit multiplied by the number of paths, and it coordinated across
 no instances. A replacement will be shared-state and keyed on the identity
 being attacked.
-
-Password reset and email verification are not implemented — the token
-primitive and schema exist, but nothing sends mail.
 
 No independent security review has been performed.

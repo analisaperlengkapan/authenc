@@ -167,7 +167,9 @@ async fn server_fn_handler(State(state): State<AppState>, request: Request<Body>
 fn provide_app_context(state: &AppState) {
     provide_context(state.db.clone());
     provide_context(state.hasher.clone());
+    provide_context(state.mailer.clone());
     provide_context(crate::auth::cookie_policy(&state.config));
+    provide_context(crate::state::public_urls(&state.config));
 }
 
 /// Bind address derived from configuration.

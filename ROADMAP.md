@@ -29,21 +29,28 @@ functions; a server-rendered login page. A `CurrentUser` extractor that
 resolves roles from the database. An `authenc` CLI with `seed`, `migrate`, and
 `purge-sessions`, so no test endpoint has to exist in the router.
 
-**Not in this stage:** password reset and email verification over SMTP. They
-were listed here originally and have moved to stage 3 — the schema and the
-token primitive are in place, but nothing sends mail yet, so claiming them
-would be false.
+### Stage 3a — Credential recovery
+
+Password reset and email verification, both as single-use expiring links whose
+hash alone is stored. Completing a reset revokes every session for that user
+and clears the failure history, so an attacker loses their access and the
+rightful owner is not kept out by the lockout the attack caused. A verification
+link cannot confirm an address that changed after it was sent. Requesting a
+reset returns an identical response for a known address, an unknown address,
+and an unknown realm.
+
+Mail goes over SMTP through `lettre`, or to the log in development — a
+transport the production profile refuses to start with.
 
 ## Planned
 
 Each stage leaves the repository compiling, linted, and tested.
 
-### Stage 3 — Password reset, email verification, administration, RBAC
+### Stage 3b — Administration and RBAC
 
-Password reset and email verification over SMTP (MailHog locally). Realm, user,
-role, and permission management, with permission checks in the use case rather
-than by URL prefix. Admin console pages backed by server functions, plus a REST
-`/api/v1` surface with an OpenAPI document for automation.
+Realm, user, role, and permission management, with permission checks in the use
+case rather than by URL prefix. Admin console pages backed by server functions,
+plus a REST `/api/v1` surface with an OpenAPI document for automation.
 
 ### Stage 4 — OAuth 2.0 and OpenID Connect
 

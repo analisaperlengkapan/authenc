@@ -165,3 +165,80 @@ pub async fn current_user() -> Result<Option<LoginResponse>, ServerFnError> {
 pub fn describe(error: &ServerFnError) -> String {
     error.to_string()
 }
+
+/// Begin a password reset.
+///
+/// Always succeeds, whether or not the address is registered. Reporting
+/// otherwise would turn this endpoint into a way to enumerate accounts.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = RequestPasswordReset, prefix = "/api/sfn", endpoint = "password-reset", input = Json)]
+pub async fn request_password_reset(realm: String, email: String) -> Result<(), ServerFnError> {
+    use std::sync::Arc;
+
+    use authenc_identity::{Db, mail::Mailer, recovery};
+
+    use crate::{server_ctx, server_ctx::PublicUrls};
+
+    let db = expect_context::<Db>();
+    let mailer = expect_context::<Arc<dyn Mailer>>();
+    let urls = expect_context::<PublicUrls>();
+
+    // An unknown realm is also silent: the caller learns nothing either way.
+    let Ok(realm) = authenc_identity::realm::by_name(&db, &realm).await else {
+        return Ok(());
+    };
+
+    recovery::request_password_reset(&db, mailer.as_ref(), realm.id, &email, &urls.reset)
+        .await
+        .map_err(server_ctx::to_server_fn_error)
+}
+
+/// Finish a password reset using the token from the emailed link.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = CompletePasswordReset, prefix = "/api/sfn", endpoint = "password-reset-complete", input = Json)]
+pub async fn complete_password_reset(
+    token: String,
+    new_password: String,
+) -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, PasswordHasher, SecretToken, recovery};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let hasher = expect_context::<PasswordHasher>();
+
+    recovery::complete_password_reset(
+        &db,
+        &hasher,
+        &SecretToken::from_client(token),
+        &new_password,
+    )
+    .await
+    .map(|_| ())
+    .map_err(server_ctx::to_server_fn_error)
+}
+
+/// Confirm an email address using the token from the emailed link.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = VerifyEmail, prefix = "/api/sfn", endpoint = "verify-email", input = Json)]
+pub async fn verify_email(token: String) -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, SecretToken, recovery};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+
+    recovery::complete_email_verification(&db, &SecretToken::from_client(token))
+        .await
+        .map(|_| ())
+        .map_err(server_ctx::to_server_fn_error)
+}

@@ -88,6 +88,20 @@ impl CookiePolicy {
     }
 }
 
+/// Absolute base URLs for the links sent by mail.
+///
+/// Provided by the server from `server.public_url`, so a server function never
+/// has to guess its own origin — the previous code hardcoded
+/// `http://localhost:8080/v1` as the OIDC issuer and served that in its
+/// discovery document wherever it was deployed.
+#[derive(Debug, Clone)]
+pub struct PublicUrls {
+    /// Where a password-reset link points.
+    pub reset: String,
+    /// Where an email-verification link points.
+    pub verify: String,
+}
+
 /// The session token presented by a request, if any.
 #[must_use]
 pub fn session_token(policy: CookiePolicy, parts: &Parts) -> Option<SecretToken> {

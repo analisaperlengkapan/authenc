@@ -5,6 +5,23 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — credential recovery
+
+- Password reset and email verification as single-use expiring links, with only
+  the token hash stored and redemption as one atomic UPDATE.
+- Completing a reset revokes every session for the user and clears their
+  failure history; a policy-failing password is rejected before the token is
+  spent.
+- A verification link cannot confirm an address that changed after it was sent.
+- Requesting a reset returns an identical response for known addresses, unknown
+  addresses, and unknown realms.
+- `Mailer` trait with SMTP (`lettre`), logging, and capturing implementations.
+  The production profile refuses to start on the logging transport.
+- `/forgot-password`, `/reset-password`, and `/verify-email` pages. The token is
+  read from the **query** string — the previous console used `use_params`,
+  which reads path parameters, on a route with no path segment, so email
+  verification could never complete.
+
 ### Added — authentication
 
 - Sessions: an opaque token in an `HttpOnly`, `SameSite=Lax` cookie, with only

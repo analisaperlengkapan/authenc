@@ -32,6 +32,7 @@ fn server(db: Db) -> TestServer {
         config: std::sync::Arc::new(authenc_server::config::Config::default()),
         db,
         hasher: PasswordHasher::new(),
+        mailer: std::sync::Arc::new(authenc_identity::mail::CapturingMailer::new()),
         leptos_options,
     };
 
@@ -239,5 +240,90 @@ async fn the_login_page_renders_server_side(db: PgPool) {
     assert!(
         html.contains("autocomplete=\"current-password\""),
         "got: {html}"
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_password_reset_request_looks_the_same_for_unknown_addresses(db: PgPool) {
+    seed(&db).await;
+    let server = server(db);
+
+    let known = server
+        .post("/api/sfn/password-reset")
+        .json(&json!({ "realm": "master", "email": "alice@example.com" }))
+        .await;
+    let unknown = server
+        .post("/api/sfn/password-reset")
+        .json(&json!({ "realm": "master", "email": "nobody@example.com" }))
+        .await;
+    let unknown_realm = server
+        .post("/api/sfn/password-reset")
+        .json(&json!({ "realm": "no-such-realm", "email": "alice@example.com" }))
+        .await;
+
+    // Identical responses: this endpoint must not be an account oracle.
+    known.assert_status_ok();
+    assert_eq!(unknown.status_code(), known.status_code());
+    assert_eq!(unknown.text(), known.text());
+    assert_eq!(unknown_realm.status_code(), known.status_code());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_unknown_reset_token_is_refused_over_http(db: PgPool) {
+    seed(&db).await;
+
+    let response = server(db)
+        .post("/api/sfn/password-reset-complete")
+        .json(&json!({ "token": "not-a-real-token", "new_password": "a brand new passphrase" }))
+        .await;
+
+    response.assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_unknown_verification_token_is_refused_over_http(db: PgPool) {
+    seed(&db).await;
+
+    let response = server(db)
+        .post("/api/sfn/verify-email")
+        .json(&json!({ "token": "not-a-real-token" }))
+        .await;
+
+    response.assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_recovery_pages_render_server_side(db: PgPool) {
+    seed(&db).await;
+    let server = server(db);
+
+    for (path, expected) in [
+        ("/forgot-password", "Reset your password"),
+        ("/reset-password?token=abc", "Choose a new password"),
+        ("/verify-email?token=abc", "Confirm your email"),
+    ] {
+        let response = server.get(path).await;
+        response.assert_status_ok();
+        assert!(
+            response.text().contains(expected),
+            "{path}: {}",
+            response.text()
+        );
+    }
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_reset_link_without_a_token_says_so_rather_than_failing_silently(db: PgPool) {
+    seed(&db).await;
+
+    // The previous console read the token with `use_params` on a route with no
+    // path segment, so it was always absent and the page simply did nothing.
+    let response = server(db).get("/reset-password").await;
+
+    response.assert_status_ok();
+    assert!(
+        response.text().contains("missing its token"),
+        "got: {}",
+        response.text(),
     );
 }

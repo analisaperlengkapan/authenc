@@ -101,6 +101,8 @@ pub struct Config {
     pub telemetry: TelemetryConfig,
     /// Security controls.
     pub security: SecurityConfig,
+    /// Outbound mail.
+    pub mail: MailConfig,
 }
 
 /// HTTP listener settings.
@@ -148,6 +150,33 @@ pub struct TelemetryConfig {
     pub json: bool,
 }
 
+/// How outbound mail is delivered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MailTransport {
+    /// Write the message to the log instead of sending it.
+    ///
+    /// Makes a fresh checkout produce a working reset link with no SMTP setup.
+    /// Rejected under the production profile: a recovery flow that silently
+    /// sends nothing locks users out with no error anywhere.
+    #[default]
+    Logging,
+    /// Send over SMTP.
+    Smtp,
+}
+
+/// Outbound mail settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MailConfig {
+    /// How to deliver.
+    pub transport: MailTransport,
+    /// SMTP URL, e.g. `smtp://localhost:1025` or `smtps://user:pass@host:465`.
+    pub smtp_url: Secret,
+    /// `From` address on outbound mail.
+    pub from: String,
+}
+
 /// Security controls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -192,6 +221,12 @@ impl Default for Config {
             security: SecurityConfig {
                 cors_allowed_origins: Vec::new(),
                 hsts: false,
+            },
+            mail: MailConfig {
+                transport: MailTransport::Logging,
+                // MailHog, from compose.yaml.
+                smtp_url: Secret::from("smtp://localhost:1025"),
+                from: "Authenc <no-reply@localhost>".to_owned(),
             },
         }
     }
@@ -292,6 +327,13 @@ impl Config {
                 "security.cors_allowed_origins must not contain '*' in production".to_owned(),
             );
         }
+        if self.mail.transport == MailTransport::Logging {
+            return invalid(
+                "mail.transport must be 'smtp' in production; \
+                 'logging' would silently discard every password-reset mail"
+                    .to_owned(),
+            );
+        }
 
         Ok(())
     }
@@ -347,6 +389,10 @@ mod tests {
                 cors_allowed_origins: vec!["https://app.example.com".to_owned()],
                 hsts: true,
             },
+            mail: MailConfig {
+                transport: MailTransport::Smtp,
+                ..Config::default().mail
+            },
             ..Config::default()
         }
     }
@@ -378,6 +424,14 @@ mod tests {
         let mut config = production();
         config.security.hsts = false;
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn production_refuses_to_discard_mail() {
+        let mut config = production();
+        config.mail.transport = MailTransport::Logging;
+        let error = config.validate().unwrap_err().to_string();
+        assert!(error.contains("mail.transport"), "got: {error}");
     }
 
     #[test]

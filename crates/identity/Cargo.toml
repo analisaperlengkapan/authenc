@@ -20,6 +20,8 @@ serde = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 tracing = { workspace = true }
+async-trait = { workspace = true }
+lettre = { workspace = true }
 thiserror = { workspace = true }
 
 # Credentials
