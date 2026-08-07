@@ -2,32 +2,163 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+
+# Least privilege: no job here needs to write anything.
+permissions:
+  contents: read
+
+# A new push supersedes an in-flight run for the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Build against the committed .sqlx metadata so no job needs a database at
+  # compile time.
+  SQLX_OFFLINE: "true"
 
 jobs:
-  build:
+  fmt:
+    name: format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          override: true
-      - name: Build
-        run: cargo build --workspace --all-targets --release
-      - name: Run tests
-        run: cargo test --workspace --all-targets
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  lint:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      - name: Lint (clippy)
-        run: cargo clippy --all -- -D warnings
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+          components: clippy
+          targets: wasm32-unknown-unknown
+      # Cache restore must come BEFORE the compile it is meant to speed up.
+      # The previous workflow placed its cache step fourth, after build and
+      # test, so it never accelerated anything — and keyed it on a Cargo.lock
+      # that was gitignored, so it never invalidated either.
+      - uses: Swatinem/rust-cache@v2
+      - name: clippy (native, ssr)
+        run: cargo clippy --workspace --all-targets --features ssr --locked -- -D warnings
+      - name: clippy (wasm, hydrate)
+        run: |
+          cargo clippy -p authenc-web --no-default-features --features hydrate \
+            --target wasm32-unknown-unknown --locked -- -D warnings
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: authenc
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/authenc
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features rustls,postgres --locked
+      - name: apply migrations
+        run: sqlx migrate run --source migrations
+      # A real database is attached, so `#[sqlx::test]` runs for real. The
+      # previous workflow ran the suite with no database at all, where 68 tests
+      # returned early and reported success having asserted nothing.
+      - name: test
+        run: cargo test --workspace --locked
+      - name: verify the offline query metadata is current
+        run: |
+          cargo sqlx prepare --workspace --check -- --all-targets --features ssr
+
+  boundaries:
+    name: layer boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The previous tree split into eight crates and then had `services`,
+      # `crypto`, and `core` all depend on `axum`, so the split enforced
+      # nothing. Here the split is checkable, so it is checked.
+      - name: check dependency directions
+        run: |
+          set -euo pipefail
+          tree_has() {
+            cargo tree -p "$1" --edges normal --prefix none 2>/dev/null \
+              | awk '{print $1}' | grep -qx "$2"
+          }
+          status=0
+          for forbidden in axum sqlx leptos; do
+            if tree_has authenc-contract "$forbidden"; then
+              echo "::error::authenc-contract must not depend on $forbidden"
+              status=1
+            fi
+          done
+          for forbidden in axum leptos; do
+            if tree_has authenc-identity "$forbidden"; then
+              echo "::error::authenc-identity must not depend on $forbidden"
+              status=1
+            fi
+          done
+          exit $status
+
+  build:
+    name: leptos build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-leptos
+      # Proves the wasm bundle is actually produced. The previous repository
+      # had a Leptos crate that no automation ever built, and served an empty
+      # 21-line HTML shell instead.
+      - name: build
+        run: cargo leptos build --release
+      - name: assert the bundle exists
+        run: |
+          test -s target/site/pkg/authenc.wasm
+          test -s target/site/pkg/authenc.js
+          test -s target/site/pkg/authenc.css
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: target/site
+          retention-days: 7
+
+  msrv:
+    name: msrv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: read rust-version from Cargo.toml
+        id: msrv
+        run: |
+          version=$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --features ssr --locked

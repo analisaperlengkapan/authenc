@@ -1,115 +1,65 @@
-# Configuration for cargo-deny
+# cargo-deny policy.
+#
+# This is run by `.github/workflows/security.yml` on every pull request and
+# weekly. The previous `deny.toml` was never invoked by any workflow, so its
+# advisory ignores went stale unnoticed — it still suppressed an RSA advisory
+# for a dependency the project had already removed.
+
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "wasm32-unknown-unknown",
+]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+# No ignores. If one becomes necessary, it must carry the advisory id, the
+# reason, and the date it should be revisited — an ignore without an expiry is
+# how the previous file rotted.
+ignore = []
 
 [licenses]
-# List of explicitly allowed licenses
+version = 2
 allow = [
-    "MIT",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
-    "CC0-1.0",
     "Zlib",
-    "BSL-1.0",
-    "CDLA-Permissive-2.0",
-    "OpenSSL",
+    "CC0-1.0",
+    "MPL-2.0",
 ]
-
-# List of explicitly disallowed licenses
-# deny = [
-#     "GPL-2.0",
-#     "GPL-3.0",
-#     "AGPL-3.0",
-# ]
-
-# Lint level for when multiple versions of the same license are detected
-# multiple-versions = "warn"  # This option is not valid in current cargo-deny
-
-# Confidence threshold for detecting a license from a license text.
-# Possible values are any number between 0.0 and 1.0.
-confidence-threshold = 0.8
-
-# Allow 1 or more licenses on a per-crate basis, so that particular licenses
-# aren't accepted for every possible crate as with the normal allow list
-exceptions = [
-    # Each entry is the crate and version constraint, and its the license
-    { allow = ["OpenSSL"], name = "ring", version = "*" },
-]
+confidence-threshold = 0.9
 
 [bans]
-# Lint level for when multiple versions of the same crate are detected
 multiple-versions = "warn"
-# Lint level for when a crate version requirement is `*`
-wildcards = "allow"
-# The graph highlighting used when creating dotgraphs for crates
-# with multiple versions
-# * lowest-version - The path to the lowest versioned duplicate is highlighted
-# * simplest-path - The path to the version with the fewest edges is highlighted
-# * all - Both lowest-version and simplest-path are used
-highlight = "all"
+wildcards = "deny"
 
-# List of crates that are allowed. Use with care!
-allow = [
-    #{ name = "ansi_term", version = "=0.11.0" },
-]
-
-# List of crates to deny
 deny = [
-    # Each entry the name of a crate and a version range. If version is
-    # not specified, all versions will be matched.
-    #{ name = "ansi_term", version = "=0.11.0" },
-    
-    # Wrapper crates can optionally be specified to allow the crate when it
-    # is a direct dependency of the otherwise banned crate
-    #{ name = "ansi_term", version = "=0.11.0", wrappers = [] },
+    # Unmaintained; anything reaching for it should use `time` or `jiff`.
+    { crate = "chrono", reason = "use `time`, which this workspace already depends on" },
+    # Pulls a second async runtime alongside tokio.
+    { crate = "async-std", reason = "this workspace is tokio-only" },
+    # A pre-release in a security-relevant dependency is not acceptable here;
+    # the previous tree pinned `aes-gcm = 0.11.0-rc.2` in production.
+    { crate = "openssl", reason = "use rustls; openssl needs a system library and widens the attack surface" },
 ]
 
-# Certain crates/versions that will be skipped when doing duplicate detection.
-skip = [
-    #{ name = "ansi_term", version = "=0.11.0" },
-]
-
-# Similarly to `skip` allows you to skip certain crates from being checked. Unlike
-# `skip`, a tree-skipped crate is also skipped for all of its dependencies.
 skip-tree = [
-    #{ name = "ansi_term", version = "=0.11.0" },
-]
-
-[advisories]
-# The path where the advisory database is cloned/fetched into
-db-path = "~/.cargo/advisory-db"
-# The url(s) of the advisory databases to use
-db-urls = ["https://github.com/rustsec/advisory-db"]
-# The lint level for security vulnerabilities
-# vulnerability = "deny"
-# The lint level for unmaintained crates
-unmaintained = "workspace"
-# The lint level for crates that have been yanked from their source registry
-yanked = "deny"
-# The lint level for crates with security notices. Note that as of
-# 2019-12-17 there are no security notice advisories in
-# https://github.com/rustsec/advisory-db
-# notice = "warn"
-# A list of advisory IDs to ignore. Note that ignored advisories will still
-# output a note when they are encountered.
-ignore = [
-    # RSA timing attack - mitigated by network isolation and monitoring
-    # Will be fixed when patched version becomes available
-    "RUSTSEC-2023-0071",
+    # The Leptos and wasm-bindgen ecosystems move together and legitimately
+    # carry duplicate transitive versions mid-release-cycle.
+    { crate = "leptos", depth = 4 },
+    { crate = "wasm-bindgen", depth = 3 },
 ]
 
 [sources]
-# Lint level for what to happen when a crate from a crate registry that is
-# not in the allow list is encountered
-unknown-registry = "warn"
-# Lint level for what to happen when a crate from a git repository that is not
-# in the allow list is encountered
-unknown-git = "warn"
-# List of URLs for allowed crate registries. Defaults to the crates.io index
-# if not specified. If it is specified but empty, no registries are allowed.
+unknown-registry = "deny"
+unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# List of URLs for allowed Git repositories
-allow-git = []

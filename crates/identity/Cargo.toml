@@ -1,0 +1,37 @@
+[package]
+name = "authenc-identity"
+description = "The identity directory: realms, users, roles, credentials, sessions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+authenc-contract = { workspace = true }
+
+sqlx = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+time = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+
+# Credentials
+argon2 = { version = "0.5.3", features = ["std"] }
+rand = "0.10.2"
+sha2 = "0.11.0"
+subtle = "2.6.1"
+base64 = "0.23.1"
+
+# NOTE: never add `axum` or `leptos` here. This crate is the identity domain;
+# it must be usable from a CLI, a test, or a background job with no HTTP stack
+# in sight. CI enforces this with `cargo tree`.
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

@@ -1,0 +1,45 @@
+# Local development stack. `just db-up` starts only what `just dev` needs.
+#
+# `docker compose up` additionally runs the server itself, built from the
+# Dockerfile, which is the closest thing to production you can get locally.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: authenc
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d authenc"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Catches outbound mail so password-reset and verification flows can be
+  # exercised locally without sending anything. Web UI on :8025.
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  authenc:
+    build:
+      context: .
+    profiles: ["full"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AUTHENC_DATABASE__URL: postgres://postgres:postgres@postgres:5432/authenc
+      AUTHENC_SERVER__PUBLIC_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres-data:

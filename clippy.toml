@@ -1,0 +1,13 @@
+# `unwrap`/`expect`/`panic` are denied in the crates themselves (see
+# `[workspace.lints]` in Cargo.toml) because there they turn a bad request into
+# a failed request — or, in the previous `panic = "abort"` build, into a dead
+# process. Inside tests they are the idiomatic way to assert, so allow them.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+allow-dbg-in-tests = true
+
+# Match the MSRV declared in Cargo.toml so clippy does not suggest APIs we
+# cannot use.
+msrv = "1.90"

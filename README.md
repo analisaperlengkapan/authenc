@@ -1,147 +1,111 @@
-# 🔐 Authenc
+# Authenc
 
-> **Identity and Access Management (IAM) Service in Rust**
+Identity and access management, built as one Rust workspace: a Leptos
+server-rendered frontend and an Axum backend over PostgreSQL.
 
-[![Rust Version](https://img.shields.io/badge/rust-1.90%2B-orange.svg)](https://www.rust-lang.org)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](Cargo.toml)
+> **Status: foundation.** This repository was rebuilt from scratch in August
+> 2026. What is documented below is implemented and tested; everything else is
+> in [ROADMAP.md](ROADMAP.md) and is not claimed to exist. Do not run this in
+> production yet — the authentication slice lands in stage 2.
 
----
+## Why it is built this way
 
-## ⚠️ PROJECT STATUS
+One language across the whole stack means the type that a Leptos view renders
+is the same type an Axum handler returns, checked by the compiler. Validation
+rules in `crates/contract` run identically in the browser and on the server, so
+they cannot drift. Server functions replace a hand-written API client entirely.
 
-> [!CAUTION]
-> **DEVELOPMENT VERSION - NOT FOR PRODUCTION**
->
-> This project is actively developed. While core features are implemented, it has **not undergone a professional security review**.
-> - Always change default secrets and keys.
-> - Always use HTTPS/TLS in deployment.
-> - **Database Security:** Use strong passwords and encrypted connections. PostgreSQL is required (no in-memory mode).
-> - **Compliance:** Some OAuth2 flows may not match all RFC nuances exactly.
->
-> **Current Use:** Development, testing, and experimentation only.
+## Getting started
 
----
+Requires Rust 1.94, Docker (for PostgreSQL), and
+[`just`](https://github.com/casey/just).
 
-## 📖 About
-
-**Authenc** is an Identity and Access Management (IAM) platform built in Rust. It provides modern, secure authentication and authorization capabilities for web and enterprise applications. Built on top of the Axum web framework and PostgreSQL, it focuses on performance, modularity, and strong security defaults.
-
-## ✨ Features
-
-- **Standard Protocols:** Full support for OAuth 2.0, OpenID Connect (OIDC), and SAML 2.0 (SP/IdP).
-- **Federation & Integrations:** Social login integration, LDAP/AD synchronization, and federated SSO.
-- **Modern Authentication:** Passwordless login via WebAuthn/Passkeys (Experimental/In Development) and Multi-Factor Authentication (MFA) via TOTP.
-- **Account Management:** Multi-tenant realms, user lifecycle management, robust Groups and Organization hierarchies, and email verification.
-- **Advanced Authorization:** Fine-grained Role-Based Access Control (RBAC) and explicit consent workflows.
-- **Security-First:** Built-in rate limiting, brute-force protection, device trust scoring (Zero Trust), and verifiable credentials (OID4VC).
-- **Compliance & Audit:** FIPS-mode capabilities, comprehensive audit logging (with export and webhook support), and risk analytics.
-- **Admin Console:** A lightweight, static Single Page Application (SPA) for managing realms, users, and configurations.
-
-## 📚 API Overview
-
-The following endpoint areas are fully supported (see `tests/` and `src/handlers/` for full details):
-
-### Core Authentication & Identity Protocols
-- **OAuth 2.0 / OIDC:** `/.well-known/openid-configuration`, `/oauth2/authorize`, `/oauth2/token`, `/oauth2/userinfo`, `/oauth2/jwks`, `/oauth2/revoke`, `/oauth2/consent`
-- **SAML 2.0:** `/saml/acs`, `/saml/metadata`, `/slo`
-- **Federated Auth & Social Login:** `/federated-auth`, `/social/auth`, `/social/callback`, `/social/initiate`, `/social/providers`, `/federation/ldap/auth`, `/federation/idp/metadata`
-- **SSO:** `/sso/login`, `/sso/callback`, `/sso/logout`, `/sso/sessions`
-
-### Admin & Management API
-- **Realms:** `CRUD /api/v1/auth/realms`, `GET /api/v1/auth/realms/{id}/status`
-- **Users & Groups:** `CRUD /api/v1/auth/realms/{realm}/users`, `CRUD /api/v1/auth/realms/{realm}/groups`
-- **Roles & Permissions:** `CRUD /api/v1/auth/realms/{realm}/roles`, `/authz/evaluate`, `/check-permission`
-- **Clients & Providers:** `CRUD /api/v1/auth/realms/{realm}/clients`, `CRUD /api/v1/providers`
-- **Organizations & Members:** `/organization/{id}`, `/organization/{id}/members`, `/organization/{id}/invitations`
-
-### Advanced Security & Features
-- **MFA / TOTP:** `/users/{id}/totp`, `/users/{id}/totp/verify`
-- **WebAuthn (Passkeys):** `/webauthn/login/challenge`, `/webauthn/login/verify`, `/webauthn/register/challenge` *(Experimental)*
-- **Zero Trust & Device Trust:** `/zero-trust/risk/assess`, `/zero-trust/status`, `/device/{id}/trust`
-- **Audit & Monitoring:** `/logs`, `/logs/export`, `/events`, `/dashboard`, `/stats`
-- **Verifiable Credentials:** `/oid4vc/credentials`, `/vp/verify`
-- **FIPS Mode:** `/fips/enable`, `/fips/disable`, `/fips/status`
-
----
-
-## 🏗️ Architecture & Workspace
-
-The project is structured as a Cargo workspace to maintain clean boundaries between concerns:
-
-- `authenc-core` — Shared types, errors, and common configurations.
-- `authenc-models` — Domain models and DTOs.
-- `authenc-crypto` — Cryptographic primitives and operations.
-- `authenc-database` — PostgreSQL interactions and storage abstractions.
-- `authenc-services` — Core business logic, authentication flows, and policies.
-- `authenc-spi` — Service Provider Interfaces for extensible plugins.
-- `authenc-vault` — Secret management integrations.
-- `ui` — UI workspace crate (alongside the active `static/index.html` Admin UI).
-
-## 🛠️ Tech Stack
-
-- **Language:** Rust
-- **Web Framework:** Axum & Tower
-- **Async Runtime:** Tokio
-- **Database:** PostgreSQL (via `tokio-postgres`)
-- **Frontend:** Static HTML/JS/CSS
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- **Rust** (v1.90 or higher)
-- **PostgreSQL** (v14 or higher)
-
-### Setup & Run
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/analisaperlengkapan/authenc.git
-   cd authenc
-   ```
-
-2. **Configure Environment:**
-   Set the necessary environment variables:
-   ```bash
-   export DATABASE_URL="postgresql://user:password@localhost/authenc"
-   export JWT_SECRET="your-secure-jwt-secret"
-   ```
-
-3. **Run Database Migrations:**
-   Ensure your PostgreSQL instance is running and apply the schema:
-   ```bash
-   cargo install sqlx-cli
-   sqlx migrate run
-   ```
-
-4. **Start the Server:**
-   ```bash
-   cargo run --release
-   ```
-   The API and static Admin UI will be available at `http://localhost:3000`.
-
-## 🧪 Testing
-
-The codebase includes comprehensive unit and integration tests.
-
-Run all tests:
 ```bash
-cargo test
+git clone https://github.com/analisaperlengkapan/authenc.git
+cd authenc
+just setup    # toolchain, tools, database, migrations
+just dev      # http://localhost:3000
 ```
 
-Run tests for a specific workspace crate:
+`just setup` copies `.env.example` to `.env`. Every setting is documented
+there.
+
+Without `just`:
+
 ```bash
-cargo test -p authenc-services
+rustup target add wasm32-unknown-unknown
+cargo install cargo-leptos sqlx-cli --locked
+docker compose up -d postgres
+cp .env.example .env
+sqlx migrate run --source migrations
+cargo leptos watch
 ```
 
-## 📚 Documentation & Links
+## Layout
 
+```
+crates/contract   entities, DTOs, AppError, validation   — wasm + native
+crates/identity   realms, users, roles, credentials      — native
+crates/web        Leptos pages, components, server fns   — wasm + native
+crates/server     composition root, HTTP stack, CLI      — native
+migrations/       sqlx migrations, applied at startup
+docs/             architecture, security model, deployment
+```
+
+Dependencies run one way: `contract ← identity ← server` and
+`contract ← web ← server`. CI fails the build if a crate reaches across a
+layer, so the structure is enforced rather than merely intended.
+
+## What works today
+
+| | |
+|---|---|
+| Server-rendered pages with hydration | `cargo leptos build` produces the wasm bundle; CI asserts it exists |
+| Server functions | `/api/sfn/*`, executing against PostgreSQL |
+| Migrations | applied by `sqlx::migrate!()` at startup |
+| Password hashing | Argon2id at OWASP parameters, with per-user rehash on policy change |
+| Configuration | layered defaults → TOML → env, validated once, secrets redacted in logs |
+| Health probes | `/health/live` and `/health/ready`, answering different questions |
+| Middleware | request id, tracing, panic capture, timeout, body limit, CORS from config, security headers |
+| Error responses | RFC 9457 `application/problem+json`, internal detail never leaked |
+
+## Development
+
+```bash
+just check     # fmt + clippy (both targets) + tests + layer boundaries
+just test      # tests only
+just build     # release build with the optimised wasm bundle
+```
+
+Two things to know before your first change:
+
+- **Never use `--all-features`.** Leptos' `hydrate` and `ssr` features are
+  mutually exclusive. Build native with `--features ssr`, wasm with
+  `--features hydrate`.
+- **After changing any SQL, run `just sqlx-prepare`** and commit `.sqlx/`. CI
+  builds without a database and relies on that metadata.
+
+Database tests use `#[sqlx::test]`, which gives each test its own throwaway
+database. They need PostgreSQL running; they do not mock it.
+
+## Documentation
+
+- [AGENTS.md](AGENTS.md) — conventions and invariants, for humans and coding agents
+- [docs/architecture.md](docs/architecture.md) — why the crates are cut this way
+- [docs/security-model.md](docs/security-model.md) — sessions, CSRF, secrets
+- [docs/deployment.md](docs/deployment.md) — Docker and configuration
+- [ROADMAP.md](ROADMAP.md) — what is not built yet
+- [SECURITY.md](SECURITY.md) — reporting a vulnerability
 - [CONTRIBUTING.md](CONTRIBUTING.md)
-- [SECURITY.md](SECURITY.md)
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- [TODO.md](TODO.md)
 
-## 📄 License
+## History
 
-This project is licensed under the [Apache License 2.0](LICENSE).
+The tree before August 2026 is preserved at the tag `archive/pre-refactor`. It
+did not compile, its CI had failed 926 consecutive runs, and several of its
+authenticators returned success without verifying anything. It was replaced
+rather than repaired. [ROADMAP.md](ROADMAP.md) records which of its advertised
+features are genuinely planned.
+
+## Licence
+
+[Apache-2.0](LICENSE).

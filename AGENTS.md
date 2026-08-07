@@ -1,0 +1,124 @@
+# AGENTS.md
+
+Instructions for coding agents working in this repository. Everything here is
+checkable — if a statement below stops being true, the statement is the bug.
+
+## What this is
+
+Authenc is an identity and access management server: a Leptos SSR frontend and
+an Axum backend in one Rust workspace, over PostgreSQL via SQLx.
+
+The repository was rebuilt from scratch in August 2026. The previous tree —
+about 164,000 lines — did not compile, had failed CI on 926 consecutive runs,
+and shipped authenticators that returned `success: true` without checking
+anything. It is preserved in git history and at the tag `archive/pre-refactor`.
+**Do not copy code from it.** If you need a feature it appeared to have, check
+`ROADMAP.md`, then write it properly.
+
+## Workspace map
+
+| Crate | Path | Holds | Compiles to |
+|---|---|---|---|
+| `authenc-contract` | `crates/contract` | Entities, DTOs, `AppError`, validation | wasm **and** native |
+| `authenc-identity` | `crates/identity` | Realms, users, roles, credentials, sessions — rules and SQL | native |
+| `authenc-web` | `crates/web` | Leptos pages, components, `#[server]` functions, hydrate entry | wasm **and** native |
+| `authenc-server` | `crates/server` | Composition root, HTTP stack, CLI | native |
+
+Dependencies run one way: `contract ← identity ← server`, and
+`contract ← web ← server`. `server` is the only crate that wires things
+together.
+
+`crates/oauth` will be added in stage 4, when it has real content. Empty
+placeholder crates are not created in advance.
+
+## Commands
+
+```bash
+just setup        # database + toolchain, first time
+just dev          # cargo leptos watch — serves on :3000 with hot reload
+just check        # fmt + clippy (both targets) + tests. Run before every commit.
+just test         # tests only
+just migrate      # apply pending migrations
+just sqlx-prepare # regenerate .sqlx offline data after changing any query
+```
+
+Without `just`, read `justfile` — it is short and every recipe is a plain
+command.
+
+## Rules that CI enforces
+
+1. **Never `--all-features`.** `hydrate` and `ssr` are mutually exclusive;
+   enabling both makes `leptos` fail to compile. Build native with
+   `--features ssr` and wasm with `--features hydrate`.
+2. **Layer boundaries.** `authenc-contract` must not depend on `axum`, `sqlx`,
+   or `leptos`. `authenc-identity` must not depend on `axum` or `leptos`. The
+   `boundaries` CI job runs `cargo tree` and fails if they do.
+3. **`Cargo.lock` is committed.** Build with `--locked`.
+4. **Clippy is `-D warnings`**, with `unwrap`/`expect`/`panic` warned in crate
+   code and allowed in tests (see `clippy.toml`).
+
+## Rules that reviewers enforce
+
+These are the failure modes the previous tree actually shipped. Each one is a
+real defect that was in `main`.
+
+- **Never return a success value from a function that did not check anything.**
+  `verify_authentication()` returning `Ok(true)` is worse than `todo!()`,
+  because nothing fails loudly. If it is not implemented, do not add the
+  function.
+- **Never add a test-only or unauthenticated route to the production router.**
+  The old tree served `/oauth2/token/test` and `/oauth2/consent/test` with no
+  auth, granting consent for a hardcoded user id. Seed data belongs in the CLI
+  and in `#[sqlx::test]` fixtures.
+- **Never store a bearer token where JavaScript can read it.** Sessions are an
+  opaque id in an `HttpOnly` cookie. The old console kept a JWT in
+  `localStorage`.
+- **Never log a secret.** Config secrets use the `Secret` newtype, whose
+  `Debug` is redacted. Authorization and Cookie headers are marked sensitive in
+  the middleware stack.
+- **Never let an internal error message reach a client.** `AppError::Internal`
+  collapses to a fixed string in `public_detail()`; the real message is logged.
+- **Authorise in the use case, not in a URL prefix.** Take an `Actor` and check
+  it. The old code gated on path prefixes, so a route registered on the wrong
+  router silently lost its access control.
+- **A test that skips when the database is missing must fail or be
+  `#[ignore]`d — never `return` quietly.** 68 old tests reported success while
+  asserting nothing, in a CI job that had no database.
+
+## Writing tests
+
+- Unit tests live beside the code in `#[cfg(test)] mod tests`.
+- Database tests use `#[sqlx::test(migrations = "../../migrations")]`, which
+  provisions a throwaway database per test and drops it afterwards. Use a real
+  database; do not mock the repository layer.
+- Name tests for the property they prove
+  (`a_malformed_stored_hash_is_an_error_not_a_successful_login`), not for the
+  function they call.
+- A test must fail if the behaviour it describes is removed. Deleting the
+  implementation and re-running is a cheap way to check.
+
+## SQL
+
+Queries are checked at compile time against the real schema. After adding or
+changing one, run `just sqlx-prepare` and commit the `.sqlx/` change, otherwise
+CI — which builds without a database — will fail.
+
+Migrations are additive and never edited once merged. Add a new file in
+`migrations/`.
+
+## Style
+
+- Comments explain *why*, and are worth writing when the reason is not obvious
+  from the code. Do not narrate what the next line does.
+- Reference a defect by what it was, not by issue number.
+- Match the surrounding code's naming and structure.
+- Public items need doc comments; `missing_docs` is a warning at workspace
+  level.
+
+## Commits and pull requests
+
+- Conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`,
+  `chore:`.
+- Run `just check` before committing.
+- Say what you did *not* do. A partial change described accurately is useful; a
+  partial change described as complete is not.

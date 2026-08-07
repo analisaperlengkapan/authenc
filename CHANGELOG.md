@@ -1,112 +1,66 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
+versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [0.1.0] - 2025-08-15
+## [Unreleased]
 
 ### Added
 
-#### 🔐 Authentication & Authorization
-- **OAuth2 Server Implementation**: Complete RFC 6749 OAuth2 server with all grant types (authorization_code, client_credentials, password, refresh_token)
-- **OIDC Provider**: OpenID Connect 1.0 implementation with Ed25519-signed JWT tokens
-- **PKCE Support**: RFC 7636 Proof Key for Code Exchange for enhanced security
-- **Token Introspection**: RFC 7662 OAuth2 Token Introspection endpoint
-- **Token Revocation**: RFC 7009 OAuth2 Token Revocation endpoint
-- **SAML 2.0 Federation**: Complete service provider implementation with metadata generation
-- **WebAuthn/FIDO2**: Hardware security key authentication with phishing resistance
-- **Multi-Factor Authentication**: TOTP, WebAuthn, and extensible authenticator framework
-
-#### 🏢 Enterprise Features
-- **Organization Management**: Multi-tenancy with hierarchical permissions and role-based access control
-- **Device Management**: Trust scoring, fingerprinting, and session management
-- **Fine-Grained Authorization**: Resource-based permissions and policy evaluation
-- **Audit Logging**: Comprehensive security event logging with PostgreSQL and Kafka backends
-- **Event System**: Asynchronous event-driven architecture with retention policies
-- **SPI Architecture**: Service Provider Interface for extensible components
-
-#### 🔒 Security Features
-- **Ed25519 Cryptography**: Timing-attack resistant JWT signing throughout the system
-- **AES-GCM Encryption**: Advanced encryption with key rotation and streaming support
-- **Zero Trust Architecture**: Continuous authentication and risk assessment
-- **Rate Limiting**: Distributed rate limiting with brute force protection
-- **Input Validation**: Comprehensive sanitization and CSRF protection
-- **Security Headers**: OWASP recommended security headers middleware
-- **Certificate Validation**: X.509 certificate chain validation with CRL/OCSP support
-
-#### 🗄️ Database Integration
-- **PostgreSQL Persistence**: Complete database layer with connection pooling
-- **Database Migrations**: 20 database migration files for schema management
-- **Store Implementations**: User, session, role, permission, and resource stores
-- **Audit Log Storage**: Persistent audit logging with search and filtering
-
-#### 🧪 Testing & Quality
-- **104 Test Files**: Comprehensive test suite covering all major components
-- **Integration Tests**: End-to-end API testing and database operations
-- **Security Tests**: Authentication, authorization, and vulnerability testing
-- **Performance Tests**: Load testing and cryptographic operation benchmarking
-- **CI/CD Pipeline**: GitHub Actions workflow with automated testing
-
-#### 🏗️ Architecture & Infrastructure
-- **Axum Framework**: Complete migration from Actix-web to Axum with async patterns
-- **Service Layer**: Modular service architecture with dependency injection
-- **Middleware Stack**: CORS, compression, authentication, and security middleware
-- **Configuration Management**: Environment-based configuration with validation
-- **Health Checks**: Comprehensive health monitoring and observability
-- **Metrics Collection**: Prometheus-compatible metrics export
-
-#### 📚 Documentation & APIs
-- **OpenAPI Specification**: Complete API documentation in OpenAPI 3.1.0 format
-- **REST API**: 50+ endpoints for user management, authentication, and administration
-- **Admin Console Backend**: API endpoints for web-based administration interface
-- **Helm Charts**: Kubernetes deployment configuration
-- **Docker Support**: Containerized deployment with multi-stage builds
-
-### Changed
-- **[BREAKING] Security Authorization:** The `GET /api/v1/auth/realms/{realm}/roles` and `GET /api/v1/auth/realms/{realm}/permissions` endpoints now strictly require an `Authorization: Bearer <token>` header (`AuthBearer`). They were previously inadvertently unauthenticated. Integrations enumerating these endpoints anonymously will now receive a `401 Unauthorized`.
-- **[BREAKING] API Path Parameters:** All Realm-scoped API endpoints (Users, Groups, Roles, Permissions, Clients, User Roles) now strictly enforce that the `{realm}` path parameter is a valid UUID (`Uuid::parse_str`), rather than a realm name string. This guarantees exact and unambiguous multi-tenant data isolation. API consumers previously passing realm names (e.g., `master`) in the URL path will now receive a `400 Bad Request` and must migrate to passing the exact Realm UUID.
-- **Framework Migration**: Complete migration from Actix-web to Axum framework
-- **Cryptography Upgrade**: Replaced RSA with Ed25519 for all JWT operations
-- **Build Optimization**: Performance-optimized release builds with LTO and codegen optimization
-- **Code Organization**: Restructured codebase with clear module separation
-- **Error Handling**: Improved error types and handling throughout the application
-
-### Fixed
-- **Compilation Errors**: Resolved all compilation issues for clean builds
-- **Test Suite**: Fixed test failures and improved test reliability
-- **Security Vulnerabilities**: Eliminated RSA timing attack vulnerabilities
-- **Memory Safety**: Ensured zero unsafe code usage throughout the codebase
-- **Performance Issues**: Optimized database queries and cryptographic operations
+- Four-crate workspace — `contract`, `identity`, `web`, `server` — with
+  dependency directions enforced by a CI job rather than by convention.
+- Leptos 0.8 server-side rendering with hydration, built by `cargo-leptos`. CI
+  asserts the wasm bundle is actually produced.
+- Server functions under `/api/sfn`, executing against PostgreSQL.
+- SQLx with compile-time-checked queries, offline metadata in `.sqlx/`, and
+  migrations applied at startup by `sqlx::migrate!()`.
+- `migrations/0001_identity_core.sql`: realms, users, password credentials,
+  roles, permissions, sessions, and login attempts.
+- Argon2id password hashing at OWASP parameters, with per-user rehash detection.
+- Layered configuration — defaults, TOML, `AUTHENC_` environment variables —
+  validated once at startup, with secrets redacted in `Debug` output and zeroed
+  on drop. The production profile refuses to start on development credentials,
+  a non-HTTPS public URL, disabled HSTS, or wildcard CORS.
+- Middleware stack in explicit outermost-first order: sensitive-header
+  redaction, request id, tracing, panic capture, timeout, body limit,
+  configured CORS, security headers, compression.
+- RFC 9457 `application/problem+json` error responses from a single error type
+  with a single status mapping.
+- Liveness and readiness probes that answer different questions; readiness
+  returns 503, not 500, when the database is unreachable.
+- Tailwind v4 design tokens and the first design-system components.
+- Multi-stage Dockerfile running as an unprivileged user, compose stack with
+  PostgreSQL and MailHog, and a `justfile`.
+- CI covering format, clippy on both targets, tests against a real PostgreSQL,
+  layer boundaries, the Leptos build, and MSRV; plus scheduled `cargo-deny`,
+  `cargo-audit`, and dependency review.
+- `AGENTS.md`, `SECURITY.md`, `ROADMAP.md`, and `docs/`.
+- `Cargo.lock` is now committed and builds use `--locked`.
 
 ### Removed
-- **RSA Cryptography**: Removed vulnerable RSA implementation (RUSTSEC-2023-0071)
-- **Legacy Frameworks**: Removed Actix-web dependencies after Axum migration
-- **Unsafe Code**: Eliminated all unsafe code blocks for memory safety
 
----
+The tree before this release is preserved at the tag `archive/pre-refactor`. It
+did not compile, its CI had failed 926 consecutive runs, and much of its
+feature surface returned invented data. Removed rather than carried forward:
 
-## Development Roadmap
+- SPI plugin framework, whose username/password and OTP authenticators returned
+  `success: true` for any input, and whose WebAuthn verifier returned `Ok(true)`
+  without checking anything.
+- Unauthenticated test endpoints — `/oauth2/authorize/test`, `/oauth2/token/test`,
+  `/oauth2/consent/test`, `/api/v1/auth/test-login` — that were registered in
+  the production router.
+- The mock OIDC provider that issued valid signed tokens for `demo_user`
+  without credentials, alongside a second, unreachable OIDC implementation.
+- SAML, OID4VC/SD-JWT, post-quantum cryptography, clustering, FIPS mode, the
+  Kubernetes operator, the compliance engine, zero-trust scoring, and the
+  secret vault whose `set_secret()` discarded what it was given.
+- The Leptos 0.6 CSR console, which no automation ever built and which the
+  server never served, and the empty `static/` shell it served instead.
+- 129 test files, including 68 that reported success without asserting anything
+  when no database was present, and 27 occurrences of `assert!(true)`.
+- 869 lines of Playwright scripts driving selectors from a deleted UI.
+- `ANALYSIS.md`, `PLAN.md`, `TODO.md`, `plan_client_ui.md`,
+  `update_changelog.js`, and a 1,554-line `copilot-instructions.md` whose
+  claims contradicted the tree.
 
-### Upcoming Features (v0.2.0)
-- **Social Login Providers**: Google, GitHub, Microsoft OAuth2 integrations
-- **LDAP/Active Directory**: Enterprise directory federation
-- **Web Admin UI**: Complete administration console
-- **Kubernetes Operator**: Cloud-native deployment automation
-- **Advanced Clustering**: Distributed caching and session replication
-
-### Future Releases
-- **Multi-Cloud Support**: AWS, Azure, GCP integrations
-- **Advanced Analytics**: User behavior analytics and reporting
-- **API Gateway Integration**: Service mesh and API management
-- **Compliance Automation**: Automated audit and compliance reporting
-
----
-
-**Legend:**
-- 🚀 **Major Feature**: Significant new capability
-- 🔧 **Enhancement**: Improvement to existing feature
-- 🐛 **Bug Fix**: Error or issue resolution
-- 📚 **Documentation**: Documentation updates
-- 🔒 **Security**: Security-related changes
+[Unreleased]: https://github.com/analisaperlengkapan/authenc/compare/archive/pre-refactor...HEAD

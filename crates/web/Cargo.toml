@@ -1,0 +1,61 @@
+[package]
+name = "authenc-web"
+description = "The isomorphic web application: pages, components, and server functions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+# `cdylib` produces the wasm bundle; `rlib` is what the server links against.
+# Cargo cannot make `crate-type` conditional on a feature, so the native build
+# also emits an unused `.so`. That one extra link step is the whole cost of
+# folding the hydrate entry point in here instead of giving it its own crate.
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+authenc-contract = { workspace = true }
+
+leptos = { workspace = true }
+leptos_router = { workspace = true }
+leptos_meta = { workspace = true }
+serde = { workspace = true }
+
+# hydrate-only
+wasm-bindgen = { workspace = true, optional = true }
+console_error_panic_hook = { workspace = true, optional = true }
+
+# ssr-only
+axum = { workspace = true, optional = true }
+leptos_axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+authenc-identity = { workspace = true, optional = true }
+
+[features]
+default = []
+# Browser half: compiled to wasm32-unknown-unknown by cargo-leptos.
+hydrate = [
+  "leptos/hydrate",
+  "dep:wasm-bindgen",
+  "dep:console_error_panic_hook",
+]
+# Server half: linked into `authenc-server`. Server-function bodies compile
+# only under this feature, which is why `authenc-identity` can appear here
+# without ever reaching the browser bundle.
+ssr = [
+  "leptos/ssr",
+  "leptos_router/ssr",
+  "leptos_meta/ssr",
+  "dep:axum",
+  "dep:leptos_axum",
+  "dep:tokio",
+  "dep:authenc-identity",
+]
+
+# `hydrate` and `ssr` are mutually exclusive: enabling both makes `leptos`
+# fail to compile. Never build this crate with `--all-features`.

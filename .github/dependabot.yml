@@ -1,20 +1,30 @@
 version: 2
 updates:
-  - package-ecosystem: "cargo"
+  - package-ecosystem: cargo
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    rebase-strategy: auto
+      interval: weekly
+    open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(deps)"
-      include: "scope"
-  - package-ecosystem: "github-actions"
+    groups:
+      # Leptos crates must move together; a partial bump does not compile.
+      leptos:
+        patterns: ["leptos", "leptos_*"]
+      # Same for the tokio/axum/tower HTTP stack.
+      http-stack:
+        patterns: ["axum", "axum-*", "tower", "tower-*", "hyper", "hyper-*"]
+
+  - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    rebase-strategy: auto
+      interval: weekly
     commit-message:
-      prefix: "chore(deps)"
-      include: "scope"
+      prefix: "chore(ci)"
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(docker)"

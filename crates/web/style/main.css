@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+/* Design tokens.
+ *
+ * Every colour the application uses is named here and referenced by class
+ * elsewhere. Nothing in the Rust source may contain a raw hex value — the
+ * previous console scattered nine unrelated blues and greys across its pages
+ * with no palette at all, and defined five CSS custom properties that were
+ * never referenced.
+ *
+ * Both themes are defined because the app follows the reader's system setting.
+ */
+@theme {
+  --color-brand-50: oklch(0.97 0.02 258);
+  --color-brand-100: oklch(0.94 0.04 258);
+  --color-brand-200: oklch(0.89 0.07 258);
+  --color-brand-300: oklch(0.81 0.11 258);
+  --color-brand-400: oklch(0.71 0.16 258);
+  --color-brand-500: oklch(0.62 0.19 258);
+  --color-brand-600: oklch(0.54 0.21 258);
+  --color-brand-700: oklch(0.46 0.19 258);
+  --color-brand-800: oklch(0.39 0.15 258);
+  --color-brand-900: oklch(0.33 0.11 258);
+  --color-brand-950: oklch(0.22 0.08 258);
+
+  --color-ink-50: oklch(0.98 0.002 258);
+  --color-ink-100: oklch(0.95 0.003 258);
+  --color-ink-200: oklch(0.89 0.004 258);
+  --color-ink-300: oklch(0.79 0.006 258);
+  --color-ink-400: oklch(0.65 0.008 258);
+  --color-ink-500: oklch(0.54 0.009 258);
+  --color-ink-600: oklch(0.44 0.009 258);
+  --color-ink-700: oklch(0.36 0.008 258);
+  --color-ink-800: oklch(0.27 0.006 258);
+  --color-ink-900: oklch(0.20 0.005 258);
+  --color-ink-950: oklch(0.14 0.004 258);
+
+  --color-surface-50: oklch(1 0 0);
+  --color-surface-100: oklch(0.98 0.002 258);
+  --color-surface-200: oklch(0.95 0.003 258);
+  --color-surface-700: oklch(0.31 0.006 258);
+  --color-surface-800: oklch(0.24 0.006 258);
+  --color-surface-900: oklch(0.18 0.005 258);
+  --color-surface-950: oklch(0.13 0.004 258);
+
+  --color-danger-50: oklch(0.97 0.02 25);
+  --color-danger-200: oklch(0.88 0.07 25);
+  --color-danger-600: oklch(0.58 0.22 25);
+  --color-danger-700: oklch(0.50 0.20 25);
+  --color-danger-800: oklch(0.43 0.17 25);
+  --color-danger-900: oklch(0.35 0.13 25);
+  --color-danger-950: oklch(0.24 0.09 25);
+
+  --color-success-400: oklch(0.75 0.15 155);
+  --color-success-700: oklch(0.48 0.13 155);
+}
+
+/* Respect a reader who has asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

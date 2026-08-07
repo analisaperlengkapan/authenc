@@ -1,0 +1,67 @@
+[package]
+name = "authenc-server"
+description = "The Authenc server: composition root, HTTP surface, and CLI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "authenc"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[features]
+# cargo-leptos builds this binary with `--no-default-features --features ssr`.
+# The feature exists so the dependency graph matches what `authenc-web`
+# expects; there is no non-ssr build of the server.
+default = ["ssr"]
+ssr = []
+
+[dependencies]
+authenc-contract = { workspace = true }
+authenc-identity = { workspace = true }
+authenc-web = { workspace = true, features = ["ssr"] }
+
+axum = { workspace = true }
+leptos = { workspace = true, features = ["ssr"] }
+leptos_axum = { workspace = true }
+leptos_router = { workspace = true, features = ["ssr"] }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true, features = [
+  "catch-panic",
+  "compression-gzip",
+  "compression-br",
+  "cors",
+  "fs",
+  "limit",
+  "request-id",
+  "sensitive-headers",
+  "set-header",
+  "timeout",
+  "trace",
+] }
+http = { workspace = true }
+
+figment = { workspace = true }
+zeroize = "1.9.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+axum-test = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+sqlx = { workspace = true }
+serde_json = { workspace = true }

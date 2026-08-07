@@ -1,9 +1,0 @@
-- Add a tab button "Clients" next to "Groups"
-- Add a new section `#clients-section` under dashboard.
-- Update `switchTab` logic.
-- Implement `fetchClients()` function calling `GET /api/v1/auth/realms/{realm}/clients`.
-- Create `#clients-table` and `renderClients(clients)` function to populate table rows (showing ID, Name, Redirect URIs, Status).
-- Implement Modal `#edit-client-modal` for Creating and Editing.
-- Implement `openCreateClientModal()` and `openEditClientModal(client)`.
-- Implement `deleteClient(id)`.
-- Connect the frontend with the `POST`, `PUT`, `DELETE` backend API.
