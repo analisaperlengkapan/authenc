@@ -175,6 +175,26 @@ pub struct LoginResponse {
     pub permissions: Vec<Permission>,
 }
 
+impl LoginResponse {
+    /// Whether this session holds a permission, by the same rule the server
+    /// uses.
+    ///
+    /// Shared deliberately: if the console decided visibility with a different
+    /// rule from the one that decides access, it would offer buttons that are
+    /// then refused, or hide actions that would in fact have worked.
+    #[must_use]
+    pub fn can(&self, permission: Permission) -> bool {
+        holds(&self.permissions, permission)
+    }
+}
+
+/// The one permission rule: a permission is held directly, or implied by one
+/// that is.
+fn holds(held: &[Permission], wanted: Permission) -> bool {
+    held.iter()
+        .any(|&have| have == wanted || have.implies() == Some(wanted))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +283,26 @@ mod tests {
         let actor = actor_with(vec![]);
         for permission in Permission::ALL {
             assert!(!actor.can(*permission), "{permission} should be denied");
+        }
+    }
+
+    #[test]
+    fn the_console_and_the_server_apply_the_same_rule() {
+        // The hint the console renders must agree with the check that decides,
+        // including the write-implies-read part.
+        let response = LoginResponse {
+            user: user(None, None),
+            roles: vec![],
+            permissions: vec![Permission::UserWrite],
+        };
+        let actor = actor_with(vec![Permission::UserWrite]);
+
+        for permission in Permission::ALL {
+            assert_eq!(
+                response.can(*permission),
+                actor.can(*permission),
+                "disagreement on {permission}",
+            );
         }
     }
 

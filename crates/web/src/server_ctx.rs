@@ -7,7 +7,7 @@
 
 use std::net::{IpAddr, SocketAddr};
 
-use authenc_contract::AppError;
+use authenc_contract::{AppError, model::Actor};
 use authenc_identity::{SecretToken, session::Issued};
 use axum::http::{StatusCode, header::SET_COOKIE, request::Parts};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
@@ -144,6 +144,41 @@ pub fn client_ip(parts: &Parts) -> Option<IpAddr> {
         .extensions
         .get::<axum::extract::ConnectInfo<SocketAddr>>()
         .map(|connect_info| connect_info.0.ip())
+}
+
+/// Resolve the [`Actor`] behind the current server-function call.
+///
+/// Every administrative server function starts here. The actor's permissions
+/// are read from the database on each call, so a role revoked a second ago is
+/// already gone — nothing is cached in a token.
+///
+/// # Errors
+///
+/// Returns [`AppError::Unauthenticated`] when there is no live session, or an
+/// internal error if a lookup fails.
+pub async fn require_actor(db: &authenc_identity::Db) -> Result<Actor, AppError> {
+    use authenc_identity::{session, user};
+
+    let policy = leptos::prelude::expect_context::<CookiePolicy>();
+    let parts = leptos::prelude::expect_context::<Parts>();
+
+    let token = session_token(policy, &parts).ok_or(AppError::Unauthenticated)?;
+    let session = session::lookup(db, &token)
+        .await?
+        .ok_or(AppError::Unauthenticated)?;
+
+    let user = user::by_id(db, session.user_id).await?;
+    if !user.enabled {
+        return Err(AppError::Unauthenticated);
+    }
+
+    Ok(Actor {
+        roles: user::role_names(db, session.user_id).await?,
+        permissions: user::permissions(db, session.user_id).await?,
+        user_id: user.id,
+        realm_id: user.realm_id,
+        username: user.username,
+    })
 }
 
 /// Convert a domain error into the failure a server function returns.

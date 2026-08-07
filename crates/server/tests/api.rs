@@ -338,3 +338,114 @@ async fn disabling_a_user_ends_their_session_over_http(db: PgPool) {
         .await
         .assert_status(StatusCode::UNAUTHORIZED);
 }
+
+// --- the admin console -----------------------------------------------------
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_console_redirects_an_anonymous_visitor_to_login(db: PgPool) {
+    seed_with(&db, "admin", Permission::ALL).await;
+
+    // The redirect happens on the server, before any console markup is
+    // produced. The previous console decided this in the browser by reading
+    // `localStorage`, so the page was delivered first and redirected after.
+    let response = server(db).get("/admin/users").await;
+
+    assert_eq!(
+        response.header("location"),
+        "/login",
+        "an unauthenticated visitor must be sent to the login page",
+    );
+    assert!(
+        !response.text().contains("Add a user"),
+        "no console markup may reach an anonymous visitor",
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_console_renders_the_user_table_server_side(db: PgPool) {
+    seed_with(&db, "admin", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "admin").await;
+
+    let response = server.get("/admin/users").await;
+    response.assert_status_ok();
+
+    let html = response.text();
+    // Rendered by the server, not left for JavaScript to fill in.
+    assert!(html.contains("Users"), "got: {html}");
+    assert!(
+        html.contains("admin@example.com"),
+        "the row must be in the HTML"
+    );
+    assert!(html.contains("Add a user"), "an admin may create users");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_console_hides_actions_the_viewer_may_not_take(db: PgPool) {
+    seed_with(&db, "reader", &[Permission::UserRead]).await;
+    let mut server = server(db);
+    sign_in(&mut server, "reader").await;
+
+    let response = server.get("/admin/users").await;
+    response.assert_status_ok();
+
+    let html = response.text();
+    assert!(html.contains("reader@example.com"), "may read the list");
+    assert!(
+        !html.contains("Add a user"),
+        "a read-only viewer must not be offered the create form",
+    );
+    assert!(
+        !html.contains(">Delete<"),
+        "a read-only viewer must not be offered destructive actions",
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn hiding_an_action_is_a_hint_not_the_check(db: PgPool) {
+    seed_with(&db, "reader", &[Permission::UserRead]).await;
+    let mut server = server(db);
+    sign_in(&mut server, "reader").await;
+
+    // The console hides the create form, but the server function is what
+    // actually decides — calling it directly must still be refused.
+    server
+        .post("/api/sfn/users-create")
+        .json(&json!({
+            "username": "carol",
+            "email": "carol@example.com",
+            "password": PASSWORD,
+        }))
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_console_shows_the_permissions_the_viewer_holds(db: PgPool) {
+    seed_with(&db, "reader", &[Permission::UserRead]).await;
+    let mut server = server(db);
+    sign_in(&mut server, "reader").await;
+
+    let html = server.get("/admin").await.text();
+    assert!(html.contains("user:read"), "got: {html}");
+    assert!(
+        !html.contains("role:write"),
+        "must not claim what is not held"
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_user_with_no_permissions_sees_the_console_but_no_data(db: PgPool) {
+    seed_with(&db, "nobody", &[]).await;
+    let mut server = server(db);
+    sign_in(&mut server, "nobody").await;
+
+    // Signed in, so not redirected — but every list is refused.
+    let overview = server.get("/admin").await;
+    overview.assert_status_ok();
+    assert!(
+        overview.text().contains("no permissions"),
+        "{}",
+        overview.text()
+    );
+}

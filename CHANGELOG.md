@@ -5,6 +5,27 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — admin console
+
+- Server-rendered `/admin` pages for the overview, users, and roles, backed by
+  server functions.
+- Session guard that redirects on the **server** before any console markup is
+  produced. The previous console read `localStorage` in a route closure, so the
+  page was delivered first and redirected afterwards.
+- Actions are hidden when the viewer lacks the permission, using the same rule
+  the server enforces — `LoginResponse::can` and `Actor::can` share one
+  implementation, and a test asserts they agree for every permission. A further
+  test asserts the hiding is only a hint: the server function still refuses.
+- `DataTable` primitive with keyed `<For>`, replacing the table chrome the
+  previous console copy-pasted across eight pages and rebuilt wholesale on
+  every refetch.
+
+### Changed
+
+- Dev and test profiles use `debug = "line-tables-only"`. Full debug info cost
+  26 GB of build artefacts on this workspace; line tables still give readable
+  backtraces and panic locations.
+
 ### Added — administration and RBAC
 
 - Typed `Permission` enum with `Actor::require`, checked inside each use case

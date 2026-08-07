@@ -53,6 +53,10 @@ pub fn Button(
     /// Whether the button is disabled.
     #[prop(optional, into)]
     disabled: Signal<bool>,
+    /// What to do when clicked. Omitted for submit buttons, whose form
+    /// handles the event.
+    #[prop(optional)]
+    on_click: Option<Callback<()>>,
     /// Button label.
     children: Children,
 ) -> impl IntoView {
@@ -60,6 +64,11 @@ pub fn Button(
         <button
             type=kind
             disabled=move || disabled.get()
+            on:click=move |_| {
+                if let Some(on_click) = on_click {
+                    on_click.run(());
+                }
+            }
             class=format!(
                 "inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 \
                  text-sm font-semibold shadow-xs transition-colors \
@@ -179,5 +188,111 @@ pub fn Field(
                 on:input=move |ev| value.set(event_target_value(&ev))
             />
         </div>
+    }
+}
+
+/// A table with a header, a keyed body, and an empty state.
+///
+/// The previous console copy-pasted the same table chrome across eight pages —
+/// the identical `style="padding: 15px; text-align: left; …"` on every `<th>` —
+/// and built each `<tbody>` with `.collect_view()` inside a closure, so the
+/// whole body was torn down and rebuilt on every refetch. This uses `<For>`
+/// with a key, so a refetch touches only the rows that actually changed.
+#[component]
+pub fn DataTable<T, K, KF, RF, IV>(
+    /// Column headings.
+    headers: Vec<&'static str>,
+    /// The rows to render.
+    #[prop(into)]
+    rows: Signal<Vec<T>>,
+    /// Stable key per row. Identity, not index — an index key defeats the
+    /// point by re-associating every row when one is removed.
+    key: KF,
+    /// Renders the cells of one row.
+    row: RF,
+    /// What is missing, for the empty state, e.g. `"users"`.
+    #[prop(into)]
+    noun: String,
+) -> impl IntoView
+where
+    T: Clone + Send + Sync + 'static,
+    K: Eq + std::hash::Hash + 'static,
+    KF: Fn(&T) -> K + Clone + Send + Sync + 'static,
+    RF: Fn(T) -> IV + Clone + Send + Sync + 'static,
+    IV: IntoView + 'static,
+{
+    // `<Show>` calls its children on every re-evaluation, so the closure must
+    // be `Fn`. `StoredValue` is `Copy`, which lets the closure read the
+    // renderer without taking ownership of it.
+    let row = StoredValue::new(row);
+    let headers = StoredValue::new(headers);
+    let noun = StoredValue::new(noun);
+
+    view! {
+        <div class="overflow-x-auto rounded-lg ring-1 ring-ink-200 dark:ring-ink-800">
+            <Show
+                when=move || !rows.get().is_empty()
+                fallback=move || view! { <EmptyState noun=noun.get_value() /> }
+            >
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-surface-100 text-xs uppercase tracking-wide text-ink-600 dark:bg-surface-800 dark:text-ink-400">
+                        <tr>
+                            {headers
+                                .get_value()
+                                .into_iter()
+                                .map(|heading| {
+                                    view! {
+                                        <th scope="col" class="px-4 py-3 font-semibold">
+                                            {heading}
+                                        </th>
+                                    }
+                                })
+                                .collect_view()}
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-ink-200 bg-surface-50 dark:divide-ink-800 dark:bg-surface-900">
+                        <For each=move || rows.get() key=key.clone() let:item>
+                            <tr class="hover:bg-surface-100 dark:hover:bg-surface-800">
+                                {row.get_value()(item)}
+                            </tr>
+                        </For>
+                    </tbody>
+                </table>
+            </Show>
+        </div>
+    }
+}
+
+/// A single cell, so pages do not repeat the padding.
+#[component]
+pub fn Cell(
+    /// Cell content.
+    children: Children,
+) -> impl IntoView {
+    view! { <td class="px-4 py-3 text-ink-800 dark:text-ink-200">{children()}</td> }
+}
+
+/// A small status pill.
+#[component]
+pub fn Badge(
+    /// Whether the state is the good one.
+    ok: bool,
+    /// Label.
+    #[prop(into)]
+    label: String,
+) -> impl IntoView {
+    let tone = if ok {
+        "bg-success-50 text-success-700 ring-success-200 \
+         dark:bg-success-950 dark:text-success-400 dark:ring-success-900"
+    } else {
+        "bg-ink-100 text-ink-600 ring-ink-200 \
+         dark:bg-ink-900 dark:text-ink-400 dark:ring-ink-800"
+    };
+
+    view! {
+        <span class=format!(
+            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium \
+             ring-1 ring-inset {tone}",
+        )>{label}</span>
     }
 }

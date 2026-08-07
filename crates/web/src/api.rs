@@ -253,3 +253,139 @@ pub async fn verify_email(token: String) -> Result<(), ServerFnError> {
         .map(|_| ())
         .map_err(server_ctx::to_server_fn_error)
 }
+
+/// A page of users, with the total so the console can page through it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserPage {
+    /// The users on this page.
+    pub items: Vec<authenc_contract::model::User>,
+    /// How many exist in total.
+    pub total: i64,
+}
+
+/// List users in the caller's realm.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = ListUsers, prefix = "/api/sfn", endpoint = "users", input = Json)]
+pub async fn list_users(limit: i64, offset: i64) -> Result<UserPage, ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let items = admin::list_users(&db, &actor, actor.realm_id, limit, offset)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+    let total = admin::count_users(&db, &actor, actor.realm_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(UserPage { items, total })
+}
+
+/// Create a user in the caller's realm.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = CreateUser, prefix = "/api/sfn", endpoint = "users-create", input = Json)]
+pub async fn create_user(
+    username: String,
+    email: String,
+    password: String,
+) -> Result<authenc_contract::model::User, ServerFnError> {
+    use authenc_identity::{Db, PasswordHasher, admin, user::NewUser};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let hasher = expect_context::<PasswordHasher>();
+    let actor = server_ctx::require_actor(&db)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    admin::create_user(
+        &db,
+        &actor,
+        &hasher,
+        NewUser {
+            realm_id: actor.realm_id,
+            username: &username,
+            email: &email,
+            password: &password,
+            first_name: None,
+            last_name: None,
+        },
+    )
+    .await
+    .map_err(server_ctx::to_server_fn_error)
+}
+
+/// Enable or disable a user.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = SetUserEnabled, prefix = "/api/sfn", endpoint = "users-enabled", input = Json)]
+pub async fn set_user_enabled(
+    user_id: authenc_contract::UserId,
+    enabled: bool,
+) -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    admin::set_user_enabled(&db, &actor, user_id, enabled)
+        .await
+        .map(|_| ())
+        .map_err(server_ctx::to_server_fn_error)
+}
+
+/// Delete a user.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = DeleteUser, prefix = "/api/sfn", endpoint = "users-delete", input = Json)]
+pub async fn delete_user(user_id: authenc_contract::UserId) -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    admin::delete_user(&db, &actor, user_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)
+}
+
+/// List roles in the caller's realm.
+#[server(name = ListRoles, prefix = "/api/sfn", endpoint = "roles", input = Json)]
+pub async fn list_roles() -> Result<Vec<authenc_contract::model::Role>, ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    admin::list_roles(&db, &actor, actor.realm_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)
+}

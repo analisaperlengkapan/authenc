@@ -20,7 +20,7 @@ use leptos::prelude::*;
 use leptos_meta::{HashedStylesheet, MetaTags, Title, provide_meta_context};
 use leptos_router::{
     StaticSegment,
-    components::{Route, Router, Routes},
+    components::{ParentRoute, Route, Router, Routes},
 };
 
 /// The HTML document the server streams. Also used by the 404 handler, so a
@@ -58,6 +58,11 @@ pub fn App() -> impl IntoView {
                 <Route path=StaticSegment("forgot-password") view=pages::ForgotPassword />
                 <Route path=StaticSegment("reset-password") view=pages::ResetPassword />
                 <Route path=StaticSegment("verify-email") view=pages::VerifyEmail />
+                <ParentRoute path=StaticSegment("admin") view=pages::AdminShell>
+                    <Route path=StaticSegment("") view=pages::Overview />
+                    <Route path=StaticSegment("users") view=pages::Users />
+                    <Route path=StaticSegment("roles") view=pages::Roles />
+                </ParentRoute>
             </Routes>
         </Router>
     }

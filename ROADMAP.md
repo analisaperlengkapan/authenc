@@ -58,15 +58,18 @@ is not confirmed.
 A REST `/api/v1` surface for automation, documented by an OpenAPI document at
 `/api/v1/openapi.json`, sitting on the same use cases the console will use.
 
-**Not in this stage:** the admin console pages. The use cases, the REST surface,
-and the permission model are done and tested; the Leptos pages that drive them
-are not written yet, so the console still shows only the login flow.
+### Stage 3c — Admin console
 
-### Stage 3c — Admin console pages
+Server-rendered pages at `/admin` for the overview, users, and roles, backed by
+server functions. An unauthenticated visitor is redirected **by the server**
+before any console markup is produced. Actions the viewer lacks permission for
+are hidden — using the same rule the server enforces, with a test asserting the
+two agree — and a test also asserts that hiding is only a hint: calling the
+server function directly is still refused.
 
-Leptos pages for users, roles, and the realm, backed by server functions, with
-a `DataTable` primitive replacing the table markup the previous console
-copy-pasted across eight pages.
+A `DataTable` primitive replaces the table chrome the previous console
+copy-pasted across eight pages, using keyed `<For>` so a refetch touches only
+the rows that changed rather than rebuilding the whole `<tbody>`.
 
 ### Stage 4 — OAuth 2.0 and OpenID Connect
 
