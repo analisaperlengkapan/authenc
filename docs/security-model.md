@@ -112,13 +112,33 @@ A verification link records the address it was issued for. If the account's
 address changes before the link is used, the link is refused rather than
 confirming the new address.
 
-## Roles
+## Authorisation
 
-Resolved from the database at the point of use, never carried in a token. The
-previous system minted tokens with `roles: None` and then checked
-`roles.contains("admin")`, so no token it issued could satisfy an admin check —
-every role-gated endpoint was permanently 403 while everything else was
-permanently open.
+Permissions are an enum, so a typo is a compile error and `Permission::ALL` is
+the complete, reviewable list of what this system can authorise. Every use case
+calls `Actor::require` before doing anything; there is no middleware deciding
+access by URL prefix, so a function cannot lose its check by being mounted on
+the wrong router. The REST handlers apply no authorisation of their own — one
+that forgot would still be refused by the use case beneath it.
+
+Permissions are resolved from `role_permissions` rows on each request. Holding
+a role *named* `admin` grants nothing by itself, and a test asserts that: the
+previous code branched on `roles.contains("admin")`, so the string **was** the
+authorisation — while the tokens it issued carried `roles: None`, meaning no
+token it produced could satisfy the check at all.
+
+An unrecognised permission name in the database is ignored with a warning,
+never guessed into something else: a row left behind by a rename must neither
+lock everyone out nor silently escalate.
+
+**Tenant isolation** is checked separately from permissions, and always after
+them. Reaching into another realm returns 404, not 403, because confirming that
+a resource exists in another tenant is itself a disclosure.
+
+A disabled account fails authentication on the next request even if its session
+row still exists, and disabling a user revokes their sessions immediately
+rather than waiting for expiry. An actor cannot disable or delete its own
+account.
 
 ## Operational tasks
 

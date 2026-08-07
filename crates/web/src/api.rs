@@ -94,12 +94,16 @@ pub async fn log_in(request: LoginRequest) -> Result<LoginResponse, ServerFnErro
     let roles = authenc_identity::user::role_names(&db, authenticated.user.id)
         .await
         .map_err(server_ctx::to_server_fn_error)?;
+    let permissions = authenc_identity::user::permissions(&db, authenticated.user.id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
 
     server_ctx::set_session_cookie(policy, &authenticated.session);
 
     Ok(LoginResponse {
         user: authenticated.user,
         roles,
+        permissions,
     })
 }
 
@@ -154,8 +158,15 @@ pub async fn current_user() -> Result<Option<LoginResponse>, ServerFnError> {
     let roles = user::role_names(&db, session.user_id)
         .await
         .map_err(server_ctx::to_server_fn_error)?;
+    let permissions = user::permissions(&db, session.user_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
 
-    Ok(Some(LoginResponse { user, roles }))
+    Ok(Some(LoginResponse {
+        user,
+        roles,
+        permissions,
+    }))
 }
 
 /// Render a server-function failure as something a person can read.

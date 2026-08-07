@@ -41,6 +41,9 @@ pub fn router(state: AppState) -> Router {
         // able to reach them without credentials.
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
+        // REST surface for automation. Authorisation is not applied here — it
+        // lives in the use cases these handlers call.
+        .nest("/api/v1", crate::api::router())
         // Server functions. `#[server(prefix = "/api/sfn")]` in authenc-web
         // must agree with this path.
         .route(

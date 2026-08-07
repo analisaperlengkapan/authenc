@@ -6,6 +6,7 @@
 //! and all — rather than calling handlers in isolation and hoping the stack
 //! around them behaves.
 
+pub mod api;
 pub mod auth;
 pub mod cli;
 pub mod config;

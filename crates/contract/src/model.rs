@@ -8,7 +8,11 @@
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-use crate::id::{RealmId, RoleId, UserId};
+use crate::{
+    error::{AppError, Result},
+    id::{RealmId, RoleId, UserId},
+    permission::Permission,
+};
 
 /// An isolated tenant. Users, roles, and OAuth clients all live inside one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,8 +97,15 @@ pub struct Actor {
     pub realm_id: RealmId,
     /// Their login name, for audit records.
     pub username: String,
-    /// Role names granted to them, resolved at authentication time.
+    /// Role names granted to them, resolved from the database.
     pub roles: Vec<String>,
+    /// Permissions those roles carry, resolved from the database.
+    ///
+    /// Resolved at the point of use rather than carried in a token. The
+    /// previous system minted tokens with `roles: None` and then checked
+    /// `roles.contains("admin")`, so no token it issued could ever satisfy an
+    /// admin check.
+    pub permissions: Vec<Permission>,
 }
 
 impl Actor {
@@ -104,10 +115,30 @@ impl Actor {
         self.roles.iter().any(|held| held == role)
     }
 
-    /// Whether the actor is a realm administrator.
+    /// Whether the actor holds a permission, directly or by implication.
     #[must_use]
-    pub fn is_admin(&self) -> bool {
-        self.has_role(ROLE_ADMIN)
+    pub fn can(&self, permission: Permission) -> bool {
+        self.permissions
+            .iter()
+            .any(|&held| held == permission || held.implies() == Some(permission))
+    }
+
+    /// Require a permission.
+    ///
+    /// Every use case that changes or reveals something calls this first. The
+    /// error is [`AppError::Forbidden`] — 403 — because the caller *is*
+    /// authenticated; 401 would tell them to log in again, which will not
+    /// help.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppError::Forbidden`] if the actor lacks the permission.
+    pub fn require(&self, permission: Permission) -> Result<()> {
+        if self.can(permission) {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden)
+        }
     }
 }
 
@@ -136,6 +167,12 @@ pub struct LoginResponse {
     pub user: User,
     /// Role names the session carries.
     pub roles: Vec<String>,
+    /// Permissions the session carries.
+    ///
+    /// Sent so the console can hide actions it would only be refused for. It
+    /// is a display hint, never the check — every server function and endpoint
+    /// re-derives this from the database.
+    pub permissions: Vec<Permission>,
 }
 
 #[cfg(test)]
@@ -172,10 +209,73 @@ mod tests {
             realm_id: RealmId::new(),
             username: "alice".into(),
             roles: vec!["admin".into(), "auditor".into()],
+            permissions: vec![],
         };
-        assert!(actor.is_admin());
+        assert!(actor.has_role("admin"));
         assert!(actor.has_role("auditor"));
         assert!(!actor.has_role("operator"));
+    }
+
+    fn actor_with(permissions: Vec<Permission>) -> Actor {
+        Actor {
+            user_id: UserId::new(),
+            realm_id: RealmId::new(),
+            username: "alice".into(),
+            roles: vec![],
+            permissions,
+        }
+    }
+
+    #[test]
+    fn a_held_permission_is_allowed() {
+        let actor = actor_with(vec![Permission::UserRead]);
+        assert!(actor.can(Permission::UserRead));
+        assert!(actor.require(Permission::UserRead).is_ok());
+    }
+
+    #[test]
+    fn an_absent_permission_is_forbidden_not_unauthenticated() {
+        // 403, not 401: the caller is authenticated, so telling them to log in
+        // again would be misleading.
+        let actor = actor_with(vec![Permission::UserRead]);
+        assert!(!actor.can(Permission::UserWrite));
+        assert_eq!(
+            actor.require(Permission::UserWrite).unwrap_err().status(),
+            403,
+        );
+    }
+
+    #[test]
+    fn write_carries_read_with_it() {
+        let actor = actor_with(vec![Permission::UserWrite]);
+        assert!(actor.can(Permission::UserRead), "write must imply read");
+    }
+
+    #[test]
+    fn permissions_do_not_leak_across_resources() {
+        let actor = actor_with(vec![Permission::UserWrite]);
+        assert!(!actor.can(Permission::RealmRead));
+        assert!(!actor.can(Permission::RoleWrite));
+    }
+
+    #[test]
+    fn an_actor_with_nothing_can_do_nothing() {
+        let actor = actor_with(vec![]);
+        for permission in Permission::ALL {
+            assert!(!actor.can(*permission), "{permission} should be denied");
+        }
+    }
+
+    #[test]
+    fn holding_a_role_named_admin_grants_nothing_by_itself() {
+        // Permissions come from role_permissions rows, not from a magic name.
+        // The old code branched on `roles.contains("admin")`, which meant the
+        // string was the authorisation.
+        let actor = Actor {
+            roles: vec![ROLE_ADMIN.into()],
+            ..actor_with(vec![])
+        };
+        assert!(!actor.can(Permission::UserRead));
     }
 
     #[test]

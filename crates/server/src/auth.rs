@@ -58,13 +58,19 @@ pub async fn session_for(
 /// longer exists, or an internal error if a query fails.
 pub async fn actor_for(db: &Db, session: &Session) -> Result<Actor> {
     let user = user::by_id(db, session.user_id).await?;
-    let roles = user::role_names(db, session.user_id).await?;
+
+    // A disabled account must stop working immediately, even if its session
+    // row still exists.
+    if !user.enabled {
+        return Err(AppError::Unauthenticated);
+    }
 
     Ok(Actor {
+        roles: user::role_names(db, session.user_id).await?,
+        permissions: user::permissions(db, session.user_id).await?,
         user_id: user.id,
         realm_id: user.realm_id,
         username: user.username,
-        roles,
     })
 }
 
@@ -104,6 +110,39 @@ where
 
         let actor = actor_for(&db, &session).await.map_err(ApiError)?;
         Ok(Self(actor))
+    }
+}
+
+/// The caller's raw session, without the CSRF requirement.
+///
+/// Used only by the endpoint that hands out the CSRF token, which is a `GET`
+/// and therefore changes nothing. Everything else takes [`CurrentUser`].
+#[derive(Debug, Clone)]
+pub struct CurrentSession(pub Session);
+
+impl<S> FromRequestParts<S> for CurrentSession
+where
+    S: Send + Sync,
+    Db: axum::extract::FromRef<S>,
+    std::sync::Arc<Config>: axum::extract::FromRef<S>,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &S,
+    ) -> std::result::Result<Self, Self::Rejection> {
+        use axum::extract::FromRef;
+
+        let db = Db::from_ref(state);
+        let config = std::sync::Arc::<Config>::from_ref(state);
+        let jar = CookieJar::from_headers(&parts.headers);
+
+        session_for(&db, cookie_policy(&config), &jar)
+            .await
+            .map_err(ApiError)?
+            .map(Self)
+            .ok_or(ApiError(AppError::Unauthenticated))
     }
 }
 

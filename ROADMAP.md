@@ -48,9 +48,25 @@ Each stage leaves the repository compiling, linted, and tested.
 
 ### Stage 3b — Administration and RBAC
 
-Realm, user, role, and permission management, with permission checks in the use
-case rather than by URL prefix. Admin console pages backed by server functions,
-plus a REST `/api/v1` surface with an OpenAPI document for automation.
+Typed permissions (`Permission::ALL` is the complete list) checked by
+`Actor::require` inside each use case, never by URL prefix. Permissions are
+resolved from `role_permissions` rows per request; holding a role *named*
+`admin` grants nothing by itself. Write implies read. An actor cannot reach
+another realm, and is told 404 rather than 403 so the other tenant's existence
+is not confirmed.
+
+A REST `/api/v1` surface for automation, documented by an OpenAPI document at
+`/api/v1/openapi.json`, sitting on the same use cases the console will use.
+
+**Not in this stage:** the admin console pages. The use cases, the REST surface,
+and the permission model are done and tested; the Leptos pages that drive them
+are not written yet, so the console still shows only the login flow.
+
+### Stage 3c — Admin console pages
+
+Leptos pages for users, roles, and the realm, backed by server functions, with
+a `DataTable` primitive replacing the table markup the previous console
+copy-pasted across eight pages.
 
 ### Stage 4 — OAuth 2.0 and OpenID Connect
 
@@ -79,6 +95,11 @@ Group hierarchies, multi-tenant organisations, membership, invitations.
 Social login (Google, GitHub, Microsoft, Facebook, Apple) with account linking,
 and LDAP/Active Directory bind plus synchronisation with just-in-time
 provisioning.
+
+Machine-to-machine API tokens also land here: `/api/v1` is currently
+authenticated by the same session cookie the console uses, so an automated
+client must sign in and echo the CSRF token from `/api/v1/csrf`. That works,
+but a long-lived API token is what a Terraform provider actually wants.
 
 Social login cannot be tested end to end without real provider credentials. The
 OAuth client will be tested against a mock provider in CI, and the limitation

@@ -54,6 +54,7 @@ http = { workspace = true }
 
 figment = { workspace = true }
 clap = { workspace = true }
+utoipa = { workspace = true }
 zeroize = "1.9.0"
 serde = { workspace = true }
 serde_json = { workspace = true }

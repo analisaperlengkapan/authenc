@@ -78,6 +78,9 @@ layer, so the structure is enforced rather than merely intended.
 | Password reset | single-use expiring link; completing it revokes every session and lifts the lockout |
 | Email verification | single-use expiring link; a link cannot verify an address changed after it was sent |
 | Mail | SMTP via lettre, or a logging transport for development that production refuses to start with |
+| RBAC | typed permissions checked in the use case, resolved from the database per request |
+| REST API | `/api/v1` for automation, with an OpenAPI document at `/api/v1/openapi.json` |
+| Tenant isolation | an actor cannot read or change anything in another realm, and gets 404 rather than 403 |
 | CLI | `authenc seed`, `migrate`, `purge-sessions` — no test endpoints in the router |
 
 ## Development

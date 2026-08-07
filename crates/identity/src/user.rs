@@ -1,6 +1,6 @@
 //! Users and their password credentials.
 
-use authenc_contract::{AppError, RealmId, Result, UserId, model::User, validate};
+use authenc_contract::{AppError, Permission, RealmId, Result, UserId, model::User, validate};
 
 use crate::{db::Db, password::PasswordHasher};
 
@@ -226,6 +226,41 @@ pub async fn role_names(db: &Db, user_id: UserId) -> Result<Vec<String>> {
     .map_err(|e| AppError::internal_from("loading user roles", e))?;
 
     Ok(names)
+}
+
+/// The permissions a user holds, via their roles.
+///
+/// Names that match no known [`Permission`] are dropped with a warning rather
+/// than failing the request: a row left behind by a rename must not lock
+/// everyone out, and it must not be guessed into something else either.
+///
+/// # Errors
+///
+/// Returns an internal error if the query fails.
+pub async fn permissions(db: &Db, user_id: UserId) -> Result<Vec<Permission>> {
+    let names = sqlx::query_scalar!(
+        r#"
+        SELECT DISTINCT p.name
+        FROM user_roles ur
+        JOIN role_permissions rp ON rp.role_id = ur.role_id
+        JOIN permissions p ON p.id = rp.permission_id
+        WHERE ur.user_id = $1
+        "#,
+        user_id.0,
+    )
+    .fetch_all(db)
+    .await
+    .map_err(|e| AppError::internal_from("loading user permissions", e))?;
+
+    let mut permissions = Vec::with_capacity(names.len());
+    for name in names {
+        match name.parse::<Permission>() {
+            Ok(permission) => permissions.push(permission),
+            Err(error) => tracing::warn!(%error, "ignoring unrecognised permission row"),
+        }
+    }
+    permissions.sort_unstable();
+    Ok(permissions)
 }
 
 /// Replace a user's password.

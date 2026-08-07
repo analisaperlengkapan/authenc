@@ -6,7 +6,7 @@
 //! hardcoding a user id — because there was nowhere else to put "set up some
 //! data to try this with". There is now.
 
-use authenc_contract::{AppError, Result, model::ROLE_ADMIN};
+use authenc_contract::{AppError, Permission, Result, model::ROLE_ADMIN};
 use authenc_identity::{
     Db, PasswordHasher, realm, role,
     user::{self, NewUser},
@@ -110,6 +110,9 @@ pub async fn seed(
         Some("Full administrative access within the realm"),
     )
     .await?;
+    // Explicit rows, not a magic role name: the previous code branched on
+    // `roles.contains("admin")`, so the string *was* the authorisation.
+    role::set_permissions(db, realm.id, admin.id, Permission::ALL).await?;
     role::grant(db, user.id, admin.id).await?;
 
     tracing::info!(
@@ -158,6 +161,10 @@ mod tests {
 
         let roles = user::role_names(&db, authenticated.user.id).await.unwrap();
         assert_eq!(roles, vec![ROLE_ADMIN.to_owned()]);
+
+        // And the role must carry real permissions, not just a name.
+        let permissions = user::permissions(&db, authenticated.user.id).await.unwrap();
+        assert_eq!(permissions.len(), Permission::ALL.len(), "{permissions:?}");
     }
 
     #[sqlx::test(migrations = "../../migrations")]

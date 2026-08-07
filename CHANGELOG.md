@@ -5,6 +5,22 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — administration and RBAC
+
+- Typed `Permission` enum with `Actor::require`, checked inside each use case
+  rather than by a URL-prefix middleware. Write implies read.
+- Permissions resolved from `role_permissions` per request. Holding a role
+  named `admin` grants nothing by itself; an unrecognised permission row is
+  ignored with a warning rather than guessed.
+- Tenant isolation checked separately from permissions: reaching into another
+  realm returns 404, not 403.
+- A disabled account fails authentication immediately, and disabling a user
+  revokes their sessions. An actor cannot disable or delete itself.
+- Listing is bounded server-side regardless of the requested limit.
+- REST `/api/v1` for automation — users, roles, realm, whoami, permissions —
+  with an OpenAPI document at `/api/v1/openapi.json` and `/api/v1/csrf` for
+  cookie-authenticated clients.
+
 ### Added — credential recovery
 
 - Password reset and email verification as single-use expiring links, with only
