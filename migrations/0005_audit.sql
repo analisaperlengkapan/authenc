@@ -58,3 +58,16 @@ CREATE INDEX audit_events_action_time ON audit_events (action, occurred_at DESC)
 
 -- Retention sweeps delete by age across all realms.
 CREATE INDEX audit_events_time ON audit_events (occurred_at);
+
+-- ---------------------------------------------------------------------------
+-- A note for anyone upgrading
+-- ---------------------------------------------------------------------------
+--
+-- This release adds the `audit:read` permission. It is **not** granted here to
+-- roles that already exist, and that is deliberate: quietly widening what an
+-- existing role can do is how a permission model stops meaning anything. A
+-- freshly seeded administrator receives it because `authenc seed` grants
+-- `Permission::ALL`; an administrator seeded before this migration will find
+-- the audit page refused until the permission is granted to their role.
+--
+-- Grant it the same way as any other, through `/api/v1/roles` or the console.
