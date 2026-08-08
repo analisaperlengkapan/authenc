@@ -16,35 +16,56 @@ all-features = false
 [advisories]
 version = 2
 yanked = "deny"
-# No ignores. If one becomes necessary, it must carry the advisory id, the
-# reason, and the date it should be revisited — an ignore without an expiry is
-# how the previous file rotted.
-ignore = []
+# Every ignore carries the advisory id, why it is tolerable, and when to look
+# again. An ignore without those three is how the previous file rotted — it
+# still suppressed an RSA advisory for a dependency already removed.
+ignore = [
+    # Unmaintained, not vulnerable. A proc-macro helper reached through
+    # `leptos -> either_of`. It runs at build time and contributes no code to
+    # the binary. Revisit 2027-02, or whenever Leptos drops it.
+    { id = "RUSTSEC-2024-0436", reason = "paste: build-time proc-macro reached through leptos; unmaintained, no advisory" },
+    # Same shape: `leptos_macro`'s error-reporting helper, build-time only.
+    # Revisit 2027-02.
+    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2: build-time proc-macro reached through leptos_macro" },
+]
 
 [licenses]
 version = 2
+# Permissive licences only, and only ones actually encountered — an allowance
+# nothing uses is policy that has stopped being checked. cargo-deny reports an
+# unused entry, so this list stays honest by construction.
 allow = [
     "Apache-2.0",
-    "Apache-2.0 WITH LLVM-exception",
     "MIT",
     "MIT-0",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    "0BSD",
     "ISC",
+    "BSL-1.0",
     "Unicode-3.0",
     "Zlib",
     "CC0-1.0",
-    "MPL-2.0",
+    # The Mozilla CA bundle in `webpki-roots` is data, not code, and ships
+    # under a data licence rather than a software one.
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.9
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# The workspace's own crates depend on each other by path, which Cargo records
+# as `*`. That is not the unpinned-registry-dependency this check exists to
+# catch.
+allow-wildcard-paths = true
 
 deny = [
-    # Unmaintained; anything reaching for it should use `time` or `jiff`.
-    { crate = "chrono", reason = "use `time`, which this workspace already depends on" },
+    # Anything reaching for it should use `time`, which this workspace already
+    # depends on. `expect-json` is the assertion library inside `axum-test`, a
+    # dev-dependency: it never reaches a shipped binary, and we do not choose
+    # its dependencies.
+    { crate = "chrono", reason = "use `time`, which this workspace already depends on", wrappers = ["expect-json"] },
     # Pulls a second async runtime alongside tokio.
     { crate = "async-std", reason = "this workspace is tokio-only" },
     # A pre-release in a security-relevant dependency is not acceptable here;

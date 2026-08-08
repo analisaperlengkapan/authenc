@@ -10,6 +10,14 @@
 //! `#[server]` function in [`api`] reach straight into the database while the
 //! browser bundle contains nothing but the call site.
 
+// A page is one deeply generic type built by nesting `view!` fragments, and the
+// trait solver walks the whole thing. The default limit of 128 is reached by an
+// ordinary page with a `<Suspense>` around a `<Card>` around a form — and it is
+// reached in the release wasm build before the debug one, so a page that
+// compiles locally can still fail CI. Raised here once rather than discovered
+// per page.
+#![recursion_limit = "256"]
+
 pub mod api;
 pub mod pages;
 #[cfg(feature = "ssr")]

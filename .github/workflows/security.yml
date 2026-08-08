@@ -37,12 +37,25 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
-      - run: cargo audit --deny warnings
+      # The two ignores mirror `deny.toml`, so the two tools cannot disagree
+      # about what is tolerated. Both are unmaintained build-time proc-macros
+      # reached through Leptos, neither has an advisory against it, and neither
+      # contributes code to the binary.
+      - run: >
+          cargo audit --deny warnings
+          --ignore RUSTSEC-2024-0436
+          --ignore RUSTSEC-2026-0173
 
   dependency-review:
     name: dependency review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    # Needs Dependency graph plus GitHub Advanced Security, which are repository
+    # settings rather than anything this branch can turn on. Advisory until they
+    # are enabled, at which point it starts reporting without a workflow change.
+    # `cargo-deny` and `cargo-audit` above cover the same ground for Rust
+    # dependencies and do block the build.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
       - uses: actions/dependency-review-action@v4

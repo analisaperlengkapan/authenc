@@ -39,10 +39,20 @@ build if a dependency creeps in.
 just setup        # database + toolchain, first time
 just dev          # cargo leptos watch — serves on :3000 with hot reload
 just check        # fmt + clippy (both targets) + tests. Run before every commit.
+just build        # cargo leptos build --release. Run before pushing a page change.
 just test         # tests only
 just migrate      # apply pending migrations
 just sqlx-prepare # regenerate .sqlx offline data after changing any query
 ```
+
+`just check` deliberately stops short of the release wasm build, which takes
+around ten minutes. That gap is real and has bitten once: a page whose `view!`
+nested a `<Suspense>` around a `<Card>` around a form overflowed the trait
+solver's depth limit in the **release** wasm build while compiling cleanly in
+debug, so `just check` was green and CI was not. If you touched anything under
+`crates/web/src/pages`, run `just build` before pushing. (The crate now sets
+`recursion_limit = "256"`; prefer splitting a page into components over raising
+it again.)
 
 Without `just`, read `justfile` — it is short and every recipe is a plain
 command.

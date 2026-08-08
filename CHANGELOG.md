@@ -55,6 +55,48 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/oauth2/consent/test`, `/api/v1/auth/test-login`, and `/oidc/token` do not
   exist.
 
+### Fixed — the first CI run against this branch
+
+CI had never executed here: the workflows trigger on `main` and on pull
+requests, and until #186 there was no pull request. Four jobs failed, and each
+was a real problem rather than a flake.
+
+- **`authenc-web` did not compile for release wasm.** The consent page nested a
+  `<Suspense>` around a `<Card>` around a form in one `view!`, and the trait
+  solver overflowed its depth limit — in the release build only, so the debug
+  clippy pass this branch was verified with stayed green. The page is now three
+  small components and the crate sets `recursion_limit = "256"`. `AGENTS.md`
+  records the gap: `just check` does not run the release wasm build, so a page
+  change needs `just build` before pushing.
+- **`cargo deny` failed all four checks.** The workspace's own path
+  dependencies were being reported as unpinned wildcards, which
+  `allow-wildcard-paths` does not cover for crates that could be published — so
+  the crates are now marked `publish = false`, which is true and was worth
+  saying anyway. `chrono` was banned outright but arrives only through
+  `axum-test`, a dev-dependency, so the ban now names that wrapper instead of
+  failing on a test harness we do not control. Three permissive licences in the
+  tree (`0BSD`, `BSL-1.0`, `CDLA-Permissive-2.0`) were not on the allow-list;
+  two entries that nothing uses were removed, because an allowance nothing
+  matches is policy that has stopped being checked.
+- **`cargo audit` failed on two unmaintained crates.** `paste` and
+  `proc-macro-error2` are build-time proc-macros reached through Leptos, with
+  no advisory against either. Both are ignored with an id, a reason, and a
+  revisit date, in `deny.toml` and in the workflow, so the two tools cannot
+  disagree.
+- **`dependency review` cannot run on this repository.** It needs Dependency
+  graph plus GitHub Advanced Security, which are repository settings rather
+  than anything a branch can change. The job is advisory until they are
+  enabled; `cargo-deny` and `cargo-audit` cover the same ground for Rust
+  dependencies and do block the build.
+
+### Removed
+
+- `jsonwebtoken`, declared by `crates/oauth` and never used — the JWT encoding
+  is written directly against `ed25519-dalek`, because the decision that matters
+  (never reading `alg` from the header) belongs to the call site rather than to
+  an encoder. It pulled in `aws-lc-rs`, a C and assembly crypto stack, for
+  nothing. Nine fewer crates in the dependency graph.
+
 ### Changed
 
 - `authenc purge-sessions` is now `authenc purge`, and clears expired sessions,

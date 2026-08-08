@@ -15,6 +15,10 @@ rust-version = "1.90"
 license = "Apache-2.0"
 repository = "https://github.com/analisaperlengkapan/authenc"
 authors = ["Authenc contributors"]
+# This is an application, not a set of libraries. Saying so stops an accidental
+# `cargo publish`, and lets cargo-deny treat the internal path dependencies as
+# what they are rather than as unpinned registry wildcards.
+publish = false
 
 # ---------------------------------------------------------------------------
 # Lints — declared once, inherited by every crate via `[lints] workspace = true`
