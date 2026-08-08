@@ -9,8 +9,33 @@
 //! 406-line one that was actually mounted issued a valid signed token for
 //! `demo_user` to anyone who asked, with no credentials, no code validation,
 //! and no client authentication.
+//!
+//! # Layout
+//!
+//! * [`keyring`] — persistent, rotatable Ed25519 keys, encrypted at rest
+//! * [`token`] — signing and verifying JWTs
+//! * [`client`] — registration, redirect-URI allow-list, client authentication
+//! * [`code`] — authorization codes and PKCE
+//! * [`refresh`] — refresh-token rotation with reuse detection
+//! * [`consent`] — what each user has approved for each client
+//! * [`grant`] — turning an authorization into a token response
+//! * [`scope`] — parsing and narrowing scope requests
+//! * [`discovery`] — the provider metadata document
+//! * [`error`] — the protocol's own error bodies, distinct from [`AppError`]
+//!
+//! [`AppError`]: authenc_contract::AppError
 
+pub mod client;
+pub mod code;
+pub mod consent;
+pub mod discovery;
+pub mod error;
+pub mod grant;
 pub mod keyring;
+pub mod refresh;
+pub mod scope;
 pub mod token;
 
+pub use client::Client;
+pub use error::{OAuthError, OAuthErrorCode};
 pub use keyring::MasterKey;

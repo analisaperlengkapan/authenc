@@ -21,15 +21,17 @@ anything. It is preserved in git history and at the tag `archive/pre-refactor`.
 |---|---|---|---|
 | `authenc-contract` | `crates/contract` | Entities, DTOs, `AppError`, validation | wasm **and** native |
 | `authenc-identity` | `crates/identity` | Realms, users, roles, credentials, sessions — rules and SQL | native |
+| `authenc-oauth` | `crates/oauth` | Signing keys, tokens, clients, codes, refresh rotation, consent, discovery | native |
 | `authenc-web` | `crates/web` | Leptos pages, components, `#[server]` functions, hydrate entry | wasm **and** native |
 | `authenc-server` | `crates/server` | Composition root, HTTP stack, CLI | native |
 
-Dependencies run one way: `contract ← identity ← server`, and
-`contract ← web ← server`. `server` is the only crate that wires things
-together.
+Dependencies run one way: `contract ← identity ← oauth ← server`, and
+`contract ← web ← server` (with `web` reaching `identity` and `oauth` only
+behind `ssr`). `server` is the only crate that wires things together.
 
-`crates/oauth` will be added in stage 4, when it has real content. Empty
-placeholder crates are not created in advance.
+`identity` and `oauth` must stay free of `axum` and `leptos`. That is what
+lets every protocol rule be tested without an HTTP stack, and CI fails the
+build if a dependency creeps in.
 
 ## Commands
 
@@ -51,8 +53,9 @@ command.
    enabling both makes `leptos` fail to compile. Build native with
    `--features ssr` and wasm with `--features hydrate`.
 2. **Layer boundaries.** `authenc-contract` must not depend on `axum`, `sqlx`,
-   or `leptos`. `authenc-identity` must not depend on `axum` or `leptos`. The
-   `boundaries` CI job runs `cargo tree` and fails if they do.
+   or `leptos`. `authenc-identity` and `authenc-oauth` must not depend on
+   `axum` or `leptos`. The `boundaries` CI job runs `cargo tree` and fails if
+   they do.
 3. **`Cargo.lock` is committed.** Build with `--locked`.
 4. **Clippy is `-D warnings`**, with `unwrap`/`expect`/`panic` warned in crate
    code and allowed in tests (see `clippy.toml`).
@@ -84,6 +87,19 @@ real defect that was in `main`.
 - **A test that skips when the database is missing must fail or be
   `#[ignore]`d — never `return` quietly.** 68 old tests reported success while
   asserting nothing, in a CI job that had no database.
+- **Never redirect a failed authorization to an unvalidated URI.** At the
+  OAuth authorization endpoint, the client and the `redirect_uri` are settled
+  first; until both check out there is nowhere an error may be sent, and it is
+  reported on the spot. The old endpoint bounced the browser to whatever
+  `redirect_uri` the caller supplied.
+- **Never match a redirect URI by prefix.** Exact string comparison only.
+  `https://good.example.com.attacker.test/` passes a prefix check.
+- **Anything single-use is claimed by one atomic `UPDATE … WHERE used_at IS
+  NULL`.** Read-then-write lets two concurrent redemptions both succeed. This
+  applies to recovery tokens, authorization codes, and refresh tokens alike.
+- **Detect replay, do not merely refuse it.** A spent authorization code or
+  refresh token presented again means it leaked; revoke the family it minted
+  rather than returning an error and leaving those tokens alive.
 
 ## Writing tests
 

@@ -3,7 +3,8 @@
 Identity and access management, built as one Rust workspace: a Leptos
 server-rendered frontend and an Axum backend over PostgreSQL.
 
-> **Status: foundation plus authentication.** This repository was rebuilt from
+> **Status: foundation, authentication, and the OAuth/OIDC provider.** This
+> repository was rebuilt from
 > scratch in August 2026. What is documented below is implemented and tested;
 > everything else is in [ROADMAP.md](ROADMAP.md) and is not claimed to exist.
 > It has not had an independent security review — see [SECURITY.md](SECURITY.md).
@@ -47,15 +48,18 @@ cargo leptos watch
 ```
 crates/contract   entities, DTOs, AppError, validation   — wasm + native
 crates/identity   realms, users, roles, credentials      — native
+crates/oauth      OAuth 2.0 / OpenID Connect provider    — native
 crates/web        Leptos pages, components, server fns   — wasm + native
 crates/server     composition root, HTTP stack, CLI      — native
 migrations/       sqlx migrations, applied at startup
 docs/             architecture, security model, deployment
 ```
 
-Dependencies run one way: `contract ← identity ← server` and
-`contract ← web ← server`. CI fails the build if a crate reaches across a
-layer, so the structure is enforced rather than merely intended.
+Dependencies run one way: `contract ← identity ← oauth ← server` and
+`contract ← web ← server`. Neither `identity` nor `oauth` may depend on `axum`
+or `leptos`, which is what lets every protocol rule be tested without an HTTP
+stack. CI fails the build if a crate reaches across a layer, so the structure
+is enforced rather than merely intended.
 
 ## What works today
 
@@ -82,7 +86,16 @@ layer, so the structure is enforced rather than merely intended.
 | RBAC | typed permissions checked in the use case, resolved from the database per request |
 | REST API | `/api/v1` for automation, with an OpenAPI document at `/api/v1/openapi.json` |
 | Tenant isolation | an actor cannot read or change anything in another realm, and gets 404 rather than 403 |
-| CLI | `authenc seed`, `migrate`, `purge-sessions` — no test endpoints in the router |
+| OpenID Connect discovery | `/.well-known/openid-configuration` — with hyphens, so standard clients find it |
+| Authorization code + PKCE | `S256` only, mandatory for public clients; a code is single-use and client-bound |
+| Refresh token rotation | reuse is detected, not merely refused: a replayed token revokes its whole family |
+| Signing keys | persistent, rotatable, AES-GCM-encrypted at rest; retired keys keep verifying until their deadline |
+| Client registry | Argon2-hashed secrets, exact-match redirect URIs, `client_secret_basic`/`_post`/`none` |
+| Introspection and revocation | RFC 7662 and RFC 7009, under client authentication, not a bearer token |
+| UserInfo | claims filtered by granted scope; a disabled account stops working immediately |
+| Consent | a server-rendered form that works without JavaScript, recording *which* scopes were approved |
+| Dynamic client registration | RFC 7591, off unless switched on |
+| CLI | `authenc seed`, `migrate`, `purge`, `generate-master-key`, `rotate-keys`, `register-client` — no test endpoints in the router |
 
 ## Development
 

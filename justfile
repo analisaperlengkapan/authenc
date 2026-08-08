@@ -74,10 +74,26 @@ boundaries:
     for forbidden in axum sqlx leptos; do
         tree_has authenc-contract "$forbidden" && fail "authenc-contract depends on $forbidden"
     done
-    for forbidden in axum leptos; do
-        tree_has authenc-identity "$forbidden" && fail "authenc-identity depends on $forbidden"
+    for crate in authenc-identity authenc-oauth; do
+        for forbidden in axum leptos; do
+            tree_has "$crate" "$forbidden" && fail "$crate depends on $forbidden"
+        done
     done
     echo "layer boundaries hold"
+
+# Register an OAuth client and print its secret once.
+#   just register-client web 'Example App' https://app.example.com/callback
+register-client client_id name redirect_uri:
+    cargo run -p authenc-server --bin authenc -- register-client \
+        --client-id {{client_id}} --name {{quote(name)}} --redirect-uri {{redirect_uri}}
+
+# Print a fresh key-encryption key for AUTHENC_OAUTH__MASTER_KEY.
+master-key:
+    cargo run -p authenc-server --bin authenc -- generate-master-key
+
+# Delete everything that has expired, across every store.
+purge:
+    cargo run -p authenc-server --bin authenc -- purge
 
 # Supply-chain checks.
 audit:

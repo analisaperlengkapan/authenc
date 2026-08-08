@@ -58,6 +58,7 @@ pub fn App() -> impl IntoView {
                 <Route path=StaticSegment("forgot-password") view=pages::ForgotPassword />
                 <Route path=StaticSegment("reset-password") view=pages::ResetPassword />
                 <Route path=StaticSegment("verify-email") view=pages::VerifyEmail />
+                <Route path=StaticSegment("consent") view=pages::Consent />
                 <ParentRoute path=StaticSegment("admin") view=pages::AdminShell>
                     <Route path=StaticSegment("") view=pages::Overview />
                     <Route path=StaticSegment("users") view=pages::Users />

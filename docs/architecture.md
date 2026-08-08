@@ -84,11 +84,20 @@ wrapper to get wrong. The previous console needed sixty lines of hand-written
 a passkey failed without ever reaching the network.
 
 **HTTP endpoints** serve everything that is not the web application: health
-probes now, OAuth 2.0 and OpenID Connect in stage 4, and a REST `/api/v1`
-surface for automation in stage 3. These have to be real HTTP because their
-callers are specifications and scripts, not our own browser code.
+probes, the OAuth 2.0 and OpenID Connect protocol endpoints under
+`/realms/{realm}/protocol/openid-connect/`, and a REST `/api/v1` surface for
+automation. These have to be real HTTP because their callers are
+specifications and scripts, not our own browser code.
 
-Both sit on the same use cases in `identity`. Neither is the "real" one.
+Both sit on the same use cases in `identity` and `oauth`. Neither is the
+"real" one.
+
+The consent screen is the one place the two meet: the authorization endpoint
+redirects to a Leptos page, and that page posts a plain HTML form straight back
+to the authorization endpoint. It is a form rather than a server function on
+purpose — a hydration failure then degrades to a working page rather than a
+dead button, and the endpoint re-validates every parameter instead of trusting
+what the page decided.
 
 ## Authorisation
 

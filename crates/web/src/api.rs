@@ -389,3 +389,95 @@ pub async fn list_roles() -> Result<Vec<authenc_contract::model::Role>, ServerFn
         .await
         .map_err(server_ctx::to_server_fn_error)
 }
+
+// ---------------------------------------------------------------------------
+// OAuth consent
+// ---------------------------------------------------------------------------
+
+/// One scope, as the consent screen shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScopeInfo {
+    /// The scope's protocol name, e.g. `email`.
+    pub name: String,
+    /// What granting it means, in a sentence.
+    pub description: String,
+}
+
+/// What the consent screen needs in order to ask an honest question.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsentPrompt {
+    /// The client's registered display name — not a name it supplied in the
+    /// request, which is the difference between consent and a phishing form.
+    pub client_name: String,
+    /// The scopes that will actually be granted, already narrowed to what the
+    /// client is registered for.
+    pub scopes: Vec<ScopeInfo>,
+    /// The signed-in user, so they can see whose account they are granting.
+    pub username: String,
+    /// The token the approval form must post back.
+    pub csrf_token: String,
+}
+
+/// Describe a pending authorization request.
+///
+/// Everything shown is resolved server-side from the client's registration.
+/// The query string is only used to *identify* the request; nothing in it is
+/// echoed to the user, because a page that displays attacker-supplied text
+/// under the operator's domain is a phishing page with extra steps.
+///
+/// The arguments are the realm, the client asking, and the scopes it wants.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = DescribeConsent, prefix = "/api/sfn", endpoint = "consent")]
+pub async fn consent_prompt(
+    realm: String,
+    client_id: String,
+    scope: String,
+) -> Result<ConsentPrompt, ServerFnError> {
+    use authenc_contract::AppError;
+    use authenc_identity::{Db, user};
+    use authenc_oauth::{client, scope as scopes};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let session = server_ctx::require_session(&db)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let realm = authenc_identity::realm::by_name(&db, &realm)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let user = user::by_id(&db, session.user_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    // A session in one realm must not be able to approve anything in another,
+    // and a disabled account must not be able to approve at all.
+    if !user.enabled || user.realm_id != realm.id {
+        return Err(server_ctx::to_server_fn_error(AppError::Unauthenticated));
+    }
+
+    let client = client::by_client_id(&db, realm.id, &client_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let granted = scopes::resolve(&scopes::parse(&scope), &client.scopes)
+        .map_err(|error| server_ctx::to_server_fn_error(AppError::validation(error.description)))?;
+
+    Ok(ConsentPrompt {
+        client_name: client.name,
+        scopes: granted
+            .iter()
+            .map(|name| ScopeInfo {
+                name: name.clone(),
+                description: scopes::describe(name).to_owned(),
+            })
+            .collect(),
+        username: user.username,
+        csrf_token: session.csrf_token(),
+    })
+}

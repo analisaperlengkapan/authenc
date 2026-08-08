@@ -146,6 +146,31 @@ pub fn client_ip(parts: &Parts) -> Option<IpAddr> {
         .map(|connect_info| connect_info.0.ip())
 }
 
+/// Resolve the live session behind the current server-function call.
+///
+/// Almost every caller wants [`require_actor`] instead. This exists for the
+/// one thing an `Actor` deliberately does not carry: the session-bound CSRF
+/// token, which the consent form has to embed so its `POST` to the protocol
+/// endpoint can be told apart from one another origin submitted.
+///
+/// # Errors
+///
+/// Returns [`AppError::Unauthenticated`] when there is no live session, or an
+/// internal error if the lookup fails.
+pub async fn require_session(
+    db: &authenc_identity::Db,
+) -> Result<authenc_identity::session::Session, AppError> {
+    use authenc_identity::session;
+
+    let policy = leptos::prelude::expect_context::<CookiePolicy>();
+    let parts = leptos::prelude::expect_context::<Parts>();
+
+    let token = session_token(policy, &parts).ok_or(AppError::Unauthenticated)?;
+    session::lookup(db, &token)
+        .await?
+        .ok_or(AppError::Unauthenticated)
+}
+
 /// Resolve the [`Actor`] behind the current server-function call.
 ///
 /// Every administrative server function starts here. The actor's permissions
@@ -157,16 +182,9 @@ pub fn client_ip(parts: &Parts) -> Option<IpAddr> {
 /// Returns [`AppError::Unauthenticated`] when there is no live session, or an
 /// internal error if a lookup fails.
 pub async fn require_actor(db: &authenc_identity::Db) -> Result<Actor, AppError> {
-    use authenc_identity::{session, user};
+    use authenc_identity::user;
 
-    let policy = leptos::prelude::expect_context::<CookiePolicy>();
-    let parts = leptos::prelude::expect_context::<Parts>();
-
-    let token = session_token(policy, &parts).ok_or(AppError::Unauthenticated)?;
-    let session = session::lookup(db, &token)
-        .await?
-        .ok_or(AppError::Unauthenticated)?;
-
+    let session = require_session(db).await?;
     let user = user::by_id(db, session.user_id).await?;
     if !user.enabled {
         return Err(AppError::Unauthenticated);

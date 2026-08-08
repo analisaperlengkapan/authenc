@@ -11,6 +11,7 @@
 use std::sync::Arc;
 
 use authenc_identity::{Db, PasswordHasher, mail::Mailer};
+use authenc_oauth::MasterKey;
 use authenc_web::server_ctx::PublicUrls;
 use axum::extract::FromRef;
 use leptos::prelude::LeptosOptions;
@@ -28,6 +29,9 @@ pub struct AppState {
     pub hasher: PasswordHasher,
     /// How outbound mail is delivered.
     pub mailer: Arc<dyn Mailer>,
+    /// Decrypts the stored OAuth signing keys. Parsed once at startup, so a
+    /// malformed key fails there rather than at the first token request.
+    pub master_key: Arc<MasterKey>,
     /// Leptos build settings; required by `leptos_axum`.
     pub leptos_options: LeptosOptions,
 }

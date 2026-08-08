@@ -28,8 +28,10 @@ fn server(db: Db) -> TestServer {
         .site_root(std::sync::Arc::<str>::from("target/site"))
         .build();
 
+    let config = authenc_server::config::Config::default();
     let state = authenc_server::state::AppState {
-        config: std::sync::Arc::new(authenc_server::config::Config::default()),
+        master_key: std::sync::Arc::new(config.master_key().unwrap()),
+        config: std::sync::Arc::new(config),
         db,
         hasher: PasswordHasher::new(),
         mailer: std::sync::Arc::new(authenc_identity::mail::CapturingMailer::new()),

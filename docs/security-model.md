@@ -6,10 +6,11 @@ rather than describing an intention as a property.
 
 ## Status
 
-Stages 1 to 3b of the rebuild. Passwords, sessions, CSRF, brute-force lockout,
+Stages 1 to 4b of the rebuild. Passwords, sessions, CSRF, brute-force lockout,
 credential recovery, authorisation, tenant isolation, configuration, transport
-headers, and error handling are in place and tested. OAuth 2.0, OpenID Connect,
-and multi-factor authentication do not exist yet.
+headers, error handling, and the OAuth 2.0 / OpenID Connect provider are in
+place and tested. Multi-factor authentication does not exist yet, and neither
+does an audit log.
 
 ## Threat model
 
@@ -140,12 +141,72 @@ row still exists, and disabling a user revokes their sessions immediately
 rather than waiting for expiry. An actor cannot disable or delete its own
 account.
 
+## OAuth 2.0 and OpenID Connect
+
+**Signing keys** live in the database, encrypted with AES-GCM under a
+key-encryption key from configuration that never reaches the database. The
+`kid` is bound in as associated data, so a ciphertext moved onto another key's
+row fails to decrypt rather than signing as the wrong key. A realm has one
+active key; retired keys keep verifying, and keep appearing in JWKS, until
+their deadline, so rotation does not invalidate tokens still in flight. The
+production profile refuses to start on the development key.
+
+**Token verification** checks issuer, audience, expiry, not-before, and key id.
+The algorithm is fixed at EdDSA and never read from the token header, so
+algorithm-confusion does not apply. The UserInfo endpoint is the one place that
+does not pin an audience — it is presented a token minted for whichever client
+the user authorised — and it uses a separately named entry point
+(`verify_any_audience`) so that omission is a decision rather than an oversight.
+
+**Client authentication** accepts `client_secret_basic`, `client_secret_post`,
+and `none` (public clients, PKCE only), and refuses a request presenting
+credentials in more than one place. Secrets are 256-bit random values hashed
+with Argon2; an unknown client and a wrong secret produce the same code, status,
+and message, so the endpoint does not enumerate which clients exist.
+
+**Redirect URIs** are an exact-match allow-list. Prefix and wildcard matching
+are not offered, because both are routinely bypassed —
+`https://good.example.com.attacker.test/` has the registered prefix. An unknown
+client or an unregistered URI is reported at the authorization endpoint and
+**never** by redirecting; there is no address we have reason to trust.
+
+**Authorization codes** are single-use, live for one minute, and are claimed by
+one atomic `UPDATE … WHERE used_at IS NULL` scoped to the client — so another
+client presenting a stolen code neither redeems it nor burns it. PKCE S256 is
+mandatory for public clients; `plain` is not implemented and is not advertised.
+
+**Refresh tokens** rotate on every use, and reuse is *detected*, not merely
+refused. Every token minted from one authorization shares a family id — the
+authorization code's own id — so presenting a spent token revokes the whole
+family. A replayed authorization code revokes exactly the same set. The
+conservative reading is deliberate: from the server, a client retrying a lost
+response and a thief racing the owner are indistinguishable, so both lose
+access rather than one of them being an undetected thief.
+
+**Consent** stores which scopes were approved, not merely that approval
+happened, so a client cannot quietly widen its scopes after the first
+approval. The approval form carries the session-bound CSRF token.
+
+**Account state is re-checked on every use.** A signed access token stays
+cryptographically valid until it expires; disabling an account stops UserInfo
+and the refresh grant immediately rather than fifteen minutes later.
+
+**Dynamic client registration is off by default.** Open registration lets
+anyone create a client whose redirect URI they control, which is a phishing
+page wearing the operator's own domain.
+
 ## Operational tasks
 
-`authenc seed`, `migrate`, and `purge-sessions` are CLI subcommands. Nothing
-equivalent exists as an HTTP endpoint. The previous router served
+`authenc seed`, `migrate`, `purge`, `generate-master-key`, `rotate-keys`, and
+`register-client` are CLI subcommands. Nothing equivalent exists as an
+unauthenticated HTTP endpoint. The previous router served
 `/oauth2/token/test`, `/oauth2/consent/test`, and `/api/v1/auth/test-login`
-unauthenticated in production, granting consent for a hardcoded user id.
+unauthenticated in production, granting consent for a hardcoded user id, and a
+test asserts none of those paths exists.
+
+The two commands that mint a credential — `generate-master-key` and
+`register-client` — write it to stdout and nowhere else, so it can be piped
+into a secret store without passing through the log.
 
 ## Secrets
 

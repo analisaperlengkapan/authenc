@@ -40,9 +40,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             authenc_server::cli::seed(&db, &hasher, &realm, &username, &email, &password).await?;
         }
 
-        Command::PurgeSessions => {
-            let removed = authenc_identity::session::purge_expired(&db).await?;
-            tracing::info!(removed, "purged expired sessions");
+        Command::Purge => {
+            authenc_server::cli::purge(&db).await?;
+        }
+
+        Command::GenerateMasterKey => {
+            let key = authenc_oauth::MasterKey::generate()?;
+            print_secret(&key.to_base64());
+        }
+
+        Command::RotateKeys {
+            realm,
+            retire_after_hours,
+        } => {
+            let realm = authenc_identity::realm::by_name(&db, &realm).await?;
+            let rotated = authenc_oauth::keyring::rotate(
+                &db,
+                &config.master_key()?,
+                realm.id,
+                time::Duration::hours(retire_after_hours),
+            )
+            .await?;
+            tracing::info!(kid = %rotated.kid, "rotated signing key");
+        }
+
+        Command::RegisterClient {
+            realm,
+            client_id,
+            name,
+            public,
+            redirect_uris,
+            scopes,
+            skip_consent,
+        } => {
+            authenc_identity::migrate(&db).await?;
+            let secret = authenc_server::cli::register_client(
+                &db,
+                &hasher,
+                &realm,
+                authenc_server::cli::ClientRegistration {
+                    client_id: &client_id,
+                    name: &name,
+                    is_public: public,
+                    redirect_uris: &redirect_uris,
+                    scopes: &scopes,
+                    require_consent: !skip_consent,
+                },
+            )
+            .await?;
+
+            match secret {
+                Some(secret) => print_secret(&secret),
+                None => tracing::info!("public client registered; no secret was issued"),
+            }
         }
 
         Command::Serve => {
@@ -51,6 +101,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     Ok(())
+}
+
+/// Write a generated secret to stdout, and nowhere else.
+///
+/// The two commands that mint a credential have to hand it over somehow.
+/// Stdout is the right channel: it can be piped straight into a secret store,
+/// and unlike the log it is not collected, shipped, or retained by anything.
+/// `print_stdout` is denied across the workspace precisely so that every
+/// exception is a decision — this is the only one.
+#[allow(
+    clippy::print_stdout,
+    reason = "a generated secret must reach the operator without passing through the log"
+)]
+fn print_secret(value: &str) {
+    println!("{value}");
 }
 
 /// Run the HTTP server until it is asked to stop.
@@ -71,6 +136,9 @@ async fn serve(
     }
 
     let state = AppState {
+        // Parsed here rather than per request: a malformed key must stop the
+        // process at startup, not surface as a 500 at the first token call.
+        master_key: Arc::new(config.master_key()?),
         config: Arc::new(config),
         db,
         hasher,

@@ -103,6 +103,8 @@ pub struct Config {
     pub security: SecurityConfig,
     /// Outbound mail.
     pub mail: MailConfig,
+    /// The OAuth 2.0 / OpenID Connect provider.
+    pub oauth: OauthConfig,
 }
 
 /// HTTP listener settings.
@@ -177,6 +179,35 @@ pub struct MailConfig {
     pub from: String,
 }
 
+/// A development-only key-encryption key.
+///
+/// Present so a fresh checkout can issue tokens that survive a restart without
+/// any setup at all. `validate` refuses to start the production profile with
+/// it, exactly as it refuses the development database credentials — the
+/// alternative, generating one per boot, is what the previous build did, and
+/// it invalidated every token it had ever issued on every restart.
+pub const DEVELOPMENT_MASTER_KEY: &str = "ZGV2ZWxvcG1lbnQtb25seS1tYXN0ZXIta2V5LTMyYnk";
+
+/// The OAuth 2.0 / OpenID Connect provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OauthConfig {
+    /// Base64url-encoded 32-byte key that encrypts stored signing keys.
+    ///
+    /// It never reaches the database, so a database disclosure alone does not
+    /// yield a signing key. Generate one with `authenc generate-master-key`.
+    pub master_key: Secret,
+    /// The realm served at the root discovery document, for clients that
+    /// cannot be pointed at a realm-specific URL.
+    pub default_realm: String,
+    /// Whether any client may register itself (RFC 7591).
+    ///
+    /// Off by default. Open registration on an IAM server lets anyone create a
+    /// client with a redirect URI they control, which is a phishing surface
+    /// wearing the operator's domain.
+    pub allow_dynamic_registration: bool,
+}
+
 /// Security controls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -227,6 +258,11 @@ impl Default for Config {
                 // MailHog, from compose.yaml.
                 smtp_url: Secret::from("smtp://localhost:1025"),
                 from: "Authenc <no-reply@localhost>".to_owned(),
+            },
+            oauth: OauthConfig {
+                master_key: Secret::from(DEVELOPMENT_MASTER_KEY),
+                default_realm: "master".to_owned(),
+                allow_dynamic_registration: false,
             },
         }
     }
@@ -300,6 +336,13 @@ impl Config {
         if self.database.max_connections == 0 {
             return invalid("database.max_connections must be at least 1".to_owned());
         }
+        if self.oauth.default_realm.trim().is_empty() {
+            return invalid("oauth.default_realm must not be empty".to_owned());
+        }
+        // Checked in every profile: a key that cannot be decoded makes every
+        // token endpoint fail at the first request instead of at startup.
+        self.master_key()
+            .map_err(|error| ConfigError::Invalid(format!("oauth.master_key: {error}")))?;
 
         if !self.profile.is_production() {
             return Ok(());
@@ -334,8 +377,33 @@ impl Config {
                     .to_owned(),
             );
         }
+        if self.oauth.master_key.expose() == DEVELOPMENT_MASTER_KEY {
+            return invalid(
+                "oauth.master_key is still the development key; \
+                 generate one with `authenc generate-master-key`"
+                    .to_owned(),
+            );
+        }
 
         Ok(())
+    }
+
+    /// The key-encryption key that protects stored signing keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppError::Validation`] if the configured value is not a
+    /// base64url-encoded 32-byte key.
+    ///
+    /// [`AppError::Validation`]: authenc_contract::AppError::Validation
+    pub fn master_key(&self) -> authenc_contract::Result<authenc_oauth::MasterKey> {
+        authenc_oauth::MasterKey::from_base64(self.oauth.master_key.expose())
+    }
+
+    /// The public origin, without a trailing slash.
+    #[must_use]
+    pub fn origin(&self) -> &str {
+        self.server.public_url.trim_end_matches('/')
     }
 
     /// The database settings, in the shape the identity crate wants.
@@ -392,6 +460,15 @@ mod tests {
             mail: MailConfig {
                 transport: MailTransport::Smtp,
                 ..Config::default().mail
+            },
+            oauth: OauthConfig {
+                master_key: Secret::from(
+                    authenc_oauth::MasterKey::generate()
+                        .expect("entropy")
+                        .to_base64()
+                        .as_str(),
+                ),
+                ..Config::default().oauth
             },
             ..Config::default()
         }
@@ -460,6 +537,50 @@ mod tests {
         let mut config = Config::default();
         config.database.max_connections = 0;
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn production_refuses_the_development_master_key() {
+        // Shipping with it would mean every deployment shared one
+        // key-encryption key, published in this repository.
+        let mut config = production();
+        config.oauth.master_key = Secret::from(DEVELOPMENT_MASTER_KEY);
+        let error = config.validate().unwrap_err().to_string();
+        assert!(error.contains("master_key"), "got: {error}");
+    }
+
+    #[test]
+    fn a_master_key_that_cannot_be_decoded_is_rejected_at_startup() {
+        // Not at the first token request, which is how it would surface if
+        // this were only parsed lazily.
+        for bad in ["", "not base64!!", "c2hvcnQ"] {
+            let mut config = Config::default();
+            config.oauth.master_key = Secret::from(bad);
+            assert!(config.validate().is_err(), "accepted: {bad:?}");
+        }
+    }
+
+    #[test]
+    fn the_development_master_key_is_a_usable_32_byte_key() {
+        // Otherwise a fresh checkout fails validation before it can start.
+        let config = Config::default();
+        assert!(config.validate().is_ok());
+        assert!(config.master_key().is_ok());
+    }
+
+    #[test]
+    fn the_master_key_is_redacted_in_debug_output() {
+        let mut config = Config::default();
+        config.oauth.master_key = Secret::from("bWFzdGVyLWtleS10aGF0LW11c3Qtbm90LWxlYWs");
+        let rendered = format!("{config:?}");
+        assert!(!rendered.contains("bWFzdGVy"), "got: {rendered}");
+    }
+
+    #[test]
+    fn the_origin_never_carries_a_trailing_slash() {
+        let mut config = Config::default();
+        config.server.public_url = "https://id.example.com/".to_owned();
+        assert_eq!(config.origin(), "https://id.example.com");
     }
 
     #[test]

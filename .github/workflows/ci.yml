@@ -111,11 +111,16 @@ jobs:
               status=1
             fi
           done
-          for forbidden in axum leptos; do
-            if tree_has authenc-identity "$forbidden"; then
-              echo "::error::authenc-identity must not depend on $forbidden"
-              status=1
-            fi
+          # The protocol layers are testable without an HTTP stack, which is
+          # what lets every OAuth rule be checked without a request. A stray
+          # `axum` import here would quietly end that.
+          for crate in authenc-identity authenc-oauth; do
+            for forbidden in axum leptos; do
+              if tree_has "$crate" "$forbidden"; then
+                echo "::error::$crate must not depend on $forbidden"
+                status=1
+              fi
+            done
           done
           exit $status
 

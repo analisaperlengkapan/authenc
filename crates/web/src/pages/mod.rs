@@ -1,11 +1,13 @@
 //! Page components, one per route.
 
 pub mod admin;
+pub mod consent;
 pub mod home;
 pub mod login;
 pub mod recovery;
 
 pub use admin::{AdminShell, Overview, Roles, Users};
+pub use consent::Consent;
 pub use home::Home;
 pub use login::Login;
 pub use recovery::{ForgotPassword, ResetPassword, VerifyEmail};

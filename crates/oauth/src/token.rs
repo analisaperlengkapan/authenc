@@ -175,6 +175,31 @@ pub struct Expected<'a> {
 /// audience. One error for all of them: distinguishing them tells an attacker
 /// which part of their forgery to fix.
 pub fn verify(token: &str, public: &VerifyingKey, expected: Expected<'_>) -> Result<Claims> {
+    let claims = verify_any_audience(token, public, expected.issuer)?;
+
+    if claims.aud != expected.audience {
+        return Err(AppError::Unauthenticated);
+    }
+
+    Ok(claims)
+}
+
+/// Verify a token without pinning the audience.
+///
+/// Used only where the audience is *the thing being read*: the UserInfo
+/// endpoint is presented an access token minted for whichever client the user
+/// authorised, and it has no prior expectation of which one. Issuer,
+/// signature, `exp`, and `nbf` are all still checked, so the token must still
+/// be one this provider issued and still be live.
+///
+/// Everything else — every endpoint with an expectation to state — must use
+/// [`verify`].
+///
+/// # Errors
+///
+/// Returns [`AppError::Unauthenticated`] for a malformed token, a bad
+/// signature, an expired or not-yet-valid token, or a mismatched issuer.
+pub fn verify_any_audience(token: &str, public: &VerifyingKey, issuer: &str) -> Result<Claims> {
     let mut parts = token.split('.');
     let (Some(header), Some(payload), Some(signature), None) =
         (parts.next(), parts.next(), parts.next(), parts.next())
@@ -207,11 +232,7 @@ pub fn verify(token: &str, public: &VerifyingKey, expected: Expected<'_>) -> Res
 
     // Each of these was missing from the previous verifier, which checked only
     // the signature and `exp`.
-    if claims.iss != expected.issuer
-        || claims.aud != expected.audience
-        || claims.exp <= now
-        || claims.nbf > now
-    {
+    if claims.iss != issuer || claims.exp <= now || claims.nbf > now {
         return Err(AppError::Unauthenticated);
     }
 

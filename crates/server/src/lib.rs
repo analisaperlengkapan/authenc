@@ -13,6 +13,7 @@ pub mod config;
 pub mod error;
 pub mod health;
 pub mod http;
+pub mod oidc;
 pub mod state;
 pub mod telemetry;
 

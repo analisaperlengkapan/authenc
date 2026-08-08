@@ -56,8 +56,67 @@ pub enum Command {
         password: String,
     },
 
-    /// Delete expired sessions.
-    PurgeSessions,
+    /// Delete expired sessions, authorization codes, and refresh tokens.
+    ///
+    /// Safe to run on a timer. Spent codes and tokens are kept until they
+    /// could no longer be replayed, so this never removes evidence of an
+    /// attack that is still in progress.
+    Purge,
+
+    /// Print a fresh key-encryption key for `AUTHENC_OAUTH__MASTER_KEY`.
+    ///
+    /// Nothing is written: the value is yours to put wherever secrets live.
+    /// Rotating it requires re-encrypting stored signing keys, so treat it as
+    /// permanent for a deployment.
+    GenerateMasterKey,
+
+    /// Rotate a realm's OAuth signing key.
+    ///
+    /// The old key keeps verifying, and keeps appearing in JWKS, until it
+    /// expires — so tokens signed a moment ago stay valid.
+    RotateKeys {
+        /// Realm whose key to rotate.
+        #[arg(long, default_value = "master")]
+        realm: String,
+
+        /// How long the outgoing key keeps verifying, in hours.
+        #[arg(long, default_value_t = 48)]
+        retire_after_hours: i64,
+    },
+
+    /// Register an OAuth client.
+    ///
+    /// The generated secret is printed once and never again; only its hash is
+    /// stored.
+    RegisterClient {
+        /// Realm to register in.
+        #[arg(long, default_value = "master")]
+        realm: String,
+
+        /// The `client_id` the client will present.
+        #[arg(long)]
+        client_id: String,
+
+        /// Display name, shown on the consent screen.
+        #[arg(long)]
+        name: String,
+
+        /// Register a public client: no secret, PKCE required.
+        #[arg(long)]
+        public: bool,
+
+        /// Redirect URI. Repeat for more than one. Matched exactly.
+        #[arg(long = "redirect-uri", required = true)]
+        redirect_uris: Vec<String>,
+
+        /// Scope the client may request. Repeat for more than one.
+        #[arg(long = "scope")]
+        scopes: Vec<String>,
+
+        /// Skip the consent screen. Only sensible for a first-party client.
+        #[arg(long)]
+        skip_consent: bool,
+    },
 }
 
 /// Create a realm and an administrator inside it.
@@ -119,6 +178,90 @@ pub async fn seed(
         realm = realm_name,
         username,
         "created administrator; sign in at /login",
+    );
+    Ok(())
+}
+
+/// Register an OAuth client and return the secret, if it has one.
+///
+/// # Errors
+///
+/// Returns an error if the realm does not exist or the metadata is refused.
+pub async fn register_client(
+    db: &Db,
+    hasher: &PasswordHasher,
+    realm_name: &str,
+    new: ClientRegistration<'_>,
+) -> Result<Option<String>> {
+    use authenc_oauth::client;
+
+    let realm = realm::by_name(db, realm_name).await?;
+
+    let registered = client::register(
+        db,
+        hasher,
+        client::NewClient {
+            realm_id: realm.id,
+            client_id: Some(new.client_id),
+            name: new.name,
+            is_public: new.is_public,
+            redirect_uris: new.redirect_uris,
+            grant_types: &[],
+            scopes: new.scopes,
+            require_consent: new.require_consent,
+        },
+    )
+    .await
+    .map_err(|error| AppError::validation(error.description))?;
+
+    tracing::info!(
+        realm = realm_name,
+        client_id = %registered.client.client_id,
+        public = registered.client.is_public,
+        "registered oauth client",
+    );
+
+    Ok(registered
+        .client_secret
+        .map(|secret| secret.expose().to_owned()))
+}
+
+/// What [`register_client`] needs, so the argument list stays readable.
+#[derive(Debug, Clone)]
+pub struct ClientRegistration<'a> {
+    /// The `client_id` the client will present.
+    pub client_id: &'a str,
+    /// Display name.
+    pub name: &'a str,
+    /// Whether it is a public client.
+    pub is_public: bool,
+    /// Exact redirect URIs.
+    pub redirect_uris: &'a [String],
+    /// Scopes it may request.
+    pub scopes: &'a [String],
+    /// Whether the consent screen is shown.
+    pub require_consent: bool,
+}
+
+/// Delete everything that has expired, across every store.
+///
+/// # Errors
+///
+/// Returns an error if any delete fails.
+pub async fn purge(db: &Db) -> Result<()> {
+    let sessions = authenc_identity::session::purge_expired(db).await?;
+    let recovery = authenc_identity::recovery::purge_expired(db).await?;
+    let codes = authenc_oauth::code::purge_expired(db).await?;
+    let refresh = authenc_oauth::refresh::purge_expired(db).await?;
+    let keys = authenc_oauth::keyring::purge_retired(db).await?;
+
+    tracing::info!(
+        sessions,
+        recovery,
+        authorization_codes = codes,
+        refresh_tokens = refresh,
+        signing_keys = keys,
+        "purged expired records",
     );
     Ok(())
 }

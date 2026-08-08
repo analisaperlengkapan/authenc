@@ -44,6 +44,13 @@ pub fn router(state: AppState) -> Router {
         // REST surface for automation. Authorisation is not applied here — it
         // lives in the use cases these handlers call.
         .nest("/api/v1", crate::api::router())
+        // OAuth 2.0 / OpenID Connect. Mounted at the root because the paths
+        // are part of the specification and are what discovery advertises.
+        // Deliberately outside the CSRF-bearing extractors: these endpoints
+        // authenticate clients and tokens, not browser sessions, and the one
+        // that does read the session — the consent form's POST — checks the
+        // token itself.
+        .merge(crate::oidc::router())
         // Server functions. `#[server(prefix = "/api/sfn")]` in authenc-web
         // must agree with this path.
         .route(

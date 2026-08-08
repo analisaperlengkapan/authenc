@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE refresh_tokens SET expires_at = now() - INTERVAL '1 day' WHERE token_hash = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "899db7b97798a7dd82ba813582f80c4feaacb34dc1045fddfeae964922dfc86f"
+}

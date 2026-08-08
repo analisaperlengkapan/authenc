@@ -5,6 +5,68 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the OAuth 2.0 and OpenID Connect endpoints
+
+- Discovery at `/.well-known/openid-configuration` and
+  `/realms/{realm}/.well-known/openid-configuration`. Every URL in the document
+  is derived from the configured public origin, and the `supported` lists are
+  built from the same constants the endpoints branch on, so discovery cannot
+  promise a flow the token endpoint refuses. The previous build registered
+  `openid_configuration` — an underscore no standard client looks for — and
+  hardcoded `http://localhost:8080/v1` as the issuer wherever it was deployed.
+- Authorization endpoint with the code flow and PKCE `S256`, mandatory for
+  public clients. The client and the `redirect_uri` are validated before
+  anything else, and a failure in either is reported on the spot rather than by
+  redirecting — the previous endpoint bounced the browser to whatever
+  `redirect_uri` it was handed, which is an open redirect.
+- Token endpoint with the `authorization_code` and `refresh_token` grants,
+  `client_secret_basic` / `client_secret_post` / `none` client authentication,
+  and `Cache-Control: no-store` on every response.
+- Authorization codes that are single-use, one minute long, and claimed by one
+  atomic `UPDATE … WHERE used_at IS NULL` scoped to the client, so another
+  client presenting a stolen code neither redeems nor burns it.
+- Refresh-token rotation with **reuse detection**: every token minted from one
+  authorization shares the authorization code's id as its family, and
+  presenting a spent code or token revokes the whole family.
+- UserInfo, returning only the claims the granted scopes allow, and refusing a
+  token whose account has since been disabled.
+- Introspection (RFC 7662) and revocation (RFC 7009) under **client**
+  authentication. The previous implementation gated introspection on a bearer
+  JWT, so any token the server had issued could inspect any other. A client may
+  only introspect its own tokens, and an unknown token is `active: false` with a
+  200 rather than an error.
+- A consent screen at `/consent`: a server-rendered Leptos page whose approval
+  is a plain HTML form posting back to the authorization endpoint, so it works
+  with JavaScript off. Consent records *which* scopes were approved, so a client
+  cannot quietly widen them afterwards.
+- Dynamic client registration (RFC 7591), off unless
+  `oauth.allow_dynamic_registration` is set.
+- RP-initiated logout, honouring `post_logout_redirect_uri` only when it is
+  registered for the named client.
+- `AUTHENC_OAUTH__MASTER_KEY`, `__DEFAULT_REALM`, and
+  `__ALLOW_DYNAMIC_REGISTRATION`. The master key is parsed once at startup, so a
+  malformed value stops the process instead of surfacing as a 500 on the first
+  token request; the production profile refuses the development default.
+- CLI: `generate-master-key`, `rotate-keys`, and `register-client`. The two that
+  mint a credential write it to stdout and nowhere else.
+- `crates/server/tests/oidc.rs`: 33 tests over the assembled router, including a
+  full authorize → redeem → UserInfo → refresh → rotate exchange, and a test
+  asserting that `/oauth2/authorize/test`, `/oauth2/token/test`,
+  `/oauth2/consent/test`, `/api/v1/auth/test-login`, and `/oidc/token` do not
+  exist.
+
+### Changed
+
+- `authenc purge-sessions` is now `authenc purge`, and clears expired sessions,
+  recovery tokens, authorization codes, refresh tokens, and retired signing keys
+  in one pass.
+- `token::verify` is now built on `verify_any_audience`, which checks issuer,
+  signature, `exp`, and `nbf` but not the audience. Only UserInfo uses the
+  latter, and it does so under a name that makes the omission a decision rather
+  than an oversight.
+- The `boundaries` CI job now checks `authenc-oauth` as well as
+  `authenc-contract` and `authenc-identity`.
+
 ### Added — OAuth signing keys and tokens
 
 - `crates/oauth` with `keyring` and `token`.

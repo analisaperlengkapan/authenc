@@ -45,6 +45,10 @@ Set `AUTHENC_PROFILE=production`. The server then **refuses to start** if:
 - `AUTHENC_SERVER__PUBLIC_URL` is not `https://`
 - `AUTHENC_SECURITY__HSTS` is not `true`
 - `AUTHENC_SECURITY__CORS_ALLOWED_ORIGINS` contains `*`
+- `AUTHENC_MAIL__TRANSPORT` is still `logging`, which would silently discard
+  every password-reset mail
+- `AUTHENC_OAUTH__MASTER_KEY` is still the development key published in
+  `.env.example`
 
 This is deliberate. The previous build shipped a default JWT secret of
 `default_jwt_secret_change_in_production` and only rejected it when an
@@ -61,10 +65,56 @@ AUTHENC_DATABASE__URL=postgres://authenc:<password>@db.internal:5432/authenc?ssl
 AUTHENC_SECURITY__HSTS=true
 AUTHENC_SECURITY__CORS_ALLOWED_ORIGINS=https://app.example.com
 AUTHENC_TELEMETRY__JSON=true
+AUTHENC_MAIL__TRANSPORT=smtp
+AUTHENC_MAIL__SMTP_URL=smtps://user:<password>@smtp.example.com:465
+AUTHENC_OAUTH__MASTER_KEY=<output of `authenc generate-master-key`>
 ```
 
 Use `sslmode=require` (or stronger) in the database URL. The previous data
 layer hard-wired `NoTls` with no way to enable it.
+
+### The OAuth master key
+
+`AUTHENC_OAUTH__MASTER_KEY` encrypts the signing keys stored in the database.
+It never reaches the database itself, so a database disclosure alone does not
+yield a signing key.
+
+```bash
+authenc generate-master-key    # prints one key to stdout, stores nothing
+```
+
+Two consequences worth planning for:
+
+- **It is not rotatable in place.** Changing it makes every stored signing key
+  unreadable. Treat it as permanent for a deployment and keep it wherever that
+  deployment keeps secrets.
+- **Every instance must share it.** Instances that disagree cannot read each
+  other's signing keys, and tokens stop verifying across a rolling deploy.
+
+Rotating the *signing* key is a different and routine operation:
+
+```bash
+authenc rotate-keys --realm master --retire-after-hours 48
+```
+
+The outgoing key keeps verifying, and keeps appearing in JWKS, for that window,
+so tokens issued a moment before rotation stay valid.
+
+### Registering OAuth clients
+
+```bash
+authenc register-client --realm master --client-id web \
+  --name 'Example App' --redirect-uri https://app.example.com/callback \
+  --scope openid --scope profile --scope email
+
+# A SPA or native app, which cannot keep a secret:
+authenc register-client --realm master --client-id spa --public \
+  --name 'Example SPA' --redirect-uri https://app.example.com/callback
+```
+
+The generated secret is printed to stdout once and never again — only its
+Argon2 hash is stored. Redirect URIs are matched **exactly**; register each one
+you need rather than expecting a prefix to cover them.
 
 ## Migrations
 

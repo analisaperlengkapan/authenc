@@ -317,10 +317,12 @@ version = "0.1.0"
 dependencies = [
  "authenc-contract",
  "authenc-identity",
+ "authenc-oauth",
  "authenc-web",
  "axum",
  "axum-extra",
  "axum-test",
+ "base64 0.23.1",
  "clap",
  "figment",
  "http",
@@ -329,6 +331,7 @@ dependencies = [
  "leptos_router",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "thiserror 2.0.19",
  "time",
@@ -348,6 +351,7 @@ version = "0.1.0"
 dependencies = [
  "authenc-contract",
  "authenc-identity",
+ "authenc-oauth",
  "axum",
  "axum-extra",
  "console_error_panic_hook",

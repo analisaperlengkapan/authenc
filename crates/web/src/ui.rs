@@ -57,12 +57,21 @@ pub fn Button(
     /// handles the event.
     #[prop(optional)]
     on_click: Option<Callback<()>>,
+    /// Form field name. A submit button that carries one contributes it to the
+    /// submission — which is how a form offers two answers without JavaScript.
+    #[prop(optional, into)]
+    name: Option<String>,
+    /// The value submitted alongside `name`.
+    #[prop(optional, into)]
+    value: Option<String>,
     /// Button label.
     children: Children,
 ) -> impl IntoView {
     view! {
         <button
             type=kind
+            name=name
+            value=value
             disabled=move || disabled.get()
             on:click=move |_| {
                 if let Some(on_click) = on_click {

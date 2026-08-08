@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM authorization_codes WHERE expires_at < now() - INTERVAL '1 hour'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "cd6c47cdb7fe42be98014e7424e67602f7faaedb9bc3e96b5fce0c64ff28e864"
+}

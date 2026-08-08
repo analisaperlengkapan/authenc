@@ -27,7 +27,7 @@ per address over a rolling window, which holds even against the correct
 password and lifts on its own. Login, logout, and current-user server
 functions; a server-rendered login page. A `CurrentUser` extractor that
 resolves roles from the database. An `authenc` CLI with `seed`, `migrate`, and
-`purge-sessions`, so no test endpoint has to exist in the router.
+`purge`, so no test endpoint has to exist in the router.
 
 ### Stage 3a — Credential recovery
 
@@ -41,10 +41,6 @@ and an unknown realm.
 
 Mail goes over SMTP through `lettre`, or to the log in development — a
 transport the production profile refuses to start with.
-
-## Planned
-
-Each stage leaves the repository compiling, linted, and tested.
 
 ### Stage 3b — Administration and RBAC
 
@@ -71,7 +67,7 @@ A `DataTable` primitive replaces the table chrome the previous console
 copy-pasted across eight pages, using keyed `<For>` so a refetch touches only
 the rows that changed rather than rebuilding the whole `<tbody>`.
 
-### Stage 4a — Signing keys and tokens *(delivered)*
+### Stage 4a — Signing keys and tokens
 
 `crates/oauth` with two pieces in place and tested:
 
@@ -89,11 +85,42 @@ signature and `exp` and nothing else.
 
 ### Stage 4b — The protocol endpoints
 
-Discovery at `/.well-known/openid-configuration`, JWKS, authorization code with
-PKCE S256, refresh token rotation with reuse detection, token introspection and
-revocation under client authentication, UserInfo, a consent screen, and dynamic
-client registration (RFC 7591). The schema for all of it is in
-`migrations/0003_oauth.sql`; the endpoints are not written yet.
+Discovery at `/.well-known/openid-configuration` — with hyphens, so a standard
+client can find it — plus JWKS, the authorization-code flow with PKCE S256,
+refresh-token rotation with reuse detection, introspection and revocation under
+client authentication, UserInfo, a consent screen, and dynamic client
+registration (RFC 7591, off by default).
+
+The rules live in `crates/oauth` and are tested without an HTTP stack; a
+separate suite in `crates/server/tests/oidc.rs` drives a full
+authorize → redeem → UserInfo → refresh → rotate exchange over the assembled
+router, so a rule that exists but is not reachable through the endpoints fails
+a test.
+
+Deliberate limits, stated rather than implied:
+
+- **`plain` PKCE is not implemented.** It puts the verifier in the same message
+  as the challenge; discovery advertises `S256` only.
+- **The implicit and hybrid flows are not implemented.** `response_type=code`
+  is the only one offered, as OAuth 2.1 recommends.
+- **`client_credentials` is not implemented.** Machine-to-machine access is
+  stage 8; discovery does not claim otherwise.
+- **A client may only introspect its own tokens.** RFC 7662 permits a broader
+  policy; this one is narrower on purpose.
+- **Dynamic registration is off unless `oauth.allow_dynamic_registration` is
+  set**, because open registration lets anyone create a client whose redirect
+  URI they control — a phishing page wearing the operator's domain.
+
+## Planned
+
+Each stage leaves the repository compiling, linted, and tested.
+
+### Stage 4c — Client administration
+
+Registering a client is a CLI command (`authenc register-client`) and an RFC
+7591 endpoint. There is no console page for listing, editing, or rotating a
+client's secret yet, and no `/api/v1/clients`. `authenc_oauth::client` already
+has `list` and `delete`; what is missing is the two thin surfaces over them.
 
 ### Stage 5 — Multi-factor authentication
 
