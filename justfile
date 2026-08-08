@@ -95,6 +95,12 @@ master-key:
 purge:
     cargo run -p authenc-server --bin authenc -- purge
 
+# Purge, and trim the audit log to a retention window. Retention is opt-in:
+# an audit log that trims itself on a schedule nobody chose is one that will
+# be empty when it is needed.
+purge-audit days="365":
+    cargo run -p authenc-server --bin authenc -- purge --audit-older-than {{days}}
+
 # Supply-chain checks.
 audit:
     cargo deny check

@@ -11,6 +11,7 @@
 //! * [`id`] — typed identifiers, so a `RealmId` cannot be passed as a `UserId`
 //! * [`validate`] — validation rules run identically on both sides
 //! * [`model`] — the entities and DTOs that cross the wire
+//! * [`event`] — the one audit event model
 //!
 //! # What must never be added
 //!
@@ -19,11 +20,13 @@
 //! with `cargo tree`; see `.github/workflows/ci.yml`.
 
 pub mod error;
+pub mod event;
 pub mod id;
 pub mod model;
 pub mod permission;
 pub mod validate;
 
 pub use error::{AppError, Problem, Result};
+pub use event::{Action, AuditEvent, Category, Outcome};
 pub use id::{PasskeyId, PermissionId, RealmId, RoleId, SessionId, UserId};
 pub use permission::Permission;

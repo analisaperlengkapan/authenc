@@ -40,8 +40,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             authenc_server::cli::seed(&db, &hasher, &realm, &username, &email, &password).await?;
         }
 
-        Command::Purge => {
-            authenc_server::cli::purge(&db).await?;
+        Command::Purge { audit_older_than } => {
+            authenc_server::cli::purge(&db, audit_older_than).await?;
         }
 
         Command::GenerateMasterKey => {

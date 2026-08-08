@@ -17,7 +17,7 @@
 //! The family id is the authorization code's own id, so a replayed *code* and
 //! a replayed *token* revoke exactly the same set.
 
-use authenc_contract::{AppError, RealmId, Result, UserId};
+use authenc_contract::{AppError, RealmId, Result, UserId, event::Action};
 use authenc_identity::{Db, SecretToken};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
@@ -181,7 +181,7 @@ async fn detect_reuse(
     client: ClientKey,
 ) -> std::result::Result<(), OAuthError> {
     let spent = sqlx::query!(
-        "SELECT family_id FROM refresh_tokens \
+        "SELECT family_id, realm_id, user_id FROM refresh_tokens \
          WHERE token_hash = $1 AND client_id = $2 AND used_at IS NOT NULL",
         presented.hash(),
         client.0,
@@ -197,6 +197,20 @@ async fn detect_reuse(
             revoked,
             "refresh token reuse detected; revoked the family",
         );
+
+        // The single most important line the audit log carries. A spent
+        // refresh token coming back means one of the two holders is not the
+        // user — and the log line above goes wherever logs go, which is not
+        // where an operator looks up "what happened to this account?".
+        authenc_identity::audit::observe(
+            db,
+            authenc_identity::audit::Entry::failure(Action::RefreshTokenReuseDetected)
+                .in_realm(RealmId(spent.realm_id))
+                .by_id(UserId(spent.user_id))
+                .to("refresh_family", &spent.family_id.to_string())
+                .detail(serde_json::json!({ "revoked": revoked })),
+        )
+        .await;
     }
 
     Ok(())

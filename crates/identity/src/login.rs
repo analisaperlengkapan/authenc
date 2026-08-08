@@ -22,10 +22,16 @@
 
 use std::net::IpAddr;
 
-use authenc_contract::{AppError, RealmId, Result, UserId, model::User};
+// Deliberately only `Action`: this module has its own `Outcome`, meaning "what
+// the password bought", and the audit crate's means "did it work". Importing
+// both would make every use of the word ambiguous to a reader even where the
+// compiler could tell them apart. `Entry::success`/`failure` carry the other
+// one.
+use authenc_contract::{AppError, RealmId, Result, UserId, event::Action, model::User};
 use time::{Duration, OffsetDateTime};
 
 use crate::{
+    audit::{self, Entry},
     db::Db,
     mfa::{self, Factor, challenge, recovery, totp},
     password::PasswordHasher,
@@ -130,6 +136,16 @@ pub async fn authenticate(
             false,
         )
         .await?;
+
+        audit::observe(
+            db,
+            Entry::failure(Action::LoginLockedOut)
+                .in_realm(realm.id)
+                .by_name(attempt.identifier)
+                .from(attempt.origin),
+        )
+        .await;
+
         return Err(AppError::RateLimited);
     }
 
@@ -159,6 +175,18 @@ pub async fn authenticate(
             false,
         )
         .await?;
+
+        // Recorded with the identifier as typed, not resolved to a user: the
+        // interesting case is exactly the one where no such account exists,
+        // and a record naming nobody would hide the probing worth seeing.
+        audit::observe(
+            db,
+            Entry::failure(Action::LoginFailed)
+                .in_realm(realm.id)
+                .from(attempt.origin),
+        )
+        .await;
+
         return Err(AppError::Unauthenticated);
     }
 
@@ -189,6 +217,16 @@ pub async fn authenticate(
     let enrolment = mfa::enrolment(db, user.id).await?;
     if enrolment.is_required() {
         let issued = challenge::issue(db, user.id, realm.id, attempt.origin).await?;
+
+        audit::observe(
+            db,
+            Entry::success(Action::SecondFactorRequired)
+                .in_realm(realm.id)
+                .by(user.id, &user.username)
+                .from(attempt.origin),
+        )
+        .await;
+
         return Ok(Outcome::SecondFactorRequired(Box::new(Challenged {
             user,
             issued,
@@ -198,6 +236,15 @@ pub async fn authenticate(
 
     let session =
         session::create(db, user.id, realm.id, mfa::amr_for(None), attempt.origin).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::LoginSucceeded)
+            .in_realm(realm.id)
+            .by(user.id, &user.username)
+            .from(attempt.origin),
+    )
+    .await;
 
     Ok(Outcome::Complete(Box::new(Authenticated { user, session })))
 }
@@ -250,6 +297,16 @@ pub async fn second_factor(
 
     if !accepted {
         challenge::record_failure(db, pending.id).await?;
+
+        audit::observe(
+            db,
+            Entry::failure(Action::SecondFactorFailed)
+                .in_realm(pending.realm_id)
+                .from(origin)
+                .detail(serde_json::json!({ "factor": proof.factor() })),
+        )
+        .await;
+
         return Err(AppError::Unauthenticated);
     }
 
@@ -287,6 +344,29 @@ pub async fn open_session(
         origin,
     )
     .await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::SecondFactorSucceeded)
+            .in_realm(pending.realm_id)
+            .by(user.id, &user.username)
+            .from(origin)
+            .detail(serde_json::json!({ "factor": factor })),
+    )
+    .await;
+
+    // A recovery code is worth its own line: it means the user could not use
+    // their usual factor, which is either a lost phone or somebody else.
+    if factor == Factor::RecoveryCode {
+        audit::observe(
+            db,
+            Entry::success(Action::RecoveryCodeUsed)
+                .in_realm(pending.realm_id)
+                .by(user.id, &user.username)
+                .from(origin),
+        )
+        .await;
+    }
 
     Ok(Authenticated { user, session })
 }
@@ -1097,6 +1177,232 @@ mod tests {
             .status(),
             401,
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // The audit trail
+    // -----------------------------------------------------------------------
+    //
+    // Wiring a recorder in is easy to get almost right — an event written with
+    // the wrong realm, or only on the success path, looks fine until the log is
+    // needed. These assert what actually lands.
+
+    async fn recorded(db: &Db, realm_id: RealmId) -> Vec<Action> {
+        audit::list(db, realm_id, audit::Filter::default(), 50, 0)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|event| event.action)
+            .collect()
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_successful_password_login_is_recorded(db: Db) {
+        let (hasher, user) = fixture(&db).await;
+        authenticate(&db, &hasher, attempt("alice", PASSWORD))
+            .await
+            .unwrap();
+
+        let events = audit::list(&db, user.realm_id, audit::Filter::default(), 50, 0)
+            .await
+            .unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].action, Action::LoginSucceeded);
+        assert_eq!(events[0].actor_id, Some(user.id));
+        assert_eq!(events[0].actor_name.as_deref(), Some("alice"));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_failed_login_is_recorded_even_for_an_account_that_does_not_exist(db: Db) {
+        // The case the log exists for. A record only written when the account
+        // resolves would be blind to exactly the probing worth seeing.
+        let (hasher, user) = fixture(&db).await;
+        let _ = authenticate(&db, &hasher, attempt("nobody", "wrong password here")).await;
+
+        assert_eq!(
+            recorded(&db, user.realm_id).await,
+            vec![Action::LoginFailed]
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_lockout_is_recorded_as_its_own_event(db: Db) {
+        // Distinct from a failed password: a lockout firing is a signal, and a
+        // wrong password is Tuesday.
+        let (hasher, user) = fixture(&db).await;
+        for _ in 0..=MAX_ATTEMPTS_PER_IDENTIFIER {
+            let _ = authenticate(&db, &hasher, attempt("alice", "wrong password here")).await;
+        }
+
+        let actions = recorded(&db, user.realm_id).await;
+        assert!(actions.contains(&Action::LoginLockedOut), "{actions:?}");
+        assert!(
+            Action::LoginLockedOut.is_security_signal(),
+            "and it must be marked as one",
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn the_two_steps_of_an_mfa_login_are_both_recorded(db: Db) {
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+        let secret = enrol_totp(&db, &master, user.id).await;
+
+        let challenged = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+        second_factor(
+            &db,
+            &master,
+            &challenged.issued.token,
+            Proof::Totp(&current_code(&secret)),
+            Origin::default(),
+        )
+        .await
+        .unwrap();
+
+        let actions = recorded(&db, user.realm_id).await;
+        assert!(
+            actions.contains(&Action::SecondFactorRequired),
+            "{actions:?}"
+        );
+        assert!(
+            actions.contains(&Action::SecondFactorSucceeded),
+            "{actions:?}"
+        );
+        // And *not* a password-only success: no session was opened at step one.
+        assert!(!actions.contains(&Action::LoginSucceeded), "{actions:?}");
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_wrong_second_factor_is_recorded(db: Db) {
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+        enrol_totp(&db, &master, user.id).await;
+
+        let challenged = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+        let _ = second_factor(
+            &db,
+            &master,
+            &challenged.issued.token,
+            Proof::Totp("000000"),
+            Origin::default(),
+        )
+        .await;
+
+        assert!(
+            recorded(&db, user.realm_id)
+                .await
+                .contains(&Action::SecondFactorFailed),
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn using_a_recovery_code_says_so_in_the_trail(db: Db) {
+        // Worth its own line: it means the usual factor was unavailable, which
+        // is either a lost phone or somebody else.
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+        enrol_totp(&db, &master, user.id).await;
+        let codes = recovery::generate(&db, user.id).await.unwrap();
+
+        let challenged = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+        second_factor(
+            &db,
+            &master,
+            &challenged.issued.token,
+            Proof::RecoveryCode(&codes.expose()[0]),
+            Origin::default(),
+        )
+        .await
+        .unwrap();
+
+        let actions = recorded(&db, user.realm_id).await;
+        assert!(actions.contains(&Action::RecoveryCodeUsed), "{actions:?}");
+        assert!(
+            actions.contains(&Action::SecondFactorSucceeded),
+            "{actions:?}"
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn the_trail_records_where_a_login_came_from(db: Db) {
+        let (hasher, user) = fixture(&db).await;
+        authenticate(
+            &db,
+            &hasher,
+            Attempt {
+                realm: "acme",
+                identifier: "alice",
+                password: PASSWORD,
+                origin: Origin {
+                    user_agent: Some("Mozilla/5.0"),
+                    ip_address: Some("198.51.100.4".parse().unwrap()),
+                },
+            },
+        )
+        .await
+        .unwrap();
+
+        let events = audit::list(&db, user.realm_id, audit::Filter::default(), 50, 0)
+            .await
+            .unwrap();
+
+        assert_eq!(events[0].ip_address.as_deref(), Some("198.51.100.4"));
+        assert_eq!(events[0].user_agent.as_deref(), Some("Mozilla/5.0"));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn no_recorded_event_ever_contains_a_credential(db: Db) {
+        // There is no automated guard on `detail`; this is the closest thing
+        // to one for the paths this module owns.
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+        let secret = enrol_totp(&db, &master, user.id).await;
+
+        let challenged = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+        let code = current_code(&secret);
+        second_factor(
+            &db,
+            &master,
+            &challenged.issued.token,
+            Proof::Totp(&code),
+            Origin::default(),
+        )
+        .await
+        .unwrap();
+        let _ = authenticate(&db, &hasher, attempt("alice", "hunter2")).await;
+
+        let rows: Vec<String> =
+            sqlx::query_scalar("SELECT detail::text || coalesce(target, '') FROM audit_events")
+                .fetch_all(&db)
+                .await
+                .unwrap();
+        let all = rows.join(" ");
+
+        for secret in [
+            PASSWORD,
+            "hunter2",
+            code.as_str(),
+            challenged.issued.token.expose(),
+        ] {
+            assert!(!all.contains(secret), "a credential reached the audit log");
+        }
     }
 
     #[sqlx::test(migrations = "../../migrations")]

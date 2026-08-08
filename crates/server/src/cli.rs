@@ -61,7 +61,16 @@ pub enum Command {
     /// Safe to run on a timer. Spent codes and tokens are kept until they
     /// could no longer be replayed, so this never removes evidence of an
     /// attack that is still in progress.
-    Purge,
+    Purge {
+        /// Also delete audit events older than this many days.
+        ///
+        /// Off unless given, and deliberately not defaulted: an audit log that
+        /// trims itself on a schedule nobody chose is one that will be empty
+        /// when it is needed. Retention is an operator's decision, made once,
+        /// in the open.
+        #[arg(long, value_name = "DAYS")]
+        audit_older_than: Option<u32>,
+    },
 
     /// Print a fresh key-encryption key for `AUTHENC_OAUTH__MASTER_KEY`.
     ///
@@ -248,7 +257,7 @@ pub struct ClientRegistration<'a> {
 /// # Errors
 ///
 /// Returns an error if any delete fails.
-pub async fn purge(db: &Db) -> Result<()> {
+pub async fn purge(db: &Db, audit_older_than_days: Option<u32>) -> Result<()> {
     let sessions = authenc_identity::session::purge_expired(db).await?;
     let recovery = authenc_identity::recovery::purge_expired(db).await?;
     let codes = authenc_oauth::code::purge_expired(db).await?;
@@ -256,6 +265,14 @@ pub async fn purge(db: &Db) -> Result<()> {
     let keys = authenc_oauth::keyring::purge_retired(db).await?;
     let challenges = authenc_identity::mfa::challenge::purge_expired(db).await?;
     let ceremonies = authenc_identity::mfa::passkey::purge_expired(db).await?;
+
+    let audit = match audit_older_than_days {
+        Some(days) => {
+            let cutoff = time::OffsetDateTime::now_utc() - time::Duration::days(days.into());
+            authenc_identity::audit::purge_before(db, cutoff).await?
+        }
+        None => 0,
+    };
 
     tracing::info!(
         sessions,
@@ -265,6 +282,7 @@ pub async fn purge(db: &Db) -> Result<()> {
         signing_keys = keys,
         mfa_challenges = challenges,
         webauthn_ceremonies = ceremonies,
+        audit_events = audit,
         "purged expired records",
     );
     Ok(())

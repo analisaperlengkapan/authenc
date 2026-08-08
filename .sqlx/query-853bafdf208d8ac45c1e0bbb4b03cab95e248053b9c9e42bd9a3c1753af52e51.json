@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT family_id, realm_id, user_id FROM refresh_tokens WHERE token_hash = $1 AND client_id = $2 AND used_at IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "family_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "refresh_tokens",
+            "name": "family_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "realm_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "refresh_tokens",
+            "name": "realm_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "refresh_tokens",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "853bafdf208d8ac45c1e0bbb4b03cab95e248053b9c9e42bd9a3c1753af52e51"
+}

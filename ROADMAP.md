@@ -186,9 +186,32 @@ Each stage leaves the repository compiling, linted, and tested.
 
 ### Stage 6 — Audit and events
 
-Audit log in PostgreSQL with query and export, and a single event model. The
-`amr` a session already records lands in ID tokens here, since it needs the
-same "carry a fact from authentication through to issuance" plumbing.
+**Delivered so far:** one event model in `contract::event` — `Action::ALL` is
+the complete list of what this system can record, so a renamed variant is a
+compile error rather than a silent gap. Events go to `audit_events` in
+PostgreSQL, queryable by action, namespace prefix, outcome, actor, and time
+range, scoped to a realm. Every authentication path records: password
+success and failure, lockout, both steps of an MFA login, a wrong second
+factor, a recovery code being spent — and refresh-token reuse, which is the
+single most important line the log carries.
+
+Two decisions worth knowing about:
+
+- **`actor_name` and `target` are denormalised strings, not joins.** An audit
+  record has to outlive the rows it names; a foreign key that nulls on delete
+  answers "somebody did something to something".
+- **A failed audit write does not fail the operation it was recording.**
+  `observe` swallows it into a loud `tracing::error!`. The strict alternative
+  turns any audit-table problem into a total authentication outage. This is a
+  real gap — a dropped write is not detectable from the audit log itself — and
+  it is written down in the module rather than discovered later.
+
+Retention is opt-in: `authenc purge --audit-older-than DAYS`. Nothing trims the
+log on a schedule nobody chose.
+
+**Still to come in this stage:** administrative and OAuth call sites, an audit
+page in the console, a REST surface with export, and carrying the `amr` a
+session already records into ID tokens.
 
 ### Stage 7 — Groups and organisations
 
