@@ -633,3 +633,49 @@ async fn enrolling_an_authenticator_over_http_issues_recovery_codes(db: PgPool) 
     assert_eq!(status["totp"], true);
     assert_eq!(status["enforced"], true);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_security_page_redirects_an_anonymous_visitor_to_login(db: PgPool) {
+    // Written after finding the opposite. The page first guarded itself on
+    // `mfa_status`, which refuses an anonymous caller with 401 — and by the
+    // time that answer arrived the response status was already set, so
+    // `leptos_axum::redirect` could not override it and the visitor got a bare
+    // 401 with no page at all. The guard is now `current_user`, which answers
+    // `Ok(None)` rather than failing, leaving the redirect free to be the
+    // response.
+    seed(&db).await;
+
+    let response = server(db).get("/security").await;
+
+    assert_eq!(
+        response.header("location"),
+        "/login",
+        "an unauthenticated visitor must be sent to the login page",
+    );
+    assert!(
+        !response.text().contains("Recovery codes"),
+        "no security markup may reach an anonymous visitor",
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_security_page_renders_server_side_for_a_signed_in_user(db: PgPool) {
+    seed(&db).await;
+    let server = server(db);
+
+    server
+        .post("/api/sfn/login")
+        .json(&login_body("alice", PASSWORD))
+        .await
+        .assert_status_ok();
+
+    let html = server.get("/security").await.text();
+    for expected in [
+        "Two-step verification",
+        "Authenticator app",
+        "Recovery codes",
+        "Passkeys",
+    ] {
+        assert!(html.contains(expected), "{expected} is missing from the page");
+    }
+}

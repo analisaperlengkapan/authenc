@@ -21,6 +21,14 @@ use crate::{
 /// The security settings page.
 #[component]
 pub fn Security() -> impl IntoView {
+    // The guard is `current_user`, not the status call, and the difference is
+    // not cosmetic. `mfa_status` refuses an anonymous caller with a 401, and by
+    // the time that answer arrives the response status is already set — so
+    // `leptos_axum::redirect` cannot override it and the visitor gets a bare
+    // 401 with no page. `current_user` answers `Ok(None)` instead, which
+    // leaves the redirect free to be the response. This is the same guard the
+    // console shell uses, for the same reason.
+    let session = Resource::new(|| (), |()| api::current_user());
     let status = Resource::new(|| (), |()| api::mfa_status());
     // Bumped whenever something changes, so the status refetches without the
     // page having to thread a setter through every child.
@@ -44,18 +52,34 @@ pub fn Security() -> impl IntoView {
 
             <Transition fallback=move || view! { <p class="text-sm">"Loading…"</p> }>
                 {move || {
-                    status
-                        .get()
-                        .map(|result| match result {
-                            Ok(status) => view! { <Panels status changed /> }.into_any(),
-                            // An anonymous visitor is redirected by the
-                            // server, before any of this page's markup is
-                            // produced — the same guard the console uses.
-                            Err(_) => {
-                                crate::pages::admin::redirect_to_login();
-                                ().into_any()
-                            }
-                        })
+                    match session.get() {
+                        // Signed in: render, once the status has arrived too.
+                        Some(Ok(Some(_))) => {
+                            status
+                                .get()
+                                .map(|result| match result {
+                                    Ok(status) => view! { <Panels status changed /> }.into_any(),
+                                    Err(error) => {
+                                        view! {
+                                            <p class="text-sm text-danger-600">
+                                                {api::describe(&error)}
+                                            </p>
+                                        }
+                                            .into_any()
+                                    }
+                                })
+                                .into_any()
+                        }
+                        // Still loading.
+                        None => ().into_any(),
+                        // Nobody is signed in, or the check itself failed. The
+                        // server issues the redirect before any of this page's
+                        // markup is produced.
+                        Some(_) => {
+                            crate::pages::admin::redirect_to_login();
+                            ().into_any()
+                        }
+                    }
                 }}
             </Transition>
         </main>
