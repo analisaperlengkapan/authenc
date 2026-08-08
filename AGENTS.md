@@ -57,6 +57,22 @@ it again.)
 Without `just`, read `justfile` — it is short and every recipe is a plain
 command.
 
+### The build depends on a tool that is not in this repository
+
+`cargo leptos build` shells out to a standalone `tailwindcss` binary to compile
+the stylesheet. It resolves that binary **from `PATH` first**, and only
+downloads a pinned copy when `PATH` has none — so whichever `tailwindcss` a
+machine happens to have is the one that builds the CSS, and a broken entry by
+that name fails the build with nothing but `No such file or directory` from
+`cargo-leptos`'s `sync.rs`, long after the Rust compile has succeeded. That is
+what it looks like; the message names neither Tailwind nor the file.
+
+CI and the Dockerfile therefore install v4.2.1 explicitly and put it first on
+`PATH`, and CI asserts the output carries Tailwind's banner rather than merely
+being non-empty. If you change the pinned version, change it in both
+`.github/workflows/ci.yml` and `Dockerfile`, and check it still matches what
+`cargo-leptos` expects (`VersionConfig::Tailwind` in its source).
+
 ## Rules that CI enforces
 
 1. **Never `--all-features`.** `hydrate` and `ssr` are mutually exclusive;

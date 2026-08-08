@@ -11,6 +11,17 @@ RUN rustup target add wasm32-unknown-unknown
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo install cargo-leptos --locked
 
+# The CSS compiler, pinned to the version cargo-leptos expects. cargo-leptos
+# would otherwise fetch it itself, in the middle of the build, from whatever
+# the latest release happens to be — and it resolves `tailwindcss` from PATH
+# before it considers downloading, so an unexpected entry there decides which
+# compiler builds the stylesheet. Installing it here settles both.
+ARG TAILWIND_VERSION=v4.2.1
+RUN curl -fsSL --retry 3 -o /usr/local/bin/tailwindcss \
+      "https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-x64" \
+    && chmod +x /usr/local/bin/tailwindcss \
+    && tailwindcss --help >/dev/null
+
 WORKDIR /build
 
 COPY Cargo.toml Cargo.lock rust-toolchain.toml clippy.toml ./
