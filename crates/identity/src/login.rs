@@ -10,6 +10,15 @@
 //!    an attacker a database lookup rather than an Argon2 verification.
 //! 3. **Every attempt is recorded**, successful or not, because that record is
 //!    both the lockout input and the answer to "was this account attacked?".
+//!
+//! A fourth property arrived with second factors, and it is the reason
+//! [`authenticate`] returns an [`Outcome`] rather than a session: when a user
+//! has one enrolled, **a correct password does not open a session**. It opens
+//! a [`challenge::Pending`], which is a different type in a different table
+//! that no session lookup can resolve. The alternative — issue the session,
+//! then ask for the code — makes "was the second factor checked?" a property
+//! of the login page rather than of the system, and a page is a thing one can
+//! forget to write.
 
 use std::net::IpAddr;
 
@@ -18,8 +27,11 @@ use time::{Duration, OffsetDateTime};
 
 use crate::{
     db::Db,
+    mfa::{self, Factor, challenge, recovery, totp},
     password::PasswordHasher,
+    sealed::MasterKey,
     session::{self, Issued, Origin},
+    token::SecretToken,
     user,
 };
 
@@ -47,7 +59,7 @@ pub struct Attempt<'a> {
     pub origin: Origin<'a>,
 }
 
-/// A successful authentication.
+/// A completed authentication: the user is signed in.
 #[derive(Debug)]
 pub struct Authenticated {
     /// The user who authenticated.
@@ -56,7 +68,31 @@ pub struct Authenticated {
     pub session: Issued,
 }
 
-/// Authenticate a user and open a session for them.
+/// What a correct password bought.
+///
+/// Deliberately an enum with no `Deref` and no `unwrap`-shaped accessor: the
+/// caller has to name which case it is handling, and there is no way to reach
+/// a session out of the pending one.
+#[derive(Debug)]
+pub enum Outcome {
+    /// No second factor enrolled. The session exists and the cookie can be set.
+    Complete(Box<Authenticated>),
+    /// A second factor is enrolled. **Nobody is signed in yet.**
+    SecondFactorRequired(Box<Challenged>),
+}
+
+/// A login waiting on its second factor.
+#[derive(Debug)]
+pub struct Challenged {
+    /// Who is signing in. Needed to render the prompt; carries no authority.
+    pub user: User,
+    /// The pending challenge and the token that identifies it.
+    pub issued: challenge::Issued,
+    /// What this user could present.
+    pub factors: Vec<Factor>,
+}
+
+/// Check a password, and either open a session or demand a second factor.
 ///
 /// # Errors
 ///
@@ -69,7 +105,7 @@ pub async fn authenticate(
     db: &Db,
     hasher: &PasswordHasher,
     attempt: Attempt<'_>,
-) -> Result<Authenticated> {
+) -> Result<Outcome> {
     let realm = crate::realm::by_name(db, attempt.realm)
         .await
         .map_err(|error| match error.status() {
@@ -147,7 +183,110 @@ pub async fn authenticate(
     )
     .await?;
 
-    let session = session::create(db, user.id, realm.id, attempt.origin).await?;
+    // The branch that matters. Note what is *not* here: no session is created
+    // before the enrolment is known, so there is no window in which a
+    // half-authenticated caller holds a usable cookie.
+    let enrolment = mfa::enrolment(db, user.id).await?;
+    if enrolment.is_required() {
+        let issued = challenge::issue(db, user.id, realm.id, attempt.origin).await?;
+        return Ok(Outcome::SecondFactorRequired(Box::new(Challenged {
+            user,
+            issued,
+            factors: enrolment.available(),
+        })));
+    }
+
+    let session =
+        session::create(db, user.id, realm.id, mfa::amr_for(None), attempt.origin).await?;
+
+    Ok(Outcome::Complete(Box::new(Authenticated { user, session })))
+}
+
+/// A second factor a caller is offering.
+#[derive(Debug, Clone, Copy)]
+pub enum Proof<'a> {
+    /// A code from an authenticator app.
+    Totp(&'a str),
+    /// One of the codes issued when the factor was enrolled.
+    RecoveryCode(&'a str),
+}
+
+impl Proof<'_> {
+    const fn factor(self) -> Factor {
+        match self {
+            Self::Totp(_) => Factor::Totp,
+            Self::RecoveryCode(_) => Factor::RecoveryCode,
+        }
+    }
+}
+
+/// Complete a login by presenting a second factor.
+///
+/// The challenge is spent whether or not the proof is good — a correct one
+/// opens exactly one session, and a wrong one costs an attempt from a budget
+/// that runs out. That budget is the only thing standing between a six-digit
+/// code and an attacker with a script.
+///
+/// # Errors
+///
+/// * [`AppError::Unauthenticated`] — the challenge is unknown, expired, spent,
+///   out of attempts, or the proof did not verify.
+/// * [`AppError::Internal`] — the database failed.
+pub async fn second_factor(
+    db: &Db,
+    master: &MasterKey,
+    token: &SecretToken,
+    proof: Proof<'_>,
+    origin: Origin<'_>,
+) -> Result<Authenticated> {
+    let pending = challenge::lookup(db, token)
+        .await?
+        .ok_or(AppError::Unauthenticated)?;
+
+    let accepted = match proof {
+        Proof::Totp(code) => totp::verify(db, master, pending.user_id, code).await?,
+        Proof::RecoveryCode(code) => recovery::claim(db, pending.user_id, code).await?,
+    };
+
+    if !accepted {
+        challenge::record_failure(db, pending.id).await?;
+        return Err(AppError::Unauthenticated);
+    }
+
+    open_session(db, &pending, proof.factor(), origin).await
+}
+
+/// Turn a satisfied challenge into a session.
+///
+/// Shared by every second factor, including the passkey path in
+/// [`crate::mfa::passkey`], so that "the challenge is spent exactly once" and
+/// "the session records which factor was used" cannot be true on one route and
+/// false on another.
+///
+/// # Errors
+///
+/// Returns [`AppError::Unauthenticated`] if the challenge was already spent.
+pub async fn open_session(
+    db: &Db,
+    pending: &challenge::Pending,
+    factor: Factor,
+    origin: Origin<'_>,
+) -> Result<Authenticated> {
+    // Atomic: two requests racing with the same correct code produce one
+    // session, not two.
+    if !challenge::consume(db, pending.id).await? {
+        return Err(AppError::Unauthenticated);
+    }
+
+    let user = user::by_id(db, pending.user_id).await?;
+    let session = session::create(
+        db,
+        pending.user_id,
+        pending.realm_id,
+        mfa::amr_for(Some(factor)),
+        origin,
+    )
+    .await?;
 
     Ok(Authenticated { user, session })
 }
@@ -288,6 +427,29 @@ mod tests {
         (hasher, user)
     }
 
+    /// Unwrap a login that should not have needed a second factor.
+    ///
+    /// A function rather than a method, deliberately: reaching a session out of
+    /// an [`Outcome`] should be something a caller writes down, not something
+    /// that happens by accident.
+    #[track_caller]
+    fn completed(outcome: Outcome) -> Authenticated {
+        match outcome {
+            Outcome::Complete(authenticated) => *authenticated,
+            Outcome::SecondFactorRequired(_) => {
+                panic!("expected a completed login, got a second-factor challenge")
+            }
+        }
+    }
+
+    #[track_caller]
+    fn challenged(outcome: Outcome) -> Challenged {
+        match outcome {
+            Outcome::SecondFactorRequired(challenged) => *challenged,
+            Outcome::Complete(_) => panic!("expected a second-factor challenge"),
+        }
+    }
+
     fn attempt<'a>(identifier: &'a str, password: &'a str) -> Attempt<'a> {
         Attempt {
             realm: "acme",
@@ -301,9 +463,11 @@ mod tests {
     async fn correct_credentials_open_a_session(db: Db) {
         let (hasher, user) = fixture(&db).await;
 
-        let result = authenticate(&db, &hasher, attempt("alice", PASSWORD))
-            .await
-            .unwrap();
+        let result = completed(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
 
         assert_eq!(result.user.id, user.id);
         let resolved = session::lookup(&db, &result.session.token)
@@ -521,6 +685,417 @@ mod tests {
                 .await
                 .is_ok(),
             "a password reset must let the rightful owner back in",
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Second factors
+    // -----------------------------------------------------------------------
+
+    fn master() -> MasterKey {
+        MasterKey::generate().unwrap()
+    }
+
+    /// Enrol a working authenticator and return its secret.
+    ///
+    /// Confirmation deliberately uses the **previous** step's code, which the
+    /// drift window accepts. Confirming spends whichever step it matched, so
+    /// enrolling with the current code would leave the current code already
+    /// spent — correct behaviour, and a poor starting point for a test about
+    /// signing in. `the_confirming_code_cannot_then_sign_you_in` covers that
+    /// property directly.
+    async fn enrol_totp(db: &Db, master: &MasterKey, user_id: UserId) -> totp::Secret {
+        let enrolling = totp::begin_enrolment(db, master, user_id, "Phone")
+            .await
+            .unwrap();
+        let secret = enrolling.secret.clone();
+        let now = OffsetDateTime::now_utc().unix_timestamp();
+        let code = totp::code_at(secret.as_bytes(), totp::step_at(now) - 1, totp::DIGITS);
+        assert!(totp::confirm(db, master, user_id, &code).await.unwrap());
+        secret
+    }
+
+    fn current_code(secret: &totp::Secret) -> String {
+        let now = OffsetDateTime::now_utc().unix_timestamp();
+        totp::code_at(secret.as_bytes(), totp::step_at(now), totp::DIGITS)
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_correct_password_alone_opens_no_session_when_a_factor_is_enrolled(db: Db) {
+        // The single most important test in this file. If this ever passes a
+        // session back, every route that reads the session cookie is reachable
+        // with a password alone and the second factor is decoration.
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+        enrol_totp(&db, &master, user.id).await;
+
+        let outcome = authenticate(&db, &hasher, attempt("alice", PASSWORD))
+            .await
+            .unwrap();
+        let challenged = challenged(outcome);
+
+        assert_eq!(challenged.user.id, user.id);
+        assert_eq!(challenged.factors, vec![Factor::Totp]);
+
+        // And nothing that resolves a session cookie will accept the handle
+        // this login produced.
+        assert!(
+            session::lookup(&db, &challenged.issued.token)
+                .await
+                .unwrap()
+                .is_none(),
+            "an MFA challenge token must not resolve as a session",
+        );
+
+        let sessions: i64 = sqlx::query_scalar("SELECT count(*) FROM sessions")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(sessions, 0, "no session may exist yet");
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_correct_code_completes_the_login(db: Db) {
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+        let secret = enrol_totp(&db, &master, user.id).await;
+
+        let challenged = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+
+        let authenticated = second_factor(
+            &db,
+            &master,
+            &challenged.issued.token,
+            Proof::Totp(&current_code(&secret)),
+            Origin::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(authenticated.user.id, user.id);
+        let resolved = session::lookup(&db, &authenticated.session.token)
+            .await
+            .unwrap()
+            .expect("the session must resolve");
+        assert_eq!(resolved.user_id, user.id);
+        assert_eq!(resolved.authenticated_with, vec!["pwd", "otp", "mfa"]);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn the_confirming_code_cannot_then_sign_you_in(db: Db) {
+        // Confirming an enrolment is a use of the code, so it spends its step
+        // like any other. Otherwise the code a user reads out once during setup
+        // stays live for its whole window and can be replayed straight into a
+        // session.
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+
+        let enrolling = totp::begin_enrolment(&db, &master, user.id, "Phone")
+            .await
+            .unwrap();
+        let secret = enrolling.secret.clone();
+        let code = current_code(&secret);
+        assert!(totp::confirm(&db, &master, user.id, &code).await.unwrap());
+
+        let challenged = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+
+        assert_eq!(
+            second_factor(
+                &db,
+                &master,
+                &challenged.issued.token,
+                Proof::Totp(&code),
+                Origin::default(),
+            )
+            .await
+            .unwrap_err()
+            .status(),
+            401,
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_code_cannot_be_spent_twice(db: Db) {
+        // Two challenges, one code. The second must fail even though the code
+        // is still inside its time window.
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+        let secret = enrol_totp(&db, &master, user.id).await;
+        let code = current_code(&secret);
+
+        let first = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+        assert!(
+            second_factor(
+                &db,
+                &master,
+                &first.issued.token,
+                Proof::Totp(&code),
+                Origin::default(),
+            )
+            .await
+            .is_ok()
+        );
+
+        let second = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(
+            second_factor(
+                &db,
+                &master,
+                &second.issued.token,
+                Proof::Totp(&code),
+                Origin::default(),
+            )
+            .await
+            .unwrap_err()
+            .status(),
+            401,
+            "a replayed code must not open a second session",
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn one_challenge_opens_at_most_one_session(db: Db) {
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+        let secret = enrol_totp(&db, &master, user.id).await;
+
+        let challenged = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+        let code = current_code(&secret);
+
+        assert!(
+            second_factor(
+                &db,
+                &master,
+                &challenged.issued.token,
+                Proof::Totp(&code),
+                Origin::default(),
+            )
+            .await
+            .is_ok()
+        );
+        assert!(
+            second_factor(
+                &db,
+                &master,
+                &challenged.issued.token,
+                Proof::Totp(&code),
+                Origin::default(),
+            )
+            .await
+            .is_err(),
+            "the challenge must be spent",
+        );
+
+        let sessions: i64 = sqlx::query_scalar("SELECT count(*) FROM sessions")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(sessions, 1);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn wrong_codes_exhaust_the_challenge(db: Db) {
+        // What keeps a six-digit code out of reach of a script.
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+        let secret = enrol_totp(&db, &master, user.id).await;
+
+        let challenged = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+
+        for _ in 0..challenge::MAX_ATTEMPTS {
+            assert!(
+                second_factor(
+                    &db,
+                    &master,
+                    &challenged.issued.token,
+                    Proof::Totp("000000"),
+                    Origin::default(),
+                )
+                .await
+                .is_err()
+            );
+        }
+
+        // Even the right code cannot rescue a spent budget.
+        assert!(
+            second_factor(
+                &db,
+                &master,
+                &challenged.issued.token,
+                Proof::Totp(&current_code(&secret)),
+                Origin::default(),
+            )
+            .await
+            .is_err(),
+            "the challenge must be dead once the budget is gone",
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn an_unknown_challenge_token_is_refused(db: Db) {
+        let (_, user) = fixture(&db).await;
+        let master = master();
+        enrol_totp(&db, &master, user.id).await;
+
+        let invented = SecretToken::generate().unwrap();
+        assert_eq!(
+            second_factor(
+                &db,
+                &master,
+                &invented,
+                Proof::Totp("000000"),
+                Origin::default(),
+            )
+            .await
+            .unwrap_err()
+            .status(),
+            401,
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_recovery_code_also_completes_the_login(db: Db) {
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+        enrol_totp(&db, &master, user.id).await;
+        let codes = recovery::generate(&db, user.id).await.unwrap();
+
+        let challenged = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+
+        let authenticated = second_factor(
+            &db,
+            &master,
+            &challenged.issued.token,
+            Proof::RecoveryCode(&codes.expose()[0]),
+            Origin::default(),
+        )
+        .await
+        .unwrap();
+
+        let resolved = session::lookup(&db, &authenticated.session.token)
+            .await
+            .unwrap()
+            .unwrap();
+        // `mfa` is asserted, but no method is named: see `mfa::Factor::amr`.
+        assert_eq!(resolved.authenticated_with, vec!["pwd", "mfa"]);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn an_unconfirmed_enrolment_does_not_gate_a_login(db: Db) {
+        // Someone who started enrolling and closed the tab must still be able
+        // to sign in, or the feature locks people out of their own accounts.
+        let (hasher, user) = fixture(&db).await;
+        let master = master();
+        totp::begin_enrolment(&db, &master, user.id, "Phone")
+            .await
+            .unwrap();
+
+        let authenticated = completed(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(authenticated.user.id, user.id);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn recovery_codes_alone_do_not_demand_a_second_factor(db: Db) {
+        // Generating codes without an authenticator must not turn MFA on.
+        let (hasher, user) = fixture(&db).await;
+        recovery::generate(&db, user.id).await.unwrap();
+
+        assert!(matches!(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+            Outcome::Complete(_),
+        ));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_password_only_session_says_so(db: Db) {
+        let (hasher, _) = fixture(&db).await;
+        let authenticated = completed(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+        let resolved = session::lookup(&db, &authenticated.session.token)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(resolved.authenticated_with, vec!["pwd"]);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn another_users_code_does_not_satisfy_this_challenge(db: Db) {
+        let (hasher, alice) = fixture(&db).await;
+        let master = master();
+        let realm = realm::by_name(&db, "acme").await.unwrap();
+        let bob = user::create(
+            &db,
+            &hasher,
+            NewUser {
+                realm_id: realm.id,
+                username: "bob",
+                email: "bob@example.com",
+                password: PASSWORD,
+                first_name: None,
+                last_name: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        enrol_totp(&db, &master, alice.id).await;
+        let bobs_secret = enrol_totp(&db, &master, bob.id).await;
+
+        let alices = challenged(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .unwrap(),
+        );
+
+        assert_eq!(
+            second_factor(
+                &db,
+                &master,
+                &alices.issued.token,
+                Proof::Totp(&current_code(&bobs_secret)),
+                Origin::default(),
+            )
+            .await
+            .unwrap_err()
+            .status(),
+            401,
         );
     }
 

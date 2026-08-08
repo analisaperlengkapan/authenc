@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE passkeys\n           SET last_used_at = now(),\n               credential = COALESCE($2, credential)\n         WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "81aafd4977536e90bd81e47575ee14ba6792d98587749cce032544ac1ecfe529"
+}

@@ -9,7 +9,15 @@
 //! do this by hand, and that wrapper silently rejected `PATCH`, so renaming a
 //! passkey failed without ever reaching the network.
 
-use authenc_contract::model::{LoginRequest, LoginResponse};
+// Types that appear in a `#[server]` *signature* are needed by both halves;
+// these are the ones only its body mentions, and the body compiles only under
+// `ssr`.
+use authenc_contract::model::{
+    LoginOutcome, LoginRequest, LoginResponse, MfaStatus, PasskeySummary, SecondFactor,
+    TotpEnrolment,
+};
+#[cfg(feature = "ssr")]
+use authenc_contract::{AppError, model::SecondFactorPrompt};
 use leptos::prelude::*;
 use leptos::server_fn::codec::Json;
 
@@ -56,10 +64,11 @@ pub async fn server_status() -> Result<ServerStatus, ServerFnError> {
     reason = "the #[server] macro generates the argument struct"
 )]
 #[server(name = LogIn, prefix = "/api/sfn", endpoint = "login", input = Json)]
-pub async fn log_in(request: LoginRequest) -> Result<LoginResponse, ServerFnError> {
+pub async fn log_in(request: LoginRequest) -> Result<LoginOutcome, ServerFnError> {
     use authenc_identity::{
         Db, PasswordHasher,
-        login::{self, Attempt},
+        login::{self, Attempt, Outcome},
+        mfa::Factor,
         session::Origin,
     };
 
@@ -75,7 +84,7 @@ pub async fn log_in(request: LoginRequest) -> Result<LoginResponse, ServerFnErro
         .get(http::header::USER_AGENT)
         .and_then(|value| value.to_str().ok());
 
-    let authenticated = login::authenticate(
+    let outcome = login::authenticate(
         &db,
         &hasher,
         Attempt {
@@ -91,20 +100,130 @@ pub async fn log_in(request: LoginRequest) -> Result<LoginResponse, ServerFnErro
     .await
     .map_err(server_ctx::to_server_fn_error)?;
 
-    let roles = authenc_identity::user::role_names(&db, authenticated.user.id)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
-    let permissions = authenc_identity::user::permissions(&db, authenticated.user.id)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
+    match outcome {
+        Outcome::Complete(authenticated) => {
+            server_ctx::set_session_cookie(policy, &authenticated.session);
+            // Only when one was actually presented. Clearing unconditionally
+            // put a `Set-Cookie` deleting a challenge on every ordinary login,
+            // which is noise on the wire and, because it came first, made the
+            // response's first `Set-Cookie` header something other than the
+            // session.
+            if server_ctx::challenge_token(policy, &parts).is_some() {
+                server_ctx::clear_challenge_cookie(policy);
+            }
+            Ok(LoginOutcome::Complete(
+                describe_session(&db, authenticated.user).await?,
+            ))
+        }
+        Outcome::SecondFactorRequired(challenged) => {
+            server_ctx::set_challenge_cookie(policy, &challenged.issued);
+            Ok(LoginOutcome::SecondFactorRequired(SecondFactorPrompt {
+                username: challenged.user.username,
+                totp: challenged.factors.contains(&Factor::Totp),
+                passkey: challenged.factors.contains(&Factor::Passkey),
+                recovery_code: challenged.factors.contains(&Factor::RecoveryCode),
+            }))
+        }
+    }
+}
 
-    server_ctx::set_session_cookie(policy, &authenticated.session);
+/// Resolve the roles and permissions a signed-in user carries.
+///
+/// One place, so the two paths that produce a `LoginResponse` — with and
+/// without a second factor — cannot answer differently.
+#[cfg(feature = "ssr")]
+async fn describe_session(
+    db: &authenc_identity::Db,
+    user: authenc_contract::model::User,
+) -> Result<LoginResponse, ServerFnError> {
+    use crate::server_ctx;
+
+    let roles = authenc_identity::user::role_names(db, user.id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+    let permissions = authenc_identity::user::permissions(db, user.id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
 
     Ok(LoginResponse {
-        user: authenticated.user,
+        user,
         roles,
         permissions,
     })
+}
+
+/// Finish a login by presenting a second factor.
+///
+/// The challenge is identified by an `HttpOnly` cookie, not by an argument, so
+/// a caller cannot aim this at somebody else's pending login by changing a
+/// field.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = SubmitSecondFactor, prefix = "/api/sfn", endpoint = "mfa/verify", input = Json)]
+pub async fn submit_second_factor(factor: SecondFactor) -> Result<LoginResponse, ServerFnError> {
+    use authenc_identity::{
+        Db, MasterKey,
+        login::{self, Proof},
+        session::Origin,
+    };
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let master = expect_context::<std::sync::Arc<MasterKey>>();
+    let policy = expect_context::<CookiePolicy>();
+    let parts = expect_context::<http::request::Parts>();
+
+    let token = server_ctx::challenge_token(policy, &parts)
+        .ok_or_else(|| server_ctx::to_server_fn_error(AppError::Unauthenticated))?;
+
+    let proof = match &factor {
+        SecondFactor::Totp { code } => Proof::Totp(code),
+        SecondFactor::RecoveryCode { code } => Proof::RecoveryCode(code),
+    };
+
+    let user_agent = parts
+        .headers
+        .get(http::header::USER_AGENT)
+        .and_then(|value| value.to_str().ok());
+
+    let authenticated = login::second_factor(
+        &db,
+        &master,
+        &token,
+        proof,
+        Origin {
+            user_agent,
+            ip_address: server_ctx::client_ip(&parts),
+        },
+    )
+    .await
+    .inspect_err(|_| {
+        // A wrong code leaves the challenge usable, so the cookie stays. Only
+        // an exhausted or expired one is cleared — which `login::second_factor`
+        // reports the same way, so this errs toward keeping it and letting the
+        // next attempt fail cleanly.
+    })
+    .map_err(server_ctx::to_server_fn_error)?;
+
+    server_ctx::clear_challenge_cookie(policy);
+    server_ctx::set_session_cookie(policy, &authenticated.session);
+
+    describe_session(&db, authenticated.user).await
+}
+
+/// Abandon a half-finished login.
+///
+/// Called when the user backs out of the second step, so the browser is not
+/// left holding a challenge cookie it will send on every later request.
+#[server(name = CancelSecondFactor, prefix = "/api/sfn", endpoint = "mfa/cancel")]
+pub async fn cancel_second_factor() -> Result<(), ServerFnError> {
+    use crate::server_ctx;
+
+    server_ctx::clear_challenge_cookie(expect_context::<CookiePolicy>());
+    Ok(())
 }
 
 /// End the current session.
@@ -167,6 +286,395 @@ pub async fn current_user() -> Result<Option<LoginResponse>, ServerFnError> {
         roles,
         permissions,
     }))
+}
+
+// ---------------------------------------------------------------------------
+// Managing your own second factors
+// ---------------------------------------------------------------------------
+//
+// Every function below acts on **the caller's own** account, resolved from the
+// session. None of them takes a user id: an argument naming whose factors to
+// change is an argument someone will eventually change.
+
+/// The caller's second factors.
+#[server(name = GetMfaStatus, prefix = "/api/sfn", endpoint = "mfa/status")]
+pub async fn mfa_status() -> Result<MfaStatus, ServerFnError> {
+    use authenc_identity::{Db, mfa};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let session = server_ctx::require_session(&db).await?;
+
+    let enrolment = mfa::enrolment(&db, session.user_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+    let passkeys = mfa::passkey::list(&db, session.user_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(MfaStatus {
+        totp: enrolment.totp,
+        passkeys: passkeys.into_iter().map(into_summary).collect(),
+        recovery_codes_remaining: enrolment.recovery_codes,
+        enforced: enrolment.is_required(),
+    })
+}
+
+#[cfg(feature = "ssr")]
+fn into_summary(registered: authenc_identity::mfa::passkey::Registered) -> PasskeySummary {
+    use time::format_description::well_known::Rfc3339;
+
+    PasskeySummary {
+        id: authenc_contract::PasskeyId(registered.id),
+        label: registered.label,
+        created_at: registered
+            .created_at
+            .format(&Rfc3339)
+            .unwrap_or_else(|_| String::new()),
+        last_used_at: registered
+            .last_used_at
+            .and_then(|at| at.format(&Rfc3339).ok()),
+    }
+}
+
+/// Begin enrolling an authenticator app.
+///
+/// The secret is returned once and never again — it exists in the database only
+/// sealed under the master key.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = BeginTotpEnrolment, prefix = "/api/sfn", endpoint = "mfa/totp/begin", input = Json)]
+pub async fn begin_totp_enrolment(label: String) -> Result<TotpEnrolment, ServerFnError> {
+    use authenc_identity::{Db, MasterKey, mfa::totp, user};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let master = expect_context::<std::sync::Arc<MasterKey>>();
+    let session = server_ctx::require_session(&db).await?;
+
+    let user = user::by_id(&db, session.user_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+    let realm = authenc_identity::realm::by_id(&db, session.realm_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let enrolling = totp::begin_enrolment(&db, &master, session.user_id, &label)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(TotpEnrolment {
+        secret: enrolling.secret.to_base32(),
+        provisioning_uri: enrolling.provisioning_uri(&realm.display_name, &user.username),
+    })
+}
+
+/// Confirm an enrolment, and receive the recovery codes that go with it.
+///
+/// The codes are generated here rather than on a separate button because this
+/// is the moment they matter: turning on a second factor without a way past a
+/// lost phone is how an account becomes unrecoverable.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = ConfirmTotpEnrolment, prefix = "/api/sfn", endpoint = "mfa/totp/confirm", input = Json)]
+pub async fn confirm_totp_enrolment(code: String) -> Result<Vec<String>, ServerFnError> {
+    use authenc_identity::{
+        Db, MasterKey,
+        mfa::{recovery, totp},
+    };
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let master = expect_context::<std::sync::Arc<MasterKey>>();
+    let session = server_ctx::require_session(&db).await?;
+
+    let confirmed = totp::confirm(&db, &master, session.user_id, &code)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    if !confirmed {
+        return Err(server_ctx::to_server_fn_error(AppError::validation(
+            "that code did not match; check your authenticator and try again",
+        )));
+    }
+
+    let codes = recovery::generate(&db, session.user_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(codes.expose().to_vec())
+}
+
+/// Remove the authenticator.
+///
+/// Every session but this one is revoked: turning a factor off is exactly the
+/// action an attacker who has borrowed a session would take, and the owner
+/// should not be left sharing their account with whoever was already in it.
+#[server(name = DisableTotp, prefix = "/api/sfn", endpoint = "mfa/totp/disable")]
+pub async fn disable_totp() -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, mfa::totp};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let session = server_ctx::require_session(&db).await?;
+
+    totp::disable(&db, session.user_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(())
+}
+
+/// Replace the recovery codes with a fresh set.
+#[server(name = RegenerateRecoveryCodes, prefix = "/api/sfn", endpoint = "mfa/recovery/regenerate")]
+pub async fn regenerate_recovery_codes() -> Result<Vec<String>, ServerFnError> {
+    use authenc_identity::{Db, mfa::recovery};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let session = server_ctx::require_session(&db).await?;
+
+    let codes = recovery::generate(&db, session.user_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(codes.expose().to_vec())
+}
+
+// ---------------------------------------------------------------------------
+// Passkey ceremonies
+// ---------------------------------------------------------------------------
+//
+// These four carry `serde_json::Value` rather than typed arguments, and that is
+// a deliberate boundary rather than laziness. The WebAuthn types belong to
+// `webauthn-rs`, which lives in `authenc-identity` and must never reach the
+// browser bundle — `authenc-contract` is the only vocabulary shared with wasm,
+// and it may not depend on `sqlx`, `axum`, or anything that pulls them.
+//
+// What crosses the wire is exactly what the browser's `navigator.credentials`
+// API produces and consumes, which is JSON by definition. The typing that
+// matters happens on the server, where the value is parsed into the library's
+// own types and refused if it does not fit.
+
+/// Begin registering a passkey for the caller.
+#[server(name = BeginPasskeyRegistration, prefix = "/api/sfn", endpoint = "mfa/passkey/register/begin")]
+pub async fn begin_passkey_registration() -> Result<serde_json::Value, ServerFnError> {
+    use authenc_identity::{Db, mfa::passkey};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let rp = expect_context::<std::sync::Arc<passkey::RelyingParty>>();
+    let session = server_ctx::require_session(&db).await?;
+
+    let user = authenc_identity::user::by_id(&db, session.user_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let (challenge, token) = passkey::begin_registration(&db, &rp, &user)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    server_ctx::set_ceremony_cookie(expect_context::<CookiePolicy>(), &token);
+
+    serde_json::to_value(challenge).map_err(|e| {
+        server_ctx::to_server_fn_error(AppError::internal_from("encoding a challenge", e))
+    })
+}
+
+/// Finish registering a passkey.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = FinishPasskeyRegistration, prefix = "/api/sfn", endpoint = "mfa/passkey/register/finish", input = Json)]
+pub async fn finish_passkey_registration(
+    label: String,
+    credential: serde_json::Value,
+) -> Result<PasskeySummary, ServerFnError> {
+    use authenc_identity::{Db, mfa::passkey};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let rp = expect_context::<std::sync::Arc<passkey::RelyingParty>>();
+    let policy = expect_context::<CookiePolicy>();
+    let parts = expect_context::<http::request::Parts>();
+    let session = server_ctx::require_session(&db).await?;
+
+    let token = server_ctx::ceremony_token(policy, &parts)
+        .ok_or_else(|| server_ctx::to_server_fn_error(AppError::Unauthenticated))?;
+
+    let credential = serde_json::from_value(credential).map_err(|_| {
+        server_ctx::to_server_fn_error(AppError::validation("that is not a WebAuthn credential"))
+    })?;
+
+    let registered =
+        passkey::finish_registration(&db, &rp, session.user_id, &token, &label, &credential)
+            .await
+            .map_err(server_ctx::to_server_fn_error)?;
+
+    server_ctx::clear_ceremony_cookie(policy);
+    Ok(into_summary(registered))
+}
+
+/// Begin signing in with a passkey, against the pending login.
+#[server(name = BeginPasskeyLogin, prefix = "/api/sfn", endpoint = "mfa/passkey/login/begin")]
+pub async fn begin_passkey_login() -> Result<serde_json::Value, ServerFnError> {
+    use authenc_identity::{
+        Db,
+        mfa::{challenge, passkey},
+    };
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let rp = expect_context::<std::sync::Arc<passkey::RelyingParty>>();
+    let policy = expect_context::<CookiePolicy>();
+    let parts = expect_context::<http::request::Parts>();
+
+    // The user is taken from the pending challenge, never from an argument:
+    // otherwise this endpoint would hand out an authentication challenge for
+    // any account a caller cared to name.
+    let token = server_ctx::challenge_token(policy, &parts)
+        .ok_or_else(|| server_ctx::to_server_fn_error(AppError::Unauthenticated))?;
+    let pending = challenge::lookup(&db, &token)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?
+        .ok_or_else(|| server_ctx::to_server_fn_error(AppError::Unauthenticated))?;
+
+    let (request, ceremony) = passkey::begin_authentication(&db, &rp, pending.user_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    server_ctx::set_ceremony_cookie(policy, &ceremony);
+
+    serde_json::to_value(request).map_err(|e| {
+        server_ctx::to_server_fn_error(AppError::internal_from("encoding a challenge", e))
+    })
+}
+
+/// Finish signing in with a passkey.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = FinishPasskeyLogin, prefix = "/api/sfn", endpoint = "mfa/passkey/login/finish", input = Json)]
+pub async fn finish_passkey_login(
+    credential: serde_json::Value,
+) -> Result<LoginResponse, ServerFnError> {
+    use authenc_identity::{
+        Db, login,
+        mfa::{Factor, challenge, passkey},
+        session::Origin,
+    };
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let rp = expect_context::<std::sync::Arc<passkey::RelyingParty>>();
+    let policy = expect_context::<CookiePolicy>();
+    let parts = expect_context::<http::request::Parts>();
+
+    let challenge_token = server_ctx::challenge_token(policy, &parts)
+        .ok_or_else(|| server_ctx::to_server_fn_error(AppError::Unauthenticated))?;
+    let ceremony_token = server_ctx::ceremony_token(policy, &parts)
+        .ok_or_else(|| server_ctx::to_server_fn_error(AppError::Unauthenticated))?;
+
+    let pending = challenge::lookup(&db, &challenge_token)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?
+        .ok_or_else(|| server_ctx::to_server_fn_error(AppError::Unauthenticated))?;
+
+    let credential = serde_json::from_value(credential).map_err(|_| {
+        server_ctx::to_server_fn_error(AppError::validation("that is not a WebAuthn assertion"))
+    })?;
+
+    if let Err(error) =
+        passkey::finish_authentication(&db, &rp, pending.user_id, &ceremony_token, &credential)
+            .await
+    {
+        // A failed assertion costs an attempt, exactly as a wrong code does.
+        // Without this, the passkey route would be the one way to try
+        // indefinitely.
+        challenge::record_failure(&db, pending.id)
+            .await
+            .map_err(server_ctx::to_server_fn_error)?;
+        return Err(server_ctx::to_server_fn_error(error));
+    }
+
+    let user_agent = parts
+        .headers
+        .get(http::header::USER_AGENT)
+        .and_then(|value| value.to_str().ok());
+
+    let authenticated = login::open_session(
+        &db,
+        &pending,
+        Factor::Passkey,
+        Origin {
+            user_agent,
+            ip_address: server_ctx::client_ip(&parts),
+        },
+    )
+    .await
+    .map_err(server_ctx::to_server_fn_error)?;
+
+    server_ctx::clear_ceremony_cookie(policy);
+    server_ctx::clear_challenge_cookie(policy);
+    server_ctx::set_session_cookie(policy, &authenticated.session);
+
+    describe_session(&db, authenticated.user).await
+}
+
+/// Rename one of the caller's passkeys.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = RenamePasskey, prefix = "/api/sfn", endpoint = "mfa/passkey/rename", input = Json)]
+pub async fn rename_passkey(
+    id: authenc_contract::PasskeyId,
+    label: String,
+) -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, mfa::passkey};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let session = server_ctx::require_session(&db).await?;
+
+    passkey::rename(&db, session.user_id, id.0, &label)
+        .await
+        .map_err(server_ctx::to_server_fn_error)
+}
+
+/// Remove one of the caller's passkeys.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = RemovePasskey, prefix = "/api/sfn", endpoint = "mfa/passkey/remove", input = Json)]
+pub async fn remove_passkey(id: authenc_contract::PasskeyId) -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, mfa::passkey};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let session = server_ctx::require_session(&db).await?;
+
+    passkey::remove(&db, session.user_id, id.0)
+        .await
+        .map_err(server_ctx::to_server_fn_error)
 }
 
 /// Render a server-function failure as something a person can read.
@@ -275,9 +783,7 @@ pub async fn list_users(limit: i64, offset: i64) -> Result<UserPage, ServerFnErr
     use crate::server_ctx;
 
     let db = expect_context::<Db>();
-    let actor = server_ctx::require_actor(&db)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
+    let actor = server_ctx::require_actor(&db).await?;
 
     let items = admin::list_users(&db, &actor, actor.realm_id, limit, offset)
         .await
@@ -306,9 +812,7 @@ pub async fn create_user(
 
     let db = expect_context::<Db>();
     let hasher = expect_context::<PasswordHasher>();
-    let actor = server_ctx::require_actor(&db)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
+    let actor = server_ctx::require_actor(&db).await?;
 
     admin::create_user(
         &db,
@@ -342,9 +846,7 @@ pub async fn set_user_enabled(
     use crate::server_ctx;
 
     let db = expect_context::<Db>();
-    let actor = server_ctx::require_actor(&db)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
+    let actor = server_ctx::require_actor(&db).await?;
 
     admin::set_user_enabled(&db, &actor, user_id, enabled)
         .await
@@ -364,9 +866,7 @@ pub async fn delete_user(user_id: authenc_contract::UserId) -> Result<(), Server
     use crate::server_ctx;
 
     let db = expect_context::<Db>();
-    let actor = server_ctx::require_actor(&db)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
+    let actor = server_ctx::require_actor(&db).await?;
 
     admin::delete_user(&db, &actor, user_id)
         .await
@@ -381,9 +881,7 @@ pub async fn list_roles() -> Result<Vec<authenc_contract::model::Role>, ServerFn
     use crate::server_ctx;
 
     let db = expect_context::<Db>();
-    let actor = server_ctx::require_actor(&db)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
+    let actor = server_ctx::require_actor(&db).await?;
 
     admin::list_roles(&db, &actor, actor.realm_id)
         .await
@@ -436,16 +934,13 @@ pub async fn consent_prompt(
     client_id: String,
     scope: String,
 ) -> Result<ConsentPrompt, ServerFnError> {
-    use authenc_contract::AppError;
     use authenc_identity::{Db, user};
     use authenc_oauth::{client, scope as scopes};
 
     use crate::server_ctx;
 
     let db = expect_context::<Db>();
-    let session = server_ctx::require_session(&db)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
+    let session = server_ctx::require_session(&db).await?;
 
     let realm = authenc_identity::realm::by_name(&db, &realm)
         .await
@@ -525,9 +1020,7 @@ pub async fn list_clients() -> Result<Vec<ClientSummary>, ServerFnError> {
     use crate::server_ctx;
 
     let db = expect_context::<Db>();
-    let actor = server_ctx::require_actor(&db)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
+    let actor = server_ctx::require_actor(&db).await?;
 
     let clients = authenc_oauth::admin::list(&db, &actor, actor.realm_id)
         .await
@@ -563,9 +1056,7 @@ pub async fn register_client(
 
     let db = expect_context::<Db>();
     let hasher = expect_context::<PasswordHasher>();
-    let actor = server_ctx::require_actor(&db)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
+    let actor = server_ctx::require_actor(&db).await?;
 
     let registered = authenc_oauth::admin::register(
         &db,
@@ -603,9 +1094,7 @@ pub async fn rotate_client_secret(client_id: String) -> Result<String, ServerFnE
 
     let db = expect_context::<Db>();
     let hasher = expect_context::<PasswordHasher>();
-    let actor = server_ctx::require_actor(&db)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
+    let actor = server_ctx::require_actor(&db).await?;
 
     let secret = authenc_oauth::admin::rotate_secret(&db, &actor, &hasher, &client_id)
         .await
@@ -628,9 +1117,7 @@ pub async fn delete_client(client_id: String) -> Result<(), ServerFnError> {
     use crate::server_ctx;
 
     let db = expect_context::<Db>();
-    let actor = server_ctx::require_actor(&db)
-        .await
-        .map_err(server_ctx::to_server_fn_error)?;
+    let actor = server_ctx::require_actor(&db).await?;
 
     authenc_oauth::admin::delete(&db, &actor, &client_id)
         .await

@@ -10,8 +10,7 @@
 
 use std::sync::Arc;
 
-use authenc_identity::{Db, PasswordHasher, mail::Mailer};
-use authenc_oauth::MasterKey;
+use authenc_identity::{Db, MasterKey, PasswordHasher, mail::Mailer, mfa::passkey::RelyingParty};
 use authenc_web::server_ctx::PublicUrls;
 use axum::extract::FromRef;
 use leptos::prelude::LeptosOptions;
@@ -29,9 +28,16 @@ pub struct AppState {
     pub hasher: PasswordHasher,
     /// How outbound mail is delivered.
     pub mailer: Arc<dyn Mailer>,
-    /// Decrypts the stored OAuth signing keys. Parsed once at startup, so a
-    /// malformed key fails there rather than at the first token request.
+    /// Decrypts the stored OAuth signing keys and TOTP secrets. Parsed once at
+    /// startup, so a malformed key fails there rather than at the first token
+    /// request.
     pub master_key: Arc<MasterKey>,
+    /// Who this server claims to be during a WebAuthn ceremony.
+    ///
+    /// Built once from `server.public_url`. Deriving it per request from a
+    /// `Host` header would let whoever controls that header point the ceremony
+    /// at an origin they own.
+    pub relying_party: Arc<RelyingParty>,
     /// Leptos build settings; required by `leptos_axum`.
     pub leptos_options: LeptosOptions,
 }

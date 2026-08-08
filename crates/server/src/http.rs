@@ -180,6 +180,8 @@ fn provide_app_context(state: &AppState) {
     provide_context(state.mailer.clone());
     provide_context(crate::auth::cookie_policy(&state.config));
     provide_context(crate::state::public_urls(&state.config));
+    provide_context(state.master_key.clone());
+    provide_context(state.relying_party.clone());
 }
 
 /// Bind address derived from configuration.

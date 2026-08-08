@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 
 use crate::{
     error::{AppError, Result},
-    id::{RealmId, RoleId, UserId},
+    id::{PasskeyId, RealmId, RoleId, UserId},
     permission::Permission,
 };
 
@@ -173,6 +173,105 @@ pub struct LoginResponse {
     /// is a display hint, never the check — every server function and endpoint
     /// re-derives this from the database.
     pub permissions: Vec<Permission>,
+}
+
+/// What a submitted password bought.
+///
+/// The browser has to be told these apart, and an enum forces the login page to
+/// handle both — a boolean field on one response type is something a page can
+/// read as truthy and move on. Note that neither variant carries a token: the
+/// session cookie and the challenge cookie are both `HttpOnly`, so page script
+/// holds no credential in either state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum LoginOutcome {
+    /// Signed in. The session cookie is set.
+    Complete(LoginResponse),
+    /// **Not** signed in. A second factor has to be presented first.
+    SecondFactorRequired(SecondFactorPrompt),
+}
+
+/// What the second step of a login should offer.
+///
+/// Carries no user id and no permissions — nothing here is authority, and a
+/// caller that treated it as such would be building on a login that has not
+/// happened yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SecondFactorPrompt {
+    /// Who is signing in, so the page can say so. Display only.
+    pub username: String,
+    /// Whether an authenticator code is accepted.
+    pub totp: bool,
+    /// Whether a passkey is registered.
+    pub passkey: bool,
+    /// Whether any recovery codes remain.
+    pub recovery_code: bool,
+}
+
+impl SecondFactorPrompt {
+    /// Whether there is any way at all to finish this login.
+    ///
+    /// False should be unreachable — a challenge is only issued when something
+    /// is enrolled — but a page that renders no options and no explanation is
+    /// worse than one that says so.
+    #[must_use]
+    pub const fn has_any(&self) -> bool {
+        self.totp || self.passkey || self.recovery_code
+    }
+}
+
+/// A second factor the browser is submitting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SecondFactor {
+    /// A code from an authenticator app.
+    Totp {
+        /// The six digits, as typed.
+        code: String,
+    },
+    /// One of the codes issued at enrolment.
+    RecoveryCode {
+        /// The code, as typed.
+        code: String,
+    },
+}
+
+/// The state of a user's second factors, for the account page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MfaStatus {
+    /// Whether a confirmed authenticator exists.
+    pub totp: bool,
+    /// Registered passkeys.
+    pub passkeys: Vec<PasskeySummary>,
+    /// How many recovery codes are left.
+    pub recovery_codes_remaining: i64,
+    /// Whether signing in currently requires a second factor.
+    pub enforced: bool,
+}
+
+/// A registered passkey, as the account page shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PasskeySummary {
+    /// Stable identifier.
+    pub id: PasskeyId,
+    /// What the user called it.
+    pub label: String,
+    /// When it was registered, RFC 3339.
+    pub created_at: String,
+    /// When it last signed the user in, if ever.
+    pub last_used_at: Option<String>,
+}
+
+/// A TOTP enrolment in progress.
+///
+/// Both fields are the same secret in two renderings, and both are shown
+/// exactly once. Nothing here is stored by the browser.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TotpEnrolment {
+    /// Base32, for typing into an app by hand.
+    pub secret: String,
+    /// `otpauth://` URI, to render as a QR code.
+    pub provisioning_uri: String,
 }
 
 impl LoginResponse {

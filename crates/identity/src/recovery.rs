@@ -473,9 +473,15 @@ mod tests {
         let (hasher, realm_id, user_id) = fixture(&db).await;
         let mailer = CapturingMailer::new();
 
-        let existing = session::create(&db, user_id, realm_id, Origin::default())
-            .await
-            .unwrap();
+        let existing = session::create(
+            &db,
+            user_id,
+            realm_id,
+            vec!["pwd".to_owned()],
+            Origin::default(),
+        )
+        .await
+        .unwrap();
 
         request_password_reset(
             &db,

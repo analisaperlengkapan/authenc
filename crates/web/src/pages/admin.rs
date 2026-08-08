@@ -56,7 +56,11 @@ pub fn AdminShell() -> impl IntoView {
 }
 
 /// Ask the server to redirect an unauthenticated visitor to the login page.
-fn redirect_to_login() {
+///
+/// `pub(crate)` because the security page needs the same guard: a page that
+/// renders "unauthenticated" as an error message has still rendered, and the
+/// visitor is left reading a failure instead of a login form.
+pub(crate) fn redirect_to_login() {
     #[cfg(feature = "ssr")]
     leptos_axum::redirect("/login");
 

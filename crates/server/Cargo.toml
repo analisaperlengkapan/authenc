@@ -68,6 +68,9 @@ uuid = { workspace = true }
 time = { workspace = true }
 
 [dev-dependencies]
+# The MFA tests reconstruct an authenticator from the base32 secret the
+# enrolment endpoint hands the page, which is the only thing a real user has.
+base32 = "0.5"
 axum-test = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 sqlx = { workspace = true }

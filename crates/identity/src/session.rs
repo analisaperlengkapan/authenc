@@ -26,6 +26,13 @@ pub struct Session {
     pub realm_id: RealmId,
     /// When the session stops being valid.
     pub expires_at: OffsetDateTime,
+    /// How this session was authenticated, in RFC 8176 `amr` terms.
+    ///
+    /// Recorded when the session is created rather than inferred later from
+    /// what the account has enrolled, which would be wrong for every session
+    /// opened before a factor was added. Not yet surfaced in ID tokens; see
+    /// the note in `migrations/0004_mfa.sql`.
+    pub authenticated_with: Vec<String>,
     /// Secret used for the CSRF check, bound to this session.
     csrf_secret: Vec<u8>,
 }
@@ -83,6 +90,7 @@ pub async fn create(
     db: &Db,
     user_id: UserId,
     realm_id: RealmId,
+    authenticated_with: Vec<String>,
     origin: Origin<'_>,
 ) -> Result<Issued> {
     let token = SecretToken::generate()
@@ -94,8 +102,9 @@ pub async fn create(
     let row = sqlx::query!(
         r#"
         INSERT INTO sessions
-            (user_id, realm_id, token_hash, csrf_secret, user_agent, ip_address, expires_at)
-        VALUES ($1, $2, $3, $4, $5, $6::text::inet, $7)
+            (user_id, realm_id, token_hash, csrf_secret, user_agent, ip_address,
+             expires_at, authenticated_with)
+        VALUES ($1, $2, $3, $4, $5, $6::text::inet, $7, $8)
         RETURNING id
         "#,
         user_id.0,
@@ -105,6 +114,7 @@ pub async fn create(
         origin.user_agent,
         origin.ip_address.map(|ip| ip.to_string()),
         expires_at,
+        &authenticated_with,
     )
     .fetch_one(db)
     .await
@@ -116,6 +126,7 @@ pub async fn create(
             user_id,
             realm_id,
             expires_at,
+            authenticated_with,
             csrf_secret: csrf_secret.to_vec(),
         },
         token,
@@ -136,7 +147,7 @@ pub async fn lookup(db: &Db, token: &SecretToken) -> Result<Option<Session>> {
         UPDATE sessions
         SET last_seen_at = now()
         WHERE token_hash = $1 AND expires_at > now()
-        RETURNING id, user_id, realm_id, csrf_secret, expires_at
+        RETURNING id, user_id, realm_id, csrf_secret, expires_at, authenticated_with
         "#,
         token.hash(),
     )
@@ -149,6 +160,7 @@ pub async fn lookup(db: &Db, token: &SecretToken) -> Result<Option<Session>> {
         user_id: UserId(row.user_id),
         realm_id: RealmId(row.realm_id),
         expires_at: row.expires_at,
+        authenticated_with: row.authenticated_with,
         csrf_secret: row.csrf_secret,
     }))
 }
@@ -198,6 +210,12 @@ pub async fn purge_expired(db: &Db) -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The `amr` of an ordinary password login, which is what these tests are
+    /// about; the MFA variants are covered in `crate::mfa`.
+    fn pwd() -> Vec<String> {
+        vec![crate::mfa::AMR_PASSWORD.to_owned()]
+    }
     use crate::{
         password::PasswordHasher,
         realm,
@@ -227,7 +245,7 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn an_issued_token_resolves_to_its_session(db: Db) {
         let (user_id, realm_id) = a_user(&db).await;
-        let issued = create(&db, user_id, realm_id, Origin::default())
+        let issued = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
 
@@ -239,7 +257,7 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn only_the_hash_is_stored(db: Db) {
         let (user_id, realm_id) = a_user(&db).await;
-        let issued = create(&db, user_id, realm_id, Origin::default())
+        let issued = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
 
@@ -256,7 +274,7 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn an_unknown_token_resolves_to_nothing(db: Db) {
         let (user_id, realm_id) = a_user(&db).await;
-        create(&db, user_id, realm_id, Origin::default())
+        create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
 
@@ -267,7 +285,7 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn an_expired_session_does_not_resolve(db: Db) {
         let (user_id, realm_id) = a_user(&db).await;
-        let issued = create(&db, user_id, realm_id, Origin::default())
+        let issued = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
 
@@ -285,7 +303,7 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn a_revoked_session_stops_resolving(db: Db) {
         let (user_id, realm_id) = a_user(&db).await;
-        let issued = create(&db, user_id, realm_id, Origin::default())
+        let issued = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
 
@@ -296,10 +314,10 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn revoking_all_sessions_logs_every_device_out(db: Db) {
         let (user_id, realm_id) = a_user(&db).await;
-        let first = create(&db, user_id, realm_id, Origin::default())
+        let first = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
-        let second = create(&db, user_id, realm_id, Origin::default())
+        let second = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
 
@@ -311,10 +329,10 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn csrf_tokens_are_bound_to_their_session(db: Db) {
         let (user_id, realm_id) = a_user(&db).await;
-        let a = create(&db, user_id, realm_id, Origin::default())
+        let a = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
-        let b = create(&db, user_id, realm_id, Origin::default())
+        let b = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
 
@@ -332,7 +350,7 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn csrf_rejects_garbage_without_panicking(db: Db) {
         let (user_id, realm_id) = a_user(&db).await;
-        let issued = create(&db, user_id, realm_id, Origin::default())
+        let issued = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
 
@@ -344,7 +362,7 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn the_csrf_secret_survives_a_round_trip_through_the_database(db: Db) {
         let (user_id, realm_id) = a_user(&db).await;
-        let issued = create(&db, user_id, realm_id, Origin::default())
+        let issued = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
 
@@ -355,10 +373,10 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn purging_removes_only_expired_sessions(db: Db) {
         let (user_id, realm_id) = a_user(&db).await;
-        let live = create(&db, user_id, realm_id, Origin::default())
+        let live = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
-        let stale = create(&db, user_id, realm_id, Origin::default())
+        let stale = create(&db, user_id, realm_id, pwd(), Origin::default())
             .await
             .unwrap();
 

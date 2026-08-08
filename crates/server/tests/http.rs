@@ -26,6 +26,7 @@ fn server(db: Db) -> TestServer {
     let config = authenc_server::config::Config::default();
     let state = authenc_server::state::AppState {
         master_key: std::sync::Arc::new(config.master_key().unwrap()),
+        relying_party: std::sync::Arc::new(config.relying_party().unwrap()),
         config: std::sync::Arc::new(config),
         db,
         hasher: authenc_identity::PasswordHasher::new(),

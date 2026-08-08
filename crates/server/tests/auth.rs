@@ -14,7 +14,7 @@ use authenc_identity::{
     Db, PasswordHasher, realm,
     user::{self, NewUser},
 };
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header::SET_COOKIE};
 use axum_test::TestServer;
 use leptos::prelude::LeptosOptions;
 use serde_json::json;
@@ -31,6 +31,7 @@ fn server(db: Db) -> TestServer {
     let config = authenc_server::config::Config::default();
     let state = authenc_server::state::AppState {
         master_key: std::sync::Arc::new(config.master_key().unwrap()),
+        relying_party: std::sync::Arc::new(config.relying_party().unwrap()),
         config: std::sync::Arc::new(config),
         db,
         hasher: PasswordHasher::new(),
@@ -328,4 +329,307 @@ async fn a_reset_link_without_a_token_says_so_rather_than_failing_silently(db: P
         "got: {}",
         response.text(),
     );
+}
+
+// ---------------------------------------------------------------------------
+// Second factors
+// ---------------------------------------------------------------------------
+//
+// The domain tests in `authenc-identity` prove the rules. These prove the rules
+// are what the HTTP surface actually applies — a rule that exists but is not
+// reachable through the endpoints is a rule that does not run.
+
+/// Enrol a confirmed authenticator for `alice`, returning its secret.
+///
+/// Goes through the database rather than the endpoints, because the point of
+/// these tests is the *login* path; enrolment over HTTP is covered separately.
+async fn enrol_authenticator(db: &Db) -> authenc_identity::mfa::totp::Secret {
+    use authenc_identity::mfa::totp;
+
+    let config = authenc_server::config::Config::default();
+    let master = config.master_key().unwrap();
+    let realm = realm::by_name(db, "master").await.unwrap();
+    let alice = user::id_by_email(db, realm.id, "alice@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+
+    let enrolling = totp::begin_enrolment(db, &master, alice, "Phone")
+        .await
+        .unwrap();
+    let secret = enrolling.secret.clone();
+
+    // The previous step's code: confirming spends whichever step it matches,
+    // and these tests need the current one still unspent.
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let code = totp::code_at(secret.as_bytes(), totp::step_at(now) - 1, totp::DIGITS);
+    assert!(totp::confirm(db, &master, alice, &code).await.unwrap());
+
+    secret
+}
+
+fn current_code(secret: &authenc_identity::mfa::totp::Secret) -> String {
+    use authenc_identity::mfa::totp;
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    totp::code_at(secret.as_bytes(), totp::step_at(now), totp::DIGITS)
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_password_alone_sets_no_session_cookie_when_a_factor_is_enrolled(db: PgPool) {
+    // The property the whole design exists for, asserted where a browser would
+    // see it: the response to a correct password carries no session.
+    seed(&db).await;
+    enrol_authenticator(&db).await;
+
+    let response = server(db)
+        .post("/api/sfn/login")
+        .json(&login_body("alice", PASSWORD))
+        .await;
+
+    response.assert_status_ok();
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["status"], "second_factor_required", "{body}");
+    assert_eq!(body["totp"], true);
+
+    let cookies = response
+        .headers()
+        .get_all(SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        !cookies.contains("authenc_session="),
+        "a session cookie was set before the second factor: {cookies}",
+    );
+    assert!(
+        cookies.contains("authenc_mfa="),
+        "the challenge cookie is missing: {cookies}",
+    );
+    assert!(cookies.contains("HttpOnly"), "{cookies}");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_session_endpoint_reports_nobody_until_the_second_factor(db: PgPool) {
+    // Not just "no cookie was set" — nothing the server hands back may resolve
+    // to a signed-in user.
+    seed(&db).await;
+    enrol_authenticator(&db).await;
+    let server = server(db);
+
+    server
+        .post("/api/sfn/login")
+        .json(&login_body("alice", PASSWORD))
+        .await
+        .assert_status_ok();
+
+    // The challenge cookie is now in the jar and travels with this request.
+    let me = server.post("/api/sfn/me").await;
+    me.assert_status_ok();
+    assert_eq!(me.json::<serde_json::Value>(), serde_json::Value::Null);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_correct_code_finishes_the_login_over_http(db: PgPool) {
+    seed(&db).await;
+    let secret = enrol_authenticator(&db).await;
+    let server = server(db);
+
+    server
+        .post("/api/sfn/login")
+        .json(&login_body("alice", PASSWORD))
+        .await
+        .assert_status_ok();
+
+    let response = server
+        .post("/api/sfn/mfa/verify")
+        .json(&json!({ "factor": { "kind": "totp", "code": current_code(&secret) } }))
+        .await;
+
+    response.assert_status_ok();
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["user"]["username"], "alice", "{body}");
+
+    // And the session is now real.
+    let me = server.post("/api/sfn/me").await;
+    me.assert_status_ok();
+    assert_eq!(me.json::<serde_json::Value>()["user"]["username"], "alice");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_wrong_code_does_not_finish_the_login(db: PgPool) {
+    seed(&db).await;
+    enrol_authenticator(&db).await;
+    let server = server(db);
+
+    server
+        .post("/api/sfn/login")
+        .json(&login_body("alice", PASSWORD))
+        .await
+        .assert_status_ok();
+
+    let response = server
+        .post("/api/sfn/mfa/verify")
+        .json(&json!({ "factor": { "kind": "totp", "code": "000000" } }))
+        .await;
+
+    assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        server.post("/api/sfn/me").await.json::<serde_json::Value>(),
+        serde_json::Value::Null,
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_second_step_cannot_be_taken_without_a_first(db: PgPool) {
+    // No challenge cookie, no login — even with a code that is arithmetically
+    // correct for somebody.
+    seed(&db).await;
+    let secret = enrol_authenticator(&db).await;
+
+    let response = server(db)
+        .post("/api/sfn/mfa/verify")
+        .json(&json!({ "factor": { "kind": "totp", "code": current_code(&secret) } }))
+        .await;
+
+    assert_eq!(response.status_code(), StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_login_with_no_second_factor_still_signs_in(db: PgPool) {
+    // The change must not have broken the ordinary path.
+    seed(&db).await;
+
+    let response = server(db)
+        .post("/api/sfn/login")
+        .json(&login_body("alice", PASSWORD))
+        .await;
+
+    response.assert_status_ok();
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["status"], "complete", "{body}");
+    assert_eq!(body["user"]["username"], "alice");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_recovery_code_finishes_the_login_and_is_then_spent(db: PgPool) {
+    use authenc_identity::mfa::recovery;
+
+    seed(&db).await;
+    enrol_authenticator(&db).await;
+
+    let realm = realm::by_name(&db, "master").await.unwrap();
+    let alice = user::id_by_email(&db, realm.id, "alice@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+    let codes = recovery::generate(&db, alice).await.unwrap();
+    let code = codes.expose()[0].clone();
+
+    let server = server(db);
+    server
+        .post("/api/sfn/login")
+        .json(&login_body("alice", PASSWORD))
+        .await
+        .assert_status_ok();
+
+    server
+        .post("/api/sfn/mfa/verify")
+        .json(&json!({ "factor": { "kind": "recovery_code", "code": code } }))
+        .await
+        .assert_status_ok();
+
+    // Sign out, then try the same code again.
+    server.post("/api/sfn/logout").await.assert_status_ok();
+    server
+        .post("/api/sfn/login")
+        .json(&login_body("alice", PASSWORD))
+        .await
+        .assert_status_ok();
+
+    let replayed = server
+        .post("/api/sfn/mfa/verify")
+        .json(&json!({ "factor": { "kind": "recovery_code", "code": code } }))
+        .await;
+
+    assert_eq!(replayed.status_code(), StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn managing_your_own_factors_needs_a_session(db: PgPool) {
+    // Every one of these acts on the caller's account, so an anonymous caller
+    // has no account for them to act on.
+    seed(&db).await;
+    let server = server(db);
+
+    for endpoint in [
+        "/api/sfn/mfa/status",
+        "/api/sfn/mfa/totp/disable",
+        "/api/sfn/mfa/recovery/regenerate",
+        "/api/sfn/mfa/passkey/register/begin",
+    ] {
+        let response = server.post(endpoint).await;
+        assert_eq!(
+            response.status_code(),
+            StatusCode::UNAUTHORIZED,
+            "{endpoint} answered an anonymous caller: {}",
+            response.text(),
+        );
+    }
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn enrolling_an_authenticator_over_http_issues_recovery_codes(db: PgPool) {
+    use authenc_identity::mfa::totp;
+
+    seed(&db).await;
+    let server = server(db.clone());
+
+    server
+        .post("/api/sfn/login")
+        .json(&login_body("alice", PASSWORD))
+        .await
+        .assert_status_ok();
+
+    let begun = server
+        .post("/api/sfn/mfa/totp/begin")
+        .json(&json!({ "label": "Phone" }))
+        .await;
+    begun.assert_status_ok();
+
+    let body: serde_json::Value = begun.json();
+    let secret = body["secret"].as_str().unwrap().to_owned();
+    assert!(
+        body["provisioning_uri"]
+            .as_str()
+            .unwrap()
+            .starts_with("otpauth://totp/"),
+        "{body}",
+    );
+
+    // Reconstruct the authenticator from what the page was shown, which is the
+    // only thing a real user has.
+    let raw = base32::decode(base32::Alphabet::Rfc4648 { padding: false }, &secret).unwrap();
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let code = totp::code_at(&raw, totp::step_at(now), totp::DIGITS);
+
+    let confirmed = server
+        .post("/api/sfn/mfa/totp/confirm")
+        .json(&json!({ "code": code }))
+        .await;
+    confirmed.assert_status_ok();
+
+    let codes: Vec<String> = confirmed.json();
+    assert_eq!(
+        codes.len(),
+        authenc_identity::mfa::recovery::COUNT,
+        "turning on a second factor must hand over a way past it",
+    );
+
+    let status = server.post("/api/sfn/mfa/status").await;
+    status.assert_status_ok();
+    let status: serde_json::Value = status.json();
+    assert_eq!(status["totp"], true);
+    assert_eq!(status["enforced"], true);
 }

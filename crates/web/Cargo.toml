@@ -26,6 +26,10 @@ leptos = { workspace = true }
 leptos_router = { workspace = true }
 leptos_meta = { workspace = true }
 serde = { workspace = true }
+# Crosses the wire for the WebAuthn ceremonies: those payloads are defined by
+# the browser API, not by us, and their Rust types live in `authenc-identity`
+# where the browser bundle must never reach.
+serde_json = { workspace = true }
 
 # hydrate-only
 wasm-bindgen = { workspace = true, optional = true }

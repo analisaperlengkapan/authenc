@@ -26,14 +26,17 @@ pub mod admin;
 pub mod db;
 pub mod login;
 pub mod mail;
+pub mod mfa;
 pub mod password;
 pub mod realm;
 pub mod recovery;
 pub mod role;
+pub mod sealed;
 pub mod session;
 pub mod token;
 pub mod user;
 
 pub use db::{Db, DbConfig, connect, migrate, ping};
 pub use password::PasswordHasher;
+pub use sealed::MasterKey;
 pub use token::SecretToken;

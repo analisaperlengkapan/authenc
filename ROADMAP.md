@@ -131,19 +131,64 @@ database holds an Argon2 hash and nothing else. Tokens the client already holds
 keep working — what stops is authenticating with the old secret — which is what
 makes it usable during an incident rather than only at setup.
 
+### Stage 5 — Multi-factor authentication
+
+The shape is the security. `login::authenticate` returns an `Outcome`, not a
+session: when a second factor is enrolled, a correct password produces a
+`challenge::Pending` — a different type, in a different table, that no session
+lookup can resolve. The alternative, issuing the session and *then* asking for
+a code, makes "was the second factor checked?" a property of the login page
+rather than of the system, and a page is a thing one can forget to write.
+
+**TOTP** is RFC 6238, written out rather than taken from a library, because the
+parts that decide whether it is secure are the drift window and the replay
+check — both properties of how it is called. The arithmetic is checked against
+the RFC 6238 Appendix B vectors; HMAC and SHA-1 come from RustCrypto. A code is
+single-use: the matched time step is persisted, so an observed code is worth
+thirty seconds rather than the ninety the drift window would otherwise allow.
+Secrets are AES-256-GCM sealed under the master key, with the row's id as
+associated data.
+
+**Recovery codes** carry 80 bits from the CSPRNG, so they are hashed with
+SHA-256 for the same reason session tokens are, and claimed with one atomic
+`UPDATE`. Ten are issued at the moment an authenticator is confirmed, because
+turning on a second factor without a way past a lost phone is how an account
+becomes unrecoverable.
+
+**Passkeys** go through `webauthn-rs`. What this repository is responsible for
+is the three things a library cannot do for it: keeping the challenge on the
+server, writing the signature counter back after every assertion, and checking
+that the credential named still belongs to the user being authenticated.
+
+Deliberate limits, stated rather than implied:
+
+- **Recovery codes do not count as an enrolled factor.** They are a way past a
+  lost one. If they counted, generating them would silently turn on MFA for an
+  account with no authenticator and lock the user out at the next login.
+- **A session records how it was authenticated (`amr`), but ID tokens do not
+  yet carry it.** The value would have to travel with the authorization code
+  and the refresh family; until that is built, it is an audit record, not a
+  claim, and nothing advertises otherwise.
+- **`webauthn-rs 0.5` pulls in OpenSSL**, which `deny.toml` otherwise bans. It
+  is admitted through one narrow wrapper exception with the reasoning and the
+  exit condition written down there: 0.6 drops OpenSSL for pure Rust and exists
+  only as a pre-release, and a pre-release deciding who someone is was the
+  worse trade.
+- **The passkey ceremony is driven by ~40 lines of self-hosted JavaScript.**
+  `navigator.credentials` is a browser API; calling it through `web-sys` would
+  add bindings for no gain. Nothing security-relevant happens there — every
+  value it produces is verified server-side against a challenge the server
+  chose and stored.
+
 ## Planned
 
 Each stage leaves the repository compiling, linted, and tested.
 
-### Stage 5 — Multi-factor authentication
-
-TOTP with recovery codes, and WebAuthn passkeys through `webauthn-rs` with
-genuine verification of the challenge, origin, RP ID, signature, and signature
-counter.
-
 ### Stage 6 — Audit and events
 
-Audit log in PostgreSQL with query and export, and a single event model.
+Audit log in PostgreSQL with query and export, and a single event model. The
+`amr` a session already records lands in ID tokens here, since it needs the
+same "carry a fact from authentication through to issuance" plumbing.
 
 ### Stage 7 — Groups and organisations
 

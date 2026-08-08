@@ -25,5 +25,5 @@ pub mod permission;
 pub mod validate;
 
 pub use error::{AppError, Problem, Result};
-pub use id::{PermissionId, RealmId, RoleId, SessionId, UserId};
+pub use id::{PasskeyId, PermissionId, RealmId, RoleId, SessionId, UserId};
 pub use permission::Permission;

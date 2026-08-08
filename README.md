@@ -96,6 +96,10 @@ is enforced rather than merely intended.
 | Consent | a server-rendered form that works without JavaScript, recording *which* scopes were approved |
 | Dynamic client registration | RFC 7591, off unless switched on |
 | Client administration | `/api/v1/clients` and a console page; secret rotation shows the new secret once |
+| Two-step sign-in | a correct password returns a *challenge*, not a session, when a factor is enrolled — a different type, in a different table |
+| TOTP | RFC 6238, checked against the RFC's own test vectors; a code is single-use, so an observed one expires in 30s rather than 90 |
+| Recovery codes | ten per account, 80 bits each, single-use; issued the moment an authenticator is confirmed |
+| Passkeys | WebAuthn via `webauthn-rs`; the challenge stays on the server and the signature counter is written back after every assertion |
 | CLI | `authenc seed`, `migrate`, `purge`, `generate-master-key`, `rotate-keys`, `register-client` — no test endpoints in the router |
 
 ## Development

@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
 
         Command::GenerateMasterKey => {
-            let key = authenc_oauth::MasterKey::generate()?;
+            let key = authenc_identity::MasterKey::generate()?;
             print_secret(&key.to_base64());
         }
 
@@ -139,6 +139,10 @@ async fn serve(
         // Parsed here rather than per request: a malformed key must stop the
         // process at startup, not surface as a 500 at the first token call.
         master_key: Arc::new(config.master_key()?),
+        // Also parsed here: a public URL WebAuthn cannot use must stop the
+        // process at startup, not surface as a 500 the first time somebody
+        // reaches for a passkey.
+        relying_party: Arc::new(config.relying_party()?),
         config: Arc::new(config),
         db,
         hasher,

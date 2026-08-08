@@ -85,6 +85,10 @@ typed_id!(
     /// Identifies an authenticated session.
     SessionId
 );
+typed_id!(
+    /// Identifies a registered passkey.
+    PasskeyId
+);
 
 #[cfg(test)]
 mod tests {

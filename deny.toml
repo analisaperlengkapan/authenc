@@ -37,7 +37,6 @@ version = 2
 allow = [
     "Apache-2.0",
     "MIT",
-    "MIT-0",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "0BSD",
@@ -49,6 +48,10 @@ allow = [
     # The Mozilla CA bundle in `webpki-roots` is data, not code, and ships
     # under a data licence rather than a software one.
     "CDLA-Permissive-2.0",
+    # `webauthn-rs` and its supporting crates. File-level copyleft: changes to
+    # those files must be published, which linking against them does not
+    # trigger. Nothing in this workspace modifies them.
+    "MPL-2.0",
 ]
 confidence-threshold = 0.9
 
@@ -70,7 +73,31 @@ deny = [
     { crate = "async-std", reason = "this workspace is tokio-only" },
     # A pre-release in a security-relevant dependency is not acceptable here;
     # the previous tree pinned `aes-gcm = 0.11.0-rc.2` in production.
-    { crate = "openssl", reason = "use rustls; openssl needs a system library and widens the attack surface" },
+    #
+    # The ban stands for everything this workspace chooses: TLS is rustls
+    # everywhere. `webauthn-rs-core` is the one exception, and it is a real
+    # cost rather than a technicality — a C library in the build and in the
+    # runtime image, plus its share of the distribution's CVE traffic.
+    #
+    # It is admitted anyway because the alternative is worse. Verifying a
+    # WebAuthn assertion means COSE keys, X.509 chains, and signatures under
+    # several algorithms; the previous tree wrote that by hand and its
+    # verifier returned `Ok(true)` without reading its argument. A pre-release
+    # was the other option: webauthn-rs 0.6 drops openssl for pure Rust, but
+    # only exists as `0.6.1-dev`, and a pre-release deciding whether someone is
+    # who they claim to be is not a trade this file is willing to make either.
+    #
+    # Revisit when webauthn-rs 0.6 is released: at that point this wrapper
+    # comes out and the ban becomes absolute again.
+    { crate = "openssl", reason = "use rustls; openssl needs a system library and widens the attack surface", wrappers = [
+      "webauthn-rs-core",
+      "webauthn-attestation-ca",
+    ] },
+    { crate = "openssl-sys", reason = "see `openssl` above", wrappers = [
+      "openssl",
+      "webauthn-rs-core",
+      "webauthn-attestation-ca",
+    ] },
 ]
 
 skip-tree = [

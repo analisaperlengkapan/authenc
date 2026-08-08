@@ -59,8 +59,31 @@ a bug regardless of what else it does.
   HTTPS, if HSTS is off, or if the development database credentials are still
   in place.
 
+- **A password alone never opens a session for an account with a second
+  factor.** Not by policy — by type. `login::authenticate` returns a challenge
+  in its own table, which no session lookup resolves, so the check cannot be
+  skipped by a caller that forgot to make it.
+- **A one-time code is spent when it is used.** The matched TOTP time step and
+  each recovery code are recorded at the moment they succeed, by an atomic
+  write. Replay is refused, not merely unlikely.
+- **A WebAuthn challenge is chosen and held by the server**, single-use and
+  expiring, and the relying-party id comes from configuration rather than from
+  a request header.
+- **A signature counter that goes backwards is refused**, and the new value is
+  persisted on every assertion — a counter that is checked but never written
+  back defends against nothing.
+
 ## Supply chain
 
 `cargo-deny` and `cargo-audit` run on every pull request and weekly on a
 schedule. `Cargo.lock` is committed and builds use `--locked`, so what CI
 tested is what ships.
+
+One dependency needs saying out loud: `webauthn-rs 0.5` links against OpenSSL,
+which `deny.toml` otherwise bans outright. It is admitted through a single
+narrow wrapper exception, because the alternatives were writing WebAuthn
+verification by hand — which is what the previous tree did, and its verifier
+returned `Ok(true)` without reading its argument — or depending on a
+pre-release. The exception carries its own exit condition: `webauthn-rs 0.6`
+replaces OpenSSL with pure Rust, and when it is released the exception comes
+out.

@@ -126,6 +126,29 @@ real defect that was in `main`.
 - **Detect replay, do not merely refuse it.** A spent authorization code or
   refresh token presented again means it leaked; revoke the family it minted
   rather than returning an error and leaving those tokens alive.
+- **A half-finished login is a different type, not a flagged session.** When a
+  second factor is enrolled, `login::authenticate` returns
+  `Outcome::SecondFactorRequired`, whose token lives in `mfa_challenges` and
+  resolves nowhere else. Never add a "pending" or "mfa_verified" column to
+  `sessions`: a flag is something every reader has to remember to check, and a
+  separate type is something the compiler checks for them.
+- **A one-time code is not one-time until the spent step is written back.**
+  `totp::verify` returns the matched step precisely so the caller must persist
+  it. Dropping that write costs nothing visible and silently triples the window
+  an observed code stays usable.
+- **A WebAuthn challenge lives on the server.** Ceremony state goes in
+  `webauthn_ceremonies`, keyed by an opaque token, single-use and expiring. A
+  challenge the client holds and returns is not a challenge, whatever it is
+  named.
+- **Derive the WebAuthn relying party from configuration, never from a request
+  header.** `Host` is attacker-controlled; an RP ID taken from it points the
+  ceremony at an origin somebody else owns.
+- **Server functions return `ServerFnError`, and the status must be set.**
+  Leptos reports every server-function failure as 500 unless something calls
+  `to_server_fn_error`. `require_session` and `require_actor` therefore return
+  an already-converted error — but anywhere else, a bare `?` on an `AppError`
+  goes through a blanket conversion that loses the status, and a 401 arrives as
+  a 500. Tests should assert the status, not merely that the call failed.
 
 ## Writing tests
 

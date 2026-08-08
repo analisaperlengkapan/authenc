@@ -5,6 +5,13 @@
 # ---------------------------------------------------------------------------
 FROM rust:1.94-bookworm AS builder
 
+# `webauthn-rs-core` links against OpenSSL. It is the one C dependency in the
+# tree and the one exception in `deny.toml`; see the note there for why it is
+# admitted and when it comes out.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libssl-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN rustup target add wasm32-unknown-unknown
 
 # Pinned, and installed before the source is copied, so the layer caches.
@@ -45,7 +52,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && apt-get install -y --no-install-recommends ca-certificates curl libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Unprivileged: nothing this process does needs root.

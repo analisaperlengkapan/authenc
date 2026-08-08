@@ -419,9 +419,15 @@ mod tests {
         .await
         .unwrap();
 
-        let live = session::create(&db, victim.id, realm_id, session::Origin::default())
-            .await
-            .unwrap();
+        let live = session::create(
+            &db,
+            victim.id,
+            realm_id,
+            vec!["pwd".to_owned()],
+            session::Origin::default(),
+        )
+        .await
+        .unwrap();
 
         let admin = actor(realm_id, admin_id, &[Permission::UserWrite]);
         set_user_enabled(&db, &admin, victim.id, false)

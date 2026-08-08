@@ -5,6 +5,65 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — multi-factor authentication
+
+- **The login flow no longer returns a session when a second factor is
+  enrolled.** `login::authenticate` returns an `Outcome`; a correct password
+  produces a `challenge::Pending` in its own table, with a five-minute life and
+  a five-attempt budget, which no session lookup can resolve. Three HTTP tests
+  assert this where a browser would see it: no session cookie in the response,
+  and `/api/sfn/me` reporting nobody until the second step succeeds.
+- **TOTP** (RFC 6238), verified against the RFC 6238 Appendix B test vectors.
+  Codes are single-use — the matched time step is persisted, so an observed
+  code is worth thirty seconds rather than the ninety the ±1-step drift window
+  would otherwise allow. Secrets are AES-256-GCM sealed under the master key
+  with the row's id as associated data.
+- **Recovery codes**: ten per account, 80 bits each, hashed with SHA-256 and
+  claimed by one atomic `UPDATE`. Issued at the moment an authenticator is
+  confirmed, because turning on a second factor without a way past a lost phone
+  is how an account becomes unrecoverable. They deliberately do not count as an
+  enrolled factor.
+- **WebAuthn passkeys** through `webauthn-rs`, with the ceremony challenge held
+  server-side in `webauthn_ceremonies`, the signature counter written back
+  after every assertion, and the credential re-checked against the user at the
+  point of use. The previous tree's `verify_registration` and
+  `verify_authentication` both returned `Ok(true)` without reading their
+  arguments.
+- A `/security` page for enrolment, recovery codes, and passkeys, and a second
+  step on the login page. The passkey ceremony is driven by ~40 lines of
+  self-hosted JavaScript, because `navigator.credentials` is a browser API.
+- `authenc purge` now also clears expired MFA challenges and WebAuthn
+  ceremonies.
+
+### Changed
+
+- `MasterKey` and the AES-GCM sealing it drives moved from `authenc-oauth` to
+  `authenc-identity`, since signing keys are no longer the only secret that has
+  to be recoverable rather than hashed. One implementation, used by both.
+- `sessions` gained `authenticated_with`, recording how a login happened at the
+  moment it happens. It is not yet carried into ID tokens; see `ROADMAP.md`.
+- `server_ctx::require_session` and `require_actor` now return `ServerFnError`
+  rather than `AppError`. Leptos reports every server-function failure as 500
+  unless the status is set explicitly, and a bare `?` on an `AppError` skipped
+  that — a new endpoint answered an anonymous caller with 500 instead of 401,
+  and only a test asserting the status caught it. The obvious way is now the
+  correct one.
+- `deny.toml` admits OpenSSL through one narrow wrapper exception for
+  `webauthn-rs-core`, with the reasoning and the exit condition recorded there.
+  The Dockerfile installs `libssl-dev` in the builder and `libssl3` at runtime.
+
+### Fixed
+
+- The `leptos build` CI job failed twice with `No such file or directory` from
+  `cargo-leptos`'s `sync.rs`, ten minutes after the Rust compile succeeded and
+  with nothing in the log naming the file. The failing spawn was `tailwindcss`:
+  `cargo-leptos` resolves it from `PATH` before it considers downloading a
+  pinned copy, and the runner image carries an entry by that name that cannot
+  be executed. CI and the Dockerfile now install v4.2.1 themselves, first on
+  `PATH`, and run it once to prove it works. The bundle assertions were
+  strengthened from "the CSS file is non-empty" to requiring Tailwind's own
+  banner and one of our `@theme` tokens.
+
 ### Added — the OAuth 2.0 and OpenID Connect endpoints
 
 - Discovery at `/.well-known/openid-configuration` and

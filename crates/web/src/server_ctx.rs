@@ -86,6 +86,43 @@ impl CookiePolicy {
         jar.get(self.name)
             .map(|cookie| SecretToken::from_client(cookie.value()))
     }
+
+    /// The policy for an in-flight WebAuthn ceremony.
+    ///
+    /// A third name for a third meaning. The ceremony handle is not a session
+    /// and not a login challenge — it identifies one `navigator.credentials`
+    /// call, and it is spent the moment that call comes back.
+    #[must_use]
+    pub const fn ceremony(self) -> Self {
+        Self {
+            name: if self.secure {
+                "__Host-authenc_ceremony"
+            } else {
+                "authenc_ceremony"
+            },
+            secure: self.secure,
+        }
+    }
+
+    /// The policy for the half-finished login held between the two steps of an
+    /// MFA sign-in.
+    ///
+    /// Same flags, deliberately a different name. A challenge is not a session,
+    /// and if the two shared a cookie name then the second-step request would
+    /// arrive carrying a value that every session lookup in the tree would try
+    /// to resolve — which is the exact confusion the separate table exists to
+    /// prevent, reintroduced at the transport.
+    #[must_use]
+    pub const fn challenge(self) -> Self {
+        Self {
+            name: if self.secure {
+                "__Host-authenc_mfa"
+            } else {
+                "authenc_mfa"
+            },
+            secure: self.secure,
+        }
+    }
 }
 
 /// Absolute base URLs for the links sent by mail.
@@ -117,6 +154,57 @@ pub fn set_session_cookie(policy: CookiePolicy, issued: &Issued) {
 /// Attach a cookie that clears the session.
 pub fn clear_session_cookie(policy: CookiePolicy) {
     append_cookie(&policy.revoke());
+}
+
+/// The MFA challenge token presented by a request, if any.
+#[must_use]
+pub fn challenge_token(policy: CookiePolicy, parts: &Parts) -> Option<SecretToken> {
+    policy
+        .challenge()
+        .read(&CookieJar::from_headers(&parts.headers))
+}
+
+/// Attach the cookie that carries a half-finished login.
+///
+/// Its lifetime matches the challenge's, so the browser drops it at the same
+/// moment the server stops honouring it rather than sending a dead value on
+/// every subsequent request.
+pub fn set_challenge_cookie(
+    policy: CookiePolicy,
+    issued: &authenc_identity::mfa::challenge::Issued,
+) {
+    let max_age = issued.pending.expires_at - time::OffsetDateTime::now_utc();
+    append_cookie(&policy.challenge().issue(&issued.token, max_age));
+}
+
+/// The WebAuthn ceremony handle presented by a request, if any.
+#[must_use]
+pub fn ceremony_token(policy: CookiePolicy, parts: &Parts) -> Option<SecretToken> {
+    policy
+        .ceremony()
+        .read(&CookieJar::from_headers(&parts.headers))
+}
+
+/// Attach the cookie that identifies an in-flight WebAuthn ceremony.
+pub fn set_ceremony_cookie(policy: CookiePolicy, token: &SecretToken) {
+    append_cookie(
+        &policy
+            .ceremony()
+            .issue(token, authenc_identity::mfa::passkey::CEREMONY_LIFETIME),
+    );
+}
+
+/// Attach a cookie that clears any in-flight WebAuthn ceremony.
+pub fn clear_ceremony_cookie(policy: CookiePolicy) {
+    append_cookie(&policy.ceremony().revoke());
+}
+
+/// Attach a cookie that clears any half-finished login.
+///
+/// Called on completion **and** on failure: a spent or dead challenge left in
+/// the browser produces a second step that cannot succeed and does not say why.
+pub fn clear_challenge_cookie(policy: CookiePolicy) {
+    append_cookie(&policy.challenge().revoke());
 }
 
 fn append_cookie(cookie: &Cookie<'static>) {
@@ -155,20 +243,32 @@ pub fn client_ip(parts: &Parts) -> Option<IpAddr> {
 ///
 /// # Errors
 ///
-/// Returns [`AppError::Unauthenticated`] when there is no live session, or an
-/// internal error if the lookup fails.
+/// Returns a 401 failure when there is no live session, or a 500 if the lookup
+/// fails.
+///
+/// The error type is [`ServerFnError`] rather than [`AppError`] on purpose.
+/// Leptos reports every server-function failure as 500 unless something sets
+/// the status, and `?` on an `AppError` goes through a blanket conversion that
+/// does not — so a function written the obvious way answered an anonymous
+/// caller with 500 instead of 401, and only a test that asserted the status
+/// caught it. Returning the converted error makes the obvious way the correct
+/// one.
 pub async fn require_session(
     db: &authenc_identity::Db,
-) -> Result<authenc_identity::session::Session, AppError> {
+) -> Result<authenc_identity::session::Session, ServerFnError> {
     use authenc_identity::session;
 
     let policy = leptos::prelude::expect_context::<CookiePolicy>();
     let parts = leptos::prelude::expect_context::<Parts>();
 
-    let token = session_token(policy, &parts).ok_or(AppError::Unauthenticated)?;
-    session::lookup(db, &token)
-        .await?
-        .ok_or(AppError::Unauthenticated)
+    let resolve = async {
+        let token = session_token(policy, &parts).ok_or(AppError::Unauthenticated)?;
+        session::lookup(db, &token)
+            .await?
+            .ok_or(AppError::Unauthenticated)
+    };
+
+    resolve.await.map_err(to_server_fn_error)
 }
 
 /// Resolve the [`Actor`] behind the current server-function call.
@@ -179,24 +279,30 @@ pub async fn require_session(
 ///
 /// # Errors
 ///
-/// Returns [`AppError::Unauthenticated`] when there is no live session, or an
-/// internal error if a lookup fails.
-pub async fn require_actor(db: &authenc_identity::Db) -> Result<Actor, AppError> {
+/// Returns a 401 failure when there is no live session, or a 500 if a lookup
+/// fails. The error is already a [`ServerFnError`] with its HTTP status set —
+/// see [`require_session`] for why that matters.
+pub async fn require_actor(db: &authenc_identity::Db) -> Result<Actor, ServerFnError> {
     use authenc_identity::user;
 
     let session = require_session(db).await?;
-    let user = user::by_id(db, session.user_id).await?;
-    if !user.enabled {
-        return Err(AppError::Unauthenticated);
-    }
 
-    Ok(Actor {
-        roles: user::role_names(db, session.user_id).await?,
-        permissions: user::permissions(db, session.user_id).await?,
-        user_id: user.id,
-        realm_id: user.realm_id,
-        username: user.username,
-    })
+    let resolve = async {
+        let user = user::by_id(db, session.user_id).await?;
+        if !user.enabled {
+            return Err(AppError::Unauthenticated);
+        }
+
+        Ok(Actor {
+            roles: user::role_names(db, session.user_id).await?,
+            permissions: user::permissions(db, session.user_id).await?,
+            user_id: user.id,
+            realm_id: user.realm_id,
+            username: user.username,
+        })
+    };
+
+    resolve.await.map_err(to_server_fn_error)
 }
 
 /// Convert a domain error into the failure a server function returns.

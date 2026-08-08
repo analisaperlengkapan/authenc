@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE totp_credentials SET secret = $2, secret_nonce = $3 WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bd84504ff2fe1cb7da7fbfec147b8492605ac13e5a5e831e0ef43b32bbab12aa"
+}

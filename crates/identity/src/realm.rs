@@ -33,6 +33,33 @@ pub async fn by_name(db: &Db, name: &str) -> Result<Realm> {
     })
 }
 
+/// Look a realm up by its identifier.
+///
+/// # Errors
+///
+/// Returns [`AppError::NotFound`] if no realm has that id.
+pub async fn by_id(db: &Db, id: RealmId) -> Result<Realm> {
+    let row = sqlx::query!(
+        r#"
+        SELECT id, name, display_name, enabled, created_at
+          FROM realms WHERE id = $1
+        "#,
+        id.0,
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|e| AppError::internal_from("loading realm", e))?
+    .ok_or(AppError::NotFound("realm"))?;
+
+    Ok(Realm {
+        id: RealmId(row.id),
+        name: row.name,
+        display_name: row.display_name,
+        enabled: row.enabled,
+        created_at: row.created_at,
+    })
+}
+
 /// Create a realm.
 ///
 /// # Errors

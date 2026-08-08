@@ -44,6 +44,10 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 // console loaded Font Awesome from a third-party origin, with
                 // no integrity hash, into an admin console.
                 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+                // Drives `navigator.credentials` on the security page. Served
+                // from `crates/web/public`, `defer` so it does not block the
+                // first paint of every other page.
+                <script src="/passkey.js" defer></script>
                 <AutoReload options=options.clone() />
                 <HydrationScripts options=options.clone() />
                 <HashedStylesheet options id="leptos" />
@@ -71,6 +75,7 @@ pub fn App() -> impl IntoView {
                 <Route path=StaticSegment("reset-password") view=pages::ResetPassword />
                 <Route path=StaticSegment("verify-email") view=pages::VerifyEmail />
                 <Route path=StaticSegment("consent") view=pages::Consent />
+                <Route path=StaticSegment("security") view=pages::Security />
                 <ParentRoute path=StaticSegment("admin") view=pages::AdminShell>
                     <Route path=StaticSegment("") view=pages::Overview />
                     <Route path=StaticSegment("users") view=pages::Users />

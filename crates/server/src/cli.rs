@@ -254,6 +254,8 @@ pub async fn purge(db: &Db) -> Result<()> {
     let codes = authenc_oauth::code::purge_expired(db).await?;
     let refresh = authenc_oauth::refresh::purge_expired(db).await?;
     let keys = authenc_oauth::keyring::purge_retired(db).await?;
+    let challenges = authenc_identity::mfa::challenge::purge_expired(db).await?;
+    let ceremonies = authenc_identity::mfa::passkey::purge_expired(db).await?;
 
     tracing::info!(
         sessions,
@@ -261,6 +263,8 @@ pub async fn purge(db: &Db) -> Result<()> {
         authorization_codes = codes,
         refresh_tokens = refresh,
         signing_keys = keys,
+        mfa_challenges = challenges,
+        webauthn_ceremonies = ceremonies,
         "purged expired records",
     );
     Ok(())
@@ -301,6 +305,16 @@ mod tests {
         )
         .await
         .unwrap();
+
+        // A freshly seeded administrator has no second factor, so this must be
+        // a completed login; anything else means seeding produced an account
+        // nobody can sign in to.
+        let authenticated = match authenticated {
+            authenc_identity::login::Outcome::Complete(authenticated) => *authenticated,
+            authenc_identity::login::Outcome::SecondFactorRequired(_) => {
+                panic!("a seeded administrator must not require a second factor")
+            }
+        };
 
         let roles = user::role_names(&db, authenticated.user.id).await.unwrap();
         assert_eq!(roles, vec![ROLE_ADMIN.to_owned()]);

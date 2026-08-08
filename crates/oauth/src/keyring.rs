@@ -15,77 +15,20 @@
 //! comes from configuration and never reaches the database. A database
 //! disclosure alone therefore does not yield a signing key.
 
-use aes_gcm::{
-    Aes256Gcm, Key, KeyInit, Nonce,
-    aead::{Aead, Payload},
-};
 use authenc_contract::{AppError, RealmId, Result};
-use authenc_identity::Db;
+use authenc_identity::{Db, sealed};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 
-/// Bytes in the key-encryption key.
-pub const MASTER_KEY_BYTES: usize = 32;
-
-/// The key-encryption key that protects stored private keys.
+/// Re-exported so callers configuring the provider need only this crate.
 ///
-/// Kept as its own type so it cannot be confused with a signing key, and so
-/// its `Debug` can be redacted.
-#[derive(Clone)]
-pub struct MasterKey([u8; MASTER_KEY_BYTES]);
-
-impl std::fmt::Debug for MasterKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("MasterKey([redacted])")
-    }
-}
-
-impl MasterKey {
-    /// Parse a base64url-encoded 32-byte key.
-    ///
-    /// # Errors
-    ///
-    /// Returns a validation error if the value is not 32 bytes once decoded.
-    /// Rejecting a short key here rather than padding it is the point: a
-    /// truncated key would silently weaken every stored private key.
-    pub fn from_base64(value: &str) -> Result<Self> {
-        let bytes = URL_SAFE_NO_PAD
-            .decode(value.trim())
-            .map_err(|_| AppError::validation("master key is not valid base64url"))?;
-
-        let bytes: [u8; MASTER_KEY_BYTES] = bytes.try_into().map_err(|_| {
-            AppError::validation(format!(
-                "master key must decode to exactly {MASTER_KEY_BYTES} bytes"
-            ))
-        })?;
-
-        Ok(Self(bytes))
-    }
-
-    /// Generate a fresh key, for `authenc generate-master-key`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an internal error if the OS entropy source fails.
-    pub fn generate() -> Result<Self> {
-        let mut bytes = [0u8; MASTER_KEY_BYTES];
-        getrandom::fill(&mut bytes)
-            .map_err(|e| AppError::internal_from("generating master key", e))?;
-        Ok(Self(bytes))
-    }
-
-    /// Render for configuration.
-    #[must_use]
-    pub fn to_base64(&self) -> String {
-        URL_SAFE_NO_PAD.encode(self.0)
-    }
-
-    fn cipher(&self) -> Aes256Gcm {
-        Aes256Gcm::new(&Key::<Aes256Gcm>::from(self.0))
-    }
-}
+/// The key itself, and the sealing it drives, live in `authenc-identity`:
+/// signing keys are not the only secret that has to be recoverable rather than
+/// hashed, and one AES-GCM implementation shared by both is better than two
+/// that can drift.
+pub use authenc_identity::sealed::{MASTER_KEY_BYTES, MasterKey};
 
 /// A key usable for signing and verification.
 pub struct ActiveKey {
@@ -351,52 +294,18 @@ pub async fn purge_retired(db: &Db) -> Result<u64> {
     Ok(result.rows_affected())
 }
 
-/// Encrypt a private key seed, returning the ciphertext and its nonce.
+/// Seal a private key seed, returning the ciphertext and its nonce.
 ///
-/// The `kid` is bound in as associated data, so a ciphertext moved onto another
-/// key's row fails to decrypt rather than silently signing as the wrong key.
+/// The `kid` is bound in as associated data, so a ciphertext moved onto
+/// another key's row fails to open rather than silently signing as the wrong
+/// key.
 fn encrypt(master: &MasterKey, kid: &str, seed: &[u8; 32]) -> Result<(Vec<u8>, [u8; 12])> {
-    let mut nonce_bytes = [0u8; 12];
-    getrandom::fill(&mut nonce_bytes)
-        .map_err(|e| AppError::internal_from("generating nonce", e))?;
-
-    let ciphertext = master
-        .cipher()
-        .encrypt(
-            &Nonce::from(nonce_bytes),
-            Payload {
-                msg: seed,
-                aad: kid.as_bytes(),
-            },
-        )
-        .map_err(|_| AppError::internal("encrypting signing key"))?;
-
-    Ok((ciphertext, nonce_bytes))
+    let sealed = sealed::seal(master, kid.as_bytes(), seed)?;
+    Ok((sealed.ciphertext, sealed.nonce))
 }
 
 fn decrypt(master: &MasterKey, kid: &str, ciphertext: &[u8], nonce: &[u8]) -> Result<SigningKey> {
-    let nonce: [u8; 12] = nonce
-        .try_into()
-        .map_err(|_| AppError::internal("stored nonce has the wrong length"))?;
-
-    let plaintext = master
-        .cipher()
-        .decrypt(
-            &Nonce::from(nonce),
-            Payload {
-                msg: ciphertext,
-                aad: kid.as_bytes(),
-            },
-        )
-        .map_err(|_| {
-            // Almost always the wrong master key. Say so, because the
-            // alternative reading — "the database is corrupt" — sends an
-            // operator down the wrong path.
-            AppError::internal(
-                "could not decrypt the signing key; \
-                 the configured master key does not match the stored key",
-            )
-        })?;
+    let plaintext = sealed::open(master, kid.as_bytes(), ciphertext, nonce, "the signing key")?;
 
     let seed: [u8; 32] = plaintext
         .as_slice()
@@ -429,28 +338,10 @@ mod tests {
         realm::create(db, "acme", "Acme").await.unwrap().id
     }
 
-    #[test]
-    fn a_master_key_round_trips_through_base64() {
-        let key = master();
-        let parsed = MasterKey::from_base64(&key.to_base64()).unwrap();
-        assert_eq!(key.0, parsed.0);
-    }
-
-    #[test]
-    fn a_short_or_malformed_master_key_is_refused() {
-        // Padding a short key rather than refusing it would silently weaken
-        // every private key it protects.
-        assert!(MasterKey::from_base64("").is_err());
-        assert!(MasterKey::from_base64("too-short").is_err());
-        assert!(MasterKey::from_base64("!!! not base64 !!!").is_err());
-    }
-
-    #[test]
-    fn the_master_key_is_redacted_in_debug_output() {
-        let key = master();
-        let rendered = format!("{key:?}");
-        assert!(!rendered.contains(&key.to_base64()), "leaked: {rendered}");
-    }
+    // The master key's own behaviour — base64 round-tripping, refusing a
+    // short key, redacting its Debug — is tested where it lives, in
+    // `authenc_identity::sealed`. What is tested here is what this module adds
+    // on top: that the right key is used, for the right row, at the right time.
 
     #[sqlx::test(migrations = "../../migrations")]
     async fn the_same_key_comes_back_across_calls(db: Db) {

@@ -396,8 +396,28 @@ impl Config {
     /// base64url-encoded 32-byte key.
     ///
     /// [`AppError::Validation`]: authenc_contract::AppError::Validation
-    pub fn master_key(&self) -> authenc_contract::Result<authenc_oauth::MasterKey> {
-        authenc_oauth::MasterKey::from_base64(self.oauth.master_key.expose())
+    pub fn master_key(&self) -> authenc_contract::Result<authenc_identity::MasterKey> {
+        authenc_identity::MasterKey::from_base64(self.oauth.master_key.expose())
+    }
+
+    /// The WebAuthn relying party this server presents itself as.
+    ///
+    /// Derived from `server.public_url` and nothing else. A relying-party id
+    /// taken from a request header is one an attacker can choose, and a
+    /// ceremony run against an origin they control is a ceremony they can
+    /// replay against this one.
+    ///
+    /// # Errors
+    ///
+    /// Returns a validation error if the configured public URL has no host.
+    pub fn relying_party(
+        &self,
+    ) -> authenc_contract::Result<authenc_identity::mfa::passkey::RelyingParty> {
+        // The name an authenticator shows when it asks the user to confirm.
+        // Not per realm: a `Webauthn` is built once at startup, and a name that
+        // changed per request would show the user a different party than the
+        // one their credential is scoped to.
+        authenc_identity::mfa::passkey::RelyingParty::new(self.origin(), "Authenc")
     }
 
     /// The public origin, without a trailing slash.
