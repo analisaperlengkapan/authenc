@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO signing_keys\n            (realm_id, kid, public_key, private_key, private_nonce, status)\n        VALUES ($1, $2, $3, $4, $5, 'active')\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "277ea99418352e534cc309d0c3389f52d32393904975a5bd0b7ec403a488c219"
+}

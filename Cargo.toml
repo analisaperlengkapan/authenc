@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/contract", "crates/identity", "crates/web", "crates/server"]
+members = [
+  "crates/contract",
+  "crates/identity",
+  "crates/oauth",
+  "crates/web",
+  "crates/server",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -34,6 +40,7 @@ print_stderr = "warn"
 # Internal
 authenc-contract = { path = "crates/contract" }
 authenc-identity = { path = "crates/identity" }
+authenc-oauth = { path = "crates/oauth" }
 authenc-web = { path = "crates/web" }
 
 # Leptos

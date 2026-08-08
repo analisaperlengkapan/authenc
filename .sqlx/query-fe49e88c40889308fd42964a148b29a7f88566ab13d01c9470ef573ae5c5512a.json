@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE signing_keys\n        SET status = 'retired', not_after = now() + make_interval(secs => $2)\n        WHERE realm_id = $1 AND status = 'active'\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fe49e88c40889308fd42964a148b29a7f88566ab13d01c9470ef573ae5c5512a"
+}

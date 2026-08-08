@@ -5,6 +5,22 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — OAuth signing keys and tokens
+
+- `crates/oauth` with `keyring` and `token`.
+- Persistent, rotatable Ed25519 signing keys, AES-GCM-encrypted at rest under a
+  key-encryption key held in configuration. The `kid` is bound in as associated
+  data, so a ciphertext moved onto another key's row fails to decrypt rather
+  than signing as the wrong key. One active key per realm, enforced by a
+  partial unique index; retired keys keep verifying until their deadline.
+- Ed25519 JWTs whose verification checks issuer, audience, expiry, not-before,
+  and key id — each of which the previous verifier omitted. The algorithm is
+  fixed and never read from the token header.
+- `migrations/0003_oauth.sql`: signing keys, clients (with Argon2-hashed
+  secrets and an exact-match redirect-URI allow-list), single-use authorization
+  codes with PKCE, refresh tokens with family ids for reuse detection, and
+  recorded consent.
+
 ### Added — admin console
 
 - Server-rendered `/admin` pages for the overview, users, and roles, backed by

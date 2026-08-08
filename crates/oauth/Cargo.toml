@@ -1,0 +1,39 @@
+[package]
+name = "authenc-oauth"
+description = "OAuth 2.0 and OpenID Connect provider"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+authenc-contract = { workspace = true }
+authenc-identity = { workspace = true }
+
+sqlx = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+tracing = { workspace = true }
+
+# Signing and JOSE
+ed25519-dalek = { version = "2.2", features = ["pkcs8", "rand_core"] }
+jsonwebtoken = { version = "10.0", default-features = false, features = ["aws_lc_rs"] }
+aes-gcm = "0.11"
+sha2 = "0.11"
+base64 = "0.23"
+getrandom = "0.4.3"
+argon2 = { version = "0.5.3", features = ["std"] }
+subtle = "2.6.1"
+
+# NOTE: never add `axum` or `leptos` here. The protocol logic must be testable
+# without an HTTP stack; the endpoints live in `authenc-server`.
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

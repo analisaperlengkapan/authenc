@@ -71,13 +71,29 @@ A `DataTable` primitive replaces the table chrome the previous console
 copy-pasted across eight pages, using keyed `<For>` so a refetch touches only
 the rows that changed rather than rebuilding the whole `<tbody>`.
 
-### Stage 4 — OAuth 2.0 and OpenID Connect
+### Stage 4a — Signing keys and tokens *(delivered)*
 
-Persistent, rotatable Ed25519 signing keys. Discovery at
-`/.well-known/openid-configuration`. Authorization code with PKCE, refresh
-token rotation with reuse detection, token introspection and revocation under
-client authentication, UserInfo, JWKS, a consent screen, and dynamic client
-registration (RFC 7591). Lands as `crates/oauth`.
+`crates/oauth` with two pieces in place and tested:
+
+**Signing keys** are persistent, rotatable, and encrypted at rest with a
+key-encryption key that never reaches the database. A realm has exactly one
+active key that signs, plus retired keys that keep verifying — and keep
+appearing in JWKS — until their deadline, so rotation does not invalidate
+tokens still in flight. The previous build generated its keypair with
+`Lazy::new(|| SigningKey::generate(&mut OsRng))`.
+
+**Tokens** are Ed25519 JWTs whose verification checks issuer, audience, expiry,
+not-before, and key id. The algorithm is fixed and never read from the header,
+so `alg: none` confusion cannot apply. The previous verifier checked the
+signature and `exp` and nothing else.
+
+### Stage 4b — The protocol endpoints
+
+Discovery at `/.well-known/openid-configuration`, JWKS, authorization code with
+PKCE S256, refresh token rotation with reuse detection, token introspection and
+revocation under client authentication, UserInfo, a consent screen, and dynamic
+client registration (RFC 7591). The schema for all of it is in
+`migrations/0003_oauth.sql`; the endpoints are not written yet.
 
 ### Stage 5 — Multi-factor authentication
 
