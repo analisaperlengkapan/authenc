@@ -14,7 +14,7 @@ use crate::{
 /// A page reads this rather than fetching for itself, so the whole console
 /// makes one identity call per navigation instead of one per component.
 #[derive(Clone, Copy)]
-struct Session(Resource<Result<Option<LoginResponse>, ServerFnError>>);
+pub(super) struct Session(pub(super) Resource<Result<Option<LoginResponse>, ServerFnError>>);
 
 /// Console shell: navigation, the signed-in user, and the sign-out control.
 ///
@@ -90,6 +90,7 @@ fn ShellFrame(
                     <NavLink href="/admin" label="Overview" />
                     <NavLink href="/admin/users" label="Users" />
                     <NavLink href="/admin/roles" label="Roles" />
+                    <NavLink href="/admin/clients" label="Clients" />
                 </nav>
                 <div class="ml-auto flex items-center gap-3 text-sm">
                     <span class="text-ink-600 dark:text-ink-400">{display_name}</span>

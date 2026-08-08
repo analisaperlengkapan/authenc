@@ -74,6 +74,92 @@ pub struct SetEnabled {
     pub enabled: bool,
 }
 
+/// Body for registering an OAuth client.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RegisterClient {
+    /// The `client_id` the client will present.
+    pub client_id: String,
+    /// Display name, shown on the consent screen.
+    pub name: String,
+    /// Whether it is a public client: no secret, PKCE required.
+    #[serde(default)]
+    pub public: bool,
+    /// Exact redirect URIs. At least one is required; prefixes do not match.
+    pub redirect_uris: Vec<String>,
+    /// Scopes it may request. Defaults to `openid profile email` when empty.
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    /// Whether the user is asked before the first issuance.
+    #[serde(default = "yes")]
+    pub require_consent: bool,
+}
+
+const fn yes() -> bool {
+    true
+}
+
+/// Body for changing a registered client.
+///
+/// An omitted field is left alone. A present one **replaces** — withdrawing a
+/// redirect URI is the operation an incident needs, and a merge could not do it.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateClient {
+    /// New exact redirect URIs.
+    pub redirect_uris: Option<Vec<String>>,
+    /// New scope allow-list.
+    pub scopes: Option<Vec<String>>,
+    /// Whether to ask the user before issuing.
+    pub require_consent: Option<bool>,
+}
+
+/// A registered client, as this API reports it.
+///
+/// Deliberately not `authenc_oauth::Client`: that type carries the row's
+/// database id and its realm id, and neither is anything a caller needs. An
+/// internal identifier in a public response is a detail that becomes a
+/// compatibility obligation the moment someone stores it.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ClientView {
+    /// The `client_id` the client presents.
+    pub client_id: String,
+    /// Display name, shown on the consent screen.
+    pub name: String,
+    /// Whether it is a public client: no secret, PKCE required.
+    pub is_public: bool,
+    /// Exact redirect URIs. Prefixes do not match.
+    pub redirect_uris: Vec<String>,
+    /// Grant types it may use.
+    pub grant_types: Vec<String>,
+    /// Scopes it may request.
+    pub scopes: Vec<String>,
+    /// Whether the user is asked before issuance.
+    pub require_consent: bool,
+}
+
+impl From<authenc_oauth::Client> for ClientView {
+    fn from(client: authenc_oauth::Client) -> Self {
+        Self {
+            client_id: client.client_id,
+            name: client.name,
+            is_public: client.is_public,
+            redirect_uris: client.redirect_uris,
+            grant_types: client.grant_types,
+            scopes: client.scopes,
+            require_consent: client.require_consent,
+        }
+    }
+}
+
+/// A registered client plus the one sight of its secret.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ClientCredentials {
+    /// The stored record.
+    pub client: ClientView,
+    /// The generated secret, absent for a public client. Returned **once**;
+    /// only its Argon2 hash is stored, so it cannot be read again.
+    pub client_secret: Option<String>,
+}
+
 /// Body for creating a role.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateRole {
@@ -124,10 +210,27 @@ pub struct Whoami {
         create_role,
         grant_role,
         revoke_role,
+        list_clients,
+        register_client,
+        get_client,
+        update_client,
+        delete_client,
+        rotate_client_secret,
     ),
-    components(schemas(CreateUser, SetEnabled, CreateRole, Whoami, Csrf)),
+    components(schemas(
+        CreateUser,
+        SetEnabled,
+        CreateRole,
+        Whoami,
+        Csrf,
+        RegisterClient,
+        UpdateClient,
+        ClientView,
+        ClientCredentials,
+    )),
     tags(
         (name = "identity", description = "Realms, users, and roles"),
+        (name = "oauth", description = "Registered OAuth 2.0 clients"),
         (name = "meta", description = "Information about the caller and the server"),
     ),
 )]
@@ -146,6 +249,12 @@ pub fn router() -> Router<AppState> {
         .route("/roles", get(list_roles).post(create_role))
         .route("/roles/{role_id}/users/{user_id}", post(grant_role))
         .route("/roles/{role_id}/users/{user_id}", delete(revoke_role))
+        .route("/clients", get(list_clients).post(register_client))
+        .route(
+            "/clients/{client_id}",
+            get(get_client).patch(update_client).delete(delete_client),
+        )
+        .route("/clients/{client_id}/secret", post(rotate_client_secret))
         .route("/openapi.json", get(openapi))
 }
 
@@ -378,4 +487,155 @@ async fn revoke_role(
     authenc_identity::admin::revoke_role(&state.db, &actor, UserId(user_id), RoleId(role_id))
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// OAuth clients
+// ---------------------------------------------------------------------------
+
+/// List the OAuth clients registered in the caller's realm.
+#[utoipa::path(
+    get, path = "/api/v1/clients", tag = "oauth",
+    responses((status = 200), (status = 403, description = "Missing client:read")),
+)]
+async fn list_clients(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+) -> Result<Json<Vec<ClientView>>, ApiError> {
+    let clients = authenc_oauth::admin::list(&state.db, &actor, actor.realm_id).await?;
+    Ok(Json(clients.into_iter().map(ClientView::from).collect()))
+}
+
+/// Fetch one client.
+#[utoipa::path(
+    get, path = "/api/v1/clients/{client_id}", tag = "oauth",
+    responses((status = 200), (status = 403, description = "Missing client:read"), (status = 404)),
+)]
+async fn get_client(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(client_id): Path<String>,
+) -> Result<Json<ClientView>, ApiError> {
+    Ok(Json(
+        authenc_oauth::admin::get(&state.db, &actor, &client_id)
+            .await?
+            .into(),
+    ))
+}
+
+/// Register a client.
+///
+/// The response carries the generated secret, and is the only time it exists
+/// outside the caller: the database holds its Argon2 hash and nothing else.
+#[utoipa::path(
+    post, path = "/api/v1/clients", tag = "oauth",
+    request_body = RegisterClient,
+    responses(
+        (status = 201, body = ClientCredentials),
+        (status = 400, description = "Metadata the server will not accept"),
+        (status = 403, description = "Missing client:write"),
+    ),
+)]
+async fn register_client(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Json(body): Json<RegisterClient>,
+) -> Result<(StatusCode, Json<ClientCredentials>), ApiError> {
+    let registered = authenc_oauth::admin::register(
+        &state.db,
+        &actor,
+        &state.hasher,
+        authenc_oauth::admin::Registration {
+            client_id: &body.client_id,
+            name: &body.name,
+            is_public: body.public,
+            redirect_uris: &body.redirect_uris,
+            scopes: &body.scopes,
+            require_consent: body.require_consent,
+        },
+    )
+    .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ClientCredentials {
+            client: registered.client.into(),
+            client_secret: registered
+                .client_secret
+                .map(|secret| secret.expose().to_owned()),
+        }),
+    ))
+}
+
+/// Change a client's redirect URIs, scopes, or consent requirement.
+#[utoipa::path(
+    patch, path = "/api/v1/clients/{client_id}", tag = "oauth",
+    request_body = UpdateClient,
+    responses(
+        (status = 200), (status = 400, description = "A redirect URI that cannot be matched"),
+        (status = 403, description = "Missing client:write"), (status = 404),
+    ),
+)]
+async fn update_client(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(client_id): Path<String>,
+    Json(body): Json<UpdateClient>,
+) -> Result<Json<ClientView>, ApiError> {
+    Ok(Json(
+        authenc_oauth::admin::update(
+            &state.db,
+            &actor,
+            &client_id,
+            authenc_oauth::client::Changes {
+                redirect_uris: body.redirect_uris.as_deref(),
+                scopes: body.scopes.as_deref(),
+                require_consent: body.require_consent,
+            },
+        )
+        .await?
+        .into(),
+    ))
+}
+
+/// Delete a client, and with it every code, token, and consent it holds.
+#[utoipa::path(
+    delete, path = "/api/v1/clients/{client_id}", tag = "oauth",
+    responses((status = 204), (status = 403, description = "Missing client:write"), (status = 404)),
+)]
+async fn delete_client(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(client_id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    authenc_oauth::admin::delete(&state.db, &actor, &client_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Replace a client's secret and return the new one.
+///
+/// Tokens the client already holds keep working; what stops working is the old
+/// secret at the token endpoint. That is what makes this usable during an
+/// incident rather than only at setup.
+#[utoipa::path(
+    post, path = "/api/v1/clients/{client_id}/secret", tag = "oauth",
+    responses(
+        (status = 200, body = ClientCredentials),
+        (status = 400, description = "A public client holds no secret"),
+        (status = 403, description = "Missing client:write"), (status = 404),
+    ),
+)]
+async fn rotate_client_secret(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(client_id): Path<String>,
+) -> Result<Json<ClientCredentials>, ApiError> {
+    let secret =
+        authenc_oauth::admin::rotate_secret(&state.db, &actor, &state.hasher, &client_id).await?;
+    let client = authenc_oauth::admin::get(&state.db, &actor, &client_id).await?;
+
+    Ok(Json(ClientCredentials {
+        client: client.into(),
+        client_secret: Some(secret.expose().to_owned()),
+    }))
 }

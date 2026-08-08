@@ -310,6 +310,118 @@ pub async fn list(db: &Db, realm_id: RealmId) -> Result<Vec<Client>> {
         .collect())
 }
 
+/// What may be changed about a registered client.
+///
+/// `None` leaves a field alone; `Some` **replaces** it. Replacing rather than
+/// merging is deliberate for `redirect_uris`: withdrawing one is the operation
+/// an incident actually needs, and a merge would make it impossible here.
+#[derive(Debug, Clone, Default)]
+pub struct Changes<'a> {
+    /// New exact redirect URIs.
+    pub redirect_uris: Option<&'a [String]>,
+    /// New scope allow-list.
+    pub scopes: Option<&'a [String]>,
+    /// Whether to ask the user before issuing.
+    pub require_consent: Option<bool>,
+}
+
+/// Apply changes to a registered client.
+///
+/// # Errors
+///
+/// Returns `invalid_redirect_uri` for a URI this server will not register, or
+/// `server_error` if the write fails.
+pub async fn update(
+    db: &Db,
+    client: &Client,
+    changes: Changes<'_>,
+) -> std::result::Result<Client, OAuthError> {
+    if let Some(uris) = changes.redirect_uris {
+        if uris.is_empty() {
+            return Err(OAuthError::invalid_client_metadata(
+                "at least one redirect_uri is required",
+            ));
+        }
+        for uri in uris {
+            validate_redirect_uri(uri)?;
+        }
+    }
+
+    let row = sqlx::query!(
+        r#"
+        UPDATE oauth_clients
+        SET redirect_uris   = COALESCE($2, redirect_uris),
+            scopes          = COALESCE($3, scopes),
+            require_consent = COALESCE($4, require_consent)
+        WHERE id = $1
+        RETURNING client_id, name, is_public, redirect_uris,
+                  grant_types, scopes, require_consent
+        "#,
+        client.key.0,
+        changes.redirect_uris,
+        changes.scopes,
+        changes.require_consent,
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|e| AppError::internal_from("updating client", e))?
+    .ok_or(AppError::NotFound("client"))?;
+
+    Ok(Client {
+        key: client.key,
+        realm_id: client.realm_id,
+        client_id: row.client_id,
+        name: row.name,
+        is_public: row.is_public,
+        redirect_uris: row.redirect_uris,
+        grant_types: row.grant_types,
+        scopes: row.scopes,
+        require_consent: row.require_consent,
+    })
+}
+
+/// Replace a confidential client's secret, returning the new one.
+///
+/// Tokens the client already holds keep working; what stops working is
+/// authenticating at the token endpoint with the old secret. That is the point:
+/// a leaked secret is replaced without cutting off live sessions.
+///
+/// # Errors
+///
+/// Returns [`AppError::Validation`] for a public client, which has no secret to
+/// rotate, and [`AppError::NotFound`] if the row has since been deleted.
+pub async fn rotate_secret(
+    db: &Db,
+    hasher: &PasswordHasher,
+    client: &Client,
+) -> Result<SecretToken> {
+    if client.is_public {
+        return Err(AppError::validation(
+            "a public client holds no secret; it authenticates with PKCE",
+        ));
+    }
+
+    let secret = SecretToken::generate()
+        .map_err(|e| AppError::internal_from("generating client secret", e))?;
+    let phc = hasher.hash(secret.expose())?;
+
+    let affected = sqlx::query!(
+        "UPDATE oauth_clients SET client_secret_phc = $2 WHERE id = $1 AND NOT is_public",
+        client.key.0,
+        phc,
+    )
+    .execute(db)
+    .await
+    .map_err(|e| AppError::internal_from("rotating client secret", e))?
+    .rows_affected();
+
+    if affected == 0 {
+        return Err(AppError::NotFound("client"));
+    }
+
+    Ok(secret)
+}
+
 /// Delete a client, and with it every code, token, and consent it holds.
 ///
 /// # Errors

@@ -40,6 +40,10 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             <head>
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
+                // Served from `crates/web/public`, not a CDN. The previous
+                // console loaded Font Awesome from a third-party origin, with
+                // no integrity hash, into an admin console.
+                <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
                 <AutoReload options=options.clone() />
                 <HydrationScripts options=options.clone() />
                 <HashedStylesheet options id="leptos" />
@@ -71,6 +75,7 @@ pub fn App() -> impl IntoView {
                     <Route path=StaticSegment("") view=pages::Overview />
                     <Route path=StaticSegment("users") view=pages::Users />
                     <Route path=StaticSegment("roles") view=pages::Roles />
+                    <Route path=StaticSegment("clients") view=pages::Clients />
                 </ParentRoute>
             </Routes>
         </Router>

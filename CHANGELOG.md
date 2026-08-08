@@ -55,6 +55,40 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/oauth2/consent/test`, `/api/v1/auth/test-login`, and `/oidc/token` do not
   exist.
 
+### Added — OAuth client administration
+
+- `client:read` and `client:write` permissions, and `authenc_oauth::admin`,
+  which checks them per call from an `Actor` — the same shape as
+  `authenc_identity::admin`, including reporting a client in another realm as
+  404 rather than 403.
+- `/api/v1/clients` with `GET`, `POST`, `PATCH`, `DELETE`, and
+  `POST …/{client_id}/secret`, documented in the OpenAPI document. Responses
+  carry a `ClientView` rather than the internal type, so the row's database id
+  and realm id are not published; an internal identifier in a public response
+  becomes a compatibility obligation as soon as someone stores it.
+- `/admin/clients` console page: register, list, rotate a secret, delete. The
+  controls are hidden without `client:write` and the server refuses regardless,
+  with a test asserting the refusal rather than the hiding.
+- Secret rotation, which is what this is for: replacing a leaked client secret
+  previously needed shell access to the server. The new secret is shown once —
+  the only moment it exists outside the caller — and tokens the client already
+  holds keep working, so it is usable during an incident and not only at setup.
+- `client::update`, replacing rather than merging `redirect_uris`, because
+  withdrawing one is the operation an incident needs and a merge could not do it.
+
+### Fixed
+
+- `crates/web/public` — the `assets-dir` cargo-leptos is configured with — was
+  empty, and git does not track empty directories. Every local build passed and
+  a fresh checkout had no such path, so CI failed on it. It now holds a
+  self-hosted `favicon.svg` (the previous console pulled Font Awesome from a CDN
+  into an admin console, with no integrity hash) and a `robots.txt` that keeps
+  sign-in and consent URLs, with the client ids and redirect URIs in their query
+  strings, out of search indexes. CI asserts the directory is tracked.
+- `dependency review`'s `continue-on-error` moved from the job to the step. On
+  the job the check still reported red, and a check that is permanently red is
+  one people learn to ignore.
+
 ### Fixed — the first CI run against this branch
 
 CI had never executed here: the workflows trigger on `main` and on pull

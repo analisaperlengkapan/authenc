@@ -50,14 +50,17 @@ jobs:
     name: dependency review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    # Needs Dependency graph plus GitHub Advanced Security, which are repository
-    # settings rather than anything this branch can turn on. Advisory until they
-    # are enabled, at which point it starts reporting without a workflow change.
-    # `cargo-deny` and `cargo-audit` above cover the same ground for Rust
-    # dependencies and do block the build.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
+      # Needs Dependency graph plus GitHub Advanced Security, which are
+      # repository settings rather than anything a branch can turn on; without
+      # them the action errors out. `continue-on-error` sits on the **step**,
+      # not the job: on the job the check still reports red, and a check that
+      # is permanently red is one people learn to ignore. It starts reporting
+      # for real the moment those settings are enabled, with no workflow
+      # change. `cargo-deny` and `cargo-audit` above cover the same ground for
+      # Rust dependencies and do block the build.
       - uses: actions/dependency-review-action@v4
+        continue-on-error: true
         with:
           fail-on-severity: high

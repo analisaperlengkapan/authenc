@@ -12,6 +12,7 @@
 //!
 //! # Layout
 //!
+//! * [`admin`] — actor-checked administration of clients
 //! * [`keyring`] — persistent, rotatable Ed25519 keys, encrypted at rest
 //! * [`token`] — signing and verifying JWTs
 //! * [`client`] — registration, redirect-URI allow-list, client authentication
@@ -25,6 +26,7 @@
 //!
 //! [`AppError`]: authenc_contract::AppError
 
+pub mod admin;
 pub mod client;
 pub mod code;
 pub mod consent;

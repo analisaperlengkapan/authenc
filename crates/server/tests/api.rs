@@ -105,6 +105,7 @@ async fn the_api_is_closed_to_anonymous_callers(db: PgPool) {
         "/api/v1/users",
         "/api/v1/roles",
         "/api/v1/realm",
+        "/api/v1/clients",
     ] {
         server
             .get(path)
@@ -131,6 +132,9 @@ async fn the_openapi_document_is_public_and_describes_every_route(db: PgPool) {
         "/api/v1/users/{user_id}",
         "/api/v1/roles",
         "/api/v1/realm",
+        "/api/v1/clients",
+        "/api/v1/clients/{client_id}",
+        "/api/v1/clients/{client_id}/secret",
     ] {
         assert!(
             paths.contains_key(expected),
@@ -450,4 +454,216 @@ async fn a_user_with_no_permissions_sees_the_console_but_no_data(db: PgPool) {
         "{}",
         overview.text()
     );
+}
+
+// ---------------------------------------------------------------------------
+// OAuth clients
+// ---------------------------------------------------------------------------
+
+/// Register a client through the API and return the response body.
+async fn register(server: &TestServer, body: serde_json::Value) -> serde_json::Value {
+    let response = server.post("/api/v1/clients").json(&body).await;
+    response.assert_status(StatusCode::CREATED);
+    response.json()
+}
+
+fn a_confidential_client() -> serde_json::Value {
+    json!({
+        "client_id": "console",
+        "name": "Console",
+        "redirect_uris": ["https://app.example.com/callback"],
+        "scopes": ["openid", "profile"],
+    })
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn registering_a_client_returns_its_secret_exactly_once(db: PgPool) {
+    seed_with(&db, "admin", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "admin").await;
+
+    let created = register(&server, a_confidential_client()).await;
+    let secret = created["client_secret"]
+        .as_str()
+        .expect("a confidential client is issued a secret")
+        .to_owned();
+    assert!(!secret.is_empty());
+    assert_eq!(created["client"]["client_id"], "console");
+
+    // Every later read of the same client is secret-free: only the hash is
+    // stored, so there is nowhere to read it back from.
+    let fetched: serde_json::Value = server.get("/api/v1/clients/console").await.json();
+    assert!(fetched.get("client_secret").is_none(), "{fetched}");
+    assert!(
+        !serde_json::to_string(&fetched).unwrap().contains(&secret),
+        "the secret must not reappear in any later response",
+    );
+
+    let listed: serde_json::Value = server.get("/api/v1/clients").await.json();
+    assert!(!serde_json::to_string(&listed).unwrap().contains(&secret));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_api_never_exposes_the_internal_row_id(db: PgPool) {
+    // The database key and the realm id are ours; publishing either turns an
+    // implementation detail into a compatibility obligation.
+    seed_with(&db, "admin", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "admin").await;
+    register(&server, a_confidential_client()).await;
+
+    let fetched: serde_json::Value = server.get("/api/v1/clients/console").await.json();
+    assert!(fetched.get("key").is_none(), "{fetched}");
+    assert!(fetched.get("realm_id").is_none(), "{fetched}");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_public_client_is_issued_no_secret(db: PgPool) {
+    seed_with(&db, "admin", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "admin").await;
+
+    let created = register(
+        &server,
+        json!({
+            "client_id": "spa",
+            "name": "SPA",
+            "public": true,
+            "redirect_uris": ["https://app.example.com/callback"],
+        }),
+    )
+    .await;
+
+    assert!(created["client_secret"].is_null(), "{created}");
+    assert_eq!(created["client"]["is_public"], true);
+
+    // And there is nothing to rotate.
+    server
+        .post("/api/v1/clients/spa/secret")
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn rotating_a_secret_returns_a_different_one(db: PgPool) {
+    seed_with(&db, "admin", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "admin").await;
+
+    let first = register(&server, a_confidential_client()).await["client_secret"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let response = server.post("/api/v1/clients/console/secret").await;
+    response.assert_status_ok();
+    let second = response.json::<serde_json::Value>()["client_secret"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    assert_ne!(first, second);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_redirect_uri_that_cannot_be_matched_is_refused(db: PgPool) {
+    seed_with(&db, "admin", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "admin").await;
+
+    for bad in [
+        "https://app.example.com/*",
+        "/callback",
+        "javascript:alert(1)",
+    ] {
+        server
+            .post("/api/v1/clients")
+            .json(&json!({
+                "client_id": "bad",
+                "name": "Bad",
+                "redirect_uris": [bad],
+            }))
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+    }
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn updating_replaces_the_redirect_uris(db: PgPool) {
+    seed_with(&db, "admin", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "admin").await;
+    register(&server, a_confidential_client()).await;
+
+    let response = server
+        .patch("/api/v1/clients/console")
+        .json(&json!({ "redirect_uris": ["https://new.example.com/callback"] }))
+        .await;
+    response.assert_status_ok();
+
+    let updated: serde_json::Value = response.json();
+    assert_eq!(
+        updated["redirect_uris"],
+        json!(["https://new.example.com/callback"]),
+    );
+    // Scopes were not named, so they are left alone.
+    assert_eq!(updated["scopes"], json!(["openid", "profile"]));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn managing_clients_requires_the_client_permissions(db: PgPool) {
+    // The console hides these controls without the permission; this asserts
+    // that hiding them is only a hint, and the server refuses regardless.
+    seed_with(&db, "admin", Permission::ALL).await;
+    seed_with(&db, "reader", &[Permission::ClientRead]).await;
+    seed_with(&db, "nobody", &[]).await;
+
+    let mut owner = server(db.clone());
+    sign_in(&mut owner, "admin").await;
+    register(&owner, a_confidential_client()).await;
+
+    let mut reader = server(db.clone());
+    sign_in(&mut reader, "reader").await;
+    reader.get("/api/v1/clients").await.assert_status_ok();
+    reader
+        .post("/api/v1/clients")
+        .json(&a_confidential_client())
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+    reader
+        .post("/api/v1/clients/console/secret")
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+    reader
+        .delete("/api/v1/clients/console")
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+
+    let mut nobody = server(db);
+    sign_in(&mut nobody, "nobody").await;
+    nobody
+        .get("/api/v1/clients")
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn deleting_a_client_removes_it(db: PgPool) {
+    seed_with(&db, "admin", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "admin").await;
+    register(&server, a_confidential_client()).await;
+
+    server
+        .delete("/api/v1/clients/console")
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    server
+        .get("/api/v1/clients/console")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .delete("/api/v1/clients/console")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }

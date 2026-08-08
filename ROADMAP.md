@@ -111,16 +111,29 @@ Deliberate limits, stated rather than implied:
   set**, because open registration lets anyone create a client whose redirect
   URI they control — a phishing page wearing the operator's domain.
 
+### Stage 4c — Client administration
+
+Two typed permissions — `client:read` and `client:write` — and
+`authenc_oauth::admin`, which checks them the same way
+`authenc_identity::admin` does: an `Actor` per call, and a client in another
+realm reported as 404 rather than 403.
+
+Both surfaces sit on it. `/api/v1/clients` for automation, with `GET`, `POST`,
+`PATCH`, `DELETE`, and `POST …/secret`; a `/admin/clients` console page for
+people. The REST surface returns a `ClientView` rather than the internal type,
+so the row's database id and realm id stay ours — an internal identifier in a
+public response becomes a compatibility obligation the moment someone stores it.
+
+Secret rotation is the operation this stage exists for. Before it, replacing a
+leaked client secret meant shell access to the server. A rotated secret is shown
+**once**, because that is the only moment it exists outside the caller: the
+database holds an Argon2 hash and nothing else. Tokens the client already holds
+keep working — what stops is authenticating with the old secret — which is what
+makes it usable during an incident rather than only at setup.
+
 ## Planned
 
 Each stage leaves the repository compiling, linted, and tested.
-
-### Stage 4c — Client administration
-
-Registering a client is a CLI command (`authenc register-client`) and an RFC
-7591 endpoint. There is no console page for listing, editing, or rotating a
-client's secret yet, and no `/api/v1/clients`. `authenc_oauth::client` already
-has `list` and `delete`; what is missing is the two thin surfaces over them.
 
 ### Stage 5 — Multi-factor authentication
 

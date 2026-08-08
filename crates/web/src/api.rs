@@ -481,3 +481,158 @@ pub async fn consent_prompt(
         csrf_token: session.csrf_token(),
     })
 }
+
+// ---------------------------------------------------------------------------
+// OAuth clients
+// ---------------------------------------------------------------------------
+
+/// A registered client, as the console lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClientSummary {
+    /// The `client_id` the client presents.
+    pub client_id: String,
+    /// Display name, shown on the consent screen.
+    pub name: String,
+    /// Whether it is a public client: no secret, PKCE required.
+    pub is_public: bool,
+    /// Exact redirect URIs it may be sent to.
+    pub redirect_uris: Vec<String>,
+    /// Scopes it may request.
+    pub scopes: Vec<String>,
+    /// Whether the user is asked before issuance.
+    pub require_consent: bool,
+}
+
+#[cfg(feature = "ssr")]
+impl From<authenc_oauth::Client> for ClientSummary {
+    fn from(client: authenc_oauth::Client) -> Self {
+        Self {
+            client_id: client.client_id,
+            name: client.name,
+            is_public: client.is_public,
+            redirect_uris: client.redirect_uris,
+            scopes: client.scopes,
+            require_consent: client.require_consent,
+        }
+    }
+}
+
+/// List the OAuth clients in the caller's realm.
+#[server(name = ListClients, prefix = "/api/sfn", endpoint = "clients")]
+pub async fn list_clients() -> Result<Vec<ClientSummary>, ServerFnError> {
+    use authenc_identity::Db;
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let clients = authenc_oauth::admin::list(&db, &actor, actor.realm_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(clients.into_iter().map(ClientSummary::from).collect())
+}
+
+/// Register a client, returning its secret once.
+///
+/// The secret is shown to the administrator and never stored in a form the
+/// server can read back — only its Argon2 hash reaches the database. If the
+/// page is closed before it is copied, the remedy is to rotate it, not to
+/// look it up.
+///
+/// The arguments are the client id, display name, whether it is public, its
+/// redirect URIs, and its scopes.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = RegisterClient, prefix = "/api/sfn", endpoint = "clients/register", input = Json)]
+pub async fn register_client(
+    client_id: String,
+    name: String,
+    is_public: bool,
+    redirect_uris: Vec<String>,
+    scopes: Vec<String>,
+) -> Result<Option<String>, ServerFnError> {
+    use authenc_identity::{Db, PasswordHasher};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let hasher = expect_context::<PasswordHasher>();
+    let actor = server_ctx::require_actor(&db)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let registered = authenc_oauth::admin::register(
+        &db,
+        &actor,
+        &hasher,
+        authenc_oauth::admin::Registration {
+            client_id: &client_id,
+            name: &name,
+            is_public,
+            redirect_uris: &redirect_uris,
+            scopes: &scopes,
+            require_consent: true,
+        },
+    )
+    .await
+    .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(registered
+        .client_secret
+        .map(|secret| secret.expose().to_owned()))
+}
+
+/// Replace a client's secret and return the new one.
+///
+/// The argument is the client id.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = RotateClientSecret, prefix = "/api/sfn", endpoint = "clients/secret")]
+pub async fn rotate_client_secret(client_id: String) -> Result<String, ServerFnError> {
+    use authenc_identity::{Db, PasswordHasher};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let hasher = expect_context::<PasswordHasher>();
+    let actor = server_ctx::require_actor(&db)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let secret = authenc_oauth::admin::rotate_secret(&db, &actor, &hasher, &client_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(secret.expose().to_owned())
+}
+
+/// Delete a client, and with it every code, token, and consent it holds.
+///
+/// The argument is the client id.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = DeleteClient, prefix = "/api/sfn", endpoint = "clients/delete")]
+pub async fn delete_client(client_id: String) -> Result<(), ServerFnError> {
+    use authenc_identity::Db;
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    authenc_oauth::admin::delete(&db, &actor, &client_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)
+}

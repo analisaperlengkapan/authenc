@@ -32,6 +32,10 @@ pub enum Permission {
     RoleRead,
     /// Create and delete roles, and grant or revoke them.
     RoleWrite,
+    /// View registered OAuth clients.
+    ClientRead,
+    /// Register, change, and delete OAuth clients, and rotate their secrets.
+    ClientWrite,
 }
 
 impl Permission {
@@ -43,6 +47,8 @@ impl Permission {
         Self::UserWrite,
         Self::RoleRead,
         Self::RoleWrite,
+        Self::ClientRead,
+        Self::ClientWrite,
     ];
 
     /// The stable name stored in the database and shown in the console.
@@ -55,6 +61,8 @@ impl Permission {
             Self::UserWrite => "user:write",
             Self::RoleRead => "role:read",
             Self::RoleWrite => "role:write",
+            Self::ClientRead => "client:read",
+            Self::ClientWrite => "client:write",
         }
     }
 
@@ -68,6 +76,8 @@ impl Permission {
             Self::UserWrite => "Create, change, and delete users",
             Self::RoleRead => "View roles and their grants",
             Self::RoleWrite => "Create and delete roles, and grant or revoke them",
+            Self::ClientRead => "View registered OAuth clients",
+            Self::ClientWrite => "Register and delete OAuth clients, and rotate their secrets",
         }
     }
 
@@ -82,6 +92,7 @@ impl Permission {
             Self::RealmWrite => Some(Self::RealmRead),
             Self::UserWrite => Some(Self::UserRead),
             Self::RoleWrite => Some(Self::RoleRead),
+            Self::ClientWrite => Some(Self::ClientRead),
             _ => None,
         }
     }
@@ -147,6 +158,24 @@ mod tests {
             Some(Permission::RealmRead)
         );
         assert_eq!(Permission::UserRead.implies(), None);
+    }
+
+    #[test]
+    fn every_write_permission_implies_its_read() {
+        // Otherwise a role granted `client:write` gets a console that can
+        // register a client into a list it is not allowed to display.
+        for permission in Permission::ALL {
+            if permission.as_str().ends_with(":write") {
+                let read = permission.implies().expect("a write implies a read");
+                assert_eq!(
+                    read.as_str(),
+                    permission.as_str().replace(":write", ":read"),
+                    "{permission} implies the wrong permission",
+                );
+            } else {
+                assert_eq!(permission.implies(), None, "{permission}");
+            }
+        }
     }
 
     #[test]

@@ -95,6 +95,7 @@ is enforced rather than merely intended.
 | UserInfo | claims filtered by granted scope; a disabled account stops working immediately |
 | Consent | a server-rendered form that works without JavaScript, recording *which* scopes were approved |
 | Dynamic client registration | RFC 7591, off unless switched on |
+| Client administration | `/api/v1/clients` and a console page; secret rotation shows the new secret once |
 | CLI | `authenc seed`, `migrate`, `purge`, `generate-master-key`, `rotate-keys`, `register-client` — no test endpoints in the router |
 
 ## Development

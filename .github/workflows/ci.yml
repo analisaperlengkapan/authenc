@@ -136,6 +136,12 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-leptos
+      # `assets-dir` has to exist in the checkout, and once did not: the
+      # directory was present locally and empty, git does not track empty
+      # directories, so a fresh checkout had no such path and cargo-leptos
+      # failed on it while every local build passed.
+      - name: assert the assets directory is in the repository
+        run: test -n "$(git ls-files crates/web/public)"
       # Proves the wasm bundle is actually produced. The previous repository
       # had a Leptos crate that no automation ever built, and served an empty
       # 21-line HTML shell instead.
