@@ -677,6 +677,55 @@ pub async fn remove_passkey(id: authenc_contract::PasskeyId) -> Result<(), Serve
         .map_err(server_ctx::to_server_fn_error)
 }
 
+/// One page of the realm's audit trail.
+///
+/// `action_prefix` is a namespace like `mfa.`, not a free-text search: the
+/// stored names are namespaced precisely so a category can be selected without
+/// enumerating it, and a `LIKE` on arbitrary user input would be a different
+/// and worse thing.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = ListAuditEvents, prefix = "/api/sfn", endpoint = "audit", input = Json)]
+pub async fn list_audit_events(
+    action_prefix: Option<String>,
+    outcome: Option<authenc_contract::event::Outcome>,
+    limit: i64,
+    offset: i64,
+) -> Result<AuditPage, ServerFnError> {
+    use authenc_identity::{Db, admin, audit};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db).await?;
+
+    let filter = audit::Filter {
+        prefix: action_prefix.as_deref(),
+        outcome,
+        ..audit::Filter::default()
+    };
+
+    let total = admin::count_audit(&db, &actor, actor.realm_id, filter)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+    let events = admin::list_audit(&db, &actor, actor.realm_id, filter, limit, offset)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(AuditPage { events, total })
+}
+
+/// A page of audit events, with the total so the console can page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuditPage {
+    /// The events, newest first.
+    pub events: Vec<authenc_contract::AuditEvent>,
+    /// How many match the filter in total.
+    pub total: i64,
+}
+
 /// Render a server-function failure as something a person can read.
 ///
 /// One place to do this, so no page invents its own error string.

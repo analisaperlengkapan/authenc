@@ -10,8 +10,11 @@
 //! another realm is [`AppError::NotFound`], not `Forbidden`, because confirming
 //! that something exists in another tenant is itself a disclosure.
 
-use authenc_contract::{AppError, Permission, RealmId, Result, model::Actor};
-use authenc_identity::{Db, PasswordHasher, SecretToken};
+use authenc_contract::{AppError, Permission, RealmId, Result, event::Action, model::Actor};
+use authenc_identity::{
+    Db, PasswordHasher, SecretToken,
+    audit::{self, Entry},
+};
 
 use crate::client::{self, Client, NewClient};
 
@@ -101,6 +104,16 @@ pub async fn register(
     // report it like any other validation failure.
     .map_err(protocol_to_app)?;
 
+    audit::observe(
+        db,
+        Entry::success(Action::ClientRegistered)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("client", new.client_id)
+            .detail(serde_json::json!({ "public": new.is_public })),
+    )
+    .await;
+
     Ok(Registered {
         client: registered.client,
         client_secret: registered.client_secret,
@@ -127,7 +140,20 @@ pub async fn rotate_secret(
 ) -> Result<SecretToken> {
     actor.require(Permission::ClientWrite)?;
     let client = client::by_client_id(db, actor.realm_id, client_id).await?;
-    client::rotate_secret(db, hasher, &client).await
+    let secret = client::rotate_secret(db, hasher, &client).await?;
+
+    // The event a rotation exists for: an operator reading the trail during an
+    // incident needs to see when the old secret stopped working.
+    audit::observe(
+        db,
+        Entry::success(Action::ClientSecretRotated)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("client", client_id),
+    )
+    .await;
+
+    Ok(secret)
 }
 
 /// Replace a client's redirect URIs and scopes.
@@ -145,9 +171,33 @@ pub async fn update(
 ) -> Result<Client> {
     actor.require(Permission::ClientWrite)?;
     let client = client::by_client_id(db, actor.realm_id, client_id).await?;
-    client::update(db, &client, changes)
+
+    // Captured before the move, so the record describes the request that was
+    // made rather than whatever survived it.
+    let touched = serde_json::json!({
+        "redirect_uris": changes.redirect_uris.is_some(),
+        "scopes": changes.scopes.is_some(),
+        "require_consent": changes.require_consent.is_some(),
+    });
+
+    let updated = client::update(db, &client, changes)
         .await
-        .map_err(protocol_to_app)
+        .map_err(protocol_to_app)?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::ClientUpdated)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("client", client_id)
+            // Which fields changed, never their values: a redirect URI list is
+            // not a secret, but the habit of writing payloads into an audit log
+            // is how one eventually contains something that is.
+            .detail(touched),
+    )
+    .await;
+
+    Ok(updated)
 }
 
 /// Delete a client, and with it every code, token, and consent it holds.
@@ -158,7 +208,18 @@ pub async fn update(
 /// [`AppError::NotFound`] for an unknown client.
 pub async fn delete(db: &Db, actor: &Actor, client_id: &str) -> Result<()> {
     actor.require(Permission::ClientWrite)?;
-    client::delete(db, actor.realm_id, client_id).await
+    client::delete(db, actor.realm_id, client_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::ClientDeleted)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("client", client_id),
+    )
+    .await;
+
+    Ok(())
 }
 
 /// Whether a client is one the actor may touch.

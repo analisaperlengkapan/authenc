@@ -100,6 +100,9 @@ is enforced rather than merely intended.
 | TOTP | RFC 6238, checked against the RFC's own test vectors; a code is single-use, so an observed one expires in 30s rather than 90 |
 | Recovery codes | ten per account, 80 bits each, single-use; issued the moment an authenticator is confirmed |
 | Passkeys | WebAuthn via `webauthn-rs`; the challenge stays on the server and the signature counter is written back after every assertion |
+| Audit log | one event model, `Action::ALL` is the complete list; every authentication path and every administrative change records |
+| Audit access | its own `audit:read` permission — listing users does not confer reading everyone's movements |
+| Audit retention | opt-in via `authenc purge --audit-older-than DAYS`; nothing trims the log on a schedule nobody chose |
 | CLI | `authenc seed`, `migrate`, `purge`, `generate-master-key`, `rotate-keys`, `register-client` — no test endpoints in the router |
 
 ## Development

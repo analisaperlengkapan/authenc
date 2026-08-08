@@ -5,6 +5,30 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the audit log
+
+- One event model in `contract::event`. `Action::ALL` is the complete,
+  reviewable list of what this system can record, and the stored names are
+  namespaced (`mfa.totp_enrolled`) so a prefix filter selects a category
+  without enumerating it. Names are stored rather than derived from the Rust
+  variant, so renaming a variant cannot orphan rows already written. The
+  previous tree had three competing event types in three crates and wrote none
+  of them anywhere durable.
+- Every authentication path records: password success and failure, lockout as
+  its own action, both steps of an MFA login, a wrong second factor, and a
+  recovery code being spent. Administrative changes record too — users, roles,
+  and OAuth clients including secret rotation. So does refresh-token reuse,
+  which until now went only to `tracing::warn!`.
+- `audit:read`, its own permission. The trail names every account in the realm
+  and where each of them signed in from; being allowed to list users is not the
+  same as being allowed to read everyone's movements. There is no
+  `audit:write` — the log is written by the system and nothing may edit it.
+- An `/admin/audit` console page: filtered by namespace and by refusals, paged,
+  with actions that are evidence of an attack marked using the same rule the
+  contract defines.
+- `authenc purge --audit-older-than DAYS`. Opt-in and never defaulted: a log
+  that trims itself on a schedule nobody chose will be empty when it is needed.
+
 ### Added — multi-factor authentication
 
 - **The login flow no longer returns a session when a second factor is

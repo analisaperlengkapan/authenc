@@ -95,6 +95,7 @@ fn ShellFrame(
                     <NavLink href="/admin/users" label="Users" />
                     <NavLink href="/admin/roles" label="Roles" />
                     <NavLink href="/admin/clients" label="Clients" />
+                    <NavLink href="/admin/audit" label="Audit" />
                 </nav>
                 <div class="ml-auto flex items-center gap-3 text-sm">
                     <span class="text-ink-600 dark:text-ink-400">{display_name}</span>

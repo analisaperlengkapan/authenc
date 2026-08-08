@@ -668,3 +668,72 @@ async fn deleting_a_client_removes_it(db: PgPool) {
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_audit_page_needs_the_audit_permission(db: PgPool) {
+    // The trail names every account in the realm and where each signed in
+    // from. Being allowed to list users is not the same as being allowed to
+    // read everyone's movements, and the console must apply the same rule the
+    // server does.
+    seed_with(
+        &db,
+        "operator",
+        &[Permission::UserRead, Permission::RoleRead],
+    )
+    .await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let refused = server
+        .post("/api/sfn/audit")
+        .json(&serde_json::json!({
+            "action_prefix": null, "outcome": null, "limit": 20, "offset": 0
+        }))
+        .await;
+
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::FORBIDDEN,
+        "{}",
+        refused.text()
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_auditor_reads_the_trail_and_sees_their_own_sign_in(db: PgPool) {
+    seed_with(&db, "auditor", &[Permission::AuditRead]).await;
+    let mut server = server(db);
+    sign_in(&mut server, "auditor").await;
+
+    let response = server
+        .post("/api/sfn/audit")
+        .json(&serde_json::json!({
+            "action_prefix": null, "outcome": null, "limit": 20, "offset": 0
+        }))
+        .await;
+
+    response.assert_status_ok();
+    let page: serde_json::Value = response.json();
+    assert!(page["total"].as_i64().unwrap() >= 1, "{page}");
+    assert_eq!(page["events"][0]["action"], "login_succeeded", "{page}");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_trail_filters_by_namespace(db: PgPool) {
+    seed_with(&db, "auditor", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "auditor").await;
+
+    let page: serde_json::Value = server
+        .post("/api/sfn/audit")
+        .json(&serde_json::json!({
+            "action_prefix": "mfa.", "outcome": null, "limit": 20, "offset": 0
+        }))
+        .await
+        .json();
+
+    // The sign-in was password-only, so a second-factor filter matches nothing
+    // — which is the interesting assertion: the filter narrows rather than
+    // being ignored.
+    assert_eq!(page["total"], 0, "{page}");
+}

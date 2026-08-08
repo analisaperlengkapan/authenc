@@ -209,9 +209,20 @@ Two decisions worth knowing about:
 Retention is opt-in: `authenc purge --audit-older-than DAYS`. Nothing trims the
 log on a schedule nobody chose.
 
-**Still to come in this stage:** administrative and OAuth call sites, an audit
-page in the console, a REST surface with export, and carrying the `amr` a
-session already records into ID tokens.
+Administrative and OAuth changes record too: users created and deleted, roles
+granted and revoked, clients registered, changed, deleted, and their secrets
+rotated. Reading the trail needs its own permission, `audit:read` — the log
+names every account in the realm and where each of them signed in from, so
+being allowed to list users is not the same as being allowed to read everyone's
+movements. There is deliberately no `audit:write`.
+
+The console has an `/admin/audit` page: filtered by namespace and by refusals,
+paged, with the actions that are evidence of an attack marked as such using the
+same rule the contract defines, so the console and anything else reading the log
+agree on what counts.
+
+**Still to come in this stage:** a REST surface with export, and carrying the
+`amr` a session already records into ID tokens.
 
 ### Stage 7 — Groups and organisations
 

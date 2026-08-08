@@ -1,6 +1,7 @@
 //! Page components, one per route.
 
 pub mod admin;
+pub mod audit;
 pub mod clients;
 pub mod consent;
 pub mod home;
@@ -9,6 +10,7 @@ pub mod recovery;
 pub mod security;
 
 pub use admin::{AdminShell, Overview, Roles, Users};
+pub use audit::Audit;
 pub use clients::Clients;
 pub use consent::Consent;
 pub use home::Home;

@@ -12,10 +12,16 @@
 
 use authenc_contract::{
     AppError, Permission, RealmId, Result, RoleId, UserId,
+    event::Action,
     model::{Actor, Realm, Role, User},
 };
 
-use crate::{db::Db, password::PasswordHasher, role, session, user};
+use crate::{
+    audit::{self, Entry},
+    db::Db,
+    password::PasswordHasher,
+    role, session, user,
+};
 
 /// Reject an actor reaching outside its own realm.
 ///
@@ -118,7 +124,19 @@ pub async fn create_user(
 ) -> Result<User> {
     actor.require(Permission::UserWrite)?;
     same_realm(actor, new.realm_id)?;
-    user::create(db, hasher, new).await
+
+    let created = user::create(db, hasher, new).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::UserCreated)
+            .in_realm(created.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("user", &created.username),
+    )
+    .await;
+
+    Ok(created)
 }
 
 /// Enable or disable a user.
@@ -182,6 +200,17 @@ pub async fn delete_user(db: &Db, actor: &Actor, user_id: UserId) -> Result<()> 
         .await
         .map_err(|e| AppError::internal_from("deleting user", e))?;
 
+    // Recorded after the delete, and naming the user by the string rather than
+    // the id: the row is gone, so the id resolves to nothing from here on.
+    audit::observe(
+        db,
+        Entry::success(Action::UserDeleted)
+            .in_realm(target.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("user", &target.username),
+    )
+    .await;
+
     Ok(())
 }
 
@@ -227,7 +256,19 @@ pub async fn create_role(
 ) -> Result<Role> {
     actor.require(Permission::RoleWrite)?;
     same_realm(actor, realm_id)?;
-    role::ensure(db, realm_id, name, description).await
+
+    let created = role::ensure(db, realm_id, name, description).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::RoleCreated)
+            .in_realm(realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("role", &created.name),
+    )
+    .await;
+
+    Ok(created)
 }
 
 /// Grant a role to a user.
@@ -243,7 +284,19 @@ pub async fn grant_role(db: &Db, actor: &Actor, user_id: UserId, role_id: RoleId
     same_realm(actor, target.realm_id)?;
     same_realm(actor, role_realm(db, role_id).await?)?;
 
-    role::grant(db, user_id, role_id).await
+    role::grant(db, user_id, role_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::RoleGranted)
+            .in_realm(target.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("user", &target.username)
+            .detail(serde_json::json!({ "role_id": role_id.to_string() })),
+    )
+    .await;
+
+    Ok(())
 }
 
 /// Revoke a role from a user.
@@ -258,7 +311,58 @@ pub async fn revoke_role(db: &Db, actor: &Actor, user_id: UserId, role_id: RoleI
     same_realm(actor, target.realm_id)?;
     same_realm(actor, role_realm(db, role_id).await?)?;
 
-    role::revoke(db, user_id, role_id).await
+    role::revoke(db, user_id, role_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::RoleRevoked)
+            .in_realm(target.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("user", &target.username)
+            .detail(serde_json::json!({ "role_id": role_id.to_string() })),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Read the realm's audit trail.
+///
+/// Gated on its own permission. The trail names every account in the realm and
+/// where each of them signed in from, so being allowed to list users is not the
+/// same as being allowed to read everyone's movements.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `audit:read`, [`AppError::NotFound`] for
+/// another realm, or an internal error.
+pub async fn list_audit(
+    db: &Db,
+    actor: &Actor,
+    realm_id: RealmId,
+    filter: audit::Filter<'_>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<authenc_contract::AuditEvent>> {
+    actor.require(Permission::AuditRead)?;
+    same_realm(actor, realm_id)?;
+    audit::list(db, realm_id, filter, limit, offset).await
+}
+
+/// How many audit events match, for paging.
+///
+/// # Errors
+///
+/// As [`list_audit`].
+pub async fn count_audit(
+    db: &Db,
+    actor: &Actor,
+    realm_id: RealmId,
+    filter: audit::Filter<'_>,
+) -> Result<i64> {
+    actor.require(Permission::AuditRead)?;
+    same_realm(actor, realm_id)?;
+    audit::count(db, realm_id, filter).await
 }
 
 /// The realm a role belongs to.
@@ -628,6 +732,96 @@ mod tests {
             .unwrap_err()
             .status(),
             403,
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // The audit trail
+    // -----------------------------------------------------------------------
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn administrative_changes_are_recorded(db: Db) {
+        let (realm_id, user_id) = a_realm_with_a_user(&db, "acme").await;
+        let actor = actor(realm_id, user_id, Permission::ALL);
+        let hasher = PasswordHasher::new();
+
+        let created = create_user(
+            &db,
+            &actor,
+            &hasher,
+            NewUser {
+                realm_id: actor.realm_id,
+                username: "bob",
+                email: "bob@example.com",
+                password: "correct horse battery staple",
+                first_name: None,
+                last_name: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let events = audit::list(&db, actor.realm_id, audit::Filter::default(), 50, 0)
+            .await
+            .unwrap();
+
+        let created_event = events
+            .iter()
+            .find(|e| e.action == Action::UserCreated)
+            .expect("the creation must be recorded");
+        assert_eq!(created_event.actor_name.as_deref(), Some(&*actor.username));
+        assert_eq!(created_event.target.as_deref(), Some("bob"));
+        assert_eq!(created_event.target_type.as_deref(), Some("user"));
+
+        delete_user(&db, &actor, created.id).await.unwrap();
+
+        let events = audit::list(&db, actor.realm_id, audit::Filter::default(), 50, 0)
+            .await
+            .unwrap();
+        let deleted = events
+            .iter()
+            .find(|e| e.action == Action::UserDeleted)
+            .expect("the deletion must be recorded");
+        // Named by string, because the row it pointed at is gone.
+        assert_eq!(deleted.target.as_deref(), Some("bob"));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn reading_the_trail_needs_its_own_permission(db: Db) {
+        // Listing users must not carry the right to read everyone's movements.
+        let (realm_id, user_id) = a_realm_with_a_user(&db, "acme").await;
+
+        let reader = actor(realm_id, user_id, &[Permission::UserRead]);
+        assert_eq!(
+            list_audit(&db, &reader, realm_id, audit::Filter::default(), 10, 0)
+                .await
+                .unwrap_err()
+                .status(),
+            403,
+        );
+
+        let auditor = actor(realm_id, user_id, &[Permission::AuditRead]);
+        assert!(
+            list_audit(&db, &auditor, realm_id, audit::Filter::default(), 10, 0)
+                .await
+                .is_ok(),
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn the_trail_of_another_realm_is_not_found(db: Db) {
+        // 404 rather than 403, like everything else that crosses a tenant
+        // boundary here.
+        let (realm_id, user_id) = a_realm_with_a_user(&db, "acme").await;
+        let actor = actor(realm_id, user_id, Permission::ALL);
+        let other = realm::create(&db, "other", "Other").await.unwrap();
+
+        assert_eq!(
+            list_audit(&db, &actor, other.id, audit::Filter::default(), 10, 0)
+                .await
+                .unwrap_err()
+                .status(),
+            404,
         );
     }
 }

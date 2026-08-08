@@ -36,6 +36,14 @@ pub enum Permission {
     ClientRead,
     /// Register, change, and delete OAuth clients, and rotate their secrets.
     ClientWrite,
+    /// Read the audit log.
+    ///
+    /// Its own permission rather than part of `user:read`, because the trail
+    /// names every account in the realm and where each of them signed in from.
+    /// Someone who may list users has not thereby been given everyone's
+    /// movements. There is deliberately no `audit:write`: the log is written by
+    /// the system, and nothing may edit it.
+    AuditRead,
 }
 
 impl Permission {
@@ -49,6 +57,7 @@ impl Permission {
         Self::RoleWrite,
         Self::ClientRead,
         Self::ClientWrite,
+        Self::AuditRead,
     ];
 
     /// The stable name stored in the database and shown in the console.
@@ -63,6 +72,7 @@ impl Permission {
             Self::RoleWrite => "role:write",
             Self::ClientRead => "client:read",
             Self::ClientWrite => "client:write",
+            Self::AuditRead => "audit:read",
         }
     }
 
@@ -78,6 +88,7 @@ impl Permission {
             Self::RoleWrite => "Create and delete roles, and grant or revoke them",
             Self::ClientRead => "View registered OAuth clients",
             Self::ClientWrite => "Register and delete OAuth clients, and rotate their secrets",
+            Self::AuditRead => "Read the audit log",
         }
     }
 
