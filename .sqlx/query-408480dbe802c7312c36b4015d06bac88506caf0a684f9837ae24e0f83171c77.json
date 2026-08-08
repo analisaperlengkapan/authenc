@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        UPDATE authorization_codes\n        SET used_at = now()\n        WHERE code_hash = $1 AND client_id = $2 AND used_at IS NULL\n        RETURNING id, realm_id, user_id, redirect_uri, scopes, nonce,\n                  code_challenge, expires_at\n        ",
+  "query": "\n        UPDATE authorization_codes\n        SET used_at = now()\n        WHERE code_hash = $1 AND client_id = $2 AND used_at IS NULL\n        RETURNING id, realm_id, user_id, redirect_uri, scopes, nonce,\n                  code_challenge, expires_at, authenticated_with\n        ",
   "describe": {
     "columns": [
       {
@@ -90,6 +90,17 @@
             "name": "expires_at"
           }
         }
+      },
+      {
+        "ordinal": 8,
+        "name": "authenticated_with",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "authenticated_with"
+          }
+        }
       }
     ],
     "parameters": {
@@ -106,8 +117,9 @@
       false,
       true,
       true,
+      false,
       false
     ]
   },
-  "hash": "551622784e59ebf950a96f709d11435075b90df360cb3bdca9542bbeb27df9e7"
+  "hash": "408480dbe802c7312c36b4015d06bac88506caf0a684f9837ae24e0f83171c77"
 }

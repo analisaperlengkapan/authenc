@@ -221,8 +221,16 @@ paged, with the actions that are evidence of an attack marked as such using the
 same rule the contract defines, so the console and anything else reading the log
 agree on what counts.
 
-**Still to come in this stage:** a REST surface with export, and carrying the
-`amr` a session already records into ID tokens.
+ID tokens carry `amr`. The value is snapshotted onto the authorization code and
+then onto the refresh family, rather than recomputed at issuance — by the time a
+refresh mints an ID token days later the session may be gone, and what the
+account has enrolled *now* is not what was presented *then*. Access tokens
+deliberately carry none: they describe an authorisation, and putting `amr` there
+would invite a resource server to make an authentication decision from an
+authorisation credential. An unknown `amr` is absent rather than an empty array,
+because an empty array asserts "no methods were used" and silence does not.
+
+**Still to come in this stage:** a REST surface for the trail, with export.
 
 ### Stage 7 — Groups and organisations
 

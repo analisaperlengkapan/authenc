@@ -1321,3 +1321,72 @@ async fn disabling_an_account_stops_its_live_access_token(db: PgPool) {
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
+
+/// Decode a JWT's payload without verifying it.
+///
+/// Fine here and nowhere else: these tests already prove the signature is
+/// checked, and what is being asserted is what the payload *says*.
+fn payload_of(jwt: &str) -> serde_json::Value {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+
+    let payload = jwt.split('.').nth(1).expect("a JWT has three parts");
+    serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap()
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn amr_survives_the_whole_flow_including_a_refresh(db: PgPool) {
+    // The property `amr` exists for, asserted where a relying party sees it.
+    // A password-only sign-in must say so, and must still say so on an ID
+    // token minted from a refresh days later — the value travels with the code
+    // and then with the refresh family rather than being recomputed, because
+    // by then the session may be gone and the account's enrolment may differ.
+    seed(&db, "spa", true).await;
+    let server = server(db);
+    sign_in(&server).await;
+
+    let location = authorize(&server, &public_request()).await;
+    let code = param(&location, "code").expect("a code");
+
+    let tokens: serde_json::Value = server
+        .post("/realms/master/protocol/openid-connect/token")
+        .form(&json!({
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": REDIRECT_URI,
+            "client_id": "spa",
+            "code_verifier": VERIFIER,
+        }))
+        .await
+        .json();
+
+    let id_token = tokens["id_token"].as_str().expect("an id token");
+    assert_eq!(
+        payload_of(id_token)["amr"],
+        json!(["pwd"]),
+        "the ID token must describe how the user actually signed in",
+    );
+
+    // The access token describes an authorisation, not an authentication.
+    let access = payload_of(tokens["access_token"].as_str().unwrap());
+    assert!(access.get("amr").is_none(), "{access}");
+
+    // And it survives rotation.
+    let refreshed: serde_json::Value = server
+        .post("/realms/master/protocol/openid-connect/token")
+        .form(&json!({
+            "grant_type": "refresh_token",
+            "refresh_token": tokens["refresh_token"].as_str().unwrap(),
+            "client_id": "spa",
+        }))
+        .await
+        .json();
+
+    let refreshed_id = refreshed["id_token"]
+        .as_str()
+        .expect("a refreshed id token");
+    assert_eq!(
+        payload_of(refreshed_id)["amr"],
+        json!(["pwd"]),
+        "a refreshed ID token must still describe the original sign-in",
+    );
+}

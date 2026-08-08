@@ -54,6 +54,13 @@ pub struct Claims {
     /// Nonce echoed from the authorization request, for ID tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
+    /// Authentication methods references (RFC 8176), for ID tokens.
+    ///
+    /// What a relying party reads to decide whether to trust this sign-in for
+    /// whatever it is about to allow. Absent rather than empty when unknown: an
+    /// empty array asserts "no methods", which is a claim, and silence is not.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amr: Option<Vec<String>>,
     /// Preferred username, for ID tokens carrying the `profile` scope.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preferred_username: Option<String>,
@@ -91,6 +98,9 @@ pub fn issue(key: &ActiveKey, grant: &Grant<'_>) -> Result<String> {
     let now = OffsetDateTime::now_utc();
 
     let claims = Claims {
+        // Access tokens carry no `amr`: they describe what a client may do,
+        // not how the person proved who they were.
+        amr: None,
         iss: grant.issuer.to_owned(),
         sub: grant.subject.to_string(),
         aud: grant.audience.to_owned(),
@@ -371,6 +381,9 @@ mod tests {
         let key = key();
         let now = OffsetDateTime::now_utc().unix_timestamp();
         let claims = Claims {
+            // Access tokens carry no `amr`: they describe what a client may do,
+            // not how the person proved who they were.
+            amr: None,
             iss: "https://id.example".to_owned(),
             sub: UserId::new().to_string(),
             aud: "app".to_owned(),

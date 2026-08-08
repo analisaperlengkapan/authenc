@@ -49,6 +49,9 @@ pub struct Mint<'a> {
     pub user_id: UserId,
     /// Scopes it may refresh.
     pub scopes: &'a [String],
+    /// How the session behind it authenticated, carried forward so ID tokens
+    /// minted days later still describe the sign-in that actually happened.
+    pub authenticated_with: &'a [String],
     /// The family. Successors keep the family of the token they replace.
     pub family_id: Uuid,
 }
@@ -66,8 +69,9 @@ pub async fn mint(db: &Db, new: Mint<'_>) -> Result<Minted> {
     sqlx::query!(
         r#"
         INSERT INTO refresh_tokens
-            (client_id, user_id, realm_id, token_hash, scopes, family_id, expires_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (client_id, user_id, realm_id, token_hash, scopes, family_id,
+             expires_at, authenticated_with)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         "#,
         new.client.0,
         new.user_id.0,
@@ -76,6 +80,7 @@ pub async fn mint(db: &Db, new: Mint<'_>) -> Result<Minted> {
         new.scopes,
         new.family_id,
         expires_at,
+        new.authenticated_with,
     )
     .execute(db)
     .await
@@ -99,6 +104,8 @@ pub struct Rotated {
     pub user_id: UserId,
     /// Scopes carried forward.
     pub scopes: Vec<String>,
+    /// How the original sign-in happened, carried forward unchanged.
+    pub authenticated_with: Vec<String>,
     /// The family, unchanged.
     pub family_id: Uuid,
 }
@@ -125,7 +132,7 @@ pub async fn rotate(
           AND used_at IS NULL
           AND revoked_at IS NULL
           AND expires_at > now()
-        RETURNING id, realm_id, user_id, scopes, family_id
+        RETURNING id, realm_id, user_id, scopes, family_id, authenticated_with
         "#,
         presented.hash(),
         client.0,
@@ -148,6 +155,9 @@ pub async fn rotate(
             realm_id: RealmId(row.realm_id),
             user_id: UserId(row.user_id),
             scopes: &row.scopes,
+            // Carried, never recomputed: this token may be days old, and what
+            // the account has enrolled now is not what was presented then.
+            authenticated_with: &row.authenticated_with,
             family_id: row.family_id,
         },
     )
@@ -170,6 +180,7 @@ pub async fn rotate(
         realm_id: RealmId(row.realm_id),
         user_id: UserId(row.user_id),
         scopes: row.scopes,
+        authenticated_with: row.authenticated_with,
         family_id: row.family_id,
     })
 }
@@ -356,6 +367,14 @@ pub async fn purge_expired(db: &Db) -> Result<u64> {
 )]
 mod tests {
     use super::*;
+
+    /// The `amr` of an ordinary password login, which is what these fixtures
+    /// stand in for. The MFA variants are exercised in `authenc-identity`.
+    ///
+    /// A `static` rather than a function: the structs below borrow it, and a
+    /// freshly built `Vec` would not outlive the expression that borrows it.
+    static PWD: std::sync::LazyLock<Vec<String>> =
+        std::sync::LazyLock::new(|| vec!["pwd".to_owned()]);
     use crate::client::{self, NewClient};
     use authenc_identity::{PasswordHasher, realm, user::NewUser};
 
@@ -416,6 +435,7 @@ mod tests {
         mint(
             db,
             Mint {
+                authenticated_with: &PWD,
                 client: f.client,
                 realm_id: f.realm_id,
                 user_id: f.user_id,

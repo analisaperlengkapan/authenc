@@ -58,6 +58,8 @@ pub struct Issue<'a> {
     pub scopes: &'a [String],
     /// The `nonce` from the authorization request, for the ID token.
     pub nonce: Option<&'a str>,
+    /// How the session behind this authenticated, in RFC 8176 terms.
+    pub authenticated_with: &'a [String],
     /// The refresh-token family. New authorizations pass the code's id;
     /// a rotation passes the family it is continuing.
     pub family_id: Uuid,
@@ -121,6 +123,7 @@ pub async fn issue(
                 let minted = refresh::mint(
                     db,
                     refresh::Mint {
+                        authenticated_with: request.authenticated_with,
                         client: request.client.key,
                         realm_id: request.realm_id,
                         user_id: request.user_id,
@@ -164,6 +167,9 @@ fn id_claims(user: &User, request: &Issue<'_>, lifetime: time::Duration) -> Clai
         // request the client made, so a token replayed from elsewhere fails
         // the client's own check.
         nonce: request.nonce.map(ToOwned::to_owned),
+        // Only on the ID token: an access token describes an authorisation,
+        // and how the person proved who they were is not part of that.
+        amr: (!request.authenticated_with.is_empty()).then(|| request.authenticated_with.to_vec()),
         preferred_username: has(PROFILE).then(|| user.username.clone()),
         email: has(EMAIL).then(|| user.email.clone()),
         email_verified: has(EMAIL).then_some(user.email_verified),
@@ -213,6 +219,14 @@ pub async fn userinfo(db: &Db, user_id: UserId, scopes: &[String]) -> Result<ser
 )]
 mod tests {
     use super::*;
+
+    /// The `amr` of an ordinary password login, which is what these fixtures
+    /// stand in for. The MFA variants are exercised in `authenc-identity`.
+    ///
+    /// A `static` rather than a function: the structs below borrow it, and a
+    /// freshly built `Vec` would not outlive the expression that borrows it.
+    static PWD: std::sync::LazyLock<Vec<String>> =
+        std::sync::LazyLock::new(|| vec!["pwd".to_owned()]);
     use crate::client::{self, NewClient};
     use authenc_identity::{PasswordHasher, realm, user::NewUser};
 
@@ -276,6 +290,7 @@ mod tests {
 
     fn request<'a>(f: &'a Fixture, scopes: &'a [String]) -> Issue<'a> {
         Issue {
+            authenticated_with: &PWD,
             realm_id: f.realm_id,
             issuer: ISSUER,
             client: &f.client,
@@ -438,5 +453,67 @@ mod tests {
         let scopes = owned(&[OPENID, OFFLINE_ACCESS]);
         let response = issue(&db, &f.master, request(&f, &scopes)).await.unwrap();
         assert!(response.refresh_token.is_none());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn the_id_token_says_how_the_user_authenticated(db: Db) {
+        // The whole point of carrying `amr`: a relying party has to be able to
+        // tell a password-only sign-in from one behind a second factor.
+        let f = fixture(&db).await;
+        let scopes = vec![OPENID.to_owned()];
+
+        let mfa = vec!["pwd".to_owned(), "otp".to_owned(), "mfa".to_owned()];
+        let issued = issue(
+            &db,
+            &f.master,
+            Issue {
+                authenticated_with: &mfa,
+                ..request(&f, &scopes)
+            },
+        )
+        .await
+        .unwrap();
+
+        let claims = decode(&db, issued.id_token.as_deref().unwrap()).await;
+        assert_eq!(claims.amr, Some(mfa));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn an_access_token_carries_no_amr(db: Db) {
+        // It describes what a client may do, not how the person proved who
+        // they were. Putting `amr` there would invite a resource server to
+        // make an authentication decision from an authorisation credential.
+        let f = fixture(&db).await;
+        let scopes = vec![OPENID.to_owned()];
+
+        let issued = issue(&db, &f.master, request(&f, &scopes)).await.unwrap();
+        let claims = decode(&db, &issued.access_token).await;
+
+        assert_eq!(claims.amr, None);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn an_unknown_amr_is_absent_rather_than_empty(db: Db) {
+        // An empty array asserts "no methods were used", which is a claim.
+        // Silence is not, and silence is the honest answer.
+        let f = fixture(&db).await;
+        let scopes = vec![OPENID.to_owned()];
+
+        let issued = issue(
+            &db,
+            &f.master,
+            Issue {
+                authenticated_with: &[],
+                ..request(&f, &scopes)
+            },
+        )
+        .await
+        .unwrap();
+
+        let claims = decode(&db, issued.id_token.as_deref().unwrap()).await;
+        assert_eq!(claims.amr, None);
+
+        let rendered = serde_json::to_string(&claims).unwrap();
+        assert!(!rendered.contains("amr"), "{rendered}");
     }
 }

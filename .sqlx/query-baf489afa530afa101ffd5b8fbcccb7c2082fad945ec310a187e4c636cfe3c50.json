@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        UPDATE refresh_tokens\n        SET used_at = now()\n        WHERE token_hash = $1\n          AND client_id = $2\n          AND used_at IS NULL\n          AND revoked_at IS NULL\n          AND expires_at > now()\n        RETURNING id, realm_id, user_id, scopes, family_id\n        ",
+  "query": "\n        UPDATE refresh_tokens\n        SET used_at = now()\n        WHERE token_hash = $1\n          AND client_id = $2\n          AND used_at IS NULL\n          AND revoked_at IS NULL\n          AND expires_at > now()\n        RETURNING id, realm_id, user_id, scopes, family_id, authenticated_with\n        ",
   "describe": {
     "columns": [
       {
@@ -57,6 +57,17 @@
             "name": "family_id"
           }
         }
+      },
+      {
+        "ordinal": 5,
+        "name": "authenticated_with",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "refresh_tokens",
+            "name": "authenticated_with"
+          }
+        }
       }
     ],
     "parameters": {
@@ -70,8 +81,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "bfc099e920fb5e085a5c4905440532b75c19040ee8c6b6a75ec24dad3a508faf"
+  "hash": "baf489afa530afa101ffd5b8fbcccb7c2082fad945ec310a187e4c636cfe3c50"
 }

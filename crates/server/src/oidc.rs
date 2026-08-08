@@ -374,7 +374,7 @@ async fn authorize(
 
     let prompt_is_none = request.prompt.as_deref() == Some("none");
 
-    let Some(user_id) = signed_in_user(&state, &jar, validated.realm.id).await else {
+    let Some(signed_in) = signed_in_user(&state, &jar, validated.realm.id).await else {
         return if prompt_is_none {
             Refusal::redirect(
                 &validated,
@@ -395,8 +395,13 @@ async fn authorize(
     let needs_consent = validated.client.require_consent
         && (asks_for_consent
             || !matches!(
-                consent::is_satisfied(&state.db, user_id, validated.client.key, &validated.scopes)
-                    .await,
+                consent::is_satisfied(
+                    &state.db,
+                    signed_in.user_id,
+                    validated.client.key,
+                    &validated.scopes,
+                )
+                .await,
                 Ok(true)
             ));
 
@@ -424,7 +429,7 @@ async fn authorize(
         };
     }
 
-    grant_code(&state, &validated, &request, user_id).await
+    grant_code(&state, &validated, &request, &signed_in).await
 }
 
 /// `POST /realms/{realm}/protocol/openid-connect/auth`.
@@ -476,7 +481,11 @@ async fn approve(
         .into_response();
     }
 
-    let user_id = session.user_id;
+    let signed_in = SignedIn {
+        user_id: session.user_id,
+        authenticated_with: session.authenticated_with.clone(),
+    };
+    let user_id = signed_in.user_id;
     if !user_belongs_to(&state, user_id, validated.realm.id).await {
         return OidcError(OAuthError::new(
             OAuthErrorCode::LoginRequired,
@@ -491,7 +500,7 @@ async fn approve(
         return OidcError::from(error).into_response();
     }
 
-    grant_code(&state, &validated, &request, user_id).await
+    grant_code(&state, &validated, &request, &signed_in).await
 }
 
 /// Issue a code and send the browser back to the client.
@@ -499,14 +508,17 @@ async fn grant_code(
     state: &AppState,
     validated: &Validated,
     request: &AuthorizeRequest,
-    user_id: UserId,
+    signed_in: &SignedIn,
 ) -> Response {
     let issued = code::issue(
         &state.db,
         code::NewCode {
             client: validated.client.key,
             realm_id: validated.realm.id,
-            user_id,
+            user_id: signed_in.user_id,
+            // Snapshotted onto the code, so the ID token minted when it is
+            // redeemed describes the sign-in that actually authorised it.
+            authenticated_with: &signed_in.authenticated_with,
             redirect_uri: &validated.redirect_uri,
             scopes: &validated.scopes,
             nonce: request.nonce.as_deref(),
@@ -528,7 +540,18 @@ async fn grant_code(
 }
 
 /// The signed-in user, if there is one and they belong to this realm.
-async fn signed_in_user(state: &AppState, jar: &CookieJar, realm_id: RealmId) -> Option<UserId> {
+/// The session behind an authorization request, as the protocol layer needs it.
+///
+/// Carries the `amr` as well as the user, because the ID token this eventually
+/// produces has to describe *this* sign-in. Recomputing it at issuance would
+/// answer a different question — what the account has enrolled now, rather than
+/// what was actually presented.
+struct SignedIn {
+    user_id: UserId,
+    authenticated_with: Vec<String>,
+}
+
+async fn signed_in_user(state: &AppState, jar: &CookieJar, realm_id: RealmId) -> Option<SignedIn> {
     let policy = crate::auth::cookie_policy(&state.config);
     let session = crate::auth::session_for(&state.db, policy, jar)
         .await
@@ -537,7 +560,10 @@ async fn signed_in_user(state: &AppState, jar: &CookieJar, realm_id: RealmId) ->
 
     user_belongs_to(state, session.user_id, realm_id)
         .await
-        .then_some(session.user_id)
+        .then_some(SignedIn {
+            user_id: session.user_id,
+            authenticated_with: session.authenticated_with,
+        })
 }
 
 /// Whether a user is an enabled member of this realm.
@@ -673,6 +699,7 @@ async fn authorization_code_grant(
             user_id: authorization.user_id,
             scopes: &authorization.scopes,
             nonce: authorization.nonce.as_deref(),
+            authenticated_with: &authorization.authenticated_with,
             family_id: authorization.id,
             refresh: grant::Refresh::IfGranted,
         },
@@ -727,6 +754,7 @@ async fn refresh_grant(
             user_id: rotated.user_id,
             scopes: &scopes,
             nonce: None,
+            authenticated_with: &rotated.authenticated_with,
             family_id: rotated.family_id,
             refresh: grant::Refresh::Existing(rotated.token.expose().to_owned()),
         },

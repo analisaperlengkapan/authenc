@@ -135,6 +135,12 @@ pub struct NewCode<'a> {
     pub nonce: Option<&'a str>,
     /// PKCE challenge, required for public clients.
     pub challenge: Option<&'a Challenge>,
+    /// How the session that approved this authenticated, in RFC 8176 terms.
+    ///
+    /// A snapshot, not a lookup. By the time the code is redeemed the session
+    /// may be gone, and what the account has enrolled *now* is not what was
+    /// presented *then*.
+    pub authenticated_with: &'a [String],
 }
 
 /// Issue an authorization code.
@@ -150,8 +156,9 @@ pub async fn issue(db: &Db, new: NewCode<'_>) -> Result<SecretToken> {
         r#"
         INSERT INTO authorization_codes
             (client_id, user_id, realm_id, code_hash, redirect_uri, scopes,
-             nonce, code_challenge, code_challenge_method, expires_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             nonce, code_challenge, code_challenge_method, expires_at,
+             authenticated_with)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         "#,
         new.client.0,
         new.user_id.0,
@@ -163,6 +170,7 @@ pub async fn issue(db: &Db, new: NewCode<'_>) -> Result<SecretToken> {
         new.challenge.map(Challenge::as_str),
         new.challenge.map(|_| CHALLENGE_METHOD),
         OffsetDateTime::now_utc() + CODE_LIFETIME,
+        new.authenticated_with,
     )
     .execute(db)
     .await
@@ -185,6 +193,8 @@ pub struct Authorization {
     pub scopes: Vec<String>,
     /// The `nonce` to echo into the ID token.
     pub nonce: Option<String>,
+    /// How the session that approved this authenticated.
+    pub authenticated_with: Vec<String>,
 }
 
 /// The outcome of presenting a code.
@@ -226,7 +236,7 @@ pub async fn redeem(
         SET used_at = now()
         WHERE code_hash = $1 AND client_id = $2 AND used_at IS NULL
         RETURNING id, realm_id, user_id, redirect_uri, scopes, nonce,
-                  code_challenge, expires_at
+                  code_challenge, expires_at, authenticated_with
         "#,
         presented.hash(),
         client.0,
@@ -303,6 +313,7 @@ pub async fn redeem(
         user_id: UserId(row.user_id),
         scopes: row.scopes,
         nonce: row.nonce,
+        authenticated_with: row.authenticated_with,
     })))
 }
 
@@ -333,6 +344,14 @@ pub async fn purge_expired(db: &Db) -> Result<u64> {
 )]
 mod tests {
     use super::*;
+
+    /// The `amr` of an ordinary password login, which is what these fixtures
+    /// stand in for. The MFA variants are exercised in `authenc-identity`.
+    ///
+    /// A `static` rather than a function: the structs below borrow it, and a
+    /// freshly built `Vec` would not outlive the expression that borrows it.
+    static PWD: std::sync::LazyLock<Vec<String>> =
+        std::sync::LazyLock::new(|| vec!["pwd".to_owned()]);
     use crate::client::{self, NewClient};
     use authenc_identity::{PasswordHasher, realm, user::NewUser};
 
@@ -401,6 +420,7 @@ mod tests {
         issue(
             db,
             NewCode {
+                authenticated_with: &PWD,
                 client: f.client,
                 realm_id: f.realm_id,
                 user_id: f.user_id,

@@ -28,6 +28,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   contract defines.
 - `authenc purge --audit-older-than DAYS`. Opt-in and never defaulted: a log
   that trims itself on a schedule nobody chose will be empty when it is needed.
+- ID tokens now carry `amr` (RFC 8176), so a relying party can tell a
+  password-only sign-in from one behind a second factor. The value is
+  snapshotted onto the authorization code and then onto the refresh family
+  rather than recomputed at issuance: by the time a refresh mints an ID token,
+  the session may be gone and the account's enrolment may have changed, so
+  recomputing would answer a different question. Access tokens carry none — an
+  access token describes an authorisation, not an authentication — and an
+  unknown `amr` is absent rather than an empty array, because an empty array
+  asserts "no methods were used".
 
 ### Added — multi-factor authentication
 
