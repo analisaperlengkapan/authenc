@@ -676,6 +676,9 @@ async fn the_security_page_renders_server_side_for_a_signed_in_user(db: PgPool) 
         "Recovery codes",
         "Passkeys",
     ] {
-        assert!(html.contains(expected), "{expected} is missing from the page");
+        assert!(
+            html.contains(expected),
+            "{expected} is missing from the page"
+        );
     }
 }
