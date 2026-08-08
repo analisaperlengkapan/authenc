@@ -737,3 +737,104 @@ async fn the_trail_filters_by_namespace(db: PgPool) {
     // being ignored.
     assert_eq!(page["total"], 0, "{page}");
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_rest_audit_surface_is_filtered_and_bounded(db: PgPool) {
+    seed_with(&db, "auditor", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "auditor").await;
+
+    let page: serde_json::Value = server.get("/api/v1/audit").await.json();
+    assert!(page["total"].as_i64().unwrap() >= 1, "{page}");
+
+    // The rule the console uses is published rather than left to be
+    // re-derived, so a consumer cannot reach a different answer from ours.
+    assert_eq!(page["items"][0]["action"], "login.succeeded");
+    assert_eq!(page["items"][0]["security_signal"], false);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_unparseable_audit_filter_is_refused_not_ignored(db: PgPool) {
+    // A caller asking for `outcome=failed` and receiving every event would
+    // draw exactly the wrong conclusion from the answer.
+    seed_with(&db, "auditor", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "auditor").await;
+
+    for query in [
+        "outcome=failed",
+        "action=login.maybe",
+        "since=yesterday",
+        "until=not-a-time",
+    ] {
+        let response = server.get(&format!("/api/v1/audit?{query}")).await;
+        assert_eq!(
+            response.status_code(),
+            StatusCode::BAD_REQUEST,
+            "{query} was accepted: {}",
+            response.text(),
+        );
+    }
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_csv_export_neutralises_spreadsheet_formulas(db: PgPool) {
+    // An audit log holds attacker-supplied strings — a user agent is whatever
+    // the client sent — and the export exists to be opened in a spreadsheet.
+    // A cell beginning `=` is a formula there.
+    use authenc_contract::event::Action;
+    use authenc_identity::{
+        audit::{self, Entry},
+        session::Origin,
+    };
+
+    seed_with(&db, "auditor", Permission::ALL).await;
+
+    let realm = realm::by_name(&db, "master").await.unwrap();
+    audit::record(
+        &db,
+        Entry::failure(Action::LoginFailed)
+            .in_realm(realm.id)
+            .from(Origin {
+                user_agent: Some("=cmd|'/c calc'!A1"),
+                ip_address: None,
+            }),
+    )
+    .await
+    .unwrap();
+
+    let mut server = server(db);
+    sign_in(&mut server, "auditor").await;
+
+    let response = server.get("/api/v1/audit.csv").await;
+    response.assert_status_ok();
+    assert!(
+        response
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("text/csv"),
+    );
+
+    let csv = response.text();
+    assert!(csv.starts_with("occurred_at,action,outcome"), "{csv}");
+    assert!(
+        csv.contains("\"'=cmd|'/c calc'!A1\""),
+        "the formula was not neutralised: {csv}",
+    );
+    assert!(!csv.contains("\"=cmd"), "{csv}");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_csv_export_needs_the_audit_permission(db: PgPool) {
+    seed_with(&db, "operator", &[Permission::UserRead]).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    assert_eq!(
+        server.get("/api/v1/audit.csv").await.status_code(),
+        StatusCode::FORBIDDEN,
+    );
+}

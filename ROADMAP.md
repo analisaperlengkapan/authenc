@@ -230,7 +230,16 @@ would invite a resource server to make an authentication decision from an
 authorisation credential. An unknown `amr` is absent rather than an empty array,
 because an empty array asserts "no methods were used" and silence does not.
 
-**Still to come in this stage:** a REST surface for the trail, with export.
+`/api/v1/audit` serves the trail for automation, filtered the same way the
+console filters it, and `/api/v1/audit.csv` exports a page of it. An
+unparseable filter is a 400 rather than a silently ignored parameter — a caller
+asking for `outcome=failed` and receiving every event would draw exactly the
+wrong conclusion. The CSV neutralises leading `=`, `+`, `-`, and `@`, because
+an audit log holds attacker-supplied strings (a user agent is whatever the
+client sent) and the export exists to be opened in a spreadsheet, where such a
+cell is a formula.
+
+Stage 6 is complete.
 
 ### Stage 7 — Groups and organisations
 

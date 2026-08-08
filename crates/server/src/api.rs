@@ -52,6 +52,86 @@ const fn default_limit() -> i64 {
     50
 }
 
+/// Filters for the audit trail.
+///
+/// `action_prefix` is a namespace such as `mfa.`, not free text. The stored
+/// action names are namespaced precisely so a category can be selected without
+/// enumerating it; accepting arbitrary text here would turn a bounded filter
+/// into a `LIKE` over user input.
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+pub struct AuditQuery {
+    /// Exact action name, e.g. `login.failed`.
+    pub action: Option<String>,
+    /// Namespace to select, e.g. `mfa.`.
+    pub action_prefix: Option<String>,
+    /// `success` or `failure`.
+    pub outcome: Option<String>,
+    /// Only what this user did.
+    pub actor_id: Option<Uuid>,
+    /// Only events at or after this RFC 3339 moment.
+    pub since: Option<String>,
+    /// Only events before this RFC 3339 moment.
+    pub until: Option<String>,
+    /// Maximum rows. Clamped server-side to 500.
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+    /// Rows to skip.
+    #[serde(default)]
+    pub offset: i64,
+}
+
+/// One recorded event, as `/api/v1` returns it.
+///
+/// A DTO rather than `contract::AuditEvent` directly, for the same reason
+/// `ClientView` exists: what a public response contains becomes a
+/// compatibility obligation, and the internal type is free to change.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AuditEventView {
+    /// Stable identifier.
+    pub id: Uuid,
+    /// Stored action name, e.g. `login.failed`.
+    pub action: String,
+    /// `success` or `failure`.
+    pub outcome: String,
+    /// Whether this action is, on its own, evidence of an attack.
+    ///
+    /// Included so a consumer does not have to re-derive the rule and get a
+    /// different answer from the console's.
+    pub security_signal: bool,
+    /// Who did it, if a known user did.
+    pub actor_id: Option<Uuid>,
+    /// Their name at the time.
+    pub actor_name: Option<String>,
+    /// What kind of thing it was done to.
+    pub target_type: Option<String>,
+    /// Which one.
+    pub target: Option<String>,
+    /// Where the request came from.
+    pub ip_address: Option<String>,
+    /// What client made it.
+    pub user_agent: Option<String>,
+    /// When, RFC 3339.
+    pub occurred_at: String,
+}
+
+impl From<authenc_contract::AuditEvent> for AuditEventView {
+    fn from(event: authenc_contract::AuditEvent) -> Self {
+        Self {
+            id: event.id,
+            action: event.action.as_str().to_owned(),
+            outcome: event.outcome.as_str().to_owned(),
+            security_signal: event.action.is_security_signal(),
+            actor_id: event.actor_id.map(|id| id.0),
+            actor_name: event.actor_name,
+            target_type: event.target_type,
+            target: event.target,
+            ip_address: event.ip_address,
+            user_agent: event.user_agent,
+            occurred_at: event.occurred_at,
+        }
+    }
+}
+
 /// Body for creating a user.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateUser {
@@ -216,6 +296,8 @@ pub struct Whoami {
         update_client,
         delete_client,
         rotate_client_secret,
+        list_audit,
+        export_audit,
     ),
     components(schemas(
         CreateUser,
@@ -255,6 +337,8 @@ pub fn router() -> Router<AppState> {
             get(get_client).patch(update_client).delete(delete_client),
         )
         .route("/clients/{client_id}/secret", post(rotate_client_secret))
+        .route("/audit", get(list_audit))
+        .route("/audit.csv", get(export_audit))
         .route("/openapi.json", get(openapi))
 }
 
@@ -487,6 +571,194 @@ async fn revoke_role(
     authenc_identity::admin::revoke_role(&state.db, &actor, UserId(user_id), RoleId(role_id))
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+/// Turn query parameters into a filter, refusing anything unparseable.
+///
+/// A bad filter is a 400, not a silently ignored parameter: a caller asking for
+/// `outcome=failed` and receiving every event would draw exactly the wrong
+/// conclusion from the answer.
+fn audit_filter(
+    query: &AuditQuery,
+) -> Result<
+    (
+        authenc_identity::audit::Filter<'_>,
+        Option<time::OffsetDateTime>,
+        Option<time::OffsetDateTime>,
+    ),
+    ApiError,
+> {
+    use authenc_contract::{
+        AppError,
+        event::{Action, Outcome},
+    };
+    use time::format_description::well_known::Rfc3339;
+
+    let action = query
+        .action
+        .as_deref()
+        .map(|name| {
+            name.parse::<Action>()
+                .map_err(|_| AppError::field("action", "is not an action this system records"))
+        })
+        .transpose()?;
+
+    let outcome = query
+        .outcome
+        .as_deref()
+        .map(|value| match value {
+            "success" => Ok(Outcome::Success),
+            "failure" => Ok(Outcome::Failure),
+            _ => Err(AppError::field("outcome", "must be `success` or `failure`")),
+        })
+        .transpose()?;
+
+    let parse_time = |value: &Option<String>, field: &'static str| {
+        value
+            .as_deref()
+            .map(|raw| {
+                time::OffsetDateTime::parse(raw, &Rfc3339)
+                    .map_err(|_| AppError::field(field, "must be an RFC 3339 timestamp"))
+            })
+            .transpose()
+    };
+
+    let since = parse_time(&query.since, "since")?;
+    let until = parse_time(&query.until, "until")?;
+
+    Ok((
+        authenc_identity::audit::Filter {
+            action,
+            prefix: query.action_prefix.as_deref(),
+            outcome,
+            actor_id: query.actor_id.map(UserId),
+            since,
+            until,
+        },
+        since,
+        until,
+    ))
+}
+
+/// Read the realm's audit trail.
+#[utoipa::path(
+    get, path = "/api/v1/audit", tag = "audit",
+    params(AuditQuery),
+    responses(
+        (status = 200),
+        (status = 400, description = "Unparseable filter"),
+        (status = 403, description = "Missing audit:read"),
+    ),
+)]
+async fn list_audit(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Query(query): Query<AuditQuery>,
+) -> Result<Json<Page<AuditEventView>>, ApiError> {
+    let (filter, _, _) = audit_filter(&query)?;
+
+    let total =
+        authenc_identity::admin::count_audit(&state.db, &actor, actor.realm_id, filter).await?;
+    let items = authenc_identity::admin::list_audit(
+        &state.db,
+        &actor,
+        actor.realm_id,
+        filter,
+        query.limit,
+        query.offset,
+    )
+    .await?;
+
+    Ok(Json(Page {
+        items: items.into_iter().map(AuditEventView::from).collect(),
+        total,
+    }))
+}
+
+/// Export the realm's audit trail as CSV.
+///
+/// One page per request, using the same filters and the same limit as
+/// [`list_audit`]. Deliberately **not** a stream of the whole table: an export
+/// endpoint that holds a cursor open over an unbounded result set is a way to
+/// exhaust the server from a single request, and a caller that wants
+/// everything can walk the pages.
+#[utoipa::path(
+    get, path = "/api/v1/audit.csv", tag = "audit",
+    params(AuditQuery),
+    responses(
+        (status = 200, content_type = "text/csv"),
+        (status = 400, description = "Unparseable filter"),
+        (status = 403, description = "Missing audit:read"),
+    ),
+)]
+async fn export_audit(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Query(query): Query<AuditQuery>,
+) -> Result<axum::response::Response, ApiError> {
+    use axum::{
+        http::header::{CONTENT_DISPOSITION, CONTENT_TYPE},
+        response::IntoResponse,
+    };
+
+    let (filter, _, _) = audit_filter(&query)?;
+    let events = authenc_identity::admin::list_audit(
+        &state.db,
+        &actor,
+        actor.realm_id,
+        filter,
+        query.limit,
+        query.offset,
+    )
+    .await?;
+
+    let mut csv = String::from(
+        "occurred_at,action,outcome,actor_name,target_type,target,ip_address,user_agent\n",
+    );
+    for event in events {
+        let view = AuditEventView::from(event);
+        csv.push_str(&format!(
+            "{},{},{},{},{},{},{},{}\n",
+            csv_field(&view.occurred_at),
+            csv_field(&view.action),
+            csv_field(&view.outcome),
+            csv_field(view.actor_name.as_deref().unwrap_or_default()),
+            csv_field(view.target_type.as_deref().unwrap_or_default()),
+            csv_field(view.target.as_deref().unwrap_or_default()),
+            csv_field(view.ip_address.as_deref().unwrap_or_default()),
+            csv_field(view.user_agent.as_deref().unwrap_or_default()),
+        ));
+    }
+
+    Ok((
+        [
+            (CONTENT_TYPE, "text/csv; charset=utf-8"),
+            (CONTENT_DISPOSITION, "attachment; filename=\"audit.csv\""),
+        ],
+        csv,
+    )
+        .into_response())
+}
+
+/// Quote one CSV field.
+///
+/// Always quoted, and a leading `=`, `+`, `-`, or `@` is prefixed with a single
+/// quote. Those four characters make a spreadsheet treat the cell as a formula,
+/// and an audit log contains attacker-supplied strings — a `user_agent` is
+/// whatever the client sent. The export is opened in Excel by definition, so
+/// this is the one place that matters.
+fn csv_field(value: &str) -> String {
+    let escaped = value.replace('"', "\"\"");
+    let guarded = if escaped.starts_with(['=', '+', '-', '@']) {
+        format!("'{escaped}")
+    } else {
+        escaped
+    };
+    format!("\"{guarded}\"")
 }
 
 // ---------------------------------------------------------------------------

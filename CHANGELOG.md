@@ -26,6 +26,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - An `/admin/audit` console page: filtered by namespace and by refusals, paged,
   with actions that are evidence of an attack marked using the same rule the
   contract defines.
+- `/api/v1/audit` and `/api/v1/audit.csv` for automation. An unparseable filter
+  is a 400 rather than a silently ignored parameter. The CSV prefixes a leading
+  `=`, `+`, `-`, or `@` with a quote: an audit log holds attacker-supplied
+  strings — a user agent is whatever the client sent — and the export exists to
+  be opened in a spreadsheet, where such a cell is a formula.
 - `authenc purge --audit-older-than DAYS`. Opt-in and never defaulted: a log
   that trims itself on a schedule nobody chose will be empty when it is needed.
 - ID tokens now carry `amr` (RFC 8176), so a relying party can tell a

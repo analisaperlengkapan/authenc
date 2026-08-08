@@ -104,6 +104,7 @@ is enforced rather than merely intended.
 | `amr` in ID tokens | snapshotted at sign-in and carried through code and refresh, so a relying party can tell a password from a passkey |
 | Audit access | its own `audit:read` permission — listing users does not confer reading everyone's movements |
 | Audit retention | opt-in via `authenc purge --audit-older-than DAYS`; nothing trims the log on a schedule nobody chose |
+| Audit API | `/api/v1/audit` and `/api/v1/audit.csv`; a bad filter is refused, and the CSV neutralises spreadsheet formulas |
 | CLI | `authenc seed`, `migrate`, `purge`, `generate-master-key`, `rotate-keys`, `register-client` — no test endpoints in the router |
 
 ## Development
