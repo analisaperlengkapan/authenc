@@ -213,10 +213,26 @@ pub async fn id_by_email(db: &Db, realm_id: RealmId, email: &str) -> Result<Opti
 pub async fn role_names(db: &Db, user_id: UserId) -> Result<Vec<String>> {
     let names = sqlx::query_scalar!(
         r#"
-        SELECT r.name
-        FROM user_roles ur
-        JOIN roles r ON r.id = ur.role_id
-        WHERE ur.user_id = $1
+        WITH RECURSIVE
+        ancestry AS (
+            SELECT g.id, g.parent_id
+              FROM groups g
+              JOIN group_members gm ON gm.group_id = g.id
+             WHERE gm.user_id = $1
+            UNION
+            SELECT g.id, g.parent_id
+              FROM groups g JOIN ancestry a ON g.id = a.parent_id
+        ),
+        held AS (
+            SELECT role_id FROM user_roles WHERE user_id = $1
+            UNION
+            SELECT gr.role_id FROM group_roles gr JOIN ancestry ON ancestry.id = gr.group_id
+        )
+        -- The same union as `permissions`, deliberately. A role that grants a
+        -- permission but does not appear in `roles` would make the console show
+        -- an actor doing things no role of theirs explains.
+        SELECT DISTINCT r.name
+        FROM held JOIN roles r ON r.id = held.role_id
         ORDER BY r.name
         "#,
         user_id.0,
@@ -240,11 +256,32 @@ pub async fn role_names(db: &Db, user_id: UserId) -> Result<Vec<String>> {
 pub async fn permissions(db: &Db, user_id: UserId) -> Result<Vec<Permission>> {
     let names = sqlx::query_scalar!(
         r#"
+        WITH RECURSIVE
+        -- Every group the user is in, plus every ancestor of those groups.
+        -- `UNION` rather than `UNION ALL`: it deduplicates, which both keeps
+        -- the walk small when two groups share an ancestor and makes the query
+        -- terminate even against a tree the database trigger somehow let
+        -- through. A permission query that can hang is worse than one that is
+        -- occasionally slow.
+        ancestry AS (
+            SELECT g.id, g.parent_id
+              FROM groups g
+              JOIN group_members gm ON gm.group_id = g.id
+             WHERE gm.user_id = $1
+            UNION
+            SELECT g.id, g.parent_id
+              FROM groups g JOIN ancestry a ON g.id = a.parent_id
+        ),
+        -- Roles held directly, and roles the ancestry carries.
+        held AS (
+            SELECT role_id FROM user_roles WHERE user_id = $1
+            UNION
+            SELECT gr.role_id FROM group_roles gr JOIN ancestry ON ancestry.id = gr.group_id
+        )
         SELECT DISTINCT p.name
-        FROM user_roles ur
-        JOIN role_permissions rp ON rp.role_id = ur.role_id
+        FROM held
+        JOIN role_permissions rp ON rp.role_id = held.role_id
         JOIN permissions p ON p.id = rp.permission_id
-        WHERE ur.user_id = $1
         "#,
         user_id.0,
     )

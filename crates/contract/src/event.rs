@@ -25,8 +25,11 @@ use serde::{Deserialize, Serialize};
 use crate::id::{RealmId, UserId};
 
 /// Something worth recording.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+///
+/// Serialised as its stored name — `login.succeeded`, not `login_succeeded` —
+/// for the reason [`Permission`](crate::Permission) is: a derived spelling is a
+/// second name for the same thing, and only one of the two parses back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Action {
     // --- Authentication ---
     /// A password was accepted and a session opened.
@@ -75,6 +78,8 @@ pub enum Action {
     UserDeleted,
     /// A role was created.
     RoleCreated,
+    /// A role's permissions were replaced.
+    RoleUpdated,
     /// A role was deleted.
     RoleDeleted,
     /// A role was granted to a user.
@@ -83,6 +88,20 @@ pub enum Action {
     RoleRevoked,
     /// A realm was created.
     RealmCreated,
+    /// A group was created.
+    GroupCreated,
+    /// A group was moved or renamed.
+    GroupUpdated,
+    /// A group and its subtree were deleted.
+    GroupDeleted,
+    /// A user was put in a group.
+    GroupMemberAdded,
+    /// A user was taken out of a group.
+    GroupMemberRemoved,
+    /// A role was granted to a group.
+    GroupRoleGranted,
+    /// A role was taken from a group.
+    GroupRoleRevoked,
 
     // --- OAuth ---
     /// An OAuth client was registered.
@@ -146,10 +165,18 @@ impl Action {
         Self::UserUpdated,
         Self::UserDeleted,
         Self::RoleCreated,
+        Self::RoleUpdated,
         Self::RoleDeleted,
         Self::RoleGranted,
         Self::RoleRevoked,
         Self::RealmCreated,
+        Self::GroupCreated,
+        Self::GroupUpdated,
+        Self::GroupDeleted,
+        Self::GroupMemberAdded,
+        Self::GroupMemberRemoved,
+        Self::GroupRoleGranted,
+        Self::GroupRoleRevoked,
         Self::ClientRegistered,
         Self::ClientUpdated,
         Self::ClientDeleted,
@@ -189,10 +216,18 @@ impl Action {
             Self::UserUpdated => "user.updated",
             Self::UserDeleted => "user.deleted",
             Self::RoleCreated => "role.created",
+            Self::RoleUpdated => "role.updated",
             Self::RoleDeleted => "role.deleted",
             Self::RoleGranted => "role.granted",
             Self::RoleRevoked => "role.revoked",
             Self::RealmCreated => "realm.created",
+            Self::GroupCreated => "group.created",
+            Self::GroupUpdated => "group.updated",
+            Self::GroupDeleted => "group.deleted",
+            Self::GroupMemberAdded => "group.member_added",
+            Self::GroupMemberRemoved => "group.member_removed",
+            Self::GroupRoleGranted => "group.role_granted",
+            Self::GroupRoleRevoked => "group.role_revoked",
             Self::ClientRegistered => "client.registered",
             Self::ClientUpdated => "client.updated",
             Self::ClientDeleted => "client.deleted",
@@ -229,10 +264,18 @@ impl Action {
             | Self::UserUpdated
             | Self::UserDeleted
             | Self::RoleCreated
+            | Self::RoleUpdated
             | Self::RoleDeleted
             | Self::RoleGranted
             | Self::RoleRevoked
-            | Self::RealmCreated => Category::Directory,
+            | Self::RealmCreated
+            | Self::GroupCreated
+            | Self::GroupUpdated
+            | Self::GroupDeleted
+            | Self::GroupMemberAdded
+            | Self::GroupMemberRemoved
+            | Self::GroupRoleGranted
+            | Self::GroupRoleRevoked => Category::Directory,
             Self::ClientRegistered
             | Self::ClientUpdated
             | Self::ClientDeleted
@@ -284,10 +327,18 @@ impl Action {
             Self::UserUpdated => "User changed",
             Self::UserDeleted => "User deleted",
             Self::RoleCreated => "Role created",
+            Self::RoleUpdated => "Role permissions replaced",
             Self::RoleDeleted => "Role deleted",
             Self::RoleGranted => "Role granted",
             Self::RoleRevoked => "Role revoked",
             Self::RealmCreated => "Realm created",
+            Self::GroupCreated => "Group created",
+            Self::GroupUpdated => "Group moved or renamed",
+            Self::GroupDeleted => "Group deleted, with its subtree",
+            Self::GroupMemberAdded => "User added to a group",
+            Self::GroupMemberRemoved => "User removed from a group",
+            Self::GroupRoleGranted => "Role granted to a group",
+            Self::GroupRoleRevoked => "Role revoked from a group",
             Self::ClientRegistered => "OAuth client registered",
             Self::ClientUpdated => "OAuth client changed",
             Self::ClientDeleted => "OAuth client deleted",
@@ -299,6 +350,19 @@ impl Action {
             Self::RefreshTokenReuseDetected => "Spent refresh token replayed; family revoked",
             Self::SigningKeyRotated => "Signing key rotated",
         }
+    }
+}
+
+impl Serialize for Action {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Action {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let name = <std::borrow::Cow<'_, str>>::deserialize(deserializer)?;
+        name.parse().map_err(serde::de::Error::custom)
     }
 }
 
@@ -442,7 +506,7 @@ mod tests {
         // reflection to check this with, so the guard is that every listed
         // action is distinct and the count is asserted here — update both
         // together, deliberately.
-        assert_eq!(Action::ALL.len(), 34);
+        assert_eq!(Action::ALL.len(), 42);
         let unique: HashSet<_> = Action::ALL.iter().collect();
         assert_eq!(unique.len(), Action::ALL.len(), "a duplicate in ALL");
     }
@@ -474,16 +538,31 @@ mod tests {
     }
 
     #[test]
-    fn the_serialised_form_is_stable_snake_case() {
-        // The console and the REST surface both read this; a rename here is a
-        // breaking change to both.
-        assert_eq!(
-            serde_json::to_string(&Action::LoginSucceeded).unwrap(),
-            "\"login_succeeded\"",
-        );
+    fn the_wire_name_is_the_stored_name_and_round_trips() {
+        // One name. A derived `rename_all` gave `login_succeeded` on the wire
+        // while the database, `FromStr`, and the REST DTO all said
+        // `login.succeeded` — two spellings for one thing, and only one of them
+        // parsed back.
+        for action in Action::ALL {
+            let json = serde_json::to_string(action).unwrap();
+            assert_eq!(json, format!("\"{}\"", action.as_str()));
+            assert_eq!(
+                serde_json::from_str::<Action>(&json).unwrap(),
+                *action,
+                "{action} does not survive a round trip",
+            );
+        }
+
         assert_eq!(
             serde_json::to_string(&Outcome::Failure).unwrap(),
             "\"failure\"",
         );
+    }
+
+    #[test]
+    fn an_unknown_action_name_fails_to_deserialise() {
+        // Rather than becoming some default, which would put a wrong answer in
+        // an audit trail.
+        assert!(serde_json::from_str::<Action>("\"login.maybe\"").is_err());
     }
 }

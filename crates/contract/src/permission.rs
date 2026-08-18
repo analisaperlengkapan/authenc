@@ -17,8 +17,14 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 
 /// Something an actor may be allowed to do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+/// Serialised as its stored name — `user:read`, not `user_read`.
+///
+/// A derived `rename_all` gave a *second* spelling for every permission: the
+/// database, `FromStr`, and `whoami` all said `user:read` while anything
+/// serialising the enum said `user_read`, and only one of the two parsed back.
+/// One name, defined once in [`Permission::as_str`], is the whole point of the
+/// type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Permission {
     /// View realms.
     RealmRead,
@@ -36,6 +42,11 @@ pub enum Permission {
     ClientRead,
     /// Register, change, and delete OAuth clients, and rotate their secrets.
     ClientWrite,
+    /// View groups and their membership.
+    GroupRead,
+    /// Create, change, and delete groups, and manage their membership and role
+    /// grants.
+    GroupWrite,
     /// Read the audit log.
     ///
     /// Its own permission rather than part of `user:read`, because the trail
@@ -57,6 +68,8 @@ impl Permission {
         Self::RoleWrite,
         Self::ClientRead,
         Self::ClientWrite,
+        Self::GroupRead,
+        Self::GroupWrite,
         Self::AuditRead,
     ];
 
@@ -72,6 +85,8 @@ impl Permission {
             Self::RoleWrite => "role:write",
             Self::ClientRead => "client:read",
             Self::ClientWrite => "client:write",
+            Self::GroupRead => "group:read",
+            Self::GroupWrite => "group:write",
             Self::AuditRead => "audit:read",
         }
     }
@@ -88,6 +103,8 @@ impl Permission {
             Self::RoleWrite => "Create and delete roles, and grant or revoke them",
             Self::ClientRead => "View registered OAuth clients",
             Self::ClientWrite => "Register and delete OAuth clients, and rotate their secrets",
+            Self::GroupRead => "View groups and their membership",
+            Self::GroupWrite => "Create and delete groups, and manage membership and grants",
             Self::AuditRead => "Read the audit log",
         }
     }
@@ -104,8 +121,22 @@ impl Permission {
             Self::UserWrite => Some(Self::UserRead),
             Self::RoleWrite => Some(Self::RoleRead),
             Self::ClientWrite => Some(Self::ClientRead),
+            Self::GroupWrite => Some(Self::GroupRead),
             _ => None,
         }
+    }
+}
+
+impl Serialize for Permission {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Permission {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let name = <std::borrow::Cow<'_, str>>::deserialize(deserializer)?;
+        name.parse().map_err(serde::de::Error::custom)
     }
 }
 
@@ -194,5 +225,27 @@ mod tests {
         for permission in Permission::ALL {
             assert!(!permission.description().is_empty(), "{permission}");
         }
+    }
+
+    #[test]
+    fn the_wire_name_is_the_stored_name_and_round_trips() {
+        // `whoami` sends `as_str()` and the console deserialises the enum; if
+        // those two spellings differ, one endpoint's output cannot be fed to
+        // another's input, and that is precisely what a shared contract type is
+        // for.
+        for permission in Permission::ALL {
+            let json = serde_json::to_string(permission).unwrap();
+            assert_eq!(json, format!("\"{}\"", permission.as_str()));
+            assert_eq!(
+                serde_json::from_str::<Permission>(&json).unwrap(),
+                *permission,
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_permission_name_fails_to_deserialise() {
+        assert!(serde_json::from_str::<Permission>("\"user:destroy\"").is_err());
+        assert!(serde_json::from_str::<Permission>("\"user_read\"").is_err());
     }
 }

@@ -715,7 +715,9 @@ async fn an_auditor_reads_the_trail_and_sees_their_own_sign_in(db: PgPool) {
     response.assert_status_ok();
     let page: serde_json::Value = response.json();
     assert!(page["total"].as_i64().unwrap() >= 1, "{page}");
-    assert_eq!(page["events"][0]["action"], "login_succeeded", "{page}");
+    // The stored name, matching what `/api/v1/audit` returns. There is one
+    // spelling now; there used to be two.
+    assert_eq!(page["events"][0]["action"], "login.succeeded", "{page}");
 }
 
 #[sqlx::test(migrations = "../../migrations")]
@@ -836,5 +838,254 @@ async fn the_csv_export_needs_the_audit_permission(db: PgPool) {
     assert_eq!(
         server.get("/api/v1/audit.csv").await.status_code(),
         StatusCode::FORBIDDEN,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Groups
+// ---------------------------------------------------------------------------
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_group_tree_is_built_and_read_over_rest(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let eng: serde_json::Value = server
+        .post("/api/v1/groups")
+        .json(&json!({ "parent_id": null, "name": "engineering" }))
+        .await
+        .json();
+    assert_eq!(eng["path"], "/engineering");
+
+    let back: serde_json::Value = server
+        .post("/api/v1/groups")
+        .json(&json!({ "parent_id": eng["id"], "name": "backend" }))
+        .await
+        .json();
+    assert_eq!(back["path"], "/engineering/backend");
+
+    let tree: serde_json::Value = server.get("/api/v1/groups").await.json();
+    let paths: Vec<_> = tree
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(paths, vec!["/engineering", "/engineering/backend"]);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_cycle_is_refused_over_rest_rather_than_hanging_the_request(db: PgPool) {
+    // The guard is a database trigger, and this asserts it reaches the caller
+    // as a 400 rather than as a request that never returns.
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let eng: serde_json::Value = server
+        .post("/api/v1/groups")
+        .json(&json!({ "parent_id": null, "name": "engineering" }))
+        .await
+        .json();
+    let back: serde_json::Value = server
+        .post("/api/v1/groups")
+        .json(&json!({ "parent_id": eng["id"], "name": "backend" }))
+        .await
+        .json();
+
+    let response = server
+        .post(&format!(
+            "/api/v1/groups/{}/parent",
+            eng["id"].as_str().unwrap()
+        ))
+        .json(&json!({ "parent_id": back["id"] }))
+        .await;
+
+    assert_eq!(
+        response.status_code(),
+        StatusCode::BAD_REQUEST,
+        "{}",
+        response.text()
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn group_membership_changes_what_a_user_may_do(db: PgPool) {
+    // The end-to-end version of the property the whole feature exists for: a
+    // role granted to an ancestor group reaches a member of its child, and
+    // `/api/v1/whoami` — which resolves permissions per request — says so.
+    seed_with(&db, "operator", Permission::ALL).await;
+
+    let realm = realm::by_name(&db, "master").await.unwrap();
+    let hasher = PasswordHasher::new();
+    let bob = user::create(
+        &db,
+        &hasher,
+        NewUser {
+            realm_id: realm.id,
+            username: "bob",
+            email: "bob@example.com",
+            password: PASSWORD,
+            first_name: None,
+            last_name: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let eng: serde_json::Value = server
+        .post("/api/v1/groups")
+        .json(&json!({ "parent_id": null, "name": "engineering" }))
+        .await
+        .json();
+    let back: serde_json::Value = server
+        .post("/api/v1/groups")
+        .json(&json!({ "parent_id": eng["id"], "name": "backend" }))
+        .await
+        .json();
+
+    let role: serde_json::Value = server
+        .post("/api/v1/roles")
+        .json(&json!({ "name": "auditors", "description": null }))
+        .await
+        .json();
+    server
+        .put(&format!(
+            "/api/v1/roles/{}/permissions",
+            role["id"].as_str().unwrap()
+        ))
+        .json(&json!({ "permissions": ["audit:read"] }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // Granted to the *parent*, membership of the *child*.
+    server
+        .post(&format!(
+            "/api/v1/groups/{}/roles/{}",
+            eng["id"].as_str().unwrap(),
+            role["id"].as_str().unwrap()
+        ))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    server
+        .post(&format!(
+            "/api/v1/groups/{}/members/{}",
+            back["id"].as_str().unwrap(),
+            bob.id
+        ))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // Sign in as bob and ask what he holds.
+    let mut bobs = server;
+    bobs.clear_cookies();
+    sign_in(&mut bobs, "bob").await;
+
+    let me: serde_json::Value = bobs.get("/api/v1/whoami").await.json();
+    let permissions = me["permissions"].as_array().unwrap();
+    assert!(
+        permissions.iter().any(|p| p == "audit:read"),
+        "the ancestor's role must reach a member of the child: {me}",
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn granting_a_role_to_a_group_needs_role_write_too(db: PgPool) {
+    seed_with(&db, "operator", &[Permission::GroupWrite]).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let eng: serde_json::Value = server
+        .post("/api/v1/groups")
+        .json(&json!({ "parent_id": null, "name": "engineering" }))
+        .await
+        .json();
+
+    let response = server
+        .post(&format!(
+            "/api/v1/groups/{}/roles/{}",
+            eng["id"].as_str().unwrap(),
+            uuid::Uuid::new_v4()
+        ))
+        .await;
+
+    assert_eq!(response.status_code(), StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_unknown_field_is_refused_rather_than_ignored(db: PgPool) {
+    // Found the hard way: a request sending `permissions` to `POST /roles` —
+    // a field that endpoint does not have — got a 201 and a role that could do
+    // nothing. Serde ignores unknown fields by default, so the caller's
+    // intent was dropped and the response said it had worked.
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let response = server
+        .post("/api/v1/roles")
+        .json(&json!({ "name": "auditors", "permissions": ["audit:read"] }))
+        .await;
+
+    // 422, which is what axum returns for a body that parses as JSON but does
+    // not match the type. The point is that it is refused at all.
+    assert_eq!(
+        response.status_code(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "an invented field must not be silently dropped: {}",
+        response.text(),
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_role_can_be_given_permissions_over_rest(db: PgPool) {
+    // Until this endpoint existed, `/api/v1` could create a role and never
+    // empower it, so every role made through the API was inert.
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let role: serde_json::Value = server
+        .post("/api/v1/roles")
+        .json(&json!({ "name": "auditors", "description": null }))
+        .await
+        .json();
+    let id = role["id"].as_str().unwrap();
+
+    server
+        .put(&format!("/api/v1/roles/{id}/permissions"))
+        .json(&json!({ "permissions": ["audit:read", "user:read"] }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // Replacement, not accumulation: the second call is the whole truth.
+    server
+        .put(&format!("/api/v1/roles/{id}/permissions"))
+        .json(&json!({ "permissions": ["user:read"] }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    let roles: serde_json::Value = server.get("/api/v1/roles").await.json();
+    assert!(
+        roles
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["name"] == "auditors")
+    );
+
+    let unknown = server
+        .put(&format!("/api/v1/roles/{id}/permissions"))
+        .json(&json!({ "permissions": ["user:destroy"] }))
+        .await;
+    assert_eq!(unknown.status_code(), StatusCode::BAD_REQUEST);
+    assert!(
+        unknown.text().contains("user:destroy"),
+        "the error must name the offending permission: {}",
+        unknown.text(),
     );
 }

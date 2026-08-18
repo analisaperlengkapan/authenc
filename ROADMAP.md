@@ -241,9 +241,32 @@ cell is a formula.
 
 Stage 6 is complete.
 
-### Stage 7 — Groups and organisations
+### Stage 7 — Groups
 
-Group hierarchies, multi-tenant organisations, membership, invitations.
+A hierarchy of groups within a realm, each carrying role grants, with
+membership. What makes it access control rather than an org chart is that
+`user::permissions` resolves *through* the tree: a member of
+`/engineering/backend` holds the roles granted to `backend` and to
+`engineering` above it, and that union is what every `Actor` is built from.
+
+Inheritance runs upward only, from a group to its ancestors. Adding a child
+group therefore cannot widen what its parent's members can do — nesting is
+never a privilege escalation, and a test asserts the downward direction stays
+closed.
+
+Cycles are refused by a database trigger rather than by Rust. A cycle is not
+merely invalid data: every ancestry walk over it is a query that does not
+terminate, and one runs on every authorised request. The rule belongs where
+nothing can route around it.
+
+Granting a role to a group needs **both** `group:write` and `role:write`.
+Granting to a group hands the role to every member and descendant at once; if
+`group:write` alone sufficed it would be a strictly more powerful way to assign
+roles than `role:write`, and the weaker permission would be the one worth
+having.
+
+**Still to come in this stage:** organisations and invitations, and a console
+page for the tree.
 
 ### Stage 8 — Federation
 

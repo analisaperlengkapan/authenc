@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH RECURSIVE tree AS (\n            SELECT id, realm_id, parent_id, name, description, created_at,\n                   '/' || name AS path\n              FROM groups\n             WHERE realm_id = $1 AND parent_id IS NULL\n            UNION ALL\n            SELECT g.id, g.realm_id, g.parent_id, g.name, g.description,\n                   g.created_at, t.path || '/' || g.name\n              FROM groups g JOIN tree t ON g.parent_id = t.id\n        )\n        -- Every column is annotated non-null: a recursive CTE makes sqlx\n        -- infer nullability it cannot see through, and each of these is\n        -- `NOT NULL` on the table it came from.\n        SELECT id AS \"id!\", realm_id AS \"realm_id!\", parent_id,\n               name AS \"name!\", description, created_at AS \"created_at!\",\n               path AS \"path!\"\n          FROM tree ORDER BY path\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "realm_id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "parent_id",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "name!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "description",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 6,
+        "name": "path!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "cf3029ad35eccdf825a050ed9266903b6e3bc40f0a4c6faf9f8021a127698c92"
+}

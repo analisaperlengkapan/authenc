@@ -16,9 +16,12 @@ use authenc_contract::{
     model::{Actor, Realm, Role, User},
 };
 
+use uuid::Uuid;
+
 use crate::{
     audit::{self, Entry},
     db::Db,
+    group,
     password::PasswordHasher,
     role, session, user,
 };
@@ -271,6 +274,46 @@ pub async fn create_role(
     Ok(created)
 }
 
+/// Replace a role's permissions.
+///
+/// The whole set, not a delta: a caller sends what the role should hold, and
+/// what it held before is irrelevant. A partial update would need a second
+/// endpoint to remove anything, and "add" without "remove" is how a role
+/// accumulates permissions nobody chose.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `role:write`, or [`AppError::NotFound`] if
+/// the role is not in the actor's realm.
+pub async fn set_role_permissions(
+    db: &Db,
+    actor: &Actor,
+    role_id: RoleId,
+    permissions: &[Permission],
+) -> Result<()> {
+    actor.require(Permission::RoleWrite)?;
+    same_realm(actor, role_realm(db, role_id).await?)?;
+
+    role::set_permissions(db, actor.realm_id, role_id, permissions).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::RoleUpdated)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("role", &role_id.to_string())
+            // The names, because "what can this role do now?" is the question
+            // an audit reader has, and it is not answerable from the row alone
+            // once the grants change again.
+            .detail(serde_json::json!({
+                "permissions": permissions.iter().map(|p| p.as_str()).collect::<Vec<_>>(),
+            })),
+    )
+    .await;
+
+    Ok(())
+}
+
 /// Grant a role to a user.
 ///
 /// # Errors
@@ -324,6 +367,286 @@ pub async fn revoke_role(db: &Db, actor: &Actor, user_id: UserId, role_id: RoleI
     .await;
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Groups
+// ---------------------------------------------------------------------------
+
+/// The realm's group tree.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `group:read`, or [`AppError::NotFound`] for
+/// another realm.
+pub async fn list_groups(db: &Db, actor: &Actor, realm_id: RealmId) -> Result<Vec<group::Group>> {
+    actor.require(Permission::GroupRead)?;
+    same_realm(actor, realm_id)?;
+    group::list(db, realm_id).await
+}
+
+/// One group.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `group:read`, or [`AppError::NotFound`] if
+/// it is not in the actor's realm.
+pub async fn get_group(db: &Db, actor: &Actor, id: Uuid) -> Result<group::Group> {
+    actor.require(Permission::GroupRead)?;
+    let found = group::by_id(db, id).await?;
+    same_realm(actor, found.realm_id)?;
+    Ok(found)
+}
+
+/// Create a group in the actor's realm.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `group:write`, plus whatever
+/// [`group::create`] refuses.
+pub async fn create_group(
+    db: &Db,
+    actor: &Actor,
+    parent_id: Option<Uuid>,
+    name: &str,
+    description: Option<&str>,
+) -> Result<group::Group> {
+    actor.require(Permission::GroupWrite)?;
+
+    // The realm comes from the actor, never from an argument: a caller who
+    // could name the realm could create a group in somebody else's.
+    let created = group::create(
+        db,
+        group::NewGroup {
+            realm_id: actor.realm_id,
+            parent_id,
+            name,
+            description,
+        },
+    )
+    .await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::GroupCreated)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("group", &created.path),
+    )
+    .await;
+
+    Ok(created)
+}
+
+/// Move a group under a different parent, or to the root.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `group:write`, [`AppError::NotFound`]
+/// outside the actor's realm, or [`AppError::Validation`] for a cycle.
+pub async fn move_group(
+    db: &Db,
+    actor: &Actor,
+    id: Uuid,
+    parent_id: Option<Uuid>,
+) -> Result<group::Group> {
+    actor.require(Permission::GroupWrite)?;
+    let existing = get_group(db, actor, id).await?;
+
+    let moved = group::move_to(db, id, parent_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::GroupUpdated)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("group", &moved.path)
+            // Both paths, because "moved" is only meaningful as a pair, and an
+            // audit reader should not have to reconstruct the old one.
+            .detail(serde_json::json!({ "from": existing.path, "to": moved.path })),
+    )
+    .await;
+
+    Ok(moved)
+}
+
+/// Delete a group and its subtree.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `group:write`, or [`AppError::NotFound`]
+/// outside the actor's realm.
+pub async fn delete_group(db: &Db, actor: &Actor, id: Uuid) -> Result<()> {
+    actor.require(Permission::GroupWrite)?;
+    let existing = get_group(db, actor, id).await?;
+
+    group::delete(db, id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::GroupDeleted)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("group", &existing.path),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Put a user in a group.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `group:write`, or [`AppError::NotFound`] if
+/// either side is outside the actor's realm.
+pub async fn add_group_member(
+    db: &Db,
+    actor: &Actor,
+    group_id: Uuid,
+    user_id: UserId,
+) -> Result<()> {
+    actor.require(Permission::GroupWrite)?;
+    let found = get_group(db, actor, group_id).await?;
+    let target = user::by_id(db, user_id).await?;
+    same_realm(actor, target.realm_id)?;
+
+    group::add_member(db, group_id, user_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::GroupMemberAdded)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("user", &target.username)
+            .detail(serde_json::json!({ "group": found.path })),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Take a user out of a group.
+///
+/// # Errors
+///
+/// As [`add_group_member`].
+pub async fn remove_group_member(
+    db: &Db,
+    actor: &Actor,
+    group_id: Uuid,
+    user_id: UserId,
+) -> Result<()> {
+    actor.require(Permission::GroupWrite)?;
+    let found = get_group(db, actor, group_id).await?;
+    let target = user::by_id(db, user_id).await?;
+    same_realm(actor, target.realm_id)?;
+
+    group::remove_member(db, group_id, user_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::GroupMemberRemoved)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("user", &target.username)
+            .detail(serde_json::json!({ "group": found.path })),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Grant a role to a group, and so to everyone in it and below it.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without **both** `group:write` and `role:write`, or
+/// [`AppError::NotFound`] outside the actor's realm.
+pub async fn grant_group_role(
+    db: &Db,
+    actor: &Actor,
+    group_id: Uuid,
+    role_id: RoleId,
+) -> Result<()> {
+    actor.require(Permission::GroupWrite)?;
+    // Both, deliberately. Granting a role to a group hands it to every member
+    // and every descendant at once; if `group:write` alone sufficed, it would
+    // be a strictly more powerful way to assign roles than `role:write`, and
+    // the weaker permission would be the one worth having.
+    actor.require(Permission::RoleWrite)?;
+
+    let found = get_group(db, actor, group_id).await?;
+    group::grant_role(db, group_id, role_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::GroupRoleGranted)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("group", &found.path)
+            .detail(serde_json::json!({ "role_id": role_id.to_string() })),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Take a role away from a group.
+///
+/// # Errors
+///
+/// As [`grant_group_role`].
+pub async fn revoke_group_role(
+    db: &Db,
+    actor: &Actor,
+    group_id: Uuid,
+    role_id: RoleId,
+) -> Result<()> {
+    actor.require(Permission::GroupWrite)?;
+    actor.require(Permission::RoleWrite)?;
+
+    let found = get_group(db, actor, group_id).await?;
+    group::revoke_role(db, group_id, role_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::GroupRoleRevoked)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("group", &found.path)
+            .detail(serde_json::json!({ "role_id": role_id.to_string() })),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Who is directly in a group.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `group:read`, or [`AppError::NotFound`]
+/// outside the actor's realm.
+pub async fn group_members(db: &Db, actor: &Actor, group_id: Uuid) -> Result<Vec<User>> {
+    get_group(db, actor, group_id).await?;
+
+    let ids = group::members(db, group_id).await?;
+    let mut users = Vec::with_capacity(ids.len());
+    for id in ids {
+        users.push(user::by_id(db, id).await?);
+    }
+    Ok(users)
+}
+
+/// The roles granted directly to a group.
+///
+/// # Errors
+///
+/// As [`group_members`].
+pub async fn group_roles(db: &Db, actor: &Actor, group_id: Uuid) -> Result<Vec<Role>> {
+    get_group(db, actor, group_id).await?;
+    group::roles(db, group_id).await
 }
 
 /// Read the realm's audit trail.
@@ -823,5 +1146,160 @@ mod tests {
                 .status(),
             404,
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Groups
+    // -----------------------------------------------------------------------
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn group_reads_and_writes_need_their_own_permissions(db: Db) {
+        let (realm_id, user_id) = a_realm_with_a_user(&db, "acme").await;
+
+        let nobody = actor(realm_id, user_id, &[]);
+        assert_eq!(
+            list_groups(&db, &nobody, realm_id)
+                .await
+                .unwrap_err()
+                .status(),
+            403,
+        );
+        assert_eq!(
+            create_group(&db, &nobody, None, "eng", None)
+                .await
+                .unwrap_err()
+                .status(),
+            403,
+        );
+
+        let reader = actor(realm_id, user_id, &[Permission::GroupRead]);
+        assert!(list_groups(&db, &reader, realm_id).await.is_ok());
+        assert_eq!(
+            create_group(&db, &reader, None, "eng", None)
+                .await
+                .unwrap_err()
+                .status(),
+            403,
+            "reading groups must not confer creating them",
+        );
+
+        let writer = actor(realm_id, user_id, &[Permission::GroupWrite]);
+        assert!(create_group(&db, &writer, None, "eng", None).await.is_ok());
+        assert!(
+            list_groups(&db, &writer, realm_id).await.is_ok(),
+            "write implies read here too",
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn granting_a_role_to_a_group_needs_role_write_as_well(db: Db) {
+        // Granting to a group hands the role to every member and descendant at
+        // once. If `group:write` alone sufficed it would be a strictly more
+        // powerful way to assign roles than `role:write`, and the weaker
+        // permission would be the one worth having.
+        let (realm_id, user_id) = a_realm_with_a_user(&db, "acme").await;
+        let writer = actor(realm_id, user_id, &[Permission::GroupWrite]);
+        let eng = create_group(&db, &writer, None, "eng", None).await.unwrap();
+        let role = role::ensure(&db, realm_id, "readers", None).await.unwrap();
+
+        assert_eq!(
+            grant_group_role(&db, &writer, eng.id, role.id)
+                .await
+                .unwrap_err()
+                .status(),
+            403,
+        );
+
+        let both = actor(
+            realm_id,
+            user_id,
+            &[Permission::GroupWrite, Permission::RoleWrite],
+        );
+        assert!(grant_group_role(&db, &both, eng.id, role.id).await.is_ok());
+        assert!(revoke_group_role(&db, &both, eng.id, role.id).await.is_ok());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_group_in_another_realm_is_not_found(db: Db) {
+        let (acme, acme_user) = a_realm_with_a_user(&db, "acme").await;
+        let (other, other_user) = a_realm_with_a_user(&db, "other").await;
+
+        let theirs = create_group(
+            &db,
+            &actor(other, other_user, Permission::ALL),
+            None,
+            "theirs",
+            None,
+        )
+        .await
+        .unwrap();
+
+        let mine = actor(acme, acme_user, Permission::ALL);
+        // 404, not 403: its existence is not confirmed.
+        assert_eq!(
+            get_group(&db, &mine, theirs.id).await.unwrap_err().status(),
+            404
+        );
+        assert_eq!(
+            delete_group(&db, &mine, theirs.id)
+                .await
+                .unwrap_err()
+                .status(),
+            404,
+        );
+        assert_eq!(
+            add_group_member(&db, &mine, theirs.id, acme_user)
+                .await
+                .unwrap_err()
+                .status(),
+            404,
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_group_is_created_in_the_actors_realm_and_no_other(db: Db) {
+        // The realm comes from the actor, never from an argument. There is no
+        // parameter here that could name someone else's realm, which is the
+        // point — this test exists to keep it that way.
+        let (acme, acme_user) = a_realm_with_a_user(&db, "acme").await;
+        let (other, _) = a_realm_with_a_user(&db, "other").await;
+
+        let mine = actor(acme, acme_user, Permission::ALL);
+        let created = create_group(&db, &mine, None, "eng", None).await.unwrap();
+
+        assert_eq!(created.realm_id, acme);
+        assert!(group::list(&db, other).await.unwrap().is_empty());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn group_changes_are_recorded(db: Db) {
+        let (realm_id, user_id) = a_realm_with_a_user(&db, "acme").await;
+        let operator = actor(realm_id, user_id, Permission::ALL);
+
+        let eng = create_group(&db, &operator, None, "eng", None)
+            .await
+            .unwrap();
+        add_group_member(&db, &operator, eng.id, user_id)
+            .await
+            .unwrap();
+        delete_group(&db, &operator, eng.id).await.unwrap();
+
+        let actions: Vec<_> = audit::list(&db, realm_id, audit::Filter::default(), 50, 0)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|event| event.action)
+            .collect();
+
+        for expected in [
+            Action::GroupCreated,
+            Action::GroupMemberAdded,
+            Action::GroupDeleted,
+        ] {
+            assert!(
+                actions.contains(&expected),
+                "{expected} missing: {actions:?}"
+            );
+        }
     }
 }

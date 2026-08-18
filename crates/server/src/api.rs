@@ -20,7 +20,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
@@ -50,6 +50,66 @@ pub struct Paging {
 
 const fn default_limit() -> i64 {
     50
+}
+
+/// A group, as `/api/v1` returns it.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct GroupView {
+    /// Stable identifier.
+    pub id: Uuid,
+    /// Parent, if it is not at the root.
+    pub parent_id: Option<Uuid>,
+    /// Name, unique among its siblings.
+    pub name: String,
+    /// What it is for.
+    pub description: Option<String>,
+    /// Full path from the root, e.g. `/engineering/backend`.
+    pub path: String,
+}
+
+impl From<authenc_identity::group::Group> for GroupView {
+    fn from(group: authenc_identity::group::Group) -> Self {
+        Self {
+            id: group.id,
+            parent_id: group.parent_id,
+            name: group.name,
+            description: group.description,
+            path: group.path,
+        }
+    }
+}
+
+/// Body for replacing a role's permissions.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetRolePermissions {
+    /// The complete set the role should hold, by name (`user:read`).
+    /// Anything absent is removed.
+    ///
+    /// Strings rather than a typed enum, so an unrecognised name is a 400 that
+    /// says which one — `authenc-contract` stays free of `utoipa`, and a serde
+    /// variant rejection would report only that the body was unparseable.
+    pub permissions: Vec<String>,
+}
+
+/// Body for creating a group.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateGroup {
+    /// Parent group, or null for a root group.
+    pub parent_id: Option<Uuid>,
+    /// Name, unique among its siblings.
+    pub name: String,
+    /// What it is for.
+    pub description: Option<String>,
+}
+
+/// Body for moving a group.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MoveGroup {
+    /// The new parent, or null to move it to the root.
+    pub parent_id: Option<Uuid>,
 }
 
 /// Filters for the audit trail.
@@ -134,6 +194,7 @@ impl From<authenc_contract::AuditEvent> for AuditEventView {
 
 /// Body for creating a user.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateUser {
     /// Login name, unique within the realm.
     pub username: String,
@@ -149,6 +210,7 @@ pub struct CreateUser {
 
 /// Body for enabling or disabling a user.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetEnabled {
     /// Whether the user may authenticate.
     pub enabled: bool,
@@ -156,6 +218,7 @@ pub struct SetEnabled {
 
 /// Body for registering an OAuth client.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RegisterClient {
     /// The `client_id` the client will present.
     pub client_id: String,
@@ -183,6 +246,7 @@ const fn yes() -> bool {
 /// An omitted field is left alone. A present one **replaces** — withdrawing a
 /// redirect URI is the operation an incident needs, and a merge could not do it.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateClient {
     /// New exact redirect URIs.
     pub redirect_uris: Option<Vec<String>>,
@@ -242,6 +306,7 @@ pub struct ClientCredentials {
 
 /// Body for creating a role.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateRole {
     /// Machine name, unique within the realm.
     pub name: String,
@@ -288,6 +353,7 @@ pub struct Whoami {
         delete_user,
         list_roles,
         create_role,
+        set_role_permissions,
         grant_role,
         revoke_role,
         list_clients,
@@ -298,10 +364,25 @@ pub struct Whoami {
         rotate_client_secret,
         list_audit,
         export_audit,
+        list_groups,
+        create_group,
+        get_group,
+        delete_group,
+        move_group,
+        list_group_members,
+        add_group_member,
+        remove_group_member,
+        list_group_roles,
+        grant_group_role,
+        revoke_group_role,
     ),
     components(schemas(
+        CreateGroup,
+        MoveGroup,
+        GroupView,
         CreateUser,
         SetEnabled,
+        SetRolePermissions,
         CreateRole,
         Whoami,
         Csrf,
@@ -329,6 +410,7 @@ pub fn router() -> Router<AppState> {
         .route("/users/{user_id}", delete(delete_user))
         .route("/users/{user_id}/enabled", post(set_user_enabled))
         .route("/roles", get(list_roles).post(create_role))
+        .route("/roles/{role_id}/permissions", put(set_role_permissions))
         .route("/roles/{role_id}/users/{user_id}", post(grant_role))
         .route("/roles/{role_id}/users/{user_id}", delete(revoke_role))
         .route("/clients", get(list_clients).post(register_client))
@@ -337,6 +419,19 @@ pub fn router() -> Router<AppState> {
             get(get_client).patch(update_client).delete(delete_client),
         )
         .route("/clients/{client_id}/secret", post(rotate_client_secret))
+        .route("/groups", get(list_groups).post(create_group))
+        .route("/groups/{group_id}", get(get_group).delete(delete_group))
+        .route("/groups/{group_id}/parent", post(move_group))
+        .route("/groups/{group_id}/members", get(list_group_members))
+        .route(
+            "/groups/{group_id}/members/{user_id}",
+            post(add_group_member).delete(remove_group_member),
+        )
+        .route("/groups/{group_id}/roles", get(list_group_roles))
+        .route(
+            "/groups/{group_id}/roles/{role_id}",
+            post(grant_group_role).delete(revoke_group_role),
+        )
         .route("/audit", get(list_audit))
         .route("/audit.csv", get(export_audit))
         .route("/openapi.json", get(openapi))
@@ -543,6 +638,42 @@ async fn create_role(
     Ok((StatusCode::CREATED, Json(role)))
 }
 
+/// Replace a role's permissions.
+///
+/// The whole set, not a delta. `PUT` rather than `PATCH` for that reason: the
+/// body is what the role will hold, and nothing about the previous state
+/// survives.
+#[utoipa::path(
+    put, path = "/api/v1/roles/{role_id}/permissions", tag = "rbac",
+    request_body = SetRolePermissions,
+    responses(
+        (status = 204),
+        (status = 400, description = "An unknown permission name"),
+        (status = 403, description = "Missing role:write"),
+        (status = 404),
+    ),
+)]
+async fn set_role_permissions(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(role_id): Path<Uuid>,
+    Json(body): Json<SetRolePermissions>,
+) -> Result<StatusCode, ApiError> {
+    let mut permissions = Vec::with_capacity(body.permissions.len());
+    for name in &body.permissions {
+        permissions.push(name.parse::<Permission>().map_err(|_| {
+            ApiError::from(authenc_contract::AppError::field(
+                "permissions",
+                format!("`{name}` is not a permission this system grants"),
+            ))
+        })?);
+    }
+
+    authenc_identity::admin::set_role_permissions(&state.db, &actor, RoleId(role_id), &permissions)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Grant a role to a user.
 #[utoipa::path(
     post, path = "/api/v1/roles/{role_id}/users/{user_id}", tag = "identity",
@@ -569,6 +700,188 @@ async fn revoke_role(
     Path((role_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
     authenc_identity::admin::revoke_role(&state.db, &actor, UserId(user_id), RoleId(role_id))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// Groups
+// ---------------------------------------------------------------------------
+
+/// The realm's group tree, ordered by path.
+#[utoipa::path(
+    get, path = "/api/v1/groups", tag = "groups",
+    responses((status = 200), (status = 403, description = "Missing group:read")),
+)]
+async fn list_groups(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+) -> Result<Json<Vec<GroupView>>, ApiError> {
+    let groups = authenc_identity::admin::list_groups(&state.db, &actor, actor.realm_id).await?;
+    Ok(Json(groups.into_iter().map(GroupView::from).collect()))
+}
+
+/// Create a group in the caller's realm.
+#[utoipa::path(
+    post, path = "/api/v1/groups", tag = "groups", request_body = CreateGroup,
+    responses(
+        (status = 201),
+        (status = 400, description = "Blank name, or a move that would cycle"),
+        (status = 403, description = "Missing group:write"),
+        (status = 409, description = "A sibling already has that name"),
+    ),
+)]
+async fn create_group(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Json(body): Json<CreateGroup>,
+) -> Result<(StatusCode, Json<GroupView>), ApiError> {
+    let created = authenc_identity::admin::create_group(
+        &state.db,
+        &actor,
+        body.parent_id,
+        &body.name,
+        body.description.as_deref(),
+    )
+    .await?;
+    Ok((StatusCode::CREATED, Json(GroupView::from(created))))
+}
+
+/// Fetch one group.
+#[utoipa::path(
+    get, path = "/api/v1/groups/{group_id}", tag = "groups",
+    responses((status = 200), (status = 403), (status = 404)),
+)]
+async fn get_group(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(group_id): Path<Uuid>,
+) -> Result<Json<GroupView>, ApiError> {
+    let found = authenc_identity::admin::get_group(&state.db, &actor, group_id).await?;
+    Ok(Json(GroupView::from(found)))
+}
+
+/// Delete a group **and its whole subtree**.
+#[utoipa::path(
+    delete, path = "/api/v1/groups/{group_id}", tag = "groups",
+    responses((status = 204), (status = 403), (status = 404)),
+)]
+async fn delete_group(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(group_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::delete_group(&state.db, &actor, group_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Move a group under a different parent, or to the root.
+#[utoipa::path(
+    post, path = "/api/v1/groups/{group_id}/parent", tag = "groups",
+    request_body = MoveGroup,
+    responses(
+        (status = 200),
+        (status = 400, description = "The move would create a cycle"),
+        (status = 403), (status = 404),
+    ),
+)]
+async fn move_group(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(group_id): Path<Uuid>,
+    Json(body): Json<MoveGroup>,
+) -> Result<Json<GroupView>, ApiError> {
+    let moved =
+        authenc_identity::admin::move_group(&state.db, &actor, group_id, body.parent_id).await?;
+    Ok(Json(GroupView::from(moved)))
+}
+
+/// Who is directly in a group.
+#[utoipa::path(
+    get, path = "/api/v1/groups/{group_id}/members", tag = "groups",
+    responses((status = 200), (status = 403), (status = 404)),
+)]
+async fn list_group_members(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(group_id): Path<Uuid>,
+) -> Result<Json<Vec<User>>, ApiError> {
+    let users = authenc_identity::admin::group_members(&state.db, &actor, group_id).await?;
+    Ok(Json(users))
+}
+
+/// Put a user in a group.
+#[utoipa::path(
+    post, path = "/api/v1/groups/{group_id}/members/{user_id}", tag = "groups",
+    responses((status = 204), (status = 403), (status = 404)),
+)]
+async fn add_group_member(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path((group_id, user_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::add_group_member(&state.db, &actor, group_id, UserId(user_id)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Take a user out of a group.
+#[utoipa::path(
+    delete, path = "/api/v1/groups/{group_id}/members/{user_id}", tag = "groups",
+    responses((status = 204), (status = 403), (status = 404)),
+)]
+async fn remove_group_member(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path((group_id, user_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::remove_group_member(&state.db, &actor, group_id, UserId(user_id))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The roles granted directly to a group.
+#[utoipa::path(
+    get, path = "/api/v1/groups/{group_id}/roles", tag = "groups",
+    responses((status = 200), (status = 403), (status = 404)),
+)]
+async fn list_group_roles(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(group_id): Path<Uuid>,
+) -> Result<Json<Vec<Role>>, ApiError> {
+    let roles = authenc_identity::admin::group_roles(&state.db, &actor, group_id).await?;
+    Ok(Json(roles))
+}
+
+/// Grant a role to a group, and so to everyone in it and below it.
+#[utoipa::path(
+    post, path = "/api/v1/groups/{group_id}/roles/{role_id}", tag = "groups",
+    responses(
+        (status = 204),
+        (status = 403, description = "Missing group:write or role:write"),
+        (status = 404),
+    ),
+)]
+async fn grant_group_role(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path((group_id, role_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::grant_group_role(&state.db, &actor, group_id, RoleId(role_id)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Take a role away from a group.
+#[utoipa::path(
+    delete, path = "/api/v1/groups/{group_id}/roles/{role_id}", tag = "groups",
+    responses((status = 204), (status = 403), (status = 404)),
+)]
+async fn revoke_group_role(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path((group_id, role_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::revoke_group_role(&state.db, &actor, group_id, RoleId(role_id))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

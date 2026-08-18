@@ -5,6 +5,40 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — groups
+
+- A hierarchy of groups per realm, each carrying role grants, with membership.
+  `user::permissions` and `user::role_names` resolve *through* the tree, so a
+  member of `/engineering/backend` holds the roles granted to `backend` and to
+  `engineering` above it. A group feature that stores a hierarchy and never
+  consults it during authorisation is a diagram, not access control.
+- Inheritance runs upward only. Adding a child group cannot widen what its
+  parent's members can do, and a test asserts the downward direction stays
+  closed.
+- Cycles are refused by a database trigger. A cycle is not merely invalid data:
+  every ancestry walk over it is a query that does not terminate, and one runs
+  on every authorised request.
+- `group:read` and `group:write`, and `/api/v1/groups` with membership and role
+  grants. Granting a role to a group needs `role:write` as well, because doing
+  so hands the role to every member and descendant at once.
+
+### Fixed
+
+- **A permission had two names on the wire.** `whoami` sent `user:read` — the
+  stored name, the one `FromStr` parses — while anything serialising the enum
+  sent `user_read`, which does not parse back. `Action` had the same split
+  (`login.succeeded` versus `login_succeeded`), so the console and
+  `/api/v1/audit` disagreed about what an event was called. Both now serialise
+  as their stored name, defined once, and a test round-trips every variant.
+- **`/api/v1` could create a role but never empower it.** There was no endpoint
+  to attach permissions, so every role made through the API was inert. Added
+  `PUT /api/v1/roles/{role_id}/permissions`, which replaces the whole set.
+- **Unknown JSON fields were silently ignored.** A request sending
+  `permissions` to `POST /api/v1/roles` — a field that endpoint does not have —
+  received a 201 and a useless role. Every request body now sets
+  `deny_unknown_fields`, so a typo or an invented field is refused rather than
+  dropped.
+
 ### Added — the audit log
 
 - One event model in `contract::event`. `Action::ALL` is the complete,

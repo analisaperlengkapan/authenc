@@ -143,6 +143,22 @@ real defect that was in `main`.
 - **Derive the WebAuthn relying party from configuration, never from a request
   header.** `Host` is attacker-controlled; an RP ID taken from it points the
   ceremony at an origin somebody else owns.
+- **A contract type has one name on the wire, and it is the stored one.**
+  `Permission` and `Action` serialise via `as_str()` with hand-written impls,
+  not `#[serde(rename_all)]`. A derived spelling is a *second* name for the same
+  thing: `whoami` said `user:read` while the enum said `user_read`, and only one
+  of the two parsed back. If you add such an enum, round-trip every variant in a
+  test.
+- **Inheritance in the group tree runs upward, never downward.** A member of a
+  child holds its ancestors' roles; a member of a parent does not hold its
+  children's. The other direction would make adding a nested group a privilege
+  escalation for everyone above it.
+- **A rule whose violation hangs a request belongs in the database.** Group
+  cycles are refused by a trigger, not by Rust, because an ancestry walk over a
+  cycle does not terminate and one runs on every authorised request.
+- **Every REST request body sets `deny_unknown_fields`.** Serde drops unknown
+  fields by default, so a caller's invented or mistyped parameter produced a
+  2xx and an action that did not do what they asked.
 - **Server functions return `ServerFnError`, and the status must be set.**
   Leptos reports every server-function failure as 500 unless something calls
   `to_server_fn_error`. `require_session` and `require_actor` therefore return

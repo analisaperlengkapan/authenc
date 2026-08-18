@@ -25,6 +25,7 @@
 pub mod admin;
 pub mod audit;
 pub mod db;
+pub mod group;
 pub mod login;
 pub mod mail;
 pub mod mfa;
