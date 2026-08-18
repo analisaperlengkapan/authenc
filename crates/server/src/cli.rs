@@ -265,6 +265,8 @@ pub async fn purge(db: &Db, audit_older_than_days: Option<u32>) -> Result<()> {
     let keys = authenc_oauth::keyring::purge_retired(db).await?;
     let challenges = authenc_identity::mfa::challenge::purge_expired(db).await?;
     let ceremonies = authenc_identity::mfa::passkey::purge_expired(db).await?;
+    // Accepted invitations are kept: they are the record of who joined.
+    let invitations = authenc_identity::organization::purge_expired(db).await?;
 
     let audit = match audit_older_than_days {
         Some(days) => {
@@ -282,6 +284,7 @@ pub async fn purge(db: &Db, audit_older_than_days: Option<u32>) -> Result<()> {
         signing_keys = keys,
         mfa_challenges = challenges,
         webauthn_ceremonies = ceremonies,
+        invitations,
         audit_events = audit,
         "purged expired records",
     );

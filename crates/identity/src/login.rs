@@ -34,6 +34,7 @@ use crate::{
     audit::{self, Entry},
     db::Db,
     mfa::{self, Factor, challenge, recovery, totp},
+    organization,
     password::PasswordHasher,
     sealed::MasterKey,
     session::{self, Issued, Origin},
@@ -191,6 +192,34 @@ pub async fn authenticate(
     }
 
     let user = user.cloned().ok_or(AppError::Unauthenticated)?;
+
+    // A suspended organisation stops its members signing in. Checked after the
+    // password, not before, so the answer does not differ by timing between a
+    // suspended account and a wrong password — and reported as the same
+    // `Unauthenticated` for the same reason.
+    if organization::blocks_sign_in(db, user.id).await? {
+        record(
+            db,
+            realm.id,
+            attempt.identifier,
+            Some(user.id),
+            attempt.origin,
+            false,
+        )
+        .await?;
+
+        audit::observe(
+            db,
+            Entry::failure(Action::LoginFailed)
+                .in_realm(realm.id)
+                .by(user.id, &user.username)
+                .from(attempt.origin)
+                .detail(serde_json::json!({ "reason": "organization_suspended" })),
+        )
+        .await;
+
+        return Err(AppError::Unauthenticated);
+    }
 
     // Take the opportunity to upgrade a hash made under weaker parameters.
     if hasher.needs_rehash(phc)
@@ -1403,6 +1432,69 @@ mod tests {
         ] {
             assert!(!all.contains(secret), "a credential reached the audit log");
         }
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_suspended_organisation_stops_its_members_signing_in(db: Db) {
+        // Suspending a customer is only real if authentication honours it.
+        use crate::organization::{self, MemberRole};
+
+        let (hasher, user) = fixture(&db).await;
+        let org = organization::create(&db, user.realm_id, "widgets", "Widgets")
+            .await
+            .unwrap();
+        organization::set_member(&db, org.id, user.id, MemberRole::Owner)
+            .await
+            .unwrap();
+
+        assert!(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .is_ok(),
+        );
+
+        organization::set_enabled(&db, org.id, false).await.unwrap();
+
+        let error = authenticate(&db, &hasher, attempt("alice", PASSWORD))
+            .await
+            .unwrap_err();
+        // The same 401 a wrong password gets: which of the two it was is not
+        // something an unauthenticated caller may learn.
+        assert_eq!(error.status(), 401);
+
+        organization::set_enabled(&db, org.id, true).await.unwrap();
+        assert!(
+            authenticate(&db, &hasher, attempt("alice", PASSWORD))
+                .await
+                .is_ok(),
+            "restoring the organisation must restore its people",
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_suspended_sign_in_is_recorded_with_its_reason(db: Db) {
+        use crate::organization::{self, MemberRole};
+
+        let (hasher, user) = fixture(&db).await;
+        let org = organization::create(&db, user.realm_id, "widgets", "Widgets")
+            .await
+            .unwrap();
+        organization::set_member(&db, org.id, user.id, MemberRole::Owner)
+            .await
+            .unwrap();
+        organization::set_enabled(&db, org.id, false).await.unwrap();
+
+        let _ = authenticate(&db, &hasher, attempt("alice", PASSWORD)).await;
+
+        // The client is told nothing, but an operator asking "why can this
+        // person not sign in?" must not have to guess.
+        let detail: serde_json::Value = sqlx::query_scalar(
+            "SELECT detail FROM audit_events WHERE action = 'login.failed' LIMIT 1",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(detail["reason"], "organization_suspended");
     }
 
     #[sqlx::test(migrations = "../../migrations")]

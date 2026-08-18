@@ -107,6 +107,9 @@ is enforced rather than merely intended.
 | Audit API | `/api/v1/audit` and `/api/v1/audit.csv`; a bad filter is refused, and the CSV neutralises spreadsheet formulas |
 | Groups | a hierarchy per realm; permissions resolve through it, so a member of a child holds its ancestors' roles |
 | Group safety | cycles refused by a database trigger; inheritance runs upward only, so nesting is never an escalation |
+| Organisations | a tenant boundary inside a realm: suspendable, joined by invitation, with owner/admin/member roles |
+| Suspension | disabling an organisation stops its members signing in — unless they belong to another that is still enabled |
+| Invitations | single-use expiring links, hash-only at rest, recording who actually accepted rather than only who was invited |
 | CLI | `authenc seed`, `migrate`, `purge`, `generate-master-key`, `rotate-keys`, `register-client` — no test endpoints in the router |
 
 ## Development

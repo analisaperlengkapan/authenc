@@ -265,8 +265,35 @@ Granting to a group hands the role to every member and descendant at once; if
 roles than `role:write`, and the weaker permission would be the one worth
 having.
 
-**Still to come in this stage:** organisations and invitations, and a console
-page for the tree.
+**Organisations** are a tenant boundary *inside* a realm, and the question
+worth answering before adding the table was what one does that a group does
+not. Three things: it can be **suspended**, which stops its members signing in
+without touching a user row; people **join by invitation** through a link sent
+to an address; and membership carries a **role inside the organisation** —
+owner, admin, member — which says who runs the customer's account and confers
+nothing over the realm.
+
+The suspension rule is more careful than "any disabled organisation blocks
+you". Someone in no organisation is unaffected; someone whose only
+organisation is suspended is blocked; someone in two, one still enabled, is
+**not** blocked — a consultant working with two customers must not lose their
+account when one of them is suspended.
+
+An invitation is a single-use expiring link whose hash alone is stored, claimed
+atomically so one link admits one person. The accepting account is recorded
+separately from the invited address: a link forwarded to somebody else and
+accepted by them cannot be prevented — possession of it *is* the proof — but it
+is visible afterwards, and a row storing only the invited address would hide it.
+
+An organisation must keep at least one owner, and an admin cannot act on an
+owner. Otherwise an admin could evict every owner and take the organisation,
+which is the only reason the two roles differ.
+
+**Still to come in this stage:** REST and console surfaces for organisations,
+and a console page for the group tree. Domain-based auto-join is deliberately
+absent: it is only safe once a domain has been *proved*, and DNS verification is
+not built, so claiming one would be a feature that looks like a control and is
+not.
 
 ### Stage 8 — Federation
 

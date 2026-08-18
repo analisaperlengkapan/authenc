@@ -29,6 +29,7 @@ pub mod group;
 pub mod login;
 pub mod mail;
 pub mod mfa;
+pub mod organization;
 pub mod password;
 pub mod realm;
 pub mod recovery;

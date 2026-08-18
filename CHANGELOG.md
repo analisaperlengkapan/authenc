@@ -5,6 +5,25 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — organisations
+
+- A tenant boundary inside a realm, with three things a group does not have:
+  it can be **suspended**, stopping its members signing in without touching a
+  user row; people **join by invitation**; and membership carries a role inside
+  the organisation — owner, admin, member — separate from realm RBAC.
+- The suspension rule is deliberately careful. No organisation → unaffected.
+  One, suspended → blocked. Two, one enabled → **not** blocked, because a
+  consultant working with two customers must not lose their account when one is
+  suspended.
+- Invitations are single-use expiring links, hash-only at rest, claimed
+  atomically. The accepting account is recorded separately from the invited
+  address: a forwarded link cannot be prevented, but it is visible afterwards.
+- An organisation must keep one owner, and an admin cannot act on an owner —
+  otherwise an admin could evict every owner and take it.
+- Domain-based auto-join is **not** built. It is only safe once a domain has
+  been proved, and DNS verification does not exist here, so a claimed domain
+  would be a feature that looks like a control and is not.
+
 ### Added — groups
 
 - A hierarchy of groups per realm, each carrying role grants, with membership.

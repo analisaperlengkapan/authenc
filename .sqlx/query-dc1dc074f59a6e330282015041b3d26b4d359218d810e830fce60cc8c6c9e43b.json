@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT count(*) AS \"total!\",\n               count(*) FILTER (WHERE o.enabled) AS \"enabled!\"\n          FROM organization_members m\n          JOIN organizations o ON o.id = m.organization_id\n         WHERE m.user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "enabled!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "dc1dc074f59a6e330282015041b3d26b4d359218d810e830fce60cc8c6c9e43b"
+}
