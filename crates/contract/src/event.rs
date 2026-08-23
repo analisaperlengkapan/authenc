@@ -98,6 +98,22 @@ pub enum Action {
     GroupMemberAdded,
     /// A user was taken out of a group.
     GroupMemberRemoved,
+    /// An organisation was created.
+    OrganizationCreated,
+    /// An organisation was suspended or restored.
+    OrganizationEnabledChanged,
+    /// An organisation was deleted.
+    OrganizationDeleted,
+    /// Someone was added to an organisation, or their role there changed.
+    OrganizationMemberSet,
+    /// Someone was removed from an organisation.
+    OrganizationMemberRemoved,
+    /// An address was invited to an organisation.
+    OrganizationInvited,
+    /// An invitation was accepted.
+    OrganizationInvitationAccepted,
+    /// An invitation was withdrawn.
+    OrganizationInvitationRevoked,
     /// A role was granted to a group.
     GroupRoleGranted,
     /// A role was taken from a group.
@@ -175,6 +191,14 @@ impl Action {
         Self::GroupDeleted,
         Self::GroupMemberAdded,
         Self::GroupMemberRemoved,
+        Self::OrganizationCreated,
+        Self::OrganizationEnabledChanged,
+        Self::OrganizationDeleted,
+        Self::OrganizationMemberSet,
+        Self::OrganizationMemberRemoved,
+        Self::OrganizationInvited,
+        Self::OrganizationInvitationAccepted,
+        Self::OrganizationInvitationRevoked,
         Self::GroupRoleGranted,
         Self::GroupRoleRevoked,
         Self::ClientRegistered,
@@ -226,6 +250,14 @@ impl Action {
             Self::GroupDeleted => "group.deleted",
             Self::GroupMemberAdded => "group.member_added",
             Self::GroupMemberRemoved => "group.member_removed",
+            Self::OrganizationCreated => "organization.created",
+            Self::OrganizationEnabledChanged => "organization.enabled_changed",
+            Self::OrganizationDeleted => "organization.deleted",
+            Self::OrganizationMemberSet => "organization.member_set",
+            Self::OrganizationMemberRemoved => "organization.member_removed",
+            Self::OrganizationInvited => "organization.invited",
+            Self::OrganizationInvitationAccepted => "organization.invitation_accepted",
+            Self::OrganizationInvitationRevoked => "organization.invitation_revoked",
             Self::GroupRoleGranted => "group.role_granted",
             Self::GroupRoleRevoked => "group.role_revoked",
             Self::ClientRegistered => "client.registered",
@@ -274,6 +306,14 @@ impl Action {
             | Self::GroupDeleted
             | Self::GroupMemberAdded
             | Self::GroupMemberRemoved
+            | Self::OrganizationCreated
+            | Self::OrganizationEnabledChanged
+            | Self::OrganizationDeleted
+            | Self::OrganizationMemberSet
+            | Self::OrganizationMemberRemoved
+            | Self::OrganizationInvited
+            | Self::OrganizationInvitationAccepted
+            | Self::OrganizationInvitationRevoked
             | Self::GroupRoleGranted
             | Self::GroupRoleRevoked => Category::Directory,
             Self::ClientRegistered
@@ -337,6 +377,14 @@ impl Action {
             Self::GroupDeleted => "Group deleted, with its subtree",
             Self::GroupMemberAdded => "User added to a group",
             Self::GroupMemberRemoved => "User removed from a group",
+            Self::OrganizationCreated => "Organisation created",
+            Self::OrganizationEnabledChanged => "Organisation suspended or restored",
+            Self::OrganizationDeleted => "Organisation deleted",
+            Self::OrganizationMemberSet => "Organisation membership set",
+            Self::OrganizationMemberRemoved => "Removed from an organisation",
+            Self::OrganizationInvited => "Invited to an organisation",
+            Self::OrganizationInvitationAccepted => "Organisation invitation accepted",
+            Self::OrganizationInvitationRevoked => "Organisation invitation withdrawn",
             Self::GroupRoleGranted => "Role granted to a group",
             Self::GroupRoleRevoked => "Role revoked from a group",
             Self::ClientRegistered => "OAuth client registered",
@@ -506,7 +554,7 @@ mod tests {
         // reflection to check this with, so the guard is that every listed
         // action is distinct and the count is asserted here — update both
         // together, deliberately.
-        assert_eq!(Action::ALL.len(), 42);
+        assert_eq!(Action::ALL.len(), 50);
         let unique: HashSet<_> = Action::ALL.iter().collect();
         assert_eq!(unique.len(), Action::ALL.len(), "a duplicate in ALL");
     }
@@ -519,6 +567,11 @@ mod tests {
         assert!(Action::RefreshTokenReuseDetected.is_security_signal());
         assert!(!Action::LoginFailed.is_security_signal());
         assert!(!Action::LoginSucceeded.is_security_signal());
+        // Suspending an organisation cuts off every one of its members, which
+        // is dramatic — and entirely routine. An administrator doing their job
+        // is not an attack, and marking it red is how the red stops meaning
+        // anything.
+        assert!(!Action::OrganizationEnabledChanged.is_security_signal());
     }
 
     #[test]

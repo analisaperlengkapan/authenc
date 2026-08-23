@@ -47,6 +47,11 @@ pub enum Permission {
     /// Create, change, and delete groups, and manage their membership and role
     /// grants.
     GroupWrite,
+    /// View organisations and their membership.
+    OrganizationRead,
+    /// Create, suspend, and delete organisations, and manage their membership
+    /// and invitations.
+    OrganizationWrite,
     /// Read the audit log.
     ///
     /// Its own permission rather than part of `user:read`, because the trail
@@ -70,6 +75,8 @@ impl Permission {
         Self::ClientWrite,
         Self::GroupRead,
         Self::GroupWrite,
+        Self::OrganizationRead,
+        Self::OrganizationWrite,
         Self::AuditRead,
     ];
 
@@ -87,6 +94,8 @@ impl Permission {
             Self::ClientWrite => "client:write",
             Self::GroupRead => "group:read",
             Self::GroupWrite => "group:write",
+            Self::OrganizationRead => "organization:read",
+            Self::OrganizationWrite => "organization:write",
             Self::AuditRead => "audit:read",
         }
     }
@@ -105,6 +114,8 @@ impl Permission {
             Self::ClientWrite => "Register and delete OAuth clients, and rotate their secrets",
             Self::GroupRead => "View groups and their membership",
             Self::GroupWrite => "Create and delete groups, and manage membership and grants",
+            Self::OrganizationRead => "View organisations and their membership",
+            Self::OrganizationWrite => "Create, suspend, and delete organisations",
             Self::AuditRead => "Read the audit log",
         }
     }
@@ -122,6 +133,7 @@ impl Permission {
             Self::RoleWrite => Some(Self::RoleRead),
             Self::ClientWrite => Some(Self::ClientRead),
             Self::GroupWrite => Some(Self::GroupRead),
+            Self::OrganizationWrite => Some(Self::OrganizationRead),
             _ => None,
         }
     }

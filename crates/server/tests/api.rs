@@ -1089,3 +1089,199 @@ async fn a_role_can_be_given_permissions_over_rest(db: PgPool) {
         unknown.text(),
     );
 }
+
+// ---------------------------------------------------------------------------
+// Organisations
+// ---------------------------------------------------------------------------
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn suspending_an_organisation_stops_its_members_signing_in_over_http(db: PgPool) {
+    // The end-to-end version of the property the feature exists for. A
+    // suspension nothing enforces at the login endpoint is a boolean.
+    seed_with(&db, "operator", Permission::ALL).await;
+
+    let realm = realm::by_name(&db, "master").await.unwrap();
+    let bob = user::create(
+        &db,
+        &PasswordHasher::new(),
+        NewUser {
+            realm_id: realm.id,
+            username: "bob",
+            email: "bob@example.com",
+            password: PASSWORD,
+            first_name: None,
+            last_name: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    // One server per identity. Reusing a single `TestServer` across sign-ins
+    // carries the previous session's CSRF header into the next one, and the
+    // resulting 403 looks exactly like a permission failure.
+    let mut ops = server(db.clone());
+    sign_in(&mut ops, "operator").await;
+
+    let org: serde_json::Value = ops
+        .post("/api/v1/organizations")
+        .json(&json!({ "slug": "widgets", "name": "Widgets Inc" }))
+        .await
+        .json();
+    let id = org["id"].as_str().unwrap().to_owned();
+
+    ops.put(&format!("/api/v1/organizations/{id}/members/{}", bob.id))
+        .json(&json!({ "role": "member" }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    let login = json!({
+        "request": { "realm": "master", "identifier": "bob", "password": PASSWORD }
+    });
+
+    server(db.clone())
+        .post("/api/sfn/login")
+        .json(&login)
+        .await
+        .assert_status_ok();
+
+    ops.post(&format!("/api/v1/organizations/{id}/enabled"))
+        .json(&json!({ "enabled": false }))
+        .await
+        .assert_status_ok();
+
+    let refused = server(db.clone()).post("/api/sfn/login").json(&login).await;
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::UNAUTHORIZED,
+        "a suspended organisation must stop its members signing in",
+    );
+
+    // And restoring it gives them back.
+    ops.post(&format!("/api/v1/organizations/{id}/enabled"))
+        .json(&json!({ "enabled": true }))
+        .await
+        .assert_status_ok();
+
+    server(db)
+        .post("/api/sfn/login")
+        .json(&login)
+        .await
+        .assert_status_ok();
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_invitation_is_handed_over_once_and_never_listed(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let org: serde_json::Value = server
+        .post("/api/v1/organizations")
+        .json(&json!({ "slug": "widgets", "name": "Widgets Inc" }))
+        .await
+        .json();
+    let id = org["id"].as_str().unwrap().to_owned();
+
+    let invited: serde_json::Value = server
+        .post(&format!("/api/v1/organizations/{id}/invitations"))
+        .json(&json!({ "email": "bob@example.com", "role": "member" }))
+        .await
+        .json();
+
+    let token = invited["token"]
+        .as_str()
+        .expect("the token, once")
+        .to_owned();
+    assert!(!token.is_empty());
+
+    // And never again: a listing that could return one would let anyone who
+    // may read it join as anyone who was invited.
+    let listed = server
+        .get(&format!("/api/v1/organizations/{id}/invitations"))
+        .await
+        .text();
+    assert!(
+        !listed.contains(&token),
+        "the token was listed back: {listed}"
+    );
+    assert!(listed.contains("bob@example.com"));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn organisation_endpoints_need_their_permission(db: PgPool) {
+    seed_with(&db, "operator", &[Permission::UserRead]).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    assert_eq!(
+        server.get("/api/v1/organizations").await.status_code(),
+        StatusCode::FORBIDDEN,
+    );
+    assert_eq!(
+        server
+            .post("/api/v1/organizations")
+            .json(&json!({ "slug": "widgets", "name": "Widgets" }))
+            .await
+            .status_code(),
+        StatusCode::FORBIDDEN,
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_unknown_organisation_role_is_refused(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let org: serde_json::Value = server
+        .post("/api/v1/organizations")
+        .json(&json!({ "slug": "widgets", "name": "Widgets Inc" }))
+        .await
+        .json();
+    let id = org["id"].as_str().unwrap();
+
+    let refused = server
+        .post(&format!("/api/v1/organizations/{id}/invitations"))
+        .json(&json!({ "email": "bob@example.com", "role": "root" }))
+        .await;
+
+    assert_eq!(refused.status_code(), StatusCode::BAD_REQUEST);
+    assert!(refused.text().contains("root"), "{}", refused.text());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_last_owner_cannot_be_removed_over_http(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+
+    let realm = realm::by_name(&db, "master").await.unwrap();
+    let owner = user::id_by_email(&db, realm.id, "operator@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let org: serde_json::Value = server
+        .post("/api/v1/organizations")
+        .json(&json!({ "slug": "widgets", "name": "Widgets Inc" }))
+        .await
+        .json();
+    let id = org["id"].as_str().unwrap();
+
+    server
+        .put(&format!("/api/v1/organizations/{id}/members/{owner}"))
+        .json(&json!({ "role": "owner" }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    let refused = server
+        .delete(&format!("/api/v1/organizations/{id}/members/{owner}"))
+        .await;
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::BAD_REQUEST,
+        "{}",
+        refused.text()
+    );
+}

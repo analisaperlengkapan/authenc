@@ -21,7 +21,7 @@ use uuid::Uuid;
 use crate::{
     audit::{self, Entry},
     db::Db,
-    group,
+    group, organization,
     password::PasswordHasher,
     role, session, user,
 };
@@ -647,6 +647,325 @@ pub async fn group_members(db: &Db, actor: &Actor, group_id: Uuid) -> Result<Vec
 pub async fn group_roles(db: &Db, actor: &Actor, group_id: Uuid) -> Result<Vec<Role>> {
     get_group(db, actor, group_id).await?;
     group::roles(db, group_id).await
+}
+
+// ---------------------------------------------------------------------------
+// Organisations
+// ---------------------------------------------------------------------------
+
+/// Every organisation in the realm.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `organization:read`.
+pub async fn list_organizations(db: &Db, actor: &Actor) -> Result<Vec<organization::Organization>> {
+    actor.require(Permission::OrganizationRead)?;
+    organization::list(db, actor.realm_id).await
+}
+
+/// One organisation.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `organization:read`, or
+/// [`AppError::NotFound`] outside the actor's realm.
+pub async fn get_organization(
+    db: &Db,
+    actor: &Actor,
+    id: Uuid,
+) -> Result<organization::Organization> {
+    actor.require(Permission::OrganizationRead)?;
+    let found = organization::by_id(db, id).await?;
+    same_realm(actor, found.realm_id)?;
+    Ok(found)
+}
+
+/// Create an organisation in the actor's realm.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `organization:write`, plus whatever
+/// [`organization::create`] refuses.
+pub async fn create_organization(
+    db: &Db,
+    actor: &Actor,
+    slug: &str,
+    name: &str,
+) -> Result<organization::Organization> {
+    actor.require(Permission::OrganizationWrite)?;
+
+    let created = organization::create(db, actor.realm_id, slug, name).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::OrganizationCreated)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("organization", &created.slug),
+    )
+    .await;
+
+    Ok(created)
+}
+
+/// Suspend or restore an organisation.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `organization:write`, or
+/// [`AppError::NotFound`] outside the actor's realm.
+pub async fn set_organization_enabled(
+    db: &Db,
+    actor: &Actor,
+    id: Uuid,
+    enabled: bool,
+) -> Result<organization::Organization> {
+    actor.require(Permission::OrganizationWrite)?;
+    get_organization(db, actor, id).await?;
+
+    let changed = organization::set_enabled(db, id, enabled).await?;
+
+    // Recorded either way. Suspending cuts off everyone in it, and restoring
+    // gives them back — an operator asking "why could nobody from this
+    // customer sign in on Tuesday?" needs both halves.
+    audit::observe(
+        db,
+        Entry::success(Action::OrganizationEnabledChanged)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("organization", &changed.slug)
+            .detail(serde_json::json!({ "enabled": enabled })),
+    )
+    .await;
+
+    Ok(changed)
+}
+
+/// Delete an organisation. Its members remain as users.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `organization:write`, or
+/// [`AppError::NotFound`] outside the actor's realm.
+pub async fn delete_organization(db: &Db, actor: &Actor, id: Uuid) -> Result<()> {
+    actor.require(Permission::OrganizationWrite)?;
+    let existing = get_organization(db, actor, id).await?;
+
+    organization::delete(db, id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::OrganizationDeleted)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("organization", &existing.slug),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Everyone in an organisation, with their role.
+///
+/// # Errors
+///
+/// As [`get_organization`].
+pub async fn organization_members(
+    db: &Db,
+    actor: &Actor,
+    id: Uuid,
+) -> Result<Vec<(User, organization::MemberRole)>> {
+    get_organization(db, actor, id).await?;
+    organization::members(db, id).await
+}
+
+/// Add someone, or change the role they hold.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `organization:write`, or
+/// [`AppError::NotFound`] if either side is outside the actor's realm.
+pub async fn set_organization_member(
+    db: &Db,
+    actor: &Actor,
+    id: Uuid,
+    user_id: UserId,
+    role: organization::MemberRole,
+) -> Result<()> {
+    actor.require(Permission::OrganizationWrite)?;
+    let found = get_organization(db, actor, id).await?;
+    let target = user::by_id(db, user_id).await?;
+    same_realm(actor, target.realm_id)?;
+
+    organization::set_member(db, id, user_id, role).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::OrganizationMemberSet)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("user", &target.username)
+            .detail(serde_json::json!({
+                "organization": found.slug,
+                "role": role.as_str(),
+            })),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Remove someone from an organisation.
+///
+/// # Errors
+///
+/// As [`set_organization_member`], plus [`AppError::Validation`] if they are
+/// the last owner.
+pub async fn remove_organization_member(
+    db: &Db,
+    actor: &Actor,
+    id: Uuid,
+    user_id: UserId,
+) -> Result<()> {
+    actor.require(Permission::OrganizationWrite)?;
+    let found = get_organization(db, actor, id).await?;
+    let target = user::by_id(db, user_id).await?;
+    same_realm(actor, target.realm_id)?;
+
+    organization::remove_member(db, id, user_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::OrganizationMemberRemoved)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("user", &target.username)
+            .detail(serde_json::json!({ "organization": found.slug })),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Invite an address to an organisation.
+///
+/// Returns the invitation **and its token**, which the caller sends in a link
+/// and then forgets. It is not recoverable afterwards.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `organization:write`, or
+/// [`AppError::NotFound`] outside the actor's realm.
+pub async fn invite_to_organization(
+    db: &Db,
+    actor: &Actor,
+    id: Uuid,
+    email: &str,
+    role: organization::MemberRole,
+) -> Result<organization::Invited> {
+    actor.require(Permission::OrganizationWrite)?;
+    let found = get_organization(db, actor, id).await?;
+
+    let invited = organization::invite(db, id, email, role, Some(actor.user_id)).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::OrganizationInvited)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("email", email)
+            .detail(serde_json::json!({
+                "organization": found.slug,
+                "role": role.as_str(),
+            })),
+    )
+    .await;
+
+    Ok(invited)
+}
+
+/// Invitations for an organisation.
+///
+/// # Errors
+///
+/// As [`get_organization`].
+pub async fn organization_invitations(
+    db: &Db,
+    actor: &Actor,
+    id: Uuid,
+) -> Result<Vec<organization::Invitation>> {
+    get_organization(db, actor, id).await?;
+    organization::invitations(db, id).await
+}
+
+/// Withdraw an invitation.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `organization:write`, or
+/// [`AppError::NotFound`] if it does not exist, has been accepted, or belongs
+/// to another realm.
+pub async fn revoke_organization_invitation(
+    db: &Db,
+    actor: &Actor,
+    organization_id: Uuid,
+    invitation_id: Uuid,
+) -> Result<()> {
+    actor.require(Permission::OrganizationWrite)?;
+    let found = get_organization(db, actor, organization_id).await?;
+
+    // Scoped to the organisation the caller named, so an invitation id alone is
+    // not enough to reach into another realm's organisation.
+    if !organization::invitations(db, organization_id)
+        .await?
+        .iter()
+        .any(|invitation| invitation.id == invitation_id)
+    {
+        return Err(AppError::NotFound("invitation"));
+    }
+
+    organization::revoke_invitation(db, invitation_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::OrganizationInvitationRevoked)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("organization", &found.slug),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Accept an invitation as the signed-in user.
+///
+/// Deliberately **not** permission-gated, and deliberately not in the `admin`
+/// sense at all: the link is the credential, and the person accepting is
+/// joining rather than administering. Requiring `organization:write` here would
+/// mean only realm administrators could ever accept an invitation, which is the
+/// opposite of what invitations are for.
+///
+/// # Errors
+///
+/// [`AppError::Unauthenticated`] if the token is unknown, expired, or spent.
+pub async fn accept_organization_invitation(
+    db: &Db,
+    user: &User,
+    token: &crate::SecretToken,
+) -> Result<organization::Organization> {
+    let joined = organization::accept_invitation(db, token, user.id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::OrganizationInvitationAccepted)
+            .in_realm(user.realm_id)
+            .by(user.id, &user.username)
+            .to("organization", &joined.slug),
+    )
+    .await;
+
+    Ok(joined)
 }
 
 /// Read the realm's audit trail.
@@ -1301,5 +1620,188 @@ mod tests {
                 "{expected} missing: {actions:?}"
             );
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Organisations
+    // -----------------------------------------------------------------------
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn organisation_reads_and_writes_need_their_own_permissions(db: Db) {
+        let (realm_id, user_id) = a_realm_with_a_user(&db, "acme").await;
+
+        let nobody = actor(realm_id, user_id, &[]);
+        assert_eq!(
+            list_organizations(&db, &nobody).await.unwrap_err().status(),
+            403,
+        );
+
+        let reader = actor(realm_id, user_id, &[Permission::OrganizationRead]);
+        assert!(list_organizations(&db, &reader).await.is_ok());
+        assert_eq!(
+            create_organization(&db, &reader, "widgets", "Widgets")
+                .await
+                .unwrap_err()
+                .status(),
+            403,
+        );
+
+        let writer = actor(realm_id, user_id, &[Permission::OrganizationWrite]);
+        assert!(
+            create_organization(&db, &writer, "widgets", "Widgets")
+                .await
+                .is_ok()
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn another_realms_organisation_is_not_found(db: Db) {
+        let (acme, acme_user) = a_realm_with_a_user(&db, "acme").await;
+        let (other, other_user) = a_realm_with_a_user(&db, "other").await;
+
+        let theirs = create_organization(
+            &db,
+            &actor(other, other_user, Permission::ALL),
+            "theirs",
+            "Theirs",
+        )
+        .await
+        .unwrap();
+
+        let mine = actor(acme, acme_user, Permission::ALL);
+        for status in [
+            get_organization(&db, &mine, theirs.id)
+                .await
+                .unwrap_err()
+                .status(),
+            delete_organization(&db, &mine, theirs.id)
+                .await
+                .unwrap_err()
+                .status(),
+            set_organization_enabled(&db, &mine, theirs.id, false)
+                .await
+                .unwrap_err()
+                .status(),
+        ] {
+            assert_eq!(status, 404);
+        }
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn accepting_an_invitation_needs_no_administrative_permission(db: Db) {
+        // The link is the credential. Requiring `organization:write` would mean
+        // only realm administrators could ever accept one, which is the
+        // opposite of what invitations are for.
+        let (realm_id, user_id) = a_realm_with_a_user(&db, "acme").await;
+        let operator = actor(realm_id, user_id, Permission::ALL);
+        let org = create_organization(&db, &operator, "widgets", "Widgets")
+            .await
+            .unwrap();
+
+        let hasher = PasswordHasher::new();
+        let newcomer = user::create(
+            &db,
+            &hasher,
+            NewUser {
+                realm_id,
+                username: "bob",
+                email: "bob@example.com",
+                password: PASSWORD,
+                first_name: None,
+                last_name: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let invited = invite_to_organization(
+            &db,
+            &operator,
+            org.id,
+            "bob@example.com",
+            organization::MemberRole::Member,
+        )
+        .await
+        .unwrap();
+
+        // `newcomer` holds no permissions at all.
+        assert!(
+            accept_organization_invitation(&db, &newcomer, &invited.token)
+                .await
+                .is_ok(),
+        );
+        assert_eq!(organization::members(&db, org.id).await.unwrap().len(), 1);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn an_invitation_cannot_be_revoked_through_another_organisation(db: Db) {
+        // The invitation id alone must not be enough to reach into a different
+        // organisation's invitations.
+        let (realm_id, user_id) = a_realm_with_a_user(&db, "acme").await;
+        let operator = actor(realm_id, user_id, Permission::ALL);
+
+        let first = create_organization(&db, &operator, "widgets", "Widgets")
+            .await
+            .unwrap();
+        let second = create_organization(&db, &operator, "gadgets", "Gadgets")
+            .await
+            .unwrap();
+
+        let invited = invite_to_organization(
+            &db,
+            &operator,
+            first.id,
+            "bob@example.com",
+            organization::MemberRole::Member,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            revoke_organization_invitation(&db, &operator, second.id, invited.invitation.id)
+                .await
+                .unwrap_err()
+                .status(),
+            404,
+        );
+        // And it still works through its own organisation.
+        assert!(
+            revoke_organization_invitation(&db, &operator, first.id, invited.invitation.id)
+                .await
+                .is_ok(),
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn suspending_and_restoring_are_both_recorded(db: Db) {
+        // An operator asking "why could nobody from this customer sign in on
+        // Tuesday?" needs both halves.
+        let (realm_id, user_id) = a_realm_with_a_user(&db, "acme").await;
+        let operator = actor(realm_id, user_id, Permission::ALL);
+        let org = create_organization(&db, &operator, "widgets", "Widgets")
+            .await
+            .unwrap();
+
+        set_organization_enabled(&db, &operator, org.id, false)
+            .await
+            .unwrap();
+        set_organization_enabled(&db, &operator, org.id, true)
+            .await
+            .unwrap();
+
+        let changes: Vec<_> = audit::list(
+            &db,
+            realm_id,
+            audit::Filter {
+                action: Some(Action::OrganizationEnabledChanged),
+                ..audit::Filter::default()
+            },
+            50,
+            0,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(changes.len(), 2);
     }
 }

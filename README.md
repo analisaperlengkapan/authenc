@@ -110,6 +110,7 @@ is enforced rather than merely intended.
 | Organisations | a tenant boundary inside a realm: suspendable, joined by invitation, with owner/admin/member roles |
 | Suspension | disabling an organisation stops its members signing in — unless they belong to another that is still enabled |
 | Invitations | single-use expiring links, hash-only at rest, recording who actually accepted rather than only who was invited |
+| Group and org API | `/api/v1/groups` and `/api/v1/organizations`; an invitation token is returned once and never listed back |
 | CLI | `authenc seed`, `migrate`, `purge`, `generate-master-key`, `rotate-keys`, `register-client` — no test endpoints in the router |
 
 ## Development

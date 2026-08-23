@@ -289,8 +289,13 @@ An organisation must keep at least one owner, and an admin cannot act on an
 owner. Otherwise an admin could evict every owner and take the organisation,
 which is the only reason the two roles differ.
 
-**Still to come in this stage:** REST and console surfaces for organisations,
-and a console page for the group tree. Domain-based auto-join is deliberately
+`/api/v1/organizations` covers the lot: create, suspend, delete, membership,
+and invitations. The invitation token is returned **once**, at creation, and
+never by the listing — an endpoint that could hand one back would let anyone
+who may read the list join as anyone who was invited.
+
+**Still to come in this stage:** console pages for the group tree and for
+organisations. Domain-based auto-join is deliberately
 absent: it is only safe once a domain has been *proved*, and DNS verification is
 not built, so claiming one would be a feature that looks like a control and is
 not.

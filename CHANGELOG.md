@@ -20,6 +20,9 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   address: a forwarded link cannot be prevented, but it is visible afterwards.
 - An organisation must keep one owner, and an admin cannot act on an owner —
   otherwise an admin could evict every owner and take it.
+- `/api/v1/organizations` with membership and invitations, and `/api/v1/groups`
+  with membership and role grants. An invitation token is returned once, at
+  creation, and never by the listing.
 - Domain-based auto-join is **not** built. It is only safe once a domain has
   been proved, and DNS verification does not exist here, so a claimed domain
   would be a feature that looks like a control and is not.

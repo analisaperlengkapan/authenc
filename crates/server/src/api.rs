@@ -112,6 +112,94 @@ pub struct MoveGroup {
     pub parent_id: Option<Uuid>,
 }
 
+/// An organisation, as `/api/v1` returns it.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OrganizationView {
+    /// Stable identifier.
+    pub id: Uuid,
+    /// URL-safe handle.
+    pub slug: String,
+    /// Human-facing name.
+    pub name: String,
+    /// Whether its members may sign in.
+    pub enabled: bool,
+}
+
+impl From<authenc_identity::organization::Organization> for OrganizationView {
+    fn from(organization: authenc_identity::organization::Organization) -> Self {
+        Self {
+            id: organization.id,
+            slug: organization.slug,
+            name: organization.name,
+            enabled: organization.enabled,
+        }
+    }
+}
+
+/// Body for creating an organisation.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateOrganization {
+    /// URL-safe handle: lowercase letters, digits, and hyphens.
+    pub slug: String,
+    /// Human-facing name.
+    pub name: String,
+}
+
+/// Body for setting someone's role in an organisation.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetOrganizationMember {
+    /// `owner`, `admin`, or `member`.
+    pub role: String,
+}
+
+/// Body for inviting an address to an organisation.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct InviteToOrganization {
+    /// Where to send the link.
+    pub email: String,
+    /// The role they will hold once they accept.
+    pub role: String,
+}
+
+/// A member and their standing.
+///
+/// Flattened rather than nesting the whole `User`: what a membership list needs
+/// is who and in what capacity, and every extra field published here becomes a
+/// compatibility obligation the moment a caller reads it.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OrganizationMemberView {
+    /// Stable identifier.
+    pub id: Uuid,
+    /// Login name.
+    pub username: String,
+    /// Email address.
+    pub email: String,
+    /// Their role inside the organisation: `owner`, `admin`, or `member`.
+    pub role: String,
+}
+
+/// An invitation, without its token.
+///
+/// The link exists once, at the moment it is created. An endpoint that could
+/// hand one back would let anyone who can read the list join as anyone who was
+/// invited.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InvitationView {
+    /// Stable identifier.
+    pub id: Uuid,
+    /// Who was invited.
+    pub email: String,
+    /// The role they will hold.
+    pub role: String,
+    /// Whether it has been used.
+    pub accepted: bool,
+    /// When it stops working, RFC 3339.
+    pub expires_at: String,
+}
+
 /// Filters for the audit trail.
 ///
 /// `action_prefix` is a namespace such as `mfa.`, not free text. The stored
@@ -364,6 +452,17 @@ pub struct Whoami {
         rotate_client_secret,
         list_audit,
         export_audit,
+        list_organizations,
+        create_organization,
+        get_organization,
+        delete_organization,
+        set_organization_enabled,
+        list_organization_members,
+        set_organization_member,
+        remove_organization_member,
+        list_organization_invitations,
+        invite_to_organization,
+        revoke_organization_invitation,
         list_groups,
         create_group,
         get_group,
@@ -377,6 +476,12 @@ pub struct Whoami {
         revoke_group_role,
     ),
     components(schemas(
+        CreateOrganization,
+        SetOrganizationMember,
+        InviteToOrganization,
+        OrganizationView,
+        OrganizationMemberView,
+        InvitationView,
         CreateGroup,
         MoveGroup,
         GroupView,
@@ -431,6 +536,34 @@ pub fn router() -> Router<AppState> {
         .route(
             "/groups/{group_id}/roles/{role_id}",
             post(grant_group_role).delete(revoke_group_role),
+        )
+        .route(
+            "/organizations",
+            get(list_organizations).post(create_organization),
+        )
+        .route(
+            "/organizations/{organization_id}",
+            get(get_organization).delete(delete_organization),
+        )
+        .route(
+            "/organizations/{organization_id}/enabled",
+            post(set_organization_enabled),
+        )
+        .route(
+            "/organizations/{organization_id}/members",
+            get(list_organization_members),
+        )
+        .route(
+            "/organizations/{organization_id}/members/{user_id}",
+            put(set_organization_member).delete(remove_organization_member),
+        )
+        .route(
+            "/organizations/{organization_id}/invitations",
+            get(list_organization_invitations).post(invite_to_organization),
+        )
+        .route(
+            "/organizations/{organization_id}/invitations/{invitation_id}",
+            delete(revoke_organization_invitation),
         )
         .route("/audit", get(list_audit))
         .route("/audit.csv", get(export_audit))
@@ -701,6 +834,283 @@ async fn revoke_role(
 ) -> Result<StatusCode, ApiError> {
     authenc_identity::admin::revoke_role(&state.db, &actor, UserId(user_id), RoleId(role_id))
         .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// Organisations
+// ---------------------------------------------------------------------------
+
+/// Parse an organisation role name, refusing anything else.
+fn member_role(value: &str) -> Result<authenc_identity::organization::MemberRole, ApiError> {
+    Ok(authenc_identity::organization::MemberRole::parse(value)?)
+}
+
+/// Every organisation in the caller's realm.
+#[utoipa::path(
+    get, path = "/api/v1/organizations", tag = "organizations",
+    responses((status = 200), (status = 403, description = "Missing organization:read")),
+)]
+async fn list_organizations(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+) -> Result<Json<Vec<OrganizationView>>, ApiError> {
+    let organizations = authenc_identity::admin::list_organizations(&state.db, &actor).await?;
+    Ok(Json(
+        organizations
+            .into_iter()
+            .map(OrganizationView::from)
+            .collect(),
+    ))
+}
+
+/// Create an organisation.
+#[utoipa::path(
+    post, path = "/api/v1/organizations", tag = "organizations",
+    request_body = CreateOrganization,
+    responses(
+        (status = 201),
+        (status = 400, description = "A slug that is not URL-safe"),
+        (status = 403, description = "Missing organization:write"),
+        (status = 409, description = "The slug is taken"),
+    ),
+)]
+async fn create_organization(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Json(body): Json<CreateOrganization>,
+) -> Result<(StatusCode, Json<OrganizationView>), ApiError> {
+    let created =
+        authenc_identity::admin::create_organization(&state.db, &actor, &body.slug, &body.name)
+            .await?;
+    Ok((StatusCode::CREATED, Json(OrganizationView::from(created))))
+}
+
+/// Fetch one organisation.
+#[utoipa::path(
+    get, path = "/api/v1/organizations/{organization_id}", tag = "organizations",
+    responses((status = 200), (status = 403), (status = 404)),
+)]
+async fn get_organization(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(organization_id): Path<Uuid>,
+) -> Result<Json<OrganizationView>, ApiError> {
+    let found =
+        authenc_identity::admin::get_organization(&state.db, &actor, organization_id).await?;
+    Ok(Json(OrganizationView::from(found)))
+}
+
+/// Suspend or restore an organisation.
+///
+/// Suspending stops every member signing in — unless they also belong to
+/// another organisation that is still enabled.
+#[utoipa::path(
+    post, path = "/api/v1/organizations/{organization_id}/enabled", tag = "organizations",
+    request_body = SetEnabled,
+    responses((status = 200), (status = 403), (status = 404)),
+)]
+async fn set_organization_enabled(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(organization_id): Path<Uuid>,
+    Json(body): Json<SetEnabled>,
+) -> Result<Json<OrganizationView>, ApiError> {
+    let changed = authenc_identity::admin::set_organization_enabled(
+        &state.db,
+        &actor,
+        organization_id,
+        body.enabled,
+    )
+    .await?;
+    Ok(Json(OrganizationView::from(changed)))
+}
+
+/// Delete an organisation. Its members remain as users.
+#[utoipa::path(
+    delete, path = "/api/v1/organizations/{organization_id}", tag = "organizations",
+    responses((status = 204), (status = 403), (status = 404)),
+)]
+async fn delete_organization(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(organization_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::delete_organization(&state.db, &actor, organization_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Everyone in an organisation, with their role.
+#[utoipa::path(
+    get, path = "/api/v1/organizations/{organization_id}/members", tag = "organizations",
+    responses((status = 200), (status = 403), (status = 404)),
+)]
+async fn list_organization_members(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(organization_id): Path<Uuid>,
+) -> Result<Json<Vec<OrganizationMemberView>>, ApiError> {
+    let members =
+        authenc_identity::admin::organization_members(&state.db, &actor, organization_id).await?;
+    Ok(Json(
+        members
+            .into_iter()
+            .map(|(user, role)| OrganizationMemberView {
+                id: user.id.0,
+                username: user.username,
+                email: user.email,
+                role: role.as_str().to_owned(),
+            })
+            .collect(),
+    ))
+}
+
+/// Add someone, or change the role they hold.
+#[utoipa::path(
+    put, path = "/api/v1/organizations/{organization_id}/members/{user_id}",
+    tag = "organizations", request_body = SetOrganizationMember,
+    responses(
+        (status = 204),
+        (status = 400, description = "An unknown role"),
+        (status = 403), (status = 404),
+    ),
+)]
+async fn set_organization_member(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path((organization_id, user_id)): Path<(Uuid, Uuid)>,
+    Json(body): Json<SetOrganizationMember>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::set_organization_member(
+        &state.db,
+        &actor,
+        organization_id,
+        UserId(user_id),
+        member_role(&body.role)?,
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Remove someone from an organisation.
+///
+/// Refused if they are the last owner: an organisation nobody can administer
+/// needs a database console to fix.
+#[utoipa::path(
+    delete, path = "/api/v1/organizations/{organization_id}/members/{user_id}",
+    tag = "organizations",
+    responses(
+        (status = 204),
+        (status = 400, description = "They are the last owner"),
+        (status = 403), (status = 404),
+    ),
+)]
+async fn remove_organization_member(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path((organization_id, user_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::remove_organization_member(
+        &state.db,
+        &actor,
+        organization_id,
+        UserId(user_id),
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Invitations for an organisation.
+#[utoipa::path(
+    get, path = "/api/v1/organizations/{organization_id}/invitations", tag = "organizations",
+    responses((status = 200), (status = 403), (status = 404)),
+)]
+async fn list_organization_invitations(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(organization_id): Path<Uuid>,
+) -> Result<Json<Vec<InvitationView>>, ApiError> {
+    use time::format_description::well_known::Rfc3339;
+
+    let invitations =
+        authenc_identity::admin::organization_invitations(&state.db, &actor, organization_id)
+            .await?;
+
+    Ok(Json(
+        invitations
+            .into_iter()
+            .map(|invitation| InvitationView {
+                id: invitation.id,
+                email: invitation.email,
+                role: invitation.role.as_str().to_owned(),
+                accepted: invitation.accepted,
+                expires_at: invitation
+                    .expires_at
+                    .format(&Rfc3339)
+                    .unwrap_or_else(|_| String::new()),
+            })
+            .collect(),
+    ))
+}
+
+/// Invite an address to an organisation.
+///
+/// The response carries the token **once**. It is not stored in a form anyone
+/// can read back, so a caller that discards it must issue a fresh invitation.
+#[utoipa::path(
+    post, path = "/api/v1/organizations/{organization_id}/invitations", tag = "organizations",
+    request_body = InviteToOrganization,
+    responses(
+        (status = 201, description = "The invitation, with its token"),
+        (status = 400, description = "A malformed address or an unknown role"),
+        (status = 403), (status = 404),
+    ),
+)]
+async fn invite_to_organization(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(organization_id): Path<Uuid>,
+    Json(body): Json<InviteToOrganization>,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let invited = authenc_identity::admin::invite_to_organization(
+        &state.db,
+        &actor,
+        organization_id,
+        &body.email,
+        member_role(&body.role)?,
+    )
+    .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "id": invited.invitation.id,
+            "email": invited.invitation.email,
+            "role": invited.invitation.role.as_str(),
+            "token": invited.token.expose(),
+        })),
+    ))
+}
+
+/// Withdraw an invitation that has not been accepted.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/organizations/{organization_id}/invitations/{invitation_id}",
+    tag = "organizations",
+    responses((status = 204), (status = 403), (status = 404)),
+)]
+async fn revoke_organization_invitation(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path((organization_id, invitation_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::revoke_organization_invitation(
+        &state.db,
+        &actor,
+        organization_id,
+        invitation_id,
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
