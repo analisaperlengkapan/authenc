@@ -104,6 +104,30 @@ impl CookiePolicy {
         }
     }
 
+    /// The policy for a social sign-in in flight.
+    ///
+    /// The `state` parameter goes to the provider *and* into this cookie, and
+    /// the callback demands they match. Without that binding an attacker can
+    /// start a sign-in with their own upstream account, hand the victim the
+    /// resulting callback URL, and have the victim's browser finish it — after
+    /// which the victim is working inside the attacker's account, and anything
+    /// they save goes there. The server-side row alone does not prevent it:
+    /// the attacker holds a perfectly valid, unspent state.
+    ///
+    /// `SameSite=Lax` is what makes the cookie survive the provider's
+    /// top-level redirect back here, which is why the whole scheme works.
+    #[must_use]
+    pub const fn federation(self) -> Self {
+        Self {
+            name: if self.secure {
+                "__Host-authenc_federation"
+            } else {
+                "authenc_federation"
+            },
+            secure: self.secure,
+        }
+    }
+
     /// The policy for the half-finished login held between the two steps of an
     /// MFA sign-in.
     ///

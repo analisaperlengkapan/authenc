@@ -11,6 +11,7 @@ pub mod auth;
 pub mod cli;
 pub mod config;
 pub mod error;
+pub mod federation;
 pub mod health;
 pub mod http;
 pub mod oidc;

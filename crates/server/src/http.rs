@@ -51,6 +51,11 @@ pub fn router(state: AppState) -> Router {
         // that does read the session — the consent form's POST — checks the
         // token itself.
         .merge(crate::oidc::router())
+        // Social sign-in: the two redirects a federated login takes. Outside
+        // the CSRF gates for the same reason the OAuth endpoints are — a
+        // provider redirecting a browser here carries no header of ours, and
+        // the `state` cookie is what binds the callback instead.
+        .merge(crate::federation::router())
         // Leptos SSR routes, with application context injected so server
         // functions can reach the database.
         .leptos_routes_with_context(
