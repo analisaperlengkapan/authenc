@@ -82,7 +82,10 @@ being non-empty. If you change the pinned version, change it in both
    or `leptos`. `authenc-identity` and `authenc-oauth` must not depend on
    `axum` or `leptos`. The `boundaries` CI job runs `cargo tree` and fails if
    they do.
-3. **`Cargo.lock` is committed.** Build with `--locked`.
+3. **`Cargo.lock` is committed.** Build with `--locked`. `deny.toml` sets
+   `yanked = "deny"`, so a dependency yanked upstream turns `cargo-audit` and
+   `cargo-deny` red on every branch at once without any diff causing it — the
+   fix is `cargo update -p <crate>` and a committed lockfile, not an ignore.
 4. **Clippy is `-D warnings`**, with `unwrap`/`expect`/`panic` warned in crate
    code and allowed in tests (see `clippy.toml`).
 
