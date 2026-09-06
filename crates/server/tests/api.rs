@@ -1285,3 +1285,251 @@ async fn the_last_owner_cannot_be_removed_over_http(db: PgPool) {
         refused.text()
     );
 }
+
+// ---------------------------------------------------------------------------
+// The console's own surface for groups and organisations
+// ---------------------------------------------------------------------------
+//
+// Server functions and `/api/v1` are two thin surfaces over one use case, so
+// what needs proving here is that they agree — particularly about refusal. A
+// console that renders a page the REST API would refuse is a console that has
+// its own, second access-control policy.
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_group_page_needs_the_group_permission(db: PgPool) {
+    seed_with(&db, "operator", &[Permission::UserRead]).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let refused = server.post("/api/sfn/groups").await;
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::FORBIDDEN,
+        "{}",
+        refused.text()
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_group_page_reports_depth_roles_and_membership(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+
+    let realm = realm::by_name(&db, "master").await.unwrap();
+    let user_id = user::id_by_email(&db, realm.id, "operator@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let engineering: serde_json::Value = server
+        .post("/api/sfn/groups/create")
+        .json(&json!({ "parent_id": null, "name": "engineering" }))
+        .await
+        .json();
+    let parent = engineering["id"].as_str().unwrap().to_owned();
+
+    server
+        .post("/api/sfn/groups/create")
+        .json(&json!({ "parent_id": parent, "name": "backend" }))
+        .await
+        .assert_status_ok();
+
+    // Grant a role to the parent and put a user in the child, so the page has
+    // something to report in every column.
+    let role: serde_json::Value = server
+        .post("/api/v1/roles")
+        .json(&json!({ "name": "deployer", "description": null }))
+        .await
+        .json();
+    let role_id = role["id"].as_str().unwrap();
+    server
+        .post(&format!("/api/v1/groups/{parent}/roles/{role_id}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    let groups: serde_json::Value = server.post("/api/sfn/groups").await.json();
+    let child = groups[1]["id"].as_str().unwrap().to_owned();
+    server
+        .post(&format!("/api/v1/groups/{child}/members/{user_id}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    let groups: serde_json::Value = server.post("/api/sfn/groups").await.json();
+
+    // Ordered by path, so the parent comes first and indentation reproduces
+    // the tree without the browser parsing anything.
+    assert_eq!(groups[0]["path"], "/engineering", "{groups}");
+    assert_eq!(groups[0]["depth"], 0, "{groups}");
+    assert_eq!(groups[0]["roles"][0], "deployer", "{groups}");
+
+    assert_eq!(groups[1]["path"], "/engineering/backend", "{groups}");
+    assert_eq!(groups[1]["depth"], 1, "{groups}");
+    assert_eq!(groups[1]["members"], 1, "{groups}");
+    // Direct grants only: the child inherits the role for *authorisation*, but
+    // reporting it as granted here would misrepresent what an administrator set.
+    assert_eq!(groups[1]["roles"].as_array().unwrap().len(), 0, "{groups}");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_console_and_the_rest_api_describe_the_same_group_tree(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    server
+        .post("/api/sfn/groups/create")
+        .json(&json!({ "parent_id": null, "name": "engineering" }))
+        .await
+        .assert_status_ok();
+
+    let console: serde_json::Value = server.post("/api/sfn/groups").await.json();
+    let rest: serde_json::Value = server.get("/api/v1/groups").await.json();
+
+    assert_eq!(console[0]["id"], rest[0]["id"], "{console} vs {rest}");
+    assert_eq!(console[0]["path"], rest[0]["path"], "{console} vs {rest}");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_group_deleted_from_the_console_is_gone_from_the_api(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let created: serde_json::Value = server
+        .post("/api/sfn/groups/create")
+        .json(&json!({ "parent_id": null, "name": "temporary" }))
+        .await
+        .json();
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    server
+        .post("/api/sfn/groups/delete")
+        .json(&json!({ "id": id }))
+        .await
+        .assert_status_ok();
+
+    server
+        .get(&format!("/api/v1/groups/{id}"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_organisation_page_needs_the_organization_permission(db: PgPool) {
+    seed_with(&db, "operator", &[Permission::UserRead]).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let refused = server.post("/api/sfn/organizations").await;
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::FORBIDDEN,
+        "{}",
+        refused.text()
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_organisation_page_counts_members_and_outstanding_invitations(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+
+    let realm = realm::by_name(&db, "master").await.unwrap();
+    let user_id = user::id_by_email(&db, realm.id, "operator@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let created: serde_json::Value = server
+        .post("/api/sfn/organizations/create")
+        .json(&json!({ "slug": "widgets", "name": "Widgets Inc" }))
+        .await
+        .json();
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    server
+        .put(&format!("/api/v1/organizations/{id}/members/{user_id}"))
+        .json(&json!({ "role": "owner" }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    server
+        .post(&format!("/api/v1/organizations/{id}/invitations"))
+        .json(&json!({ "email": "new@example.com", "role": "member" }))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let page: serde_json::Value = server.post("/api/sfn/organizations").await.json();
+    assert_eq!(page[0]["slug"], "widgets", "{page}");
+    assert_eq!(page[0]["members"], 1, "{page}");
+    assert_eq!(page[0]["pending_invitations"], 1, "{page}");
+    assert_eq!(page[0]["enabled"], true, "{page}");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn suspending_an_organisation_from_the_console_stops_its_members_signing_in(db: PgPool) {
+    // The console's suspend button has to do the thing suspension means. A
+    // page that flips a badge and nothing else is the failure this proves
+    // against.
+    seed_with(&db, "operator", Permission::ALL).await;
+    seed_with(&db, "tenant", &[]).await;
+
+    let realm = realm::by_name(&db, "master").await.unwrap();
+    let tenant_id = user::id_by_email(&db, realm.id, "tenant@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut admin = server(db.clone());
+    sign_in(&mut admin, "operator").await;
+
+    let created: serde_json::Value = admin
+        .post("/api/sfn/organizations/create")
+        .json(&json!({ "slug": "widgets", "name": "Widgets Inc" }))
+        .await
+        .json();
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    admin
+        .put(&format!("/api/v1/organizations/{id}/members/{tenant_id}"))
+        .json(&json!({ "role": "member" }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    let login = json!({
+        "request": { "realm": "master", "identifier": "tenant", "password": PASSWORD }
+    });
+
+    // The credentials work before the suspension. Without this half, the
+    // refusal below would be satisfied by a typo in the password.
+    server(db.clone())
+        .post("/api/sfn/login")
+        .json(&login)
+        .await
+        .assert_status_ok();
+
+    admin
+        .post("/api/sfn/organizations/enabled")
+        .json(&json!({ "id": id, "enabled": false }))
+        .await
+        .assert_status_ok();
+
+    // A separate server from the administrator's: `clear_cookies()` leaves the
+    // CSRF header in place, and a stale one produces a 403 that would look
+    // like this refusal without being it.
+    let refused = server(db).post("/api/sfn/login").json(&login).await;
+
+    // 401, the same answer a wrong password gets. Suspension is checked after
+    // the password precisely so the two are indistinguishable — reporting
+    // "suspended" here would confirm the account exists to anyone guessing.
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::UNAUTHORIZED,
+        "{}",
+        refused.text()
+    );
+}

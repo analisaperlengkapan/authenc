@@ -4,8 +4,10 @@ pub mod admin;
 pub mod audit;
 pub mod clients;
 pub mod consent;
+pub mod groups;
 pub mod home;
 pub mod login;
+pub mod organizations;
 pub mod recovery;
 pub mod security;
 
@@ -13,8 +15,10 @@ pub use admin::{AdminShell, Overview, Roles, Users};
 pub use audit::Audit;
 pub use clients::Clients;
 pub use consent::Consent;
+pub use groups::Groups;
 pub use home::Home;
 pub use login::Login;
+pub use organizations::Organizations;
 pub use recovery::{ForgotPassword, ResetPassword, VerifyEmail};
 pub use security::Security;
 

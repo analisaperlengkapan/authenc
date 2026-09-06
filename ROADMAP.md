@@ -294,11 +294,25 @@ and invitations. The invitation token is returned **once**, at creation, and
 never by the listing — an endpoint that could hand one back would let anyone
 who may read the list join as anyone who was invited.
 
-**Still to come in this stage:** console pages for the group tree and for
-organisations. Domain-based auto-join is deliberately
-absent: it is only safe once a domain has been *proved*, and DNS verification is
-not built, so claiming one would be a feature that looks like a control and is
-not.
+The console has a page for each. The group tree is rendered flat and indented
+rather than as a collapsible tree: the server already returns it ordered by
+path, so indentation reproduces the hierarchy exactly, and a flat list is what
+makes the roles and member counts comparable down a column — which is what an
+administrator opens the page to compare. Roles are shown as *directly granted*,
+never as inherited: the child inherits for authorisation, but listing the
+parent's roles against the child would misreport what somebody actually set.
+
+Groups and organisations use typed identifiers (`GroupId`, `OrganizationId`,
+`InvitationId`) like every other aggregate, so an invitation id cannot be
+passed where an organisation id is expected. That is not hypothetical: the
+first draft of `revoke_organization_invitation` took two bare `Uuid`s, and the
+compiler had nothing to say about the order.
+
+Domain-based auto-join is deliberately absent: it is only safe once a domain
+has been *proved*, and DNS verification is not built, so claiming one would be
+a feature that looks like a control and is not.
+
+Stage 7 is complete.
 
 ### Stage 8 — Federation
 

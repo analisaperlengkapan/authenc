@@ -726,6 +726,257 @@ pub struct AuditPage {
     pub total: i64,
 }
 
+// ---------------------------------------------------------------------------
+// Groups
+// ---------------------------------------------------------------------------
+
+/// A group as the console shows it.
+///
+/// Defined here rather than reusing `authenc_identity::group::Group`, because
+/// this type has to compile to wasm and that one carries `sqlx` with it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupSummary {
+    /// Stable identifier.
+    pub id: authenc_contract::GroupId,
+    /// Full path from the root, e.g. `/engineering/backend`.
+    pub path: String,
+    /// Name, unique among its siblings.
+    pub name: String,
+    /// How deep it sits, so the console can indent without parsing the path.
+    pub depth: usize,
+    /// Roles granted **directly** to it. Not the inherited ones: a child holds
+    /// its ancestors' roles for authorisation, but listing them here would
+    /// misreport what an administrator actually set.
+    pub roles: Vec<String>,
+    /// How many people are directly in it.
+    pub members: usize,
+}
+
+/// The realm's group tree, ordered so it reads top-down.
+#[server(name = ListGroups, prefix = "/api/sfn", endpoint = "groups")]
+pub async fn list_groups() -> Result<Vec<GroupSummary>, ServerFnError> {
+    use authenc_identity::{Db, admin, group};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db).await?;
+
+    let groups = admin::list_groups(&db, &actor, actor.realm_id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let mut summaries = Vec::with_capacity(groups.len());
+    for found in groups {
+        let roles = group::roles(&db, found.id)
+            .await
+            .map_err(server_ctx::to_server_fn_error)?;
+        let members = group::members(&db, found.id)
+            .await
+            .map_err(server_ctx::to_server_fn_error)?;
+
+        summaries.push(GroupSummary {
+            // The path always starts with `/`, so one segment means depth 0.
+            depth: found.path.matches('/').count().saturating_sub(1),
+            id: found.id,
+            path: found.path,
+            name: found.name,
+            roles: roles.into_iter().map(|role| role.name).collect(),
+            members: members.len(),
+        });
+    }
+
+    Ok(summaries)
+}
+
+/// Create a group.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = CreateGroup, prefix = "/api/sfn", endpoint = "groups/create", input = Json)]
+pub async fn create_group(
+    parent_id: Option<authenc_contract::GroupId>,
+    name: String,
+) -> Result<GroupSummary, ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db).await?;
+
+    let created = admin::create_group(&db, &actor, parent_id, &name, None)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(GroupSummary {
+        depth: created.path.matches('/').count().saturating_sub(1),
+        id: created.id,
+        path: created.path,
+        name: created.name,
+        roles: Vec::new(),
+        members: 0,
+    })
+}
+
+/// Delete a group and its subtree.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = DeleteGroup, prefix = "/api/sfn", endpoint = "groups/delete", input = Json)]
+pub async fn delete_group(id: authenc_contract::GroupId) -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db).await?;
+
+    admin::delete_group(&db, &actor, id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)
+}
+
+// ---------------------------------------------------------------------------
+// Organisations
+// ---------------------------------------------------------------------------
+
+/// An organisation as the console shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrganizationSummary {
+    /// Stable identifier.
+    pub id: authenc_contract::OrganizationId,
+    /// URL-safe handle.
+    pub slug: String,
+    /// Human-facing name.
+    pub name: String,
+    /// Whether its members may sign in.
+    pub enabled: bool,
+    /// How many people belong to it.
+    pub members: usize,
+    /// How many invitations are outstanding.
+    pub pending_invitations: usize,
+}
+
+/// Every organisation in the realm.
+#[server(name = ListOrganizations, prefix = "/api/sfn", endpoint = "organizations")]
+pub async fn list_organizations() -> Result<Vec<OrganizationSummary>, ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db).await?;
+
+    let organizations = admin::list_organizations(&db, &actor)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let mut summaries = Vec::with_capacity(organizations.len());
+    for organization in organizations {
+        let members = admin::organization_members(&db, &actor, organization.id)
+            .await
+            .map_err(server_ctx::to_server_fn_error)?;
+        let invitations = admin::organization_invitations(&db, &actor, organization.id)
+            .await
+            .map_err(server_ctx::to_server_fn_error)?;
+
+        summaries.push(OrganizationSummary {
+            id: organization.id,
+            slug: organization.slug,
+            name: organization.name,
+            enabled: organization.enabled,
+            members: members.len(),
+            pending_invitations: invitations
+                .iter()
+                .filter(|invitation| !invitation.accepted)
+                .count(),
+        });
+    }
+
+    Ok(summaries)
+}
+
+/// Create an organisation.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = CreateOrganization, prefix = "/api/sfn", endpoint = "organizations/create", input = Json)]
+pub async fn create_organization(
+    slug: String,
+    name: String,
+) -> Result<OrganizationSummary, ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db).await?;
+
+    let created = admin::create_organization(&db, &actor, &slug, &name)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    Ok(OrganizationSummary {
+        id: created.id,
+        slug: created.slug,
+        name: created.name,
+        enabled: created.enabled,
+        members: 0,
+        pending_invitations: 0,
+    })
+}
+
+/// Suspend or restore an organisation.
+///
+/// Suspending stops every member signing in, unless they also belong to
+/// another organisation that is still enabled.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = SetOrganizationEnabled, prefix = "/api/sfn", endpoint = "organizations/enabled", input = Json)]
+pub async fn set_organization_enabled(
+    id: authenc_contract::OrganizationId,
+    enabled: bool,
+) -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db).await?;
+
+    admin::set_organization_enabled(&db, &actor, id, enabled)
+        .await
+        .map(|_| ())
+        .map_err(server_ctx::to_server_fn_error)
+}
+
+/// Delete an organisation. Its members remain as users.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = DeleteOrganization, prefix = "/api/sfn", endpoint = "organizations/delete", input = Json)]
+pub async fn delete_organization(
+    id: authenc_contract::OrganizationId,
+) -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db).await?;
+
+    admin::delete_organization(&db, &actor, id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)
+}
+
 /// Render a server-function failure as something a person can read.
 ///
 /// One place to do this, so no page invents its own error string.

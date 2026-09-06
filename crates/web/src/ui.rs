@@ -200,6 +200,54 @@ pub fn Field(
     }
 }
 
+/// A labelled dropdown.
+///
+/// Bound the same way as [`Field`], and styled to match it, so a form that
+/// mixes the two does not need a second set of classes to keep them aligned.
+#[component]
+pub fn Select(
+    /// Visible label.
+    #[prop(into)]
+    label: String,
+    /// Field name, also used as the element id.
+    #[prop(into)]
+    name: String,
+    /// Two-way bound value: whichever option's value is selected.
+    value: RwSignal<String>,
+    /// The choices, as `(value, label)`.
+    #[prop(into)]
+    options: Signal<Vec<(String, String)>>,
+) -> impl IntoView {
+    view! {
+        <div class="flex flex-col gap-1.5">
+            <label
+                for=name.clone()
+                class="text-sm font-medium text-ink-700 dark:text-ink-300"
+            >
+                {label}
+            </label>
+            <select
+                id=name.clone()
+                name=name
+                class="rounded-md border-0 bg-surface-50 px-3 py-2 text-sm text-ink-900 \
+                       shadow-xs ring-1 ring-inset ring-ink-300 \
+                       focus:ring-2 focus:ring-inset focus:ring-brand-600 \
+                       dark:bg-surface-800 dark:text-ink-100 dark:ring-ink-700"
+                prop:value=move || value.get()
+                on:change=move |ev| value.set(event_target_value(&ev))
+            >
+                <For
+                    each=move || options.get()
+                    key=|(option_value, _)| option_value.clone()
+                    let:option
+                >
+                    <option value=option.0.clone()>{option.1}</option>
+                </For>
+            </select>
+        </div>
+    }
+}
+
 /// A table with a header, a keyed body, and an empty state.
 ///
 /// The previous console copy-pasted the same table chrome across eight pages —
