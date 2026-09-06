@@ -977,6 +977,59 @@ pub async fn delete_organization(
         .map_err(server_ctx::to_server_fn_error)
 }
 
+/// A social-login provider, as the login page shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignInProvider {
+    /// The alias, which is the path segment the button links to.
+    pub alias: String,
+    /// What the button says.
+    pub display_name: String,
+    /// Which provider it is, so the button can carry the right mark.
+    pub kind: String,
+}
+
+/// The social-login providers a realm offers.
+///
+/// Deliberately unauthenticated: the login page is. An unknown realm returns
+/// an empty list rather than an error, so this cannot be used to find out
+/// which realms exist — the same reason `login::authenticate` answers 401 for
+/// an unknown realm rather than 404.
+///
+/// Nothing secret is published. The alias and the display name are both
+/// visible on the button anyway, and the client id — which is public, but has
+/// no reason to be here — is not included.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = SignInProviders, prefix = "/api/sfn", endpoint = "sign-in-providers", input = Json)]
+pub async fn sign_in_providers(realm: String) -> Result<Vec<SignInProvider>, ServerFnError> {
+    use authenc_identity::{Db, federation, realm as realms};
+
+    let db = expect_context::<Db>();
+
+    let Ok(found) = realms::by_name(&db, &realm).await else {
+        return Ok(Vec::new());
+    };
+    if !found.enabled {
+        return Ok(Vec::new());
+    }
+
+    let providers = federation::list(&db, found.id)
+        .await
+        .map_err(crate::server_ctx::to_server_fn_error)?;
+
+    Ok(providers
+        .into_iter()
+        .filter(|provider| provider.enabled)
+        .map(|provider| SignInProvider {
+            alias: provider.alias,
+            display_name: provider.display_name,
+            kind: provider.kind.to_string(),
+        })
+        .collect())
+}
+
 /// Render a server-function failure as something a person can read.
 ///
 /// One place to do this, so no page invents its own error string.

@@ -207,6 +207,13 @@ Queries are checked at compile time against the real schema. After adding or
 changing one, run `just sqlx-prepare` and commit the `.sqlx/` change, otherwise
 CI — which builds without a database — will fail.
 
+Then run `just offline`, which compiles the workspace the way CI does. The
+`--all-targets` in it is the whole point: a per-crate `cargo check` builds the
+library and nothing else, so a query that lives in an *integration test* can be
+absent from `.sqlx` and still look fine locally. That is not hypothetical — a
+`cargo sqlx prepare` interrupted by a full disk committed a `.sqlx` missing one
+test's query, four per-crate offline checks passed, and CI failed.
+
 Migrations are additive and never edited once merged. Add a new file in
 `migrations/`.
 

@@ -18,9 +18,33 @@ use crate::{
 /// `https://evil.test/` — or the sneakier `//evil.test/`, which a browser
 /// resolves as protocol-relative — would otherwise turn the login page into an
 /// open redirect that arrives wearing this domain's name.
+///
+/// A backslash is refused for the same reason as a second slash: browsers
+/// treat `/\evil.test` as protocol-relative too. So are control characters and
+/// spaces, and that part is not decoration — a browser strips tab, newline,
+/// and carriage return from a URL *before* parsing it, so `/<TAB>/evil.test`
+/// passes any rule that only inspects the second character and then arrives at
+/// the parser as `//evil.test`. This is the same rule the
+/// `federation_login_states.return_to` constraint enforces in the database;
+/// two copies of one rule, and a test on each, because the two paths are
+/// reached separately.
 fn safe_next(raw: Option<String>) -> String {
-    raw.filter(|value| value.starts_with('/') && !value.starts_with("//"))
+    raw.filter(|value| is_same_origin_path(value))
         .unwrap_or_else(|| "/".to_owned())
+}
+
+/// Whether this is a path on this site and nothing else.
+fn is_same_origin_path(value: &str) -> bool {
+    let mut characters = value.chars();
+    if characters.next() != Some('/') {
+        return false;
+    }
+    match characters.next() {
+        None => true,
+        Some('/' | '\\') => false,
+        Some(first) if first.is_control() || first == ' ' => false,
+        Some(_) => !value.chars().any(|c| c.is_control() || c == ' '),
+    }
 }
 
 /// The sign-in page: a password, and then a second factor if one is enrolled.
@@ -144,8 +168,102 @@ fn PasswordStep(prompt: RwSignal<Option<SecondFactorPrompt>>) -> impl IntoView {
                     </Button>
                 </form>
             </Card>
+
+            <SocialButtons realm=realm next=next />
         </>
     }
+}
+
+/// The "continue with …" buttons, one per provider the realm offers.
+///
+/// Plain links, not a `fetch`. A social sign-in is a *top-level navigation*,
+/// which is what makes the `SameSite=Lax` state cookie survive the provider's
+/// redirect back here — an XHR would not carry it, and the callback would
+/// refuse every time.
+#[component]
+fn SocialButtons(
+    /// The realm typed into the form above. Buttons follow it.
+    realm: RwSignal<String>,
+    /// Where to return after signing in.
+    next: Signal<String>,
+) -> impl IntoView {
+    let providers = Resource::new(
+        move || realm.get(),
+        |realm| async move {
+            // An unknown realm answers with an empty list rather than an
+            // error, so a typo in the field shows no buttons rather than a
+            // failure message that would confirm which realms exist.
+            api::sign_in_providers(realm).await.unwrap_or_default()
+        },
+    );
+
+    view! {
+        <Transition fallback=|| ()>
+            {move || Suspend::new(async move {
+                let offered = providers.await;
+                if offered.is_empty() {
+                    return ().into_any();
+                }
+
+                let realm_name = realm.get_untracked();
+                let return_to = next.get_untracked();
+
+                view! {
+                    <div class="flex flex-col gap-3">
+                        <div class="flex items-center gap-3">
+                            <hr class="flex-1 border-ink-200 dark:border-ink-800" />
+                            <span class="text-xs uppercase tracking-wide text-ink-500">"or"</span>
+                            <hr class="flex-1 border-ink-200 dark:border-ink-800" />
+                        </div>
+                        {offered
+                            .into_iter()
+                            .map(|provider| {
+                                let href = start_url(&realm_name, &provider.alias, &return_to);
+                                view! {
+                                    <a
+                                        class="flex items-center justify-center rounded-md px-3 py-2 \
+                                               text-sm font-semibold text-ink-800 ring-1 ring-inset \
+                                               ring-ink-300 hover:bg-surface-100 \
+                                               dark:text-ink-100 dark:ring-ink-700 \
+                                               dark:hover:bg-surface-800"
+                                        href=href
+                                    >
+                                        {format!("Continue with {}", provider.display_name)}
+                                    </a>
+                                }
+                            })
+                            .collect_view()}
+                    </div>
+                }
+                    .into_any()
+            })}
+        </Transition>
+    }
+}
+
+/// Where a provider button points.
+///
+/// `return_to` is passed through, and the server refuses anything that is not
+/// a path on this site — the check is the column's, so a caller that forgets
+/// it cannot create an open redirect.
+fn start_url(realm: &str, alias: &str, return_to: &str) -> String {
+    let realm = urlencode(realm);
+    let alias = urlencode(alias);
+    let return_to = urlencode(return_to);
+    format!("/realms/{realm}/federation/{alias}/start?return_to={return_to}")
+}
+
+/// Percent-encode one path or query segment.
+fn urlencode(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                char::from(byte).to_string()
+            }
+            other => format!("%{other:02X}"),
+        })
+        .collect()
 }
 
 /// Step two: the second factor.
@@ -296,6 +414,14 @@ mod tests {
             "/realms/master/protocol/openid-connect/auth?x=1",
         );
 
+        // A *percent-encoded* backslash stays a path: a URL parser does not
+        // decode it before determining the origin, so refusing it would only
+        // break legitimate links.
+        assert_eq!(
+            safe_next(Some("/files/%5Creport.pdf".to_owned())),
+            "/files/%5Creport.pdf"
+        );
+
         // Each of these would send the user somewhere else entirely, having
         // arrived at a link on this domain.
         for hostile in [
@@ -304,6 +430,15 @@ mod tests {
             "http://evil.test",
             "javascript:alert(1)",
             "evil.test",
+            // A backslash is protocol-relative to a browser too.
+            "/\\evil.test",
+            // And these are the ones a rule that only reads the second
+            // character misses: a browser strips tab, newline, and carriage
+            // return *before* parsing, so each of these reaches the parser as
+            // `//evil.test`.
+            "/\t/evil.test",
+            "/\n/evil.test",
+            "/\r/evil.test",
         ] {
             assert_eq!(
                 safe_next(Some(hostile.to_owned())),

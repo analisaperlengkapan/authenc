@@ -47,7 +47,16 @@ build:
     cargo leptos build --release
 
 # Everything CI checks, in the order CI checks it.
-check: fmt-check lint test boundaries
+check: fmt-check lint test boundaries offline
+
+# Compile everything the way CI does: no database, `.sqlx` only.
+#
+# `--all-targets` is the point. A per-crate `cargo check` compiles the library
+# and nothing else, so a query that lives in an integration test can be missing
+# from `.sqlx` and still look fine locally — which is exactly how a broken
+# offline build reached CI once.
+offline:
+    SQLX_OFFLINE=true cargo check --workspace --all-targets --features ssr --locked
 
 fmt:
     cargo fmt --all
