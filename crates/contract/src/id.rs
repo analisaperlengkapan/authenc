@@ -89,6 +89,18 @@ typed_id!(
     /// Identifies a registered passkey.
     PasskeyId
 );
+typed_id!(
+    /// Identifies a group within a realm.
+    GroupId
+);
+typed_id!(
+    /// Identifies an organisation within a realm.
+    OrganizationId
+);
+typed_id!(
+    /// Identifies an outstanding invitation to an organisation.
+    InvitationId
+);
 
 #[cfg(test)]
 mod tests {

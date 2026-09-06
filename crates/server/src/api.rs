@@ -13,7 +13,7 @@
 //! on the wrong router silently lost it.
 
 use authenc_contract::{
-    Permission, RoleId, UserId,
+    GroupId, InvitationId, OrganizationId, Permission, RoleId, UserId,
     model::{Realm, Role, User},
 };
 use axum::{
@@ -70,8 +70,8 @@ pub struct GroupView {
 impl From<authenc_identity::group::Group> for GroupView {
     fn from(group: authenc_identity::group::Group) -> Self {
         Self {
-            id: group.id,
-            parent_id: group.parent_id,
+            id: group.id.0,
+            parent_id: group.parent_id.map(|id| id.0),
             name: group.name,
             description: group.description,
             path: group.path,
@@ -128,7 +128,7 @@ pub struct OrganizationView {
 impl From<authenc_identity::organization::Organization> for OrganizationView {
     fn from(organization: authenc_identity::organization::Organization) -> Self {
         Self {
-            id: organization.id,
+            id: organization.id.0,
             slug: organization.slug,
             name: organization.name,
             enabled: organization.enabled,
@@ -896,8 +896,12 @@ async fn get_organization(
     CurrentUser(actor): CurrentUser,
     Path(organization_id): Path<Uuid>,
 ) -> Result<Json<OrganizationView>, ApiError> {
-    let found =
-        authenc_identity::admin::get_organization(&state.db, &actor, organization_id).await?;
+    let found = authenc_identity::admin::get_organization(
+        &state.db,
+        &actor,
+        OrganizationId(organization_id),
+    )
+    .await?;
     Ok(Json(OrganizationView::from(found)))
 }
 
@@ -919,7 +923,7 @@ async fn set_organization_enabled(
     let changed = authenc_identity::admin::set_organization_enabled(
         &state.db,
         &actor,
-        organization_id,
+        OrganizationId(organization_id),
         body.enabled,
     )
     .await?;
@@ -936,7 +940,12 @@ async fn delete_organization(
     CurrentUser(actor): CurrentUser,
     Path(organization_id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    authenc_identity::admin::delete_organization(&state.db, &actor, organization_id).await?;
+    authenc_identity::admin::delete_organization(
+        &state.db,
+        &actor,
+        OrganizationId(organization_id),
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -950,8 +959,12 @@ async fn list_organization_members(
     CurrentUser(actor): CurrentUser,
     Path(organization_id): Path<Uuid>,
 ) -> Result<Json<Vec<OrganizationMemberView>>, ApiError> {
-    let members =
-        authenc_identity::admin::organization_members(&state.db, &actor, organization_id).await?;
+    let members = authenc_identity::admin::organization_members(
+        &state.db,
+        &actor,
+        OrganizationId(organization_id),
+    )
+    .await?;
     Ok(Json(
         members
             .into_iter()
@@ -984,7 +997,7 @@ async fn set_organization_member(
     authenc_identity::admin::set_organization_member(
         &state.db,
         &actor,
-        organization_id,
+        OrganizationId(organization_id),
         UserId(user_id),
         member_role(&body.role)?,
     )
@@ -1013,7 +1026,7 @@ async fn remove_organization_member(
     authenc_identity::admin::remove_organization_member(
         &state.db,
         &actor,
-        organization_id,
+        OrganizationId(organization_id),
         UserId(user_id),
     )
     .await?;
@@ -1032,15 +1045,18 @@ async fn list_organization_invitations(
 ) -> Result<Json<Vec<InvitationView>>, ApiError> {
     use time::format_description::well_known::Rfc3339;
 
-    let invitations =
-        authenc_identity::admin::organization_invitations(&state.db, &actor, organization_id)
-            .await?;
+    let invitations = authenc_identity::admin::organization_invitations(
+        &state.db,
+        &actor,
+        OrganizationId(organization_id),
+    )
+    .await?;
 
     Ok(Json(
         invitations
             .into_iter()
             .map(|invitation| InvitationView {
-                id: invitation.id,
+                id: invitation.id.0,
                 email: invitation.email,
                 role: invitation.role.as_str().to_owned(),
                 accepted: invitation.accepted,
@@ -1075,7 +1091,7 @@ async fn invite_to_organization(
     let invited = authenc_identity::admin::invite_to_organization(
         &state.db,
         &actor,
-        organization_id,
+        OrganizationId(organization_id),
         &body.email,
         member_role(&body.role)?,
     )
@@ -1084,7 +1100,7 @@ async fn invite_to_organization(
     Ok((
         StatusCode::CREATED,
         Json(serde_json::json!({
-            "id": invited.invitation.id,
+            "id": invited.invitation.id.0,
             "email": invited.invitation.email,
             "role": invited.invitation.role.as_str(),
             "token": invited.token.expose(),
@@ -1107,8 +1123,8 @@ async fn revoke_organization_invitation(
     authenc_identity::admin::revoke_organization_invitation(
         &state.db,
         &actor,
-        organization_id,
-        invitation_id,
+        OrganizationId(organization_id),
+        InvitationId(invitation_id),
     )
     .await?;
     Ok(StatusCode::NO_CONTENT)
@@ -1149,7 +1165,7 @@ async fn create_group(
     let created = authenc_identity::admin::create_group(
         &state.db,
         &actor,
-        body.parent_id,
+        body.parent_id.map(GroupId),
         &body.name,
         body.description.as_deref(),
     )
@@ -1167,7 +1183,7 @@ async fn get_group(
     CurrentUser(actor): CurrentUser,
     Path(group_id): Path<Uuid>,
 ) -> Result<Json<GroupView>, ApiError> {
-    let found = authenc_identity::admin::get_group(&state.db, &actor, group_id).await?;
+    let found = authenc_identity::admin::get_group(&state.db, &actor, GroupId(group_id)).await?;
     Ok(Json(GroupView::from(found)))
 }
 
@@ -1181,7 +1197,7 @@ async fn delete_group(
     CurrentUser(actor): CurrentUser,
     Path(group_id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    authenc_identity::admin::delete_group(&state.db, &actor, group_id).await?;
+    authenc_identity::admin::delete_group(&state.db, &actor, GroupId(group_id)).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1201,8 +1217,13 @@ async fn move_group(
     Path(group_id): Path<Uuid>,
     Json(body): Json<MoveGroup>,
 ) -> Result<Json<GroupView>, ApiError> {
-    let moved =
-        authenc_identity::admin::move_group(&state.db, &actor, group_id, body.parent_id).await?;
+    let moved = authenc_identity::admin::move_group(
+        &state.db,
+        &actor,
+        GroupId(group_id),
+        body.parent_id.map(GroupId),
+    )
+    .await?;
     Ok(Json(GroupView::from(moved)))
 }
 
@@ -1216,7 +1237,8 @@ async fn list_group_members(
     CurrentUser(actor): CurrentUser,
     Path(group_id): Path<Uuid>,
 ) -> Result<Json<Vec<User>>, ApiError> {
-    let users = authenc_identity::admin::group_members(&state.db, &actor, group_id).await?;
+    let users =
+        authenc_identity::admin::group_members(&state.db, &actor, GroupId(group_id)).await?;
     Ok(Json(users))
 }
 
@@ -1230,7 +1252,13 @@ async fn add_group_member(
     CurrentUser(actor): CurrentUser,
     Path((group_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    authenc_identity::admin::add_group_member(&state.db, &actor, group_id, UserId(user_id)).await?;
+    authenc_identity::admin::add_group_member(
+        &state.db,
+        &actor,
+        GroupId(group_id),
+        UserId(user_id),
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1244,8 +1272,13 @@ async fn remove_group_member(
     CurrentUser(actor): CurrentUser,
     Path((group_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    authenc_identity::admin::remove_group_member(&state.db, &actor, group_id, UserId(user_id))
-        .await?;
+    authenc_identity::admin::remove_group_member(
+        &state.db,
+        &actor,
+        GroupId(group_id),
+        UserId(user_id),
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1259,7 +1292,7 @@ async fn list_group_roles(
     CurrentUser(actor): CurrentUser,
     Path(group_id): Path<Uuid>,
 ) -> Result<Json<Vec<Role>>, ApiError> {
-    let roles = authenc_identity::admin::group_roles(&state.db, &actor, group_id).await?;
+    let roles = authenc_identity::admin::group_roles(&state.db, &actor, GroupId(group_id)).await?;
     Ok(Json(roles))
 }
 
@@ -1277,7 +1310,13 @@ async fn grant_group_role(
     CurrentUser(actor): CurrentUser,
     Path((group_id, role_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    authenc_identity::admin::grant_group_role(&state.db, &actor, group_id, RoleId(role_id)).await?;
+    authenc_identity::admin::grant_group_role(
+        &state.db,
+        &actor,
+        GroupId(group_id),
+        RoleId(role_id),
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1291,8 +1330,13 @@ async fn revoke_group_role(
     CurrentUser(actor): CurrentUser,
     Path((group_id, role_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    authenc_identity::admin::revoke_group_role(&state.db, &actor, group_id, RoleId(role_id))
-        .await?;
+    authenc_identity::admin::revoke_group_role(
+        &state.db,
+        &actor,
+        GroupId(group_id),
+        RoleId(role_id),
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

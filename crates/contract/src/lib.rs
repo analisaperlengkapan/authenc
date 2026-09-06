@@ -28,5 +28,8 @@ pub mod validate;
 
 pub use error::{AppError, Problem, Result};
 pub use event::{Action, AuditEvent, Category, Outcome};
-pub use id::{PasskeyId, PermissionId, RealmId, RoleId, SessionId, UserId};
+pub use id::{
+    GroupId, InvitationId, OrganizationId, PasskeyId, PermissionId, RealmId, RoleId, SessionId,
+    UserId,
+};
 pub use permission::Permission;

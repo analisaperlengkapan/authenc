@@ -17,9 +17,10 @@
 //! A group remains a bucket for realm role assignment, arranged in a
 //! hierarchy. Neither replaces the other.
 
-use authenc_contract::{AppError, RealmId, Result, UserId, model::User};
+use authenc_contract::{
+    AppError, InvitationId, OrganizationId, RealmId, Result, UserId, model::User,
+};
 use time::{Duration, OffsetDateTime};
-use uuid::Uuid;
 
 use crate::{db::Db, token::SecretToken};
 
@@ -99,7 +100,7 @@ impl MemberRole {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Organization {
     /// Stable identifier.
-    pub id: Uuid,
+    pub id: OrganizationId,
     /// Realm it belongs to.
     pub realm_id: RealmId,
     /// URL-safe handle, unique within the realm.
@@ -117,7 +118,7 @@ pub struct Organization {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Membership {
     /// The organisation.
-    pub organization_id: Uuid,
+    pub organization_id: OrganizationId,
     /// The user.
     pub user_id: UserId,
     /// Their role inside it.
@@ -177,7 +178,7 @@ pub async fn create(db: &Db, realm_id: RealmId, slug: &str, name: &str) -> Resul
     .map_err(|e| translate(e, "creating an organisation"))?;
 
     Ok(Organization {
-        id: row.id,
+        id: OrganizationId(row.id),
         realm_id: RealmId(row.realm_id),
         slug: row.slug,
         name: row.name,
@@ -191,10 +192,10 @@ pub async fn create(db: &Db, realm_id: RealmId, slug: &str, name: &str) -> Resul
 /// # Errors
 ///
 /// [`AppError::NotFound`] if it does not exist.
-pub async fn by_id(db: &Db, id: Uuid) -> Result<Organization> {
+pub async fn by_id(db: &Db, id: OrganizationId) -> Result<Organization> {
     let row = sqlx::query!(
         "SELECT id, realm_id, slug, name, enabled, created_at FROM organizations WHERE id = $1",
-        id,
+        id.0,
     )
     .fetch_optional(db)
     .await
@@ -202,7 +203,7 @@ pub async fn by_id(db: &Db, id: Uuid) -> Result<Organization> {
     .ok_or(AppError::NotFound("organization"))?;
 
     Ok(Organization {
-        id: row.id,
+        id: OrganizationId(row.id),
         realm_id: RealmId(row.realm_id),
         slug: row.slug,
         name: row.name,
@@ -229,7 +230,7 @@ pub async fn list(db: &Db, realm_id: RealmId) -> Result<Vec<Organization>> {
     Ok(rows
         .into_iter()
         .map(|row| Organization {
-            id: row.id,
+            id: OrganizationId(row.id),
             realm_id: RealmId(row.realm_id),
             slug: row.slug,
             name: row.name,
@@ -244,10 +245,10 @@ pub async fn list(db: &Db, realm_id: RealmId) -> Result<Vec<Organization>> {
 /// # Errors
 ///
 /// [`AppError::NotFound`] if it does not exist.
-pub async fn set_enabled(db: &Db, id: Uuid, enabled: bool) -> Result<Organization> {
+pub async fn set_enabled(db: &Db, id: OrganizationId, enabled: bool) -> Result<Organization> {
     let result = sqlx::query!(
         "UPDATE organizations SET enabled = $2 WHERE id = $1",
-        id,
+        id.0,
         enabled,
     )
     .execute(db)
@@ -268,8 +269,8 @@ pub async fn set_enabled(db: &Db, id: Uuid, enabled: bool) -> Result<Organizatio
 /// # Errors
 ///
 /// [`AppError::NotFound`] if it does not exist.
-pub async fn delete(db: &Db, id: Uuid) -> Result<()> {
-    let result = sqlx::query!("DELETE FROM organizations WHERE id = $1", id)
+pub async fn delete(db: &Db, id: OrganizationId) -> Result<()> {
+    let result = sqlx::query!("DELETE FROM organizations WHERE id = $1", id.0)
         .execute(db)
         .await
         .map_err(|e| AppError::internal_from("deleting an organisation", e))?;
@@ -288,7 +289,7 @@ pub async fn delete(db: &Db, id: Uuid) -> Result<()> {
 /// realms.
 pub async fn set_member(
     db: &Db,
-    organization_id: Uuid,
+    organization_id: OrganizationId,
     user_id: UserId,
     role: MemberRole,
 ) -> Result<()> {
@@ -303,7 +304,7 @@ pub async fn set_member(
         "INSERT INTO organization_members (organization_id, user_id, role) \
          VALUES ($1, $2, $3) \
          ON CONFLICT (organization_id, user_id) DO UPDATE SET role = EXCLUDED.role",
-        organization_id,
+        organization_id.0,
         user_id.0,
         role.as_str(),
     )
@@ -322,7 +323,11 @@ pub async fn set_member(
 /// # Errors
 ///
 /// [`AppError::Validation`] if they are the last owner.
-pub async fn remove_member(db: &Db, organization_id: Uuid, user_id: UserId) -> Result<()> {
+pub async fn remove_member(
+    db: &Db,
+    organization_id: OrganizationId,
+    user_id: UserId,
+) -> Result<()> {
     let mut tx = db
         .begin()
         .await
@@ -335,7 +340,7 @@ pub async fn remove_member(db: &Db, organization_id: Uuid, user_id: UserId) -> R
     // proceeding, leaving none.
     sqlx::query_scalar!(
         "SELECT id FROM organizations WHERE id = $1 FOR UPDATE",
-        organization_id
+        organization_id.0
     )
     .fetch_optional(&mut *tx)
     .await
@@ -345,7 +350,7 @@ pub async fn remove_member(db: &Db, organization_id: Uuid, user_id: UserId) -> R
     let owners = sqlx::query_scalar!(
         r#"SELECT count(*) AS "count!" FROM organization_members
            WHERE organization_id = $1 AND role = 'owner'"#,
-        organization_id,
+        organization_id.0,
     )
     .fetch_one(&mut *tx)
     .await
@@ -353,7 +358,7 @@ pub async fn remove_member(db: &Db, organization_id: Uuid, user_id: UserId) -> R
 
     let leaving_role = sqlx::query_scalar!(
         "SELECT role FROM organization_members WHERE organization_id = $1 AND user_id = $2",
-        organization_id,
+        organization_id.0,
         user_id.0,
     )
     .fetch_optional(&mut *tx)
@@ -368,7 +373,7 @@ pub async fn remove_member(db: &Db, organization_id: Uuid, user_id: UserId) -> R
 
     sqlx::query!(
         "DELETE FROM organization_members WHERE organization_id = $1 AND user_id = $2",
-        organization_id,
+        organization_id.0,
         user_id.0,
     )
     .execute(&mut *tx)
@@ -387,11 +392,11 @@ pub async fn remove_member(db: &Db, organization_id: Uuid, user_id: UserId) -> R
 /// # Errors
 ///
 /// Returns an internal error if the query fails.
-pub async fn members(db: &Db, organization_id: Uuid) -> Result<Vec<(User, MemberRole)>> {
+pub async fn members(db: &Db, organization_id: OrganizationId) -> Result<Vec<(User, MemberRole)>> {
     let rows = sqlx::query!(
         "SELECT user_id, role FROM organization_members \
          WHERE organization_id = $1 ORDER BY joined_at",
-        organization_id,
+        organization_id.0,
     )
     .fetch_all(db)
     .await
@@ -430,7 +435,7 @@ pub async fn of_user(db: &Db, user_id: UserId) -> Result<Vec<Membership>> {
     rows.into_iter()
         .map(|row| {
             Ok(Membership {
-                organization_id: row.organization_id,
+                organization_id: OrganizationId(row.organization_id),
                 user_id,
                 role: MemberRole::parse(&row.role)?,
                 organization_enabled: row.enabled,
@@ -485,9 +490,9 @@ pub async fn blocks_sign_in(db: &Db, user_id: UserId) -> Result<bool> {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Invitation {
     /// Stable identifier.
-    pub id: Uuid,
+    pub id: InvitationId,
     /// The organisation.
-    pub organization_id: Uuid,
+    pub organization_id: OrganizationId,
     /// Who was invited.
     pub email: String,
     /// The role they will hold.
@@ -519,7 +524,7 @@ pub struct Invited {
 /// [`AppError::Validation`] for a malformed address.
 pub async fn invite(
     db: &Db,
-    organization_id: Uuid,
+    organization_id: OrganizationId,
     email: &str,
     role: MemberRole,
     invited_by: Option<UserId>,
@@ -541,7 +546,7 @@ pub async fn invite(
     sqlx::query!(
         "DELETE FROM organization_invitations \
          WHERE organization_id = $1 AND lower(email) = lower($2) AND accepted_at IS NULL",
-        organization_id,
+        organization_id.0,
         email,
     )
     .execute(&mut *tx)
@@ -555,7 +560,7 @@ pub async fn invite(
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
         "#,
-        organization_id,
+        organization_id.0,
         email,
         role.as_str(),
         token.hash(),
@@ -572,7 +577,7 @@ pub async fn invite(
 
     Ok(Invited {
         invitation: Invitation {
-            id: row.id,
+            id: InvitationId(row.id),
             organization_id,
             email: email.to_owned(),
             role,
@@ -607,8 +612,8 @@ pub async fn peek_invitation(db: &Db, token: &SecretToken) -> Result<Option<Invi
 
     row.map(|row| {
         Ok(Invitation {
-            id: row.id,
-            organization_id: row.organization_id,
+            id: InvitationId(row.id),
+            organization_id: OrganizationId(row.organization_id),
             email: row.email,
             role: MemberRole::parse(&row.role)?,
             accepted: false,
@@ -653,7 +658,7 @@ pub async fn accept_invitation(
     .ok_or(AppError::Unauthenticated)?;
 
     let role = MemberRole::parse(&claimed.role)?;
-    let organization = by_id(db, claimed.organization_id).await?;
+    let organization = by_id(db, OrganizationId(claimed.organization_id)).await?;
     let user = crate::user::by_id(db, user_id).await?;
 
     if organization.realm_id != user.realm_id {
@@ -680,11 +685,11 @@ pub async fn accept_invitation(
 /// # Errors
 ///
 /// Returns an internal error if the query fails.
-pub async fn invitations(db: &Db, organization_id: Uuid) -> Result<Vec<Invitation>> {
+pub async fn invitations(db: &Db, organization_id: OrganizationId) -> Result<Vec<Invitation>> {
     let rows = sqlx::query!(
         "SELECT id, organization_id, email, role, expires_at, accepted_at \
          FROM organization_invitations WHERE organization_id = $1 ORDER BY created_at DESC",
-        organization_id,
+        organization_id.0,
     )
     .fetch_all(db)
     .await
@@ -693,8 +698,8 @@ pub async fn invitations(db: &Db, organization_id: Uuid) -> Result<Vec<Invitatio
     rows.into_iter()
         .map(|row| {
             Ok(Invitation {
-                id: row.id,
-                organization_id: row.organization_id,
+                id: InvitationId(row.id),
+                organization_id: OrganizationId(row.organization_id),
                 email: row.email,
                 role: MemberRole::parse(&row.role)?,
                 accepted: row.accepted_at.is_some(),
@@ -709,10 +714,10 @@ pub async fn invitations(db: &Db, organization_id: Uuid) -> Result<Vec<Invitatio
 /// # Errors
 ///
 /// [`AppError::NotFound`] if it does not exist or has already been used.
-pub async fn revoke_invitation(db: &Db, id: Uuid) -> Result<()> {
+pub async fn revoke_invitation(db: &Db, id: InvitationId) -> Result<()> {
     let result = sqlx::query!(
         "DELETE FROM organization_invitations WHERE id = $1 AND accepted_at IS NULL",
-        id,
+        id.0,
     )
     .execute(db)
     .await
@@ -1116,9 +1121,9 @@ mod tests {
             .await
             .unwrap();
 
-        let (email, accepted_by): (String, Option<Uuid>) =
+        let (email, accepted_by): (String, Option<uuid::Uuid>) =
             sqlx::query_as("SELECT email, accepted_by FROM organization_invitations WHERE id = $1")
-                .bind(invited.invitation.id)
+                .bind(invited.invitation.id.0)
                 .fetch_one(&db)
                 .await
                 .unwrap();

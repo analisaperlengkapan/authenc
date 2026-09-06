@@ -22,9 +22,8 @@
 //! nothing can route around it. This module's job is to turn the resulting
 //! error into something a caller can read.
 
-use authenc_contract::{AppError, RealmId, Result, RoleId, UserId, model::Role};
+use authenc_contract::{AppError, GroupId, RealmId, Result, RoleId, UserId, model::Role};
 use time::OffsetDateTime;
-use uuid::Uuid;
 
 use crate::db::Db;
 
@@ -32,11 +31,11 @@ use crate::db::Db;
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Group {
     /// Stable identifier.
-    pub id: Uuid,
+    pub id: GroupId,
     /// Realm it belongs to.
     pub realm_id: RealmId,
     /// Parent, if it is not at the root.
-    pub parent_id: Option<Uuid>,
+    pub parent_id: Option<GroupId>,
     /// Name, unique among its siblings.
     pub name: String,
     /// What it is for.
@@ -82,7 +81,7 @@ pub struct NewGroup<'a> {
     /// Realm it belongs to.
     pub realm_id: RealmId,
     /// Parent, or `None` for a root group.
-    pub parent_id: Option<Uuid>,
+    pub parent_id: Option<GroupId>,
     /// Name, unique among its siblings.
     pub name: &'a str,
     /// What it is for.
@@ -123,7 +122,7 @@ pub async fn create(db: &Db, new: NewGroup<'_>) -> Result<Group> {
         RETURNING id, realm_id, parent_id, name, description, created_at
         "#,
         new.realm_id.0,
-        new.parent_id,
+        new.parent_id.map(|id| id.0),
         name,
         new.description,
     )
@@ -132,10 +131,10 @@ pub async fn create(db: &Db, new: NewGroup<'_>) -> Result<Group> {
     .map_err(|e| translate(e, "creating a group"))?;
 
     Ok(Group {
-        path: path_of(db, row.id).await?,
-        id: row.id,
+        path: path_of(db, GroupId(row.id)).await?,
+        id: GroupId(row.id),
         realm_id: RealmId(row.realm_id),
-        parent_id: row.parent_id,
+        parent_id: row.parent_id.map(GroupId),
         name: row.name,
         description: row.description,
         created_at: row.created_at,
@@ -147,13 +146,13 @@ pub async fn create(db: &Db, new: NewGroup<'_>) -> Result<Group> {
 /// # Errors
 ///
 /// [`AppError::NotFound`] if no group has that id.
-pub async fn by_id(db: &Db, id: Uuid) -> Result<Group> {
+pub async fn by_id(db: &Db, id: GroupId) -> Result<Group> {
     let row = sqlx::query!(
         r#"
         SELECT id, realm_id, parent_id, name, description, created_at
           FROM groups WHERE id = $1
         "#,
-        id,
+        id.0,
     )
     .fetch_optional(db)
     .await
@@ -161,10 +160,10 @@ pub async fn by_id(db: &Db, id: Uuid) -> Result<Group> {
     .ok_or(AppError::NotFound("group"))?;
 
     Ok(Group {
-        path: path_of(db, row.id).await?,
-        id: row.id,
+        path: path_of(db, GroupId(row.id)).await?,
+        id: GroupId(row.id),
         realm_id: RealmId(row.realm_id),
-        parent_id: row.parent_id,
+        parent_id: row.parent_id.map(GroupId),
         name: row.name,
         description: row.description,
         created_at: row.created_at,
@@ -176,7 +175,7 @@ pub async fn by_id(db: &Db, id: Uuid) -> Result<Group> {
 /// # Errors
 ///
 /// Returns an internal error if the walk fails.
-pub async fn path_of(db: &Db, id: Uuid) -> Result<String> {
+pub async fn path_of(db: &Db, id: GroupId) -> Result<String> {
     let names = sqlx::query_scalar!(
         r#"
         WITH RECURSIVE ancestry AS (
@@ -187,7 +186,7 @@ pub async fn path_of(db: &Db, id: Uuid) -> Result<String> {
         )
         SELECT name AS "name!" FROM ancestry ORDER BY depth DESC
         "#,
-        id,
+        id.0,
     )
     .fetch_all(db)
     .await
@@ -234,9 +233,9 @@ pub async fn list(db: &Db, realm_id: RealmId) -> Result<Vec<Group>> {
     Ok(rows
         .into_iter()
         .map(|row| Group {
-            id: row.id,
+            id: GroupId(row.id),
             realm_id: RealmId(row.realm_id),
-            parent_id: row.parent_id,
+            parent_id: row.parent_id.map(GroupId),
             name: row.name,
             description: row.description,
             path: row.path,
@@ -253,7 +252,7 @@ pub async fn list(db: &Db, realm_id: RealmId) -> Result<Vec<Group>> {
 /// * [`AppError::Conflict`] — the destination already has a child by that name.
 /// * [`AppError::NotFound`] — the group or the new parent does not exist, or
 ///   they are in different realms.
-pub async fn move_to(db: &Db, id: Uuid, parent_id: Option<Uuid>) -> Result<Group> {
+pub async fn move_to(db: &Db, id: GroupId, parent_id: Option<GroupId>) -> Result<Group> {
     let group = by_id(db, id).await?;
 
     if let Some(parent_id) = parent_id {
@@ -265,8 +264,8 @@ pub async fn move_to(db: &Db, id: Uuid, parent_id: Option<Uuid>) -> Result<Group
 
     sqlx::query!(
         "UPDATE groups SET parent_id = $2 WHERE id = $1",
-        id,
-        parent_id,
+        id.0,
+        parent_id.map(|id| id.0),
     )
     .execute(db)
     .await
@@ -280,8 +279,8 @@ pub async fn move_to(db: &Db, id: Uuid, parent_id: Option<Uuid>) -> Result<Group
 /// # Errors
 ///
 /// [`AppError::NotFound`] if it does not exist.
-pub async fn delete(db: &Db, id: Uuid) -> Result<()> {
-    let result = sqlx::query!("DELETE FROM groups WHERE id = $1", id)
+pub async fn delete(db: &Db, id: GroupId) -> Result<()> {
+    let result = sqlx::query!("DELETE FROM groups WHERE id = $1", id.0)
         .execute(db)
         .await
         .map_err(|e| AppError::internal_from("deleting a group", e))?;
@@ -298,7 +297,7 @@ pub async fn delete(db: &Db, id: Uuid) -> Result<()> {
 ///
 /// [`AppError::NotFound`] if either side is unknown, or [`AppError::Validation`]
 /// if they are in different realms.
-pub async fn add_member(db: &Db, group_id: Uuid, user_id: UserId) -> Result<()> {
+pub async fn add_member(db: &Db, group_id: GroupId, user_id: UserId) -> Result<()> {
     let group = by_id(db, group_id).await?;
     let user = crate::user::by_id(db, user_id).await?;
 
@@ -312,7 +311,7 @@ pub async fn add_member(db: &Db, group_id: Uuid, user_id: UserId) -> Result<()> 
     sqlx::query!(
         "INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) \
          ON CONFLICT DO NOTHING",
-        group_id,
+        group_id.0,
         user_id.0,
     )
     .execute(db)
@@ -327,10 +326,10 @@ pub async fn add_member(db: &Db, group_id: Uuid, user_id: UserId) -> Result<()> 
 /// # Errors
 ///
 /// Returns an internal error if the delete fails.
-pub async fn remove_member(db: &Db, group_id: Uuid, user_id: UserId) -> Result<()> {
+pub async fn remove_member(db: &Db, group_id: GroupId, user_id: UserId) -> Result<()> {
     sqlx::query!(
         "DELETE FROM group_members WHERE group_id = $1 AND user_id = $2",
-        group_id,
+        group_id.0,
         user_id.0,
     )
     .execute(db)
@@ -349,10 +348,10 @@ pub async fn remove_member(db: &Db, group_id: Uuid, user_id: UserId) -> Result<(
 /// # Errors
 ///
 /// Returns an internal error if the query fails.
-pub async fn members(db: &Db, group_id: Uuid) -> Result<Vec<UserId>> {
+pub async fn members(db: &Db, group_id: GroupId) -> Result<Vec<UserId>> {
     let ids = sqlx::query_scalar!(
         "SELECT user_id FROM group_members WHERE group_id = $1 ORDER BY added_at",
-        group_id,
+        group_id.0,
     )
     .fetch_all(db)
     .await
@@ -377,7 +376,7 @@ pub async fn of_user(db: &Db, user_id: UserId) -> Result<Vec<Group>> {
 
     let mut groups = Vec::with_capacity(ids.len());
     for id in ids {
-        groups.push(by_id(db, id).await?);
+        groups.push(by_id(db, GroupId(id)).await?);
     }
     groups.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(groups)
@@ -389,7 +388,7 @@ pub async fn of_user(db: &Db, user_id: UserId) -> Result<Vec<Group>> {
 ///
 /// [`AppError::NotFound`] if either side is unknown, or if they are in
 /// different realms.
-pub async fn grant_role(db: &Db, group_id: Uuid, role_id: RoleId) -> Result<()> {
+pub async fn grant_role(db: &Db, group_id: GroupId, role_id: RoleId) -> Result<()> {
     let group = by_id(db, group_id).await?;
     let realm_of_role = sqlx::query_scalar!("SELECT realm_id FROM roles WHERE id = $1", role_id.0)
         .fetch_optional(db)
@@ -404,7 +403,7 @@ pub async fn grant_role(db: &Db, group_id: Uuid, role_id: RoleId) -> Result<()> 
     sqlx::query!(
         "INSERT INTO group_roles (group_id, role_id) VALUES ($1, $2) \
          ON CONFLICT DO NOTHING",
-        group_id,
+        group_id.0,
         role_id.0,
     )
     .execute(db)
@@ -419,10 +418,10 @@ pub async fn grant_role(db: &Db, group_id: Uuid, role_id: RoleId) -> Result<()> 
 /// # Errors
 ///
 /// Returns an internal error if the delete fails.
-pub async fn revoke_role(db: &Db, group_id: Uuid, role_id: RoleId) -> Result<()> {
+pub async fn revoke_role(db: &Db, group_id: GroupId, role_id: RoleId) -> Result<()> {
     sqlx::query!(
         "DELETE FROM group_roles WHERE group_id = $1 AND role_id = $2",
-        group_id,
+        group_id.0,
         role_id.0,
     )
     .execute(db)
@@ -436,7 +435,7 @@ pub async fn revoke_role(db: &Db, group_id: Uuid, role_id: RoleId) -> Result<()>
 /// # Errors
 ///
 /// Returns an internal error if the query fails.
-pub async fn roles(db: &Db, group_id: Uuid) -> Result<Vec<Role>> {
+pub async fn roles(db: &Db, group_id: GroupId) -> Result<Vec<Role>> {
     let rows = sqlx::query!(
         r#"
         SELECT r.id, r.realm_id, r.name, r.description
@@ -444,7 +443,7 @@ pub async fn roles(db: &Db, group_id: Uuid) -> Result<Vec<Role>> {
          WHERE gr.group_id = $1
          ORDER BY r.name
         "#,
-        group_id,
+        group_id.0,
     )
     .fetch_all(db)
     .await
@@ -493,7 +492,7 @@ mod tests {
         (realm.id, user)
     }
 
-    async fn group(db: &Db, realm_id: RealmId, parent: Option<Uuid>, name: &str) -> Group {
+    async fn group(db: &Db, realm_id: RealmId, parent: Option<GroupId>, name: &str) -> Group {
         create(
             db,
             NewGroup {

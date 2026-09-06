@@ -11,12 +11,10 @@
 //! into another tenant.
 
 use authenc_contract::{
-    AppError, Permission, RealmId, Result, RoleId, UserId,
+    AppError, GroupId, InvitationId, OrganizationId, Permission, RealmId, Result, RoleId, UserId,
     event::Action,
     model::{Actor, Realm, Role, User},
 };
-
-use uuid::Uuid;
 
 use crate::{
     audit::{self, Entry},
@@ -391,7 +389,7 @@ pub async fn list_groups(db: &Db, actor: &Actor, realm_id: RealmId) -> Result<Ve
 ///
 /// [`AppError::Forbidden`] without `group:read`, or [`AppError::NotFound`] if
 /// it is not in the actor's realm.
-pub async fn get_group(db: &Db, actor: &Actor, id: Uuid) -> Result<group::Group> {
+pub async fn get_group(db: &Db, actor: &Actor, id: GroupId) -> Result<group::Group> {
     actor.require(Permission::GroupRead)?;
     let found = group::by_id(db, id).await?;
     same_realm(actor, found.realm_id)?;
@@ -407,7 +405,7 @@ pub async fn get_group(db: &Db, actor: &Actor, id: Uuid) -> Result<group::Group>
 pub async fn create_group(
     db: &Db,
     actor: &Actor,
-    parent_id: Option<Uuid>,
+    parent_id: Option<GroupId>,
     name: &str,
     description: Option<&str>,
 ) -> Result<group::Group> {
@@ -447,8 +445,8 @@ pub async fn create_group(
 pub async fn move_group(
     db: &Db,
     actor: &Actor,
-    id: Uuid,
-    parent_id: Option<Uuid>,
+    id: GroupId,
+    parent_id: Option<GroupId>,
 ) -> Result<group::Group> {
     actor.require(Permission::GroupWrite)?;
     let existing = get_group(db, actor, id).await?;
@@ -476,7 +474,7 @@ pub async fn move_group(
 ///
 /// [`AppError::Forbidden`] without `group:write`, or [`AppError::NotFound`]
 /// outside the actor's realm.
-pub async fn delete_group(db: &Db, actor: &Actor, id: Uuid) -> Result<()> {
+pub async fn delete_group(db: &Db, actor: &Actor, id: GroupId) -> Result<()> {
     actor.require(Permission::GroupWrite)?;
     let existing = get_group(db, actor, id).await?;
 
@@ -503,7 +501,7 @@ pub async fn delete_group(db: &Db, actor: &Actor, id: Uuid) -> Result<()> {
 pub async fn add_group_member(
     db: &Db,
     actor: &Actor,
-    group_id: Uuid,
+    group_id: GroupId,
     user_id: UserId,
 ) -> Result<()> {
     actor.require(Permission::GroupWrite)?;
@@ -534,7 +532,7 @@ pub async fn add_group_member(
 pub async fn remove_group_member(
     db: &Db,
     actor: &Actor,
-    group_id: Uuid,
+    group_id: GroupId,
     user_id: UserId,
 ) -> Result<()> {
     actor.require(Permission::GroupWrite)?;
@@ -566,7 +564,7 @@ pub async fn remove_group_member(
 pub async fn grant_group_role(
     db: &Db,
     actor: &Actor,
-    group_id: Uuid,
+    group_id: GroupId,
     role_id: RoleId,
 ) -> Result<()> {
     actor.require(Permission::GroupWrite)?;
@@ -600,7 +598,7 @@ pub async fn grant_group_role(
 pub async fn revoke_group_role(
     db: &Db,
     actor: &Actor,
-    group_id: Uuid,
+    group_id: GroupId,
     role_id: RoleId,
 ) -> Result<()> {
     actor.require(Permission::GroupWrite)?;
@@ -628,7 +626,7 @@ pub async fn revoke_group_role(
 ///
 /// [`AppError::Forbidden`] without `group:read`, or [`AppError::NotFound`]
 /// outside the actor's realm.
-pub async fn group_members(db: &Db, actor: &Actor, group_id: Uuid) -> Result<Vec<User>> {
+pub async fn group_members(db: &Db, actor: &Actor, group_id: GroupId) -> Result<Vec<User>> {
     get_group(db, actor, group_id).await?;
 
     let ids = group::members(db, group_id).await?;
@@ -644,7 +642,7 @@ pub async fn group_members(db: &Db, actor: &Actor, group_id: Uuid) -> Result<Vec
 /// # Errors
 ///
 /// As [`group_members`].
-pub async fn group_roles(db: &Db, actor: &Actor, group_id: Uuid) -> Result<Vec<Role>> {
+pub async fn group_roles(db: &Db, actor: &Actor, group_id: GroupId) -> Result<Vec<Role>> {
     get_group(db, actor, group_id).await?;
     group::roles(db, group_id).await
 }
@@ -672,7 +670,7 @@ pub async fn list_organizations(db: &Db, actor: &Actor) -> Result<Vec<organizati
 pub async fn get_organization(
     db: &Db,
     actor: &Actor,
-    id: Uuid,
+    id: OrganizationId,
 ) -> Result<organization::Organization> {
     actor.require(Permission::OrganizationRead)?;
     let found = organization::by_id(db, id).await?;
@@ -717,7 +715,7 @@ pub async fn create_organization(
 pub async fn set_organization_enabled(
     db: &Db,
     actor: &Actor,
-    id: Uuid,
+    id: OrganizationId,
     enabled: bool,
 ) -> Result<organization::Organization> {
     actor.require(Permission::OrganizationWrite)?;
@@ -747,7 +745,7 @@ pub async fn set_organization_enabled(
 ///
 /// [`AppError::Forbidden`] without `organization:write`, or
 /// [`AppError::NotFound`] outside the actor's realm.
-pub async fn delete_organization(db: &Db, actor: &Actor, id: Uuid) -> Result<()> {
+pub async fn delete_organization(db: &Db, actor: &Actor, id: OrganizationId) -> Result<()> {
     actor.require(Permission::OrganizationWrite)?;
     let existing = get_organization(db, actor, id).await?;
 
@@ -773,7 +771,7 @@ pub async fn delete_organization(db: &Db, actor: &Actor, id: Uuid) -> Result<()>
 pub async fn organization_members(
     db: &Db,
     actor: &Actor,
-    id: Uuid,
+    id: OrganizationId,
 ) -> Result<Vec<(User, organization::MemberRole)>> {
     get_organization(db, actor, id).await?;
     organization::members(db, id).await
@@ -788,7 +786,7 @@ pub async fn organization_members(
 pub async fn set_organization_member(
     db: &Db,
     actor: &Actor,
-    id: Uuid,
+    id: OrganizationId,
     user_id: UserId,
     role: organization::MemberRole,
 ) -> Result<()> {
@@ -824,7 +822,7 @@ pub async fn set_organization_member(
 pub async fn remove_organization_member(
     db: &Db,
     actor: &Actor,
-    id: Uuid,
+    id: OrganizationId,
     user_id: UserId,
 ) -> Result<()> {
     actor.require(Permission::OrganizationWrite)?;
@@ -859,7 +857,7 @@ pub async fn remove_organization_member(
 pub async fn invite_to_organization(
     db: &Db,
     actor: &Actor,
-    id: Uuid,
+    id: OrganizationId,
     email: &str,
     role: organization::MemberRole,
 ) -> Result<organization::Invited> {
@@ -892,7 +890,7 @@ pub async fn invite_to_organization(
 pub async fn organization_invitations(
     db: &Db,
     actor: &Actor,
-    id: Uuid,
+    id: OrganizationId,
 ) -> Result<Vec<organization::Invitation>> {
     get_organization(db, actor, id).await?;
     organization::invitations(db, id).await
@@ -908,8 +906,8 @@ pub async fn organization_invitations(
 pub async fn revoke_organization_invitation(
     db: &Db,
     actor: &Actor,
-    organization_id: Uuid,
-    invitation_id: Uuid,
+    organization_id: OrganizationId,
+    invitation_id: InvitationId,
 ) -> Result<()> {
     actor.require(Permission::OrganizationWrite)?;
     let found = get_organization(db, actor, organization_id).await?;

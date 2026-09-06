@@ -149,6 +149,14 @@ real defect that was in `main`.
   thing: `whoami` said `user:read` while the enum said `user_read`, and only one
   of the two parsed back. If you add such an enum, round-trip every variant in a
   test.
+- **Every aggregate id is its own type.** `GroupId`, `OrganizationId`,
+  `InvitationId`, `UserId` and the rest live in `contract::id`; a bare `Uuid`
+  in a signature is a defect. Adjacent parameters of the same primitive type
+  are silently swappable, and `revoke_organization_invitation(db, actor, uuid,
+  uuid)` compiled happily with its two arguments the wrong way round. The
+  conversion belongs at the edges: `.0` when binding to SQL, `Id(row.id)` when
+  reading back, and the HTTP layer keeps taking `Path<Uuid>` because `utoipa`
+  cannot describe the newtype.
 - **Inheritance in the group tree runs upward, never downward.** A member of a
   child holds its ancestors' roles; a member of a parent does not hold its
   children's. The other direction would make adding a nested group a privilege
