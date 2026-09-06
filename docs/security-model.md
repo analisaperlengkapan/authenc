@@ -63,15 +63,36 @@ reset.
 
 ## CSRF
 
-The token is derived from a per-session secret and compared in **constant
-time**; a token minted for one session does not validate against another, and a
-test asserts exactly that. The previous implementation checked only that the
-submitted value was at least 32 characters long, with no server-side state, no
-HMAC, and no session binding, so any string of the right length worked
-everywhere.
+There are two request surfaces, and they are gated differently. Safe methods
+are exempt on both.
 
-Safe methods are exempt. `Sec-Fetch-Site`/`Origin` is checked as well, since a
-browser sets it and page script cannot forge it.
+**`/api/v1` — the token.** Derived from a per-session secret and compared in
+**constant time**; a token minted for one session does not validate against
+another, and a test asserts exactly that. The previous implementation checked
+only that the submitted value was at least 32 characters long, with no
+server-side state, no HMAC, and no session binding, so any string of the right
+length worked everywhere.
+
+**`/api/sfn` — the origin.** Server functions are invoked by the Leptos client,
+which sends no header of ours, so a token requirement there would refuse the
+console itself. What is checked instead is `Sec-Fetch-Site`, falling back to
+`Origin`: a browser sets both and page script can forge neither, and a browser
+always sends `Origin` on a cross-origin POST. A request carrying neither header
+is not a browser and so cannot be a forged one; it passes through to whatever
+authenticates it. The gate has to cover `log_in` as well as the administrative
+functions, which is the other reason it is not a session-bound token — at that
+point there is no session to bind one to.
+
+This closes the case `SameSite=Lax` does not. A cross-*site* POST already
+arrives without the session cookie; a *subdomain somebody else controls* is
+same-site, and would otherwise be trusted.
+
+Neither gate is `SameSite=Lax` on its own, and that distinction was earned: the
+origin check was written and unit-tested during Stage 2 and **called from
+nowhere**, so until Stage 7 the server-function surface had no CSRF gate at
+all. A `curl` carrying a session cookie and no token deleted a group. The tests
+that now cover it send the forged request and assert the refusal, rather than
+testing the helper in isolation.
 
 ## Resisting brute force and enumeration
 

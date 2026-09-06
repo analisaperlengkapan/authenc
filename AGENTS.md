@@ -167,6 +167,18 @@ real defect that was in `main`.
 - **Every REST request body sets `deny_unknown_fields`.** Serde drops unknown
   fields by default, so a caller's invented or mistyped parameter produced a
   2xx and an action that did not do what they asked.
+- **The two API surfaces have two different CSRF gates, and both must run.**
+  `/api/v1` requires the session-bound token in `x-csrf-token`; `/api/sfn`
+  cannot, because the Leptos client sends no header of ours, so it is gated on
+  `Sec-Fetch-Site`/`Origin` instead. Neither gate is `SameSite=Lax` on its own.
+- **A security check is not mounted until a test proves it refuses something.**
+  `is_same_origin` was written, unit-tested, and called from nowhere; the
+  server-function surface had no CSRF gate at all, and a `curl` with a session
+  cookie and no token deleted a group. Worse, the first fix *looked* mounted:
+  a guard on a `/api/sfn/{*path}` route registered in `http.rs` never ran,
+  because `leptos_routes_with_context` registers the concrete server-function
+  paths itself and a concrete path beats a wildcard. Write the test that sends
+  the forged request, and watch it fail before the fix.
 - **Server functions return `ServerFnError`, and the status must be set.**
   Leptos reports every server-function failure as 500 unless something calls
   `to_server_fn_error`. `require_session` and `require_actor` therefore return

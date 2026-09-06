@@ -77,7 +77,7 @@ is enforced rather than merely intended.
 | Login and logout | server functions, with the login page rendered server-side |
 | Brute-force protection | per-identifier and per-address lockout over a rolling window |
 | User enumeration resistance | wrong password and unknown user return the identical response |
-| CSRF | token bound to the session, compared in constant time, plus an origin check |
+| CSRF | `/api/v1`: token bound to the session, compared in constant time. `/api/sfn`: `Sec-Fetch-Site`/`Origin`, because the Leptos client sends no header of ours |
 | RBAC groundwork | roles resolved from the database at the point of use, never from a token |
 | Password reset | single-use expiring link; completing it revokes every session and lifts the lockout |
 | Email verification | single-use expiring link; a link cannot verify an address changed after it was sent |

@@ -21,8 +21,10 @@ real PostgreSQL, layer boundaries, wasm bundle, and MSRV.
 ### Stage 2 — Authentication
 
 Sessions as an opaque token in an `HttpOnly`, `SameSite=Lax` cookie, with only
-its hash stored. CSRF token bound to the session and compared in constant time,
-plus a `Sec-Fetch-Site`/`Origin` check. Brute-force lockout per identifier and
+its hash stored. CSRF token bound to the session and compared in constant time
+for `/api/v1`, and a `Sec-Fetch-Site`/`Origin` check for `/api/sfn`, where the
+Leptos client sends no header of ours. (The origin check was written here and
+mounted nowhere until Stage 7 — see `docs/security-model.md`.) Brute-force lockout per identifier and
 per address over a rolling window, which holds even against the correct
 password and lifts on its own. Login, logout, and current-user server
 functions; a server-rendered login page. A `CurrentUser` extractor that

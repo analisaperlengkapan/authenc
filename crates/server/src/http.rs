@@ -11,7 +11,7 @@ use axum::{
     routing::get,
 };
 use leptos::prelude::{LeptosOptions, provide_context};
-use leptos_axum::{LeptosRoutes, generate_route_list, handle_server_fns_with_context};
+use leptos_axum::{LeptosRoutes, generate_route_list};
 use tower::ServiceBuilder;
 use tower_http::{
     catch_panic::CatchPanicLayer,
@@ -51,12 +51,6 @@ pub fn router(state: AppState) -> Router {
         // that does read the session — the consent form's POST — checks the
         // token itself.
         .merge(crate::oidc::router())
-        // Server functions. `#[server(prefix = "/api/sfn")]` in authenc-web
-        // must agree with this path.
-        .route(
-            "/api/sfn/{*path}",
-            get(server_fn_handler).post(server_fn_handler),
-        )
         // Leptos SSR routes, with application context injected so server
         // functions can reach the database.
         .leptos_routes_with_context(
@@ -95,20 +89,35 @@ pub fn router(state: AppState) -> Router {
         .layer(PropagateRequestIdLayer::new(REQUEST_ID))
         // 3. Tracing, outside the handler so panics and timeouts are recorded.
         .layer(TraceLayer::new_for_http())
-        // 4. Turn a panic into a 500 instead of a dead connection. Paired with
+        // 4. The CSRF gate for server functions. A layer over the whole app
+        //    rather than a guard on a route of ours, because the
+        //    `/api/sfn/*` routes are registered by
+        //    `leptos_routes_with_context`, not by this module — an earlier
+        //    attempt put the check on a `/api/sfn/{*path}` route registered
+        //    here, and Leptos's concrete paths matched first, so the check
+        //    compiled, ran, and guarded nothing.
+        //
+        //    Above the body limit and the timeout so a refusal is decided
+        //    before anything is read, and below the tracing layer so it is
+        //    recorded with a request id.
+        .layer(axum::middleware::from_fn_with_state(
+            config.clone(),
+            refuse_cross_origin,
+        ))
+        // 5. Turn a panic into a 500 instead of a dead connection. Paired with
         //    `panic = "unwind"` in the release profile; with `abort` (as this
         //    project shipped) one panic in one request killed the process.
         .layer(CatchPanicLayer::new())
-        // 5. Bound how long a request may occupy a worker.
+        // 6. Bound how long a request may occupy a worker.
         .layer(TimeoutLayer::with_status_code(
             StatusCode::GATEWAY_TIMEOUT,
             config.server.request_timeout,
         ))
-        // 6. Bound how much we will read before deciding anything.
+        // 7. Bound how much we will read before deciding anything.
         .layer(RequestBodyLimitLayer::new(config.server.max_body_bytes))
-        // 7. Cross-origin policy, from configuration.
+        // 8. Cross-origin policy, from configuration.
         .layer(cors(&config))
-        // 8. Security headers.
+        // 9. Security headers.
         .layer(SetResponseHeaderLayer::overriding(
             header::X_CONTENT_TYPE_OPTIONS,
             HeaderValue::from_static("nosniff"),
@@ -131,7 +140,7 @@ pub fn router(state: AppState) -> Router {
                 HeaderValue::from_static("max-age=31536000; includeSubDomains"),
             )
         }))
-        // 9. Compression last, so it wraps the finished body.
+        // 10. Compression last, so it wraps the finished body.
         .layer(CompressionLayer::new());
 
     app.layer(stack)
@@ -162,11 +171,55 @@ fn cors(config: &Config) -> CorsLayer {
         .max_age(Duration::from_secs(600))
 }
 
-/// Dispatch a server-function call with application context available.
-async fn server_fn_handler(State(state): State<AppState>, request: Request<Body>) -> Response {
-    handle_server_fns_with_context(move || provide_app_context(&state), request)
-        .await
-        .into_response()
+/// Refuse a state-changing server-function call that a browser started
+/// somewhere else.
+///
+/// This is the CSRF gate for `/api/sfn`, and it is a different one from the
+/// gate on `/api/v1`. The REST surface requires the session's CSRF token in a
+/// header, which works because the clients writing that header are scripts.
+/// Server functions are invoked by the Leptos client, which sends no header of
+/// ours, so requiring the token here would mean refusing the console itself.
+///
+/// What is checked instead is where the request came from: `Sec-Fetch-Site`
+/// where the browser sets it, falling back to `Origin`. Neither can be forged
+/// by page script, and a browser always sends `Origin` on a cross-origin POST.
+/// A request carrying neither header is not a browser and therefore cannot be
+/// a forged one, so it passes through to whatever authenticates it.
+///
+/// Together with the `SameSite=Lax` session cookie — which already stops a
+/// genuinely cross-*site* POST from carrying credentials at all — this closes
+/// the same-site-but-cross-origin case that `SameSite` does not: a subdomain
+/// somebody else controls is same-site, and would otherwise be trusted.
+///
+/// It has to sit in front of `log_in` as well as the administrative functions,
+/// which is why it is not expressed as a session-bound token: at that point
+/// there is no session to bind one to.
+///
+/// Scoped to `/api/sfn` deliberately. `/api/v1` may legitimately be called
+/// from another origin — that is what the CORS allow-list is for — and the
+/// token check is its gate. Nothing but this console calls a server function.
+async fn refuse_cross_origin(
+    State(config): State<std::sync::Arc<Config>>,
+    request: Request<Body>,
+    next: axum::middleware::Next,
+) -> Response {
+    use axum::http::Method;
+
+    let guarded = request.uri().path().starts_with("/api/sfn/")
+        && !matches!(
+            *request.method(),
+            Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE
+        );
+
+    if guarded && !crate::auth::is_same_origin(request.headers(), config.origin()) {
+        tracing::warn!(
+            path = %request.uri().path(),
+            "refused a cross-origin server-function call",
+        );
+        return crate::error::ApiError(authenc_contract::AppError::Forbidden).into_response();
+    }
+
+    next.run(request).await
 }
 
 /// Make application state reachable from server functions.

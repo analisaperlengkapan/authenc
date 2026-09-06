@@ -179,10 +179,16 @@ pub fn verify_csrf(method: &Method, headers: &HeaderMap, session: &Session) -> R
 
 /// Whether a state-changing request came from our own origin.
 ///
-/// Defence in depth alongside the CSRF token and the `SameSite=Lax` cookie:
-/// `Sec-Fetch-Site` is set by the browser and cannot be forged by page script.
-/// Requests without either header — non-browser clients — are allowed through
-/// to the token check, which is the real gate.
+/// `Sec-Fetch-Site` is set by the browser and cannot be forged by page script;
+/// `Origin` is the fallback for browsers that do not send it, and is likewise
+/// unforgeable. A request carrying neither is not a browser, so it cannot be a
+/// forged one, and it passes through to whatever authenticates it.
+///
+/// This is the CSRF gate for `/api/sfn` — see `http::refuse_cross_origin`,
+/// which is the only caller — and defence in depth for `/api/v1`, where the
+/// session-bound token in `verify_csrf` is the gate. The two surfaces differ
+/// because the Leptos client sends no header of ours, so a token requirement
+/// on server functions would refuse the console itself.
 #[must_use]
 pub fn is_same_origin(headers: &HeaderMap, expected_origin: &str) -> bool {
     if let Some(site) = headers.get("sec-fetch-site").and_then(|v| v.to_str().ok()) {

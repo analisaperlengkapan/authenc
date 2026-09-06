@@ -682,3 +682,83 @@ async fn the_security_page_renders_server_side_for_a_signed_in_user(db: PgPool) 
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Cross-origin server-function calls
+// ---------------------------------------------------------------------------
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_cross_site_server_function_call_is_refused(db: PgPool) {
+    // Found by driving a release build with curl: `/api/sfn` had no CSRF gate
+    // at all. `is_same_origin` existed and was unit-tested, and nothing called
+    // it — the same shape of defect as the six middleware modules the previous
+    // tree wrote and never mounted.
+    seed(&db).await;
+    let server = server(db);
+
+    server
+        .post("/api/sfn/login")
+        .json(&login_body("alice", PASSWORD))
+        .await
+        .assert_status_ok();
+
+    let refused = server
+        .post("/api/sfn/logout")
+        .add_header("sec-fetch-site", "cross-site")
+        .await;
+
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::FORBIDDEN,
+        "{}",
+        refused.text()
+    );
+
+    // And the session it tried to end is still live.
+    server.post("/api/sfn/me").await.assert_status_ok();
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_forged_origin_header_is_refused_too(db: PgPool) {
+    seed(&db).await;
+    let server = server(db);
+
+    server
+        .post("/api/sfn/login")
+        .json(&login_body("alice", PASSWORD))
+        .await
+        .assert_status_ok();
+
+    let refused = server
+        .post("/api/sfn/logout")
+        .add_header("origin", "https://evil.example")
+        .await;
+
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::FORBIDDEN,
+        "{}",
+        refused.text()
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_console_s_own_calls_are_not_refused(db: PgPool) {
+    // The guard must not break the thing it protects. The console posts from
+    // the page it was served by, so the browser sends `same-origin`.
+    seed(&db).await;
+    let server = server(db);
+
+    server
+        .post("/api/sfn/login")
+        .add_header("sec-fetch-site", "same-origin")
+        .json(&login_body("alice", PASSWORD))
+        .await
+        .assert_status_ok();
+
+    server
+        .post("/api/sfn/logout")
+        .add_header("sec-fetch-site", "same-origin")
+        .await
+        .assert_status_ok();
+}
