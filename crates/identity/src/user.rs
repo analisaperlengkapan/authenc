@@ -99,6 +99,85 @@ pub async fn create(db: &Db, hasher: &PasswordHasher, new: NewUser<'_>) -> Resul
     })
 }
 
+/// What a user provisioned from an upstream identity needs.
+#[derive(Debug, Clone, Copy)]
+pub struct NewFederatedUser<'a> {
+    /// Realm the user belongs to.
+    pub realm_id: RealmId,
+    /// Login name, unique within the realm.
+    pub username: &'a str,
+    /// Email address, unique within the realm.
+    pub email: &'a str,
+    /// Whether the upstream said it had verified that address. Copied rather
+    /// than assumed: an unverified upstream address produces an unverified
+    /// local account, exactly as a self-registration would.
+    pub email_verified: bool,
+    /// A display name from the upstream, split into given and family names on
+    /// the first space. Crude, and better than discarding it.
+    pub display_name: Option<&'a str>,
+}
+
+/// Create a user with **no password**, for an identity another provider
+/// asserts.
+///
+/// The account has no `user_passwords` row, so `login::authenticate` can never
+/// admit it — the credential check falls through to `DUMMY_PHC` and fails, as
+/// it does for an account that does not exist. The only way in is the provider
+/// that vouched for it, or a password the user sets later through recovery.
+///
+/// # Errors
+///
+/// Returns a field error if the username or email fails validation,
+/// [`AppError::Conflict`] if either is taken in that realm, or an internal
+/// error if the insert fails.
+pub async fn create_without_password(db: &Db, new: NewFederatedUser<'_>) -> Result<User> {
+    validate::username(new.username)?;
+    validate::email(new.email)?;
+
+    let (first_name, last_name) = match new.display_name.map(str::trim).filter(|n| !n.is_empty()) {
+        Some(name) => match name.split_once(' ') {
+            Some((first, rest)) => (Some(first.to_owned()), Some(rest.trim().to_owned())),
+            None => (Some(name.to_owned()), None),
+        },
+        None => (None, None),
+    };
+
+    let row = sqlx::query!(
+        r#"
+        INSERT INTO users (realm_id, username, email, email_verified, first_name, last_name)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, realm_id, username, email, email_verified,
+                  first_name, last_name, enabled, created_at
+        "#,
+        new.realm_id.0,
+        new.username,
+        new.email,
+        new.email_verified,
+        first_name,
+        last_name,
+    )
+    .fetch_one(db)
+    .await
+    .map_err(|e| match &e {
+        sqlx::Error::Database(db_error) if db_error.is_unique_violation() => {
+            AppError::conflict("that username or email is already taken in this realm")
+        }
+        _ => AppError::internal_from("creating a federated user", e),
+    })?;
+
+    Ok(User {
+        id: UserId(row.id),
+        realm_id: RealmId(row.realm_id),
+        username: row.username,
+        email: row.email,
+        email_verified: row.email_verified,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        enabled: row.enabled,
+        created_at: row.created_at,
+    })
+}
+
 /// Find a user by id.
 ///
 /// # Errors

@@ -101,6 +101,10 @@ typed_id!(
     /// Identifies an outstanding invitation to an organisation.
     InvitationId
 );
+typed_id!(
+    /// Identifies a configured upstream identity provider.
+    IdentityProviderId
+);
 
 #[cfg(test)]
 mod tests {

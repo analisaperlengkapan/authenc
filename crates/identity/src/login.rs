@@ -245,7 +245,14 @@ pub async fn authenticate(
     // half-authenticated caller holds a usable cookie.
     let enrolment = mfa::enrolment(db, user.id).await?;
     if enrolment.is_required() {
-        let issued = challenge::issue(db, user.id, realm.id, attempt.origin).await?;
+        let issued = challenge::issue(
+            db,
+            user.id,
+            realm.id,
+            mfa::FirstFactor::Password,
+            attempt.origin,
+        )
+        .await?;
 
         audit::observe(
             db,
@@ -263,8 +270,14 @@ pub async fn authenticate(
         })));
     }
 
-    let session =
-        session::create(db, user.id, realm.id, mfa::amr_for(None), attempt.origin).await?;
+    let session = session::create(
+        db,
+        user.id,
+        realm.id,
+        mfa::amr_for(mfa::FirstFactor::Password, None),
+        attempt.origin,
+    )
+    .await?;
 
     audit::observe(
         db,
@@ -369,7 +382,7 @@ pub async fn open_session(
         db,
         pending.user_id,
         pending.realm_id,
-        mfa::amr_for(Some(factor)),
+        mfa::amr_for(pending.first_factor, Some(factor)),
         origin,
     )
     .await?;

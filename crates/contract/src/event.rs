@@ -114,6 +114,22 @@ pub enum Action {
     OrganizationInvitationAccepted,
     /// An invitation was withdrawn.
     OrganizationInvitationRevoked,
+    /// A social-login provider was configured.
+    IdentityProviderCreated,
+    /// A social-login provider's settings changed.
+    IdentityProviderUpdated,
+    /// A social-login provider was removed.
+    IdentityProviderDeleted,
+    /// Someone signed in through a social-login provider.
+    FederatedLoginSucceeded,
+    /// A social-login attempt was refused.
+    FederatedLoginFailed,
+    /// An upstream account was attached to a local one.
+    FederatedIdentityLinked,
+    /// An upstream account was detached from a local one.
+    FederatedIdentityUnlinked,
+    /// A local account was created for an upstream identity nobody had seen.
+    FederatedUserProvisioned,
     /// A role was granted to a group.
     GroupRoleGranted,
     /// A role was taken from a group.
@@ -199,6 +215,14 @@ impl Action {
         Self::OrganizationInvited,
         Self::OrganizationInvitationAccepted,
         Self::OrganizationInvitationRevoked,
+        Self::IdentityProviderCreated,
+        Self::IdentityProviderUpdated,
+        Self::IdentityProviderDeleted,
+        Self::FederatedLoginSucceeded,
+        Self::FederatedLoginFailed,
+        Self::FederatedIdentityLinked,
+        Self::FederatedIdentityUnlinked,
+        Self::FederatedUserProvisioned,
         Self::GroupRoleGranted,
         Self::GroupRoleRevoked,
         Self::ClientRegistered,
@@ -255,6 +279,14 @@ impl Action {
             Self::OrganizationDeleted => "organization.deleted",
             Self::OrganizationMemberSet => "organization.member_set",
             Self::OrganizationMemberRemoved => "organization.member_removed",
+            Self::IdentityProviderCreated => "identity_provider.created",
+            Self::IdentityProviderUpdated => "identity_provider.updated",
+            Self::IdentityProviderDeleted => "identity_provider.deleted",
+            Self::FederatedLoginSucceeded => "federated.login_succeeded",
+            Self::FederatedLoginFailed => "federated.login_failed",
+            Self::FederatedIdentityLinked => "federated.linked",
+            Self::FederatedIdentityUnlinked => "federated.unlinked",
+            Self::FederatedUserProvisioned => "federated.user_provisioned",
             Self::OrganizationInvited => "organization.invited",
             Self::OrganizationInvitationAccepted => "organization.invitation_accepted",
             Self::OrganizationInvitationRevoked => "organization.invitation_revoked",
@@ -277,9 +309,19 @@ impl Action {
     #[must_use]
     pub const fn category(self) -> Category {
         match self {
-            Self::LoginSucceeded | Self::LoginFailed | Self::LoginLockedOut | Self::LoggedOut => {
-                Category::Authentication
-            }
+            Self::LoginSucceeded
+            | Self::LoginFailed
+            | Self::LoginLockedOut
+            | Self::LoggedOut
+            // A federated sign-in is authentication, not directory
+            // administration: it is how somebody got in, and an operator
+            // reading the authentication category expects to see every way
+            // that happened.
+            | Self::FederatedLoginSucceeded
+            | Self::FederatedLoginFailed
+            | Self::FederatedIdentityLinked
+            | Self::FederatedIdentityUnlinked
+            | Self::FederatedUserProvisioned => Category::Authentication,
             Self::PasswordResetRequested | Self::PasswordResetCompleted | Self::EmailVerified => {
                 Category::Recovery
             }
@@ -315,6 +357,9 @@ impl Action {
             | Self::OrganizationInvitationAccepted
             | Self::OrganizationInvitationRevoked
             | Self::GroupRoleGranted
+            | Self::IdentityProviderCreated
+            | Self::IdentityProviderUpdated
+            | Self::IdentityProviderDeleted
             | Self::GroupRoleRevoked => Category::Directory,
             Self::ClientRegistered
             | Self::ClientUpdated
@@ -348,6 +393,14 @@ impl Action {
     pub const fn description(self) -> &'static str {
         match self {
             Self::LoginSucceeded => "Signed in with a password",
+            Self::IdentityProviderCreated => "Social-login provider configured",
+            Self::IdentityProviderUpdated => "Social-login provider changed",
+            Self::IdentityProviderDeleted => "Social-login provider removed",
+            Self::FederatedLoginSucceeded => "Signed in through a social provider",
+            Self::FederatedLoginFailed => "Social sign-in refused",
+            Self::FederatedIdentityLinked => "Upstream account linked",
+            Self::FederatedIdentityUnlinked => "Upstream account unlinked",
+            Self::FederatedUserProvisioned => "Account created from a social sign-in",
             Self::LoginFailed => "Password refused",
             Self::LoginLockedOut => "Refused: too many recent failures",
             Self::SecondFactorRequired => "Password accepted; second factor requested",
@@ -554,7 +607,7 @@ mod tests {
         // reflection to check this with, so the guard is that every listed
         // action is distinct and the count is asserted here — update both
         // together, deliberately.
-        assert_eq!(Action::ALL.len(), 50);
+        assert_eq!(Action::ALL.len(), 58);
         let unique: HashSet<_> = Action::ALL.iter().collect();
         assert_eq!(unique.len(), Action::ALL.len(), "a duplicate in ALL");
     }

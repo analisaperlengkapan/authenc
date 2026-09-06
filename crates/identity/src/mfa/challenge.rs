@@ -37,6 +37,8 @@ pub struct Pending {
     pub user_id: UserId,
     /// Which realm they authenticated against.
     pub realm_id: RealmId,
+    /// How the first factor was satisfied, so `amr` can say which.
+    pub first_factor: super::FirstFactor,
     /// Wrong answers so far.
     pub attempts: i32,
     /// When this stops being usable.
@@ -65,6 +67,7 @@ pub async fn issue(
     db: &Db,
     user_id: UserId,
     realm_id: RealmId,
+    first_factor: super::FirstFactor,
     origin: Origin<'_>,
 ) -> Result<Issued> {
     let token = SecretToken::generate()
@@ -74,8 +77,9 @@ pub async fn issue(
     let row = sqlx::query!(
         r#"
         INSERT INTO mfa_challenges
-            (user_id, realm_id, token_hash, user_agent, ip_address, expires_at)
-        VALUES ($1, $2, $3, $4, $5::text::inet, $6)
+            (user_id, realm_id, token_hash, user_agent, ip_address, expires_at,
+             first_factor)
+        VALUES ($1, $2, $3, $4, $5::text::inet, $6, $7)
         RETURNING id
         "#,
         user_id.0,
@@ -84,6 +88,7 @@ pub async fn issue(
         origin.user_agent,
         origin.ip_address.map(|ip| ip.to_string()),
         expires_at,
+        first_factor.as_str(),
     )
     .fetch_one(db)
     .await
@@ -94,6 +99,7 @@ pub async fn issue(
             id: row.id,
             user_id,
             realm_id,
+            first_factor,
             attempts: 0,
             expires_at,
         },
@@ -113,7 +119,7 @@ pub async fn issue(
 pub async fn lookup(db: &Db, token: &SecretToken) -> Result<Option<Pending>> {
     let row = sqlx::query!(
         r#"
-        SELECT id, user_id, realm_id, attempts, expires_at
+        SELECT id, user_id, realm_id, attempts, expires_at, first_factor
           FROM mfa_challenges
          WHERE token_hash = $1
            AND consumed_at IS NULL
@@ -127,13 +133,17 @@ pub async fn lookup(db: &Db, token: &SecretToken) -> Result<Option<Pending>> {
     .await
     .map_err(|e| AppError::internal_from("looking up an MFA challenge", e))?;
 
-    Ok(row.map(|row| Pending {
-        id: row.id,
-        user_id: UserId(row.user_id),
-        realm_id: RealmId(row.realm_id),
-        attempts: row.attempts,
-        expires_at: row.expires_at,
-    }))
+    row.map(|row| {
+        Ok(Pending {
+            id: row.id,
+            user_id: UserId(row.user_id),
+            realm_id: RealmId(row.realm_id),
+            first_factor: super::FirstFactor::parse(&row.first_factor)?,
+            attempts: row.attempts,
+            expires_at: row.expires_at,
+        })
+    })
+    .transpose()
 }
 
 /// Record a wrong second factor, returning how many have now been made.
@@ -228,9 +238,15 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn an_issued_challenge_resolves(db: Db) {
         let user = fixture(&db).await;
-        let issued = issue(&db, user.id, user.realm_id, Origin::default())
-            .await
-            .unwrap();
+        let issued = issue(
+            &db,
+            user.id,
+            user.realm_id,
+            crate::mfa::FirstFactor::Password,
+            Origin::default(),
+        )
+        .await
+        .unwrap();
 
         let found = lookup(&db, &issued.token).await.unwrap().unwrap();
         assert_eq!(found.id, issued.pending.id);
@@ -248,9 +264,15 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn a_spent_challenge_cannot_be_spent_again(db: Db) {
         let user = fixture(&db).await;
-        let issued = issue(&db, user.id, user.realm_id, Origin::default())
-            .await
-            .unwrap();
+        let issued = issue(
+            &db,
+            user.id,
+            user.realm_id,
+            crate::mfa::FirstFactor::Password,
+            Origin::default(),
+        )
+        .await
+        .unwrap();
 
         assert!(consume(&db, issued.pending.id).await.unwrap());
         assert!(
@@ -265,9 +287,15 @@ mod tests {
         // A six-digit code is only strong because the number of guesses is
         // small. This is the thing that keeps it small.
         let user = fixture(&db).await;
-        let issued = issue(&db, user.id, user.realm_id, Origin::default())
-            .await
-            .unwrap();
+        let issued = issue(
+            &db,
+            user.id,
+            user.realm_id,
+            crate::mfa::FirstFactor::Password,
+            Origin::default(),
+        )
+        .await
+        .unwrap();
 
         for expected in 1..=MAX_ATTEMPTS {
             assert_eq!(
@@ -285,9 +313,15 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn a_challenge_survives_up_to_the_budget(db: Db) {
         let user = fixture(&db).await;
-        let issued = issue(&db, user.id, user.realm_id, Origin::default())
-            .await
-            .unwrap();
+        let issued = issue(
+            &db,
+            user.id,
+            user.realm_id,
+            crate::mfa::FirstFactor::Password,
+            Origin::default(),
+        )
+        .await
+        .unwrap();
 
         for _ in 1..MAX_ATTEMPTS {
             record_failure(&db, issued.pending.id).await.unwrap();
@@ -301,9 +335,15 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn an_expired_challenge_is_gone(db: Db) {
         let user = fixture(&db).await;
-        let issued = issue(&db, user.id, user.realm_id, Origin::default())
-            .await
-            .unwrap();
+        let issued = issue(
+            &db,
+            user.id,
+            user.realm_id,
+            crate::mfa::FirstFactor::Password,
+            Origin::default(),
+        )
+        .await
+        .unwrap();
 
         sqlx::query("UPDATE mfa_challenges SET expires_at = now() - interval '1 second'")
             .execute(&db)
@@ -316,12 +356,24 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn purging_removes_only_expired_challenges(db: Db) {
         let user = fixture(&db).await;
-        let live = issue(&db, user.id, user.realm_id, Origin::default())
-            .await
-            .unwrap();
-        let stale = issue(&db, user.id, user.realm_id, Origin::default())
-            .await
-            .unwrap();
+        let live = issue(
+            &db,
+            user.id,
+            user.realm_id,
+            crate::mfa::FirstFactor::Password,
+            Origin::default(),
+        )
+        .await
+        .unwrap();
+        let stale = issue(
+            &db,
+            user.id,
+            user.realm_id,
+            crate::mfa::FirstFactor::Password,
+            Origin::default(),
+        )
+        .await
+        .unwrap();
 
         sqlx::query(
             "UPDATE mfa_challenges SET expires_at = now() - interval '1 hour' WHERE id = $1",
@@ -338,9 +390,15 @@ mod tests {
     #[sqlx::test(migrations = "../../migrations")]
     async fn the_token_is_not_recoverable_from_the_database(db: Db) {
         let user = fixture(&db).await;
-        let issued = issue(&db, user.id, user.realm_id, Origin::default())
-            .await
-            .unwrap();
+        let issued = issue(
+            &db,
+            user.id,
+            user.realm_id,
+            crate::mfa::FirstFactor::Password,
+            Origin::default(),
+        )
+        .await
+        .unwrap();
 
         let stored: Vec<u8> = sqlx::query_scalar("SELECT token_hash FROM mfa_challenges")
             .fetch_one(&db)

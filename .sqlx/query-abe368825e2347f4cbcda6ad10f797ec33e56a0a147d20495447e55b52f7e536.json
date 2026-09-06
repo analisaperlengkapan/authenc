@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT client_secret_ciphertext, client_secret_nonce FROM identity_providers WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "client_secret_ciphertext",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "client_secret_ciphertext"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "client_secret_nonce",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "client_secret_nonce"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "abe368825e2347f4cbcda6ad10f797ec33e56a0a147d20495447e55b52f7e536"
+}

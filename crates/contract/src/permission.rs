@@ -52,6 +52,18 @@ pub enum Permission {
     /// Create, suspend, and delete organisations, and manage their membership
     /// and invitations.
     OrganizationWrite,
+    /// View configured social-login providers.
+    ///
+    /// Reading one never reveals its client secret: the secret is sealed at
+    /// rest and no read path decrypts it outside the sign-in flow.
+    IdentityProviderRead,
+    /// Configure social-login providers.
+    ///
+    /// Effectively the power to add a new way of becoming any user in the
+    /// realm — a provider with `link_by_verified_email` set and an attacker's
+    /// upstream behind it is an account-takeover route — so it is deliberately
+    /// separate from `realm:write` rather than folded into it.
+    IdentityProviderWrite,
     /// Read the audit log.
     ///
     /// Its own permission rather than part of `user:read`, because the trail
@@ -77,6 +89,8 @@ impl Permission {
         Self::GroupWrite,
         Self::OrganizationRead,
         Self::OrganizationWrite,
+        Self::IdentityProviderRead,
+        Self::IdentityProviderWrite,
         Self::AuditRead,
     ];
 
@@ -96,6 +110,8 @@ impl Permission {
             Self::GroupWrite => "group:write",
             Self::OrganizationRead => "organization:read",
             Self::OrganizationWrite => "organization:write",
+            Self::IdentityProviderRead => "identity_provider:read",
+            Self::IdentityProviderWrite => "identity_provider:write",
             Self::AuditRead => "audit:read",
         }
     }
@@ -116,6 +132,8 @@ impl Permission {
             Self::GroupWrite => "Create and delete groups, and manage membership and grants",
             Self::OrganizationRead => "View organisations and their membership",
             Self::OrganizationWrite => "Create, suspend, and delete organisations",
+            Self::IdentityProviderRead => "View configured social-login providers",
+            Self::IdentityProviderWrite => "Configure social-login providers",
             Self::AuditRead => "Read the audit log",
         }
     }
@@ -134,6 +152,7 @@ impl Permission {
             Self::ClientWrite => Some(Self::ClientRead),
             Self::GroupWrite => Some(Self::GroupRead),
             Self::OrganizationWrite => Some(Self::OrganizationRead),
+            Self::IdentityProviderWrite => Some(Self::IdentityProviderRead),
             _ => None,
         }
     }

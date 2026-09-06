@@ -65,16 +65,67 @@ impl Factor {
 /// The `amr` value for a password.
 pub const AMR_PASSWORD: &str = "pwd";
 
+/// The `amr` value for an identity asserted by another provider.
+pub const AMR_FEDERATED: &str = "fed";
+
 /// The `amr` value asserting that more than one factor was used.
 pub const AMR_MULTI_FACTOR: &str = "mfa";
+
+/// How the *first* factor was satisfied.
+///
+/// A parameter rather than an assumption. This used to be hardcoded to `pwd`,
+/// which meant a social sign-in would tell a relying party that this server
+/// had verified a password — it had not, and `pwd` is precisely the claim a
+/// relying party leans on when deciding how much to trust a session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FirstFactor {
+    /// A password this server verified.
+    Password,
+    /// An identity another provider asserted.
+    Federated,
+}
+
+impl FirstFactor {
+    /// The RFC 8176 value.
+    #[must_use]
+    pub const fn amr(self) -> &'static str {
+        match self {
+            Self::Password => AMR_PASSWORD,
+            Self::Federated => AMR_FEDERATED,
+        }
+    }
+
+    /// The stored name, which is the same string. One name on the wire and in
+    /// the database, as for every other enum here.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        self.amr()
+    }
+
+    /// Parse the stored name.
+    ///
+    /// # Errors
+    ///
+    /// [`AppError::Internal`] if the column holds something this build does
+    /// not know — a row written by a newer version, which is a bug to see
+    /// rather than a value to guess at.
+    pub fn parse(value: &str) -> Result<Self> {
+        match value {
+            AMR_PASSWORD => Ok(Self::Password),
+            AMR_FEDERATED => Ok(Self::Federated),
+            _ => Err(AppError::internal("unknown first factor in mfa_challenges")),
+        }
+    }
+}
 
 /// How a session was authenticated, in the form OIDC's `amr` claim wants.
 ///
 /// Built here rather than at the protocol layer so that the session row and
 /// the ID token cannot disagree about what actually happened.
 #[must_use]
-pub fn amr_for(second: Option<Factor>) -> Vec<String> {
-    let mut values = vec![AMR_PASSWORD.to_owned()];
+pub fn amr_for(first: FirstFactor, second: Option<Factor>) -> Vec<String> {
+    let mut values = vec![first.amr().to_owned()];
     if let Some(factor) = second {
         if let Some(name) = factor.amr() {
             values.push(name.to_owned());
@@ -259,20 +310,37 @@ mod tests {
 
     #[test]
     fn a_password_alone_claims_one_factor() {
-        assert_eq!(amr_for(None), vec!["pwd"]);
+        assert_eq!(amr_for(FirstFactor::Password, None), vec!["pwd"]);
+        assert_eq!(amr_for(FirstFactor::Federated, None), vec!["fed"]);
     }
 
     #[test]
     fn a_second_factor_is_named_and_asserted() {
-        assert_eq!(amr_for(Some(Factor::Totp)), vec!["pwd", "otp", "mfa"]);
-        assert_eq!(amr_for(Some(Factor::Passkey)), vec!["pwd", "hwk", "mfa"]);
+        assert_eq!(
+            amr_for(FirstFactor::Password, Some(Factor::Totp)),
+            vec!["pwd", "otp", "mfa"]
+        );
+        // A social sign-in behind a second factor says `fed`, never `pwd`:
+        // this server verified no password, and a relying party reading `pwd`
+        // would conclude otherwise.
+        assert_eq!(
+            amr_for(FirstFactor::Federated, Some(Factor::Totp)),
+            vec!["fed", "otp", "mfa"]
+        );
+        assert_eq!(
+            amr_for(FirstFactor::Password, Some(Factor::Passkey)),
+            vec!["pwd", "hwk", "mfa"]
+        );
     }
 
     #[test]
     fn a_recovery_code_claims_multi_factor_but_names_no_method() {
         // `mfa` is true — two things were presented. Naming it `otp` or `hwk`
         // would tell a relying party something that is not.
-        assert_eq!(amr_for(Some(Factor::RecoveryCode)), vec!["pwd", "mfa"]);
+        assert_eq!(
+            amr_for(FirstFactor::Password, Some(Factor::RecoveryCode)),
+            vec!["pwd", "mfa"]
+        );
     }
 
     #[test]
@@ -281,7 +349,7 @@ mod tests {
         // because a relying party may match on it.
         const REGISTERED: &[&str] = &["pwd", "otp", "hwk", "swk", "mfa", "pin", "user"];
         for factor in [Factor::Totp, Factor::Passkey, Factor::RecoveryCode] {
-            for value in amr_for(Some(factor)) {
+            for value in amr_for(FirstFactor::Password, Some(factor)) {
                 assert!(REGISTERED.contains(&value.as_str()), "{value}");
             }
         }
