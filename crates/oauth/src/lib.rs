@@ -21,6 +21,7 @@
 //! * [`consent`] — what each user has approved for each client
 //! * [`grant`] — turning an authorization into a token response
 //! * [`scope`] — parsing and narrowing scope requests
+//! * [`social`] — the client side: signing in with an account held elsewhere
 //! * [`discovery`] — the provider metadata document
 //! * [`error`] — the protocol's own error bodies, distinct from [`AppError`]
 //!
@@ -36,6 +37,7 @@ pub mod grant;
 pub mod keyring;
 pub mod refresh;
 pub mod scope;
+pub mod social;
 pub mod token;
 
 pub use client::Client;

@@ -93,6 +93,17 @@ lettre = { version = "0.11.23", default-features = false, features = [
 ] }
 anyhow = "1.0.104"
 
+# Outbound HTTP, for talking to a social-login provider. `rustls` and
+# `webpki-roots` rather than the default `native-tls`, matching `lettre` above
+# and keeping OpenSSL out of the graph — `deny.toml` bans it outside the
+# WebAuthn wrappers that cannot avoid it.
+reqwest = { version = "0.12.28", default-features = false, features = [
+  "rustls-tls-webpki-roots",
+  "json",
+  "charset",
+  "http2",
+] }
+
 # Config
 figment = { version = "0.10.19", features = ["toml", "env"] }
 clap = { version = "4.6", features = ["derive", "env"] }
