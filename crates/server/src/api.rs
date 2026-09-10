@@ -13,7 +13,7 @@
 //! on the wrong router silently lost it.
 
 use authenc_contract::{
-    GroupId, InvitationId, OrganizationId, Permission, RoleId, UserId,
+    GroupId, IdentityProviderId, InvitationId, OrganizationId, Permission, RoleId, UserId,
     model::{Realm, Role, User},
 };
 use axum::{
@@ -198,6 +198,121 @@ pub struct InvitationView {
     pub accepted: bool,
     /// When it stops working, RFC 3339.
     pub expires_at: String,
+}
+
+/// A social-login provider, as `/api/v1` returns it.
+///
+/// Carries the client id, which is public. It carries **no** client secret,
+/// because there is no read path that decrypts one — `federation::Provider`
+/// has no field for it either, so a secret cannot reach here by accident.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct IdentityProviderView {
+    /// Stable identifier.
+    pub id: Uuid,
+    /// URL-safe handle, appearing in the callback path.
+    pub alias: String,
+    /// Which claim mapping is used: `google`, `github`, `microsoft`,
+    /// `facebook`, `apple`, or `oidc`.
+    pub kind: String,
+    /// What the login page calls it.
+    pub display_name: String,
+    /// The OAuth client id registered with the provider.
+    pub client_id: String,
+    /// Where the browser is sent.
+    pub authorization_endpoint: String,
+    /// Where the code is redeemed.
+    pub token_endpoint: String,
+    /// Where the claims are read, if not from the ID token.
+    pub userinfo_endpoint: Option<String>,
+    /// The expected `iss`.
+    pub issuer: Option<String>,
+    /// What is asked for.
+    pub scopes: Vec<String>,
+    /// Whether it is offered on the login page.
+    pub enabled: bool,
+    /// Whether an unrecognised upstream account may create a local one.
+    pub allow_provisioning: bool,
+    /// Whether a verified upstream address may adopt an existing local
+    /// account. Off unless deliberately turned on; see `ROADMAP.md`.
+    pub link_by_verified_email: bool,
+}
+
+impl From<authenc_identity::federation::Provider> for IdentityProviderView {
+    fn from(provider: authenc_identity::federation::Provider) -> Self {
+        Self {
+            id: provider.id.0,
+            alias: provider.alias,
+            kind: provider.kind.as_str().to_owned(),
+            display_name: provider.display_name,
+            client_id: provider.client_id,
+            authorization_endpoint: provider.authorization_endpoint,
+            token_endpoint: provider.token_endpoint,
+            userinfo_endpoint: provider.userinfo_endpoint,
+            issuer: provider.issuer,
+            scopes: provider.scopes,
+            enabled: provider.enabled,
+            allow_provisioning: provider.allow_provisioning,
+            link_by_verified_email: provider.link_by_verified_email,
+        }
+    }
+}
+
+/// Body for configuring a social-login provider.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateIdentityProvider {
+    /// URL-safe handle: lowercase letters, digits, and hyphens.
+    pub alias: String,
+    /// `google`, `github`, `microsoft`, `facebook`, `apple`, or `oidc`.
+    ///
+    /// A string rather than a typed enum for the same reason
+    /// `SetRolePermissions` takes names: `authenc-contract` stays free of
+    /// `utoipa`, and an unrecognised value should be a 400 that says which.
+    pub kind: String,
+    /// What the login page calls it.
+    pub display_name: String,
+    /// The OAuth client id registered with the provider.
+    pub client_id: String,
+    /// The OAuth client secret. Sealed at rest and never returned.
+    pub client_secret: String,
+    /// Where to send the browser.
+    pub authorization_endpoint: String,
+    /// Where to redeem the code.
+    pub token_endpoint: String,
+    /// Where to read the claims, for a provider that does not use an ID token.
+    pub userinfo_endpoint: Option<String>,
+    /// The expected `iss`, for a provider that issues one.
+    pub issuer: Option<String>,
+    /// What to ask for.
+    pub scopes: Vec<String>,
+    /// Whether an unrecognised upstream account may create a local one.
+    #[serde(default = "yes")]
+    pub allow_provisioning: bool,
+    /// Whether a *verified* upstream address may adopt an existing local
+    /// account.
+    ///
+    /// Defaults to **false**, and the default is the safe half of this
+    /// feature: turned on for a provider that will assert an address it has
+    /// not checked, it hands over whichever local account matches.
+    #[serde(default)]
+    pub link_by_verified_email: bool,
+}
+
+/// An upstream account attached to a user.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct IdentityLinkView {
+    /// The provider it belongs to.
+    pub provider_id: Uuid,
+    /// Its alias.
+    pub provider_alias: String,
+    /// What the login page calls it.
+    pub provider_display_name: String,
+    /// The address the upstream reported when the link was made.
+    pub upstream_email: Option<String>,
+    /// When it was linked, RFC 3339.
+    pub linked_at: String,
+    /// When it was last used to sign in, RFC 3339.
+    pub last_login_at: Option<String>,
 }
 
 /// Filters for the audit trail.
@@ -463,6 +578,13 @@ pub struct Whoami {
         list_organization_invitations,
         invite_to_organization,
         revoke_organization_invitation,
+        list_identity_providers,
+        create_identity_provider,
+        get_identity_provider,
+        set_identity_provider_enabled,
+        delete_identity_provider,
+        list_identity_links,
+        unlink_identity,
         list_groups,
         create_group,
         get_group,
@@ -482,6 +604,9 @@ pub struct Whoami {
         OrganizationView,
         OrganizationMemberView,
         InvitationView,
+        CreateIdentityProvider,
+        IdentityProviderView,
+        IdentityLinkView,
         CreateGroup,
         MoveGroup,
         GroupView,
@@ -524,6 +649,23 @@ pub fn router() -> Router<AppState> {
             get(get_client).patch(update_client).delete(delete_client),
         )
         .route("/clients/{client_id}/secret", post(rotate_client_secret))
+        .route(
+            "/identity-providers",
+            get(list_identity_providers).post(create_identity_provider),
+        )
+        .route(
+            "/identity-providers/{provider_id}",
+            get(get_identity_provider).delete(delete_identity_provider),
+        )
+        .route(
+            "/identity-providers/{provider_id}/enabled",
+            post(set_identity_provider_enabled),
+        )
+        .route("/users/{user_id}/identities", get(list_identity_links))
+        .route(
+            "/users/{user_id}/identities/{provider_id}",
+            delete(unlink_identity),
+        )
         .route("/groups", get(list_groups).post(create_group))
         .route("/groups/{group_id}", get(get_group).delete(delete_group))
         .route("/groups/{group_id}/parent", post(move_group))
@@ -1125,6 +1267,206 @@ async fn revoke_organization_invitation(
         &actor,
         OrganizationId(organization_id),
         InvitationId(invitation_id),
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// Social-login providers
+// ---------------------------------------------------------------------------
+
+/// Every social-login provider configured in the realm.
+#[utoipa::path(
+    get, path = "/api/v1/identity-providers", tag = "federation",
+    responses(
+        (status = 200),
+        (status = 403, description = "Missing identity_provider:read"),
+    ),
+)]
+async fn list_identity_providers(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+) -> Result<Json<Vec<IdentityProviderView>>, ApiError> {
+    let providers = authenc_identity::admin::list_identity_providers(&state.db, &actor).await?;
+    Ok(Json(
+        providers
+            .into_iter()
+            .map(IdentityProviderView::from)
+            .collect(),
+    ))
+}
+
+/// Configure a social-login provider.
+///
+/// The client secret is sealed at rest and never returned by any endpoint.
+#[utoipa::path(
+    post, path = "/api/v1/identity-providers", tag = "federation",
+    request_body = CreateIdentityProvider,
+    responses(
+        (status = 201),
+        (status = 400, description = "An unknown kind, or a malformed alias"),
+        (status = 403, description = "Missing identity_provider:write"),
+        (status = 409, description = "That alias is taken in this realm"),
+    ),
+)]
+async fn create_identity_provider(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Json(body): Json<CreateIdentityProvider>,
+) -> Result<(StatusCode, Json<IdentityProviderView>), ApiError> {
+    let kind = authenc_identity::federation::Kind::parse(&body.kind).map_err(ApiError)?;
+
+    let created = authenc_identity::admin::create_identity_provider(
+        &state.db,
+        &actor,
+        &state.master_key,
+        authenc_identity::admin::NewIdentityProvider {
+            alias: &body.alias,
+            kind,
+            display_name: &body.display_name,
+            client_id: &body.client_id,
+            client_secret: &body.client_secret,
+            authorization_endpoint: &body.authorization_endpoint,
+            token_endpoint: &body.token_endpoint,
+            userinfo_endpoint: body.userinfo_endpoint.as_deref(),
+            issuer: body.issuer.as_deref(),
+            scopes: &body.scopes,
+            allow_provisioning: body.allow_provisioning,
+            link_by_verified_email: body.link_by_verified_email,
+        },
+    )
+    .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(IdentityProviderView::from(created)),
+    ))
+}
+
+/// Fetch one provider.
+#[utoipa::path(
+    get, path = "/api/v1/identity-providers/{provider_id}", tag = "federation",
+    responses((status = 200), (status = 403), (status = 404)),
+)]
+async fn get_identity_provider(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(provider_id): Path<Uuid>,
+) -> Result<Json<IdentityProviderView>, ApiError> {
+    let found = authenc_identity::admin::get_identity_provider(
+        &state.db,
+        &actor,
+        IdentityProviderId(provider_id),
+    )
+    .await?;
+    Ok(Json(IdentityProviderView::from(found)))
+}
+
+/// Offer a provider on the login page, or stop offering it.
+#[utoipa::path(
+    post, path = "/api/v1/identity-providers/{provider_id}/enabled", tag = "federation",
+    request_body = SetEnabled,
+    responses((status = 200), (status = 403), (status = 404)),
+)]
+async fn set_identity_provider_enabled(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(provider_id): Path<Uuid>,
+    Json(body): Json<SetEnabled>,
+) -> Result<Json<IdentityProviderView>, ApiError> {
+    let changed = authenc_identity::admin::set_identity_provider_enabled(
+        &state.db,
+        &actor,
+        IdentityProviderId(provider_id),
+        body.enabled,
+    )
+    .await?;
+    Ok(Json(IdentityProviderView::from(changed)))
+}
+
+/// Delete a provider **and every account link through it**.
+///
+/// Anyone whose only credential was this provider is left unable to sign in.
+/// The audit record says how many links went with it.
+#[utoipa::path(
+    delete, path = "/api/v1/identity-providers/{provider_id}", tag = "federation",
+    responses((status = 204), (status = 403), (status = 404)),
+)]
+async fn delete_identity_provider(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(provider_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::delete_identity_provider(
+        &state.db,
+        &actor,
+        IdentityProviderId(provider_id),
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The upstream accounts attached to a user.
+#[utoipa::path(
+    get, path = "/api/v1/users/{user_id}/identities", tag = "federation",
+    responses(
+        (status = 200),
+        (status = 403, description = "Missing user:read"),
+        (status = 404),
+    ),
+)]
+async fn list_identity_links(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<Vec<IdentityLinkView>>, ApiError> {
+    use time::format_description::well_known::Rfc3339;
+
+    let links = authenc_identity::admin::identity_links(&state.db, &actor, UserId(user_id)).await?;
+
+    Ok(Json(
+        links
+            .into_iter()
+            .map(|link| IdentityLinkView {
+                provider_id: link.provider_id.0,
+                provider_alias: link.provider_alias,
+                provider_display_name: link.provider_display_name,
+                upstream_email: link.upstream_email,
+                linked_at: link
+                    .linked_at
+                    .format(&Rfc3339)
+                    .unwrap_or_else(|_| String::new()),
+                last_login_at: link.last_login_at.and_then(|at| at.format(&Rfc3339).ok()),
+            })
+            .collect(),
+    ))
+}
+
+/// Detach an upstream account from a user.
+///
+/// Refused if it is that account's only way in: an account with no password
+/// and no other link is one whose owner needs an administrator to recover, and
+/// the moment to say so is before it happens.
+#[utoipa::path(
+    delete, path = "/api/v1/users/{user_id}/identities/{provider_id}", tag = "federation",
+    responses(
+        (status = 204),
+        (status = 400, description = "It is the account's only credential"),
+        (status = 403, description = "Missing user:write"),
+        (status = 404),
+    ),
+)]
+async fn unlink_identity(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path((user_id, provider_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::unlink_identity(
+        &state.db,
+        &actor,
+        IdentityProviderId(provider_id),
+        UserId(user_id),
     )
     .await?;
     Ok(StatusCode::NO_CONTENT)

@@ -1533,3 +1533,199 @@ async fn suspending_an_organisation_from_the_console_stops_its_members_signing_i
         refused.text()
     );
 }
+
+// ---------------------------------------------------------------------------
+// Social-login providers over REST
+// ---------------------------------------------------------------------------
+
+/// The body every provider test starts from.
+fn a_provider(alias: &str) -> serde_json::Value {
+    json!({
+        "alias": alias,
+        "kind": "google",
+        "display_name": "Google",
+        "client_id": "our-client-id",
+        "client_secret": "our-client-secret",
+        "authorization_endpoint": "https://accounts.example/authorize",
+        "token_endpoint": "https://accounts.example/token",
+        "userinfo_endpoint": null,
+        "issuer": "https://accounts.example",
+        "scopes": ["openid", "email"],
+    })
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn configuring_a_provider_needs_its_own_permission(db: PgPool) {
+    // Not folded into `realm:write`, deliberately: configuring a provider is
+    // effectively the power to add a new way of becoming any user in the
+    // realm, and it should be grantable on its own.
+    seed_with(
+        &db,
+        "operator",
+        &[Permission::RealmWrite, Permission::UserWrite],
+    )
+    .await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let refused = server
+        .post("/api/v1/identity-providers")
+        .json(&a_provider("google"))
+        .await;
+
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::FORBIDDEN,
+        "{}",
+        refused.text()
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_client_secret_never_comes_back_out(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let created = server
+        .post("/api/v1/identity-providers")
+        .json(&a_provider("google"))
+        .await;
+    created.assert_status(StatusCode::CREATED);
+    assert!(
+        !created.text().contains("our-client-secret"),
+        "the creation response carried the secret back: {}",
+        created.text()
+    );
+
+    let id = created.json::<serde_json::Value>()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    for path in [
+        "/api/v1/identity-providers".to_owned(),
+        format!("/api/v1/identity-providers/{id}"),
+    ] {
+        let body = server.get(&path).await.text();
+        assert!(
+            !body.contains("our-client-secret"),
+            "{path} carried the secret: {body}"
+        );
+        // The client id is public and is expected.
+        assert!(body.contains("our-client-id"), "{path}: {body}");
+    }
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn account_adoption_is_off_unless_asked_for(db: PgPool) {
+    // The default is the safe half of this feature. A body that does not
+    // mention `link_by_verified_email` must not get it.
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let created: serde_json::Value = server
+        .post("/api/v1/identity-providers")
+        .json(&a_provider("google"))
+        .await
+        .json();
+
+    assert_eq!(created["link_by_verified_email"], false, "{created}");
+    // Provisioning, which only ever creates a *new* account, defaults on.
+    assert_eq!(created["allow_provisioning"], true, "{created}");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_unknown_provider_kind_says_which_one(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let mut body = a_provider("okta");
+    body["kind"] = json!("okta");
+
+    let refused = server.post("/api/v1/identity-providers").json(&body).await;
+
+    assert_eq!(refused.status_code(), StatusCode::BAD_REQUEST);
+    assert!(refused.text().contains("kind"), "{}", refused.text());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_invented_field_is_refused_rather_than_ignored(db: PgPool) {
+    // `deny_unknown_fields`, as everywhere. A caller who misspells
+    // `link_by_verified_email` must not get a 201 and a provider that does not
+    // do what they asked.
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let mut body = a_provider("google");
+    body["link_by_verified_emails"] = json!(true);
+
+    let refused = server.post("/api/v1/identity-providers").json(&body).await;
+
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "{}",
+        refused.text()
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_disabled_provider_disappears_from_the_login_page(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut server = server(db);
+    sign_in(&mut server, "operator").await;
+
+    let created: serde_json::Value = server
+        .post("/api/v1/identity-providers")
+        .json(&a_provider("google"))
+        .await
+        .json();
+    let id = created["id"].as_str().unwrap();
+
+    let offered: serde_json::Value = server
+        .post("/api/sfn/sign-in-providers")
+        .json(&json!({ "realm": "master" }))
+        .await
+        .json();
+    assert_eq!(offered.as_array().unwrap().len(), 1, "{offered}");
+
+    server
+        .post(&format!("/api/v1/identity-providers/{id}/enabled"))
+        .json(&json!({ "enabled": false }))
+        .await
+        .assert_status_ok();
+
+    let offered: serde_json::Value = server
+        .post("/api/sfn/sign-in-providers")
+        .json(&json!({ "realm": "master" }))
+        .await
+        .json();
+    assert!(offered.as_array().unwrap().is_empty(), "{offered}");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_login_page_does_not_reveal_which_realms_exist(db: PgPool) {
+    // An unknown realm answers with an empty list, exactly as a realm with no
+    // providers does. Anything else turns an unauthenticated endpoint into a
+    // realm-enumeration oracle.
+    seed_with(&db, "operator", Permission::ALL).await;
+    let server = server(db);
+
+    let response = server
+        .post("/api/sfn/sign-in-providers")
+        .json(&json!({ "realm": "no-such-realm" }))
+        .await;
+
+    response.assert_status_ok();
+    assert!(
+        response
+            .json::<serde_json::Value>()
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}

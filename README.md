@@ -111,7 +111,19 @@ is enforced rather than merely intended.
 | Suspension | disabling an organisation stops its members signing in — unless they belong to another that is still enabled |
 | Invitations | single-use expiring links, hash-only at rest, recording who actually accepted rather than only who was invited |
 | Group and org API | `/api/v1/groups` and `/api/v1/organizations`; an invitation token is returned once and never listed back |
+| Social login | Google, GitHub, Microsoft, Facebook, Apple, or any OIDC provider; per realm, client secret sealed at rest |
+| Account identity | the upstream `sub`, never the email — an address can be reassigned, and at several providers the holder can change it |
+| Account adoption | off by default; needs the operator's opt-in *and* the upstream's own `email_verified` for that sign-in |
+| Social login and MFA | a federated sign-in returns the same challenge a password does, so adding a provider is not a way around an enrolled factor |
+| Login CSRF | `state` is bound to a `SameSite=Lax` cookie as well as the URL; the server-side row alone does not stop it |
+| GitHub addresses | read from `/user/emails`, not the profile — the profile address is typed in by the account holder and never checked |
 | CLI | `authenc seed`, `migrate`, `purge`, `generate-master-key`, `rotate-keys`, `register-client` — no test endpoints in the router |
+
+Social login is **tested against a mock provider, not a real one.** No
+provider's credentials can run in CI, so `oauth::social::Transport` is a trait
+and the tests exercise the rules that are ours: the state binding, PKCE, the
+`nonce`/`iss`/`aud`/`exp` checks, and each provider's claim mapping. What has
+not been exercised is a live Google or GitHub response.
 
 ## Development
 

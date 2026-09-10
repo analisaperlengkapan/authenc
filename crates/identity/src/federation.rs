@@ -543,6 +543,25 @@ pub async fn links_of(db: &Db, user_id: UserId) -> Result<Vec<Link>> {
         .collect())
 }
 
+/// How many accounts are attached through a provider.
+///
+/// Read before deleting one, because afterwards there is nothing to count and
+/// "how many people lost their way in?" is the question the audit record
+/// exists to answer.
+///
+/// # Errors
+///
+/// Returns an internal error if the query fails.
+pub async fn link_count(db: &Db, provider_id: IdentityProviderId) -> Result<i64> {
+    sqlx::query_scalar!(
+        r#"SELECT count(*) AS "count!" FROM federated_identities WHERE provider_id = $1"#,
+        provider_id.0,
+    )
+    .fetch_one(db)
+    .await
+    .map_err(|e| AppError::internal_from("counting linked accounts", e))
+}
+
 /// Attach an upstream account to a local one.
 ///
 /// # Errors

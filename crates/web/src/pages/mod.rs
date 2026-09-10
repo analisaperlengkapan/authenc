@@ -8,6 +8,7 @@ pub mod groups;
 pub mod home;
 pub mod login;
 pub mod organizations;
+pub mod providers;
 pub mod recovery;
 pub mod security;
 
@@ -19,6 +20,7 @@ pub use groups::Groups;
 pub use home::Home;
 pub use login::Login;
 pub use organizations::Organizations;
+pub use providers::Providers;
 pub use recovery::{ForgotPassword, ResetPassword, VerifyEmail};
 pub use security::Security;
 

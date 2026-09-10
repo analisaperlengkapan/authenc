@@ -1030,6 +1030,113 @@ pub async fn sign_in_providers(realm: String) -> Result<Vec<SignInProvider>, Ser
         .collect())
 }
 
+// ---------------------------------------------------------------------------
+// Social-login providers
+// ---------------------------------------------------------------------------
+
+/// A configured provider as the console shows it.
+///
+/// No client secret, because no read path decrypts one — `federation::Provider`
+/// has no field for it either, so one cannot arrive here by accident.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderSummary {
+    /// Stable identifier.
+    pub id: authenc_contract::IdentityProviderId,
+    /// URL-safe handle, appearing in the callback path.
+    pub alias: String,
+    /// Which claim mapping is used.
+    pub kind: String,
+    /// What the login page calls it.
+    pub display_name: String,
+    /// Whether it is offered on the login page.
+    pub enabled: bool,
+    /// Whether an unrecognised upstream account may create a local one.
+    pub allow_provisioning: bool,
+    /// Whether a verified upstream address may adopt an existing local account.
+    pub link_by_verified_email: bool,
+    /// How many accounts are signed in through it.
+    pub links: i64,
+}
+
+/// Every provider configured in the realm.
+#[server(name = ListProviders, prefix = "/api/sfn", endpoint = "providers")]
+pub async fn list_providers() -> Result<Vec<ProviderSummary>, ServerFnError> {
+    use authenc_identity::{Db, admin, federation};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db).await?;
+
+    let providers = admin::list_identity_providers(&db, &actor)
+        .await
+        .map_err(server_ctx::to_server_fn_error)?;
+
+    let mut summaries = Vec::with_capacity(providers.len());
+    for provider in providers {
+        let links = federation::link_count(&db, provider.id)
+            .await
+            .map_err(server_ctx::to_server_fn_error)?;
+
+        summaries.push(ProviderSummary {
+            id: provider.id,
+            alias: provider.alias,
+            kind: provider.kind.to_string(),
+            display_name: provider.display_name,
+            enabled: provider.enabled,
+            allow_provisioning: provider.allow_provisioning,
+            link_by_verified_email: provider.link_by_verified_email,
+            links,
+        });
+    }
+
+    Ok(summaries)
+}
+
+/// Offer a provider on the login page, or stop offering it.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = SetProviderEnabled, prefix = "/api/sfn", endpoint = "providers/enabled", input = Json)]
+pub async fn set_provider_enabled(
+    id: authenc_contract::IdentityProviderId,
+    enabled: bool,
+) -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db).await?;
+
+    admin::set_identity_provider_enabled(&db, &actor, id, enabled)
+        .await
+        .map(|_| ())
+        .map_err(server_ctx::to_server_fn_error)
+}
+
+/// Delete a provider and every account link through it.
+#[allow(
+    missing_docs,
+    reason = "the #[server] macro generates the argument struct"
+)]
+#[server(name = DeleteProvider, prefix = "/api/sfn", endpoint = "providers/delete", input = Json)]
+pub async fn delete_provider(
+    id: authenc_contract::IdentityProviderId,
+) -> Result<(), ServerFnError> {
+    use authenc_identity::{Db, admin};
+
+    use crate::server_ctx;
+
+    let db = expect_context::<Db>();
+    let actor = server_ctx::require_actor(&db).await?;
+
+    admin::delete_identity_provider(&db, &actor, id)
+        .await
+        .map_err(server_ctx::to_server_fn_error)
+}
+
 /// Render a server-function failure as something a person can read.
 ///
 /// One place to do this, so no page invents its own error string.

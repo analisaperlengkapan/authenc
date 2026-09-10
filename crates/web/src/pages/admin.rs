@@ -96,6 +96,7 @@ fn ShellFrame(
                     <NavLink href="/admin/roles" label="Roles" />
                     <NavLink href="/admin/groups" label="Groups" />
                     <NavLink href="/admin/organizations" label="Organisations" />
+                    <NavLink href="/admin/providers" label="Social login" />
                     <NavLink href="/admin/clients" label="Clients" />
                     <NavLink href="/admin/audit" label="Audit" />
                 </nav>

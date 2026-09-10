@@ -327,9 +327,45 @@ authenticated by the same session cookie the console uses, so an automated
 client must sign in and echo the CSRF token from `/api/v1/csrf`. That works,
 but a long-lived API token is what a Terraform provider actually wants.
 
-Social login cannot be tested end to end without real provider credentials. The
-OAuth client will be tested against a mock provider in CI, and the limitation
-will be stated here and in the README rather than described as "tested".
+**Social login is built.** A provider is configured per realm with its own
+client id and secret — the secret AES-256-GCM sealed under the master key, the
+endpoints stored rather than derived so a provider that moves one needs no
+release. `kind` selects only the *claim mapping*, which is the part that
+genuinely differs.
+
+Three decisions carry the weight:
+
+* **The upstream `sub` is the identity, never the email.** An address can be
+  reassigned, and at several providers the account holder can change it.
+* **Adopting an existing local account is off by default**, and needs both the
+  operator's `link_by_verified_email` and the upstream's own `email_verified`
+  for that particular sign-in — the policy and the evidence. Left on for a
+  provider that asserts addresses it has not checked, it hands over whichever
+  local account matches.
+* **A federated sign-in does not bypass MFA.** It returns the same
+  `login::Outcome` as a password one. That required `mfa::amr_for` to stop
+  hardcoding `pwd`: a Google sign-in was about to tell relying parties this
+  server had verified a password it never saw.
+
+The callback binds `state` to a `SameSite=Lax` cookie as well as the URL,
+because the server-side row alone does not stop login CSRF — an attacker holds
+a valid unspent state of their own and only needs the victim's browser to
+finish it. `nonce`, `iss`, `aud`, and `exp` are checked on the ID token; the
+signature is not, and `oauth::social` says why (OIDC Core §3.1.3.7 point 6) and
+what would make that stop being true.
+
+GitHub needed its own note in the code: `/user` returns the *public profile*
+address, which the account holder types in and GitHub does not check, so the
+verified set comes from a second call to `/user/emails`. Its subject is the
+numeric `id`, never `login`, which a user can change and free for somebody else.
+
+**Tested against a mock provider, not a real one.** No provider's credentials
+can run in CI, so `Transport` is a trait and the tests exercise the rules that
+are ours. What has *not* been exercised is a real Google or GitHub response;
+`README.md` says so too rather than calling this "tested".
+
+Still to come in this stage: LDAP/Active Directory bind plus synchronisation
+with just-in-time provisioning, and machine-to-machine API tokens.
 
 ## Removed, and why
 

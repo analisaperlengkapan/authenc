@@ -82,6 +82,7 @@ pub fn App() -> impl IntoView {
                     <Route path=StaticSegment("roles") view=pages::Roles />
                     <Route path=StaticSegment("groups") view=pages::Groups />
                     <Route path=StaticSegment("organizations") view=pages::Organizations />
+                    <Route path=StaticSegment("providers") view=pages::Providers />
                     <Route path=StaticSegment("clients") view=pages::Clients />
                     <Route path=StaticSegment("audit") view=pages::Audit />
                 </ParentRoute>

@@ -11,7 +11,8 @@
 //! into another tenant.
 
 use authenc_contract::{
-    AppError, GroupId, InvitationId, OrganizationId, Permission, RealmId, Result, RoleId, UserId,
+    AppError, GroupId, IdentityProviderId, InvitationId, OrganizationId, Permission, RealmId,
+    Result, RoleId, UserId,
     event::Action,
     model::{Actor, Realm, Role, User},
 };
@@ -19,9 +20,11 @@ use authenc_contract::{
 use crate::{
     audit::{self, Entry},
     db::Db,
-    group, organization,
+    federation, group, organization,
     password::PasswordHasher,
-    role, session, user,
+    role,
+    sealed::MasterKey,
+    session, user,
 };
 
 /// Reject an actor reaching outside its own realm.
@@ -1802,4 +1805,256 @@ mod tests {
 
         assert_eq!(changes.len(), 2);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Social-login providers
+// ---------------------------------------------------------------------------
+
+/// Every provider configured in the realm.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `identity_provider:read`.
+pub async fn list_identity_providers(db: &Db, actor: &Actor) -> Result<Vec<federation::Provider>> {
+    actor.require(Permission::IdentityProviderRead)?;
+    federation::list(db, actor.realm_id).await
+}
+
+/// One provider.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `identity_provider:read`, or
+/// [`AppError::NotFound`] outside the actor's realm.
+pub async fn get_identity_provider(
+    db: &Db,
+    actor: &Actor,
+    id: IdentityProviderId,
+) -> Result<federation::Provider> {
+    actor.require(Permission::IdentityProviderRead)?;
+    let found = federation::by_id(db, id).await?;
+    same_realm(actor, found.realm_id)?;
+    Ok(found)
+}
+
+/// What configuring a provider needs, minus the realm.
+///
+/// The realm comes from the actor, never from an argument: a caller who could
+/// name it could add a way into somebody else's.
+#[derive(Debug, Clone)]
+pub struct NewIdentityProvider<'a> {
+    /// URL-safe handle, appearing in the callback path.
+    pub alias: &'a str,
+    /// Which claim mapping to use.
+    pub kind: federation::Kind,
+    /// What the login page calls it.
+    pub display_name: &'a str,
+    /// The OAuth client id registered with the provider.
+    pub client_id: &'a str,
+    /// The OAuth client secret. Sealed before it reaches the database.
+    pub client_secret: &'a str,
+    /// Where to send the browser.
+    pub authorization_endpoint: &'a str,
+    /// Where to redeem the code.
+    pub token_endpoint: &'a str,
+    /// Where to read the claims.
+    pub userinfo_endpoint: Option<&'a str>,
+    /// The expected `iss`.
+    pub issuer: Option<&'a str>,
+    /// What to ask for.
+    pub scopes: &'a [String],
+    /// Whether an unrecognised upstream account may create a local one.
+    pub allow_provisioning: bool,
+    /// Whether a verified upstream address may adopt an existing local account.
+    pub link_by_verified_email: bool,
+}
+
+/// Configure a provider in the actor's realm.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `identity_provider:write`, plus whatever
+/// [`federation::create`] refuses.
+pub async fn create_identity_provider(
+    db: &Db,
+    actor: &Actor,
+    master: &MasterKey,
+    new: NewIdentityProvider<'_>,
+) -> Result<federation::Provider> {
+    actor.require(Permission::IdentityProviderWrite)?;
+
+    let created = federation::create(
+        db,
+        master,
+        federation::NewProvider {
+            realm_id: actor.realm_id,
+            alias: new.alias,
+            kind: new.kind,
+            display_name: new.display_name,
+            client_id: new.client_id,
+            client_secret: new.client_secret,
+            authorization_endpoint: new.authorization_endpoint,
+            token_endpoint: new.token_endpoint,
+            userinfo_endpoint: new.userinfo_endpoint,
+            issuer: new.issuer,
+            scopes: new.scopes,
+            allow_provisioning: new.allow_provisioning,
+            link_by_verified_email: new.link_by_verified_email,
+        },
+    )
+    .await?;
+
+    // `link_by_verified_email` is recorded because it is the setting that
+    // decides whether this provider can take over an existing account. An
+    // operator asking "when did that become possible?" needs the answer.
+    audit::observe(
+        db,
+        Entry::success(Action::IdentityProviderCreated)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("identity_provider", &created.alias)
+            .detail(serde_json::json!({
+                "kind": created.kind.as_str(),
+                "allow_provisioning": created.allow_provisioning,
+                "link_by_verified_email": created.link_by_verified_email,
+            })),
+    )
+    .await;
+
+    Ok(created)
+}
+
+/// Enable or disable a provider.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `identity_provider:write`, or
+/// [`AppError::NotFound`] outside the actor's realm.
+pub async fn set_identity_provider_enabled(
+    db: &Db,
+    actor: &Actor,
+    id: IdentityProviderId,
+    enabled: bool,
+) -> Result<federation::Provider> {
+    actor.require(Permission::IdentityProviderWrite)?;
+    get_identity_provider(db, actor, id).await?;
+
+    let changed = federation::set_enabled(db, id, enabled).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::IdentityProviderUpdated)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("identity_provider", &changed.alias)
+            .detail(serde_json::json!({ "enabled": enabled })),
+    )
+    .await;
+
+    Ok(changed)
+}
+
+/// Delete a provider and every link through it.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `identity_provider:write`, or
+/// [`AppError::NotFound`] outside the actor's realm.
+pub async fn delete_identity_provider(
+    db: &Db,
+    actor: &Actor,
+    id: IdentityProviderId,
+) -> Result<()> {
+    actor.require(Permission::IdentityProviderWrite)?;
+    let existing = get_identity_provider(db, actor, id).await?;
+
+    // Counted before the delete, because afterwards there is nothing to count
+    // and "how many people lost their way in?" is the question this record
+    // exists to answer.
+    let affected = federation::link_count(db, id).await?;
+
+    federation::delete(db, id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::IdentityProviderDeleted)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("identity_provider", &existing.alias)
+            .detail(serde_json::json!({ "links_removed": affected })),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// The upstream accounts attached to a user.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `user:read`, or [`AppError::NotFound`]
+/// outside the actor's realm.
+pub async fn identity_links(
+    db: &Db,
+    actor: &Actor,
+    user_id: UserId,
+) -> Result<Vec<federation::Link>> {
+    actor.require(Permission::UserRead)?;
+    let target = user::by_id(db, user_id).await?;
+    same_realm(actor, target.realm_id)?;
+    federation::links_of(db, user_id).await
+}
+
+/// Detach an upstream account from a user.
+///
+/// Refused if it is the account's only way in — see [`federation::unlink`].
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `user:write`, [`AppError::NotFound`]
+/// outside the actor's realm, or [`AppError::Validation`] if it is the last
+/// credential.
+pub async fn unlink_identity(
+    db: &Db,
+    actor: &Actor,
+    provider_id: IdentityProviderId,
+    user_id: UserId,
+) -> Result<()> {
+    actor.require(Permission::UserWrite)?;
+    let provider = get_identity_provider_for_write(db, actor, provider_id).await?;
+    let target = user::by_id(db, user_id).await?;
+    same_realm(actor, target.realm_id)?;
+
+    federation::unlink(db, provider_id, user_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::FederatedIdentityUnlinked)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("user", &target.username)
+            .detail(serde_json::json!({ "provider": provider.alias })),
+    )
+    .await;
+
+    Ok(())
+}
+
+/// Resolve a provider for an operation gated on something other than
+/// `identity_provider:read`.
+///
+/// Unlinking is a *user* operation — it needs `user:write` — but it still has
+/// to establish that the provider is in the actor's realm. Going through
+/// `get_identity_provider` would demand `identity_provider:read` as well,
+/// which would make managing a user's linked accounts require a permission
+/// about configuring providers.
+async fn get_identity_provider_for_write(
+    db: &Db,
+    actor: &Actor,
+    id: IdentityProviderId,
+) -> Result<federation::Provider> {
+    let found = federation::by_id(db, id).await?;
+    same_realm(actor, found.realm_id)?;
+    Ok(found)
 }
