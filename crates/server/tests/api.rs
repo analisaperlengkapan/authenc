@@ -1949,3 +1949,166 @@ async fn withdrawing_a_permission_from_a_role_narrows_its_tokens(db: PgPool) {
         .await
         .assert_status(StatusCode::FORBIDDEN);
 }
+
+// ---------------------------------------------------------------------------
+// Joining an organisation
+// ---------------------------------------------------------------------------
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_invitation_can_actually_be_accepted(db: PgPool) {
+    // Found by auditing for public functions with no caller:
+    // `accept_organization_invitation` existed, was tested, and had no HTTP
+    // surface at all — so a link could be issued and never redeemed, while the
+    // README implied otherwise.
+    seed_with(&db, "operator", Permission::ALL).await;
+    seed_with(&db, "newcomer", &[]).await;
+
+    let mut admin = server(db.clone());
+    sign_in(&mut admin, "operator").await;
+
+    let org: serde_json::Value = admin
+        .post("/api/v1/organizations")
+        .json(&json!({ "slug": "widgets", "name": "Widgets Inc" }))
+        .await
+        .json();
+    let id = org["id"].as_str().unwrap();
+
+    let invited: serde_json::Value = admin
+        .post(&format!("/api/v1/organizations/{id}/invitations"))
+        .json(&json!({ "email": "newcomer@example.com", "role": "member" }))
+        .await
+        .json();
+    let token = invited["token"].as_str().unwrap().to_owned();
+
+    // The invited person, signed in as themselves.
+    let mut newcomer = server(db.clone());
+    sign_in(&mut newcomer, "newcomer").await;
+
+    let joined = newcomer
+        .post("/api/v1/invitations/accept")
+        .json(&json!({ "token": token }))
+        .await;
+    joined.assert_status_ok();
+    assert_eq!(joined.json::<serde_json::Value>()["slug"], "widgets");
+
+    // And they are a member now, which is the part that matters.
+    let members: serde_json::Value = admin
+        .get(&format!("/api/v1/organizations/{id}/members"))
+        .await
+        .json();
+    assert!(
+        members
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|member| member["username"] == "newcomer"),
+        "{members}"
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_invitation_is_spent_by_the_first_person_to_accept_it(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    seed_with(&db, "first", &[]).await;
+    seed_with(&db, "second", &[]).await;
+
+    let mut admin = server(db.clone());
+    sign_in(&mut admin, "operator").await;
+
+    let org: serde_json::Value = admin
+        .post("/api/v1/organizations")
+        .json(&json!({ "slug": "widgets", "name": "Widgets Inc" }))
+        .await
+        .json();
+    let id = org["id"].as_str().unwrap();
+
+    let invited: serde_json::Value = admin
+        .post(&format!("/api/v1/organizations/{id}/invitations"))
+        .json(&json!({ "email": "first@example.com", "role": "member" }))
+        .await
+        .json();
+    let token = invited["token"].as_str().unwrap().to_owned();
+
+    let mut first = server(db.clone());
+    sign_in(&mut first, "first").await;
+    first
+        .post("/api/v1/invitations/accept")
+        .json(&json!({ "token": token }))
+        .await
+        .assert_status_ok();
+
+    let mut second = server(db);
+    sign_in(&mut second, "second").await;
+    let refused = second
+        .post("/api/v1/invitations/accept")
+        .json(&json!({ "token": token }))
+        .await;
+
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::UNAUTHORIZED,
+        "one link admits one person: {}",
+        refused.text()
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn peeking_shows_what_is_being_joined_without_spending_the_link(db: PgPool) {
+    // A signed-out visitor following a link needs to see what they are being
+    // asked to join before being asked to sign in.
+    seed_with(&db, "operator", Permission::ALL).await;
+    seed_with(&db, "newcomer", &[]).await;
+
+    let mut admin = server(db.clone());
+    sign_in(&mut admin, "operator").await;
+
+    let org: serde_json::Value = admin
+        .post("/api/v1/organizations")
+        .json(&json!({ "slug": "widgets", "name": "Widgets Inc" }))
+        .await
+        .json();
+    let id = org["id"].as_str().unwrap();
+
+    let invited: serde_json::Value = admin
+        .post(&format!("/api/v1/organizations/{id}/invitations"))
+        .json(&json!({ "email": "newcomer@example.com", "role": "member" }))
+        .await
+        .json();
+    let token = invited["token"].as_str().unwrap().to_owned();
+
+    // Unauthenticated, deliberately.
+    let anonymous = server(db.clone());
+    let preview = anonymous
+        .post("/api/v1/invitations/peek")
+        .json(&json!({ "token": token }))
+        .await;
+    preview.assert_status_ok();
+
+    let preview: serde_json::Value = preview.json();
+    assert_eq!(preview["organization"], "Widgets Inc");
+    assert_eq!(preview["email"], "newcomer@example.com");
+    assert_eq!(preview["role"], "member");
+
+    // Peeking did not spend it.
+    let mut newcomer = server(db);
+    sign_in(&mut newcomer, "newcomer").await;
+    newcomer
+        .post("/api/v1/invitations/accept")
+        .json(&json!({ "token": token }))
+        .await
+        .assert_status_ok();
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_invented_invitation_token_is_a_404_not_a_hint(db: PgPool) {
+    // Unknown, expired, and already-accepted are one answer, so the endpoint
+    // cannot tell a spent link from an invented one.
+    seed_with(&db, "operator", Permission::ALL).await;
+    let anonymous = server(db);
+
+    anonymous
+        .post("/api/v1/invitations/peek")
+        .json(&json!({ "token": "not-a-real-token" }))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}

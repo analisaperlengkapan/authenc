@@ -315,6 +315,29 @@ pub struct IdentityLinkView {
     pub last_login_at: Option<String>,
 }
 
+/// Body for accepting an organisation invitation.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AcceptInvitation {
+    /// The token from the link. The link *is* the credential.
+    pub token: String,
+}
+
+/// What an invitation refers to, shown before it is accepted.
+///
+/// Carries no token and names no other member: this is readable by anyone
+/// holding the link, and holding a link is not membership.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InvitationPreview {
+    /// The organisation being joined.
+    pub organization: String,
+    /// The address it was sent to, so the recipient can see whether the link
+    /// was meant for the account they are signed into.
+    pub email: String,
+    /// The role they will hold.
+    pub role: String,
+}
+
 /// An API token, as `/api/v1` returns it. Never the secret.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApiTokenView {
@@ -655,6 +678,8 @@ pub struct Whoami {
         list_organization_invitations,
         invite_to_organization,
         revoke_organization_invitation,
+        peek_invitation,
+        accept_invitation,
         list_realm_api_tokens,
         mint_api_token,
         revoke_api_token,
@@ -685,6 +710,8 @@ pub struct Whoami {
         OrganizationView,
         OrganizationMemberView,
         InvitationView,
+        AcceptInvitation,
+        InvitationPreview,
         MintApiToken,
         ApiTokenView,
         MintedApiToken,
@@ -733,6 +760,8 @@ pub fn router() -> Router<AppState> {
             get(get_client).patch(update_client).delete(delete_client),
         )
         .route("/clients/{client_id}/secret", post(rotate_client_secret))
+        .route("/invitations/peek", post(peek_invitation))
+        .route("/invitations/accept", post(accept_invitation))
         .route("/tokens", get(list_realm_api_tokens).post(mint_api_token))
         .route("/tokens/{token_id}", delete(revoke_api_token))
         .route("/users/{user_id}/tokens", get(list_api_tokens))
@@ -1369,6 +1398,76 @@ async fn revoke_organization_invitation(
     )
     .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// Joining an organisation
+// ---------------------------------------------------------------------------
+
+/// What an invitation link refers to, without spending it.
+///
+/// Unauthenticated, because a signed-out visitor following a link needs to see
+/// what they are being asked to join *before* being asked to sign in.
+/// Unknown, expired, and already-accepted are one answer — 404 — so the
+/// endpoint cannot be used to tell a spent link from an invented one.
+///
+/// A `POST` rather than a `GET` with the token in the path: a token in a URL
+/// reaches access logs, proxies, and `Referer` headers.
+#[utoipa::path(
+    post, path = "/api/v1/invitations/peek", tag = "organizations",
+    request_body = AcceptInvitation,
+    responses(
+        (status = 200),
+        (status = 404, description = "Unknown, expired, or already accepted"),
+    ),
+)]
+async fn peek_invitation(
+    State(state): State<AppState>,
+    Json(body): Json<AcceptInvitation>,
+) -> Result<Json<InvitationPreview>, ApiError> {
+    let token = authenc_identity::SecretToken::from_client(&body.token);
+
+    let found = authenc_identity::organization::peek_invitation(&state.db, &token)
+        .await?
+        .ok_or(ApiError(authenc_contract::AppError::NotFound("invitation")))?;
+
+    let organization =
+        authenc_identity::organization::by_id(&state.db, found.organization_id).await?;
+
+    Ok(Json(InvitationPreview {
+        organization: organization.name,
+        email: found.email,
+        role: found.role.as_str().to_owned(),
+    }))
+}
+
+/// Accept an invitation as the signed-in caller.
+///
+/// Not permission-gated, deliberately. The link is the credential and the
+/// person accepting is joining rather than administering; requiring
+/// `organization:write` would mean only realm administrators could ever accept
+/// one, which is the opposite of what invitations are for.
+#[utoipa::path(
+    post, path = "/api/v1/invitations/accept", tag = "organizations",
+    request_body = AcceptInvitation,
+    responses(
+        (status = 200, description = "The organisation now joined"),
+        (status = 401, description = "Unknown, expired, or already spent"),
+        (status = 404, description = "The link belongs to another realm"),
+    ),
+)]
+async fn accept_invitation(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Json(body): Json<AcceptInvitation>,
+) -> Result<Json<OrganizationView>, ApiError> {
+    let token = authenc_identity::SecretToken::from_client(&body.token);
+    let user = authenc_identity::user::by_id(&state.db, actor.user_id).await?;
+
+    let joined =
+        authenc_identity::admin::accept_organization_invitation(&state.db, &user, &token).await?;
+
+    Ok(Json(OrganizationView::from(joined)))
 }
 
 // ---------------------------------------------------------------------------

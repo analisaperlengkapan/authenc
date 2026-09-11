@@ -72,17 +72,6 @@ pub struct ApiToken {
     pub revoked_at: Option<OffsetDateTime>,
 }
 
-impl ApiToken {
-    /// Whether this token is usable at all, ignoring permissions.
-    #[must_use]
-    pub fn is_live(&self) -> bool {
-        self.revoked_at.is_none()
-            && self
-                .expires_at
-                .is_none_or(|at| at > OffsetDateTime::now_utc())
-    }
-}
-
 /// A freshly minted token, with the secret to hand over.
 #[derive(Debug)]
 pub struct Minted {

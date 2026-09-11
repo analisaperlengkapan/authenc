@@ -174,6 +174,13 @@ real defect that was in `main`.
   `/api/v1` requires the session-bound token in `x-csrf-token`; `/api/sfn`
   cannot, because the Leptos client sends no header of ours, so it is gated on
   `Sec-Fetch-Site`/`Origin` instead. Neither gate is `SameSite=Lax` on its own.
+- **A use case with no caller is a feature that does not exist.** Auditing for
+  public functions never referenced outside their own file found
+  `accept_organization_invitation`: written, tested, and reachable from no
+  endpoint, so a link could be issued and never redeemed while `README.md`
+  said invitations worked. The same sweep found three helpers implying
+  protections nobody used. Before claiming a feature, follow it from the HTTP
+  surface to the database and back.
 - **A security check is not mounted until a test proves it refuses something.**
   `is_same_origin` was written, unit-tested, and called from nowhere; the
   server-function surface had no CSRF gate at all, and a `curl` with a session

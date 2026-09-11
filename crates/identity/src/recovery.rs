@@ -20,7 +20,7 @@ use crate::{
     db::Db,
     mail::{Mailer, Message},
     password::PasswordHasher,
-    session, token,
+    session,
     token::SecretToken,
     user,
 };
@@ -259,14 +259,6 @@ pub fn token_from_query(query: &str) -> Option<SecretToken> {
         .find_map(|pair| pair.strip_prefix("token="))
         .filter(|value| !value.is_empty())
         .map(SecretToken::from_client)
-}
-
-/// Compare a client-supplied token against a stored hash in constant time.
-///
-/// Re-exported so callers do not reach for `==`.
-#[must_use]
-pub fn hashes_match(a: &[u8], b: &[u8]) -> bool {
-    token::constant_time_eq(a, b)
 }
 
 #[cfg(test)]
