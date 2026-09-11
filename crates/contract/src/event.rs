@@ -130,6 +130,10 @@ pub enum Action {
     FederatedIdentityUnlinked,
     /// A local account was created for an upstream identity nobody had seen.
     FederatedUserProvisioned,
+    /// A machine-to-machine API token was created.
+    ApiTokenMinted,
+    /// An API token was revoked.
+    ApiTokenRevoked,
     /// A role was granted to a group.
     GroupRoleGranted,
     /// A role was taken from a group.
@@ -223,6 +227,8 @@ impl Action {
         Self::FederatedIdentityLinked,
         Self::FederatedIdentityUnlinked,
         Self::FederatedUserProvisioned,
+        Self::ApiTokenMinted,
+        Self::ApiTokenRevoked,
         Self::GroupRoleGranted,
         Self::GroupRoleRevoked,
         Self::ClientRegistered,
@@ -287,6 +293,8 @@ impl Action {
             Self::FederatedIdentityLinked => "federated.linked",
             Self::FederatedIdentityUnlinked => "federated.unlinked",
             Self::FederatedUserProvisioned => "federated.user_provisioned",
+            Self::ApiTokenMinted => "api_token.minted",
+            Self::ApiTokenRevoked => "api_token.revoked",
             Self::OrganizationInvited => "organization.invited",
             Self::OrganizationInvitationAccepted => "organization.invitation_accepted",
             Self::OrganizationInvitationRevoked => "organization.invitation_revoked",
@@ -357,6 +365,8 @@ impl Action {
             | Self::OrganizationInvitationAccepted
             | Self::OrganizationInvitationRevoked
             | Self::GroupRoleGranted
+            | Self::ApiTokenMinted
+            | Self::ApiTokenRevoked
             | Self::IdentityProviderCreated
             | Self::IdentityProviderUpdated
             | Self::IdentityProviderDeleted
@@ -393,6 +403,8 @@ impl Action {
     pub const fn description(self) -> &'static str {
         match self {
             Self::LoginSucceeded => "Signed in with a password",
+            Self::ApiTokenMinted => "API token created",
+            Self::ApiTokenRevoked => "API token revoked",
             Self::IdentityProviderCreated => "Social-login provider configured",
             Self::IdentityProviderUpdated => "Social-login provider changed",
             Self::IdentityProviderDeleted => "Social-login provider removed",
@@ -607,7 +619,7 @@ mod tests {
         // reflection to check this with, so the guard is that every listed
         // action is distinct and the count is asserted here — update both
         // together, deliberately.
-        assert_eq!(Action::ALL.len(), 58);
+        assert_eq!(Action::ALL.len(), 60);
         let unique: HashSet<_> = Action::ALL.iter().collect();
         assert_eq!(unique.len(), Action::ALL.len(), "a duplicate in ALL");
     }

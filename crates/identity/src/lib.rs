@@ -23,6 +23,7 @@
 //! job, or a test with no HTTP stack present. CI enforces it with `cargo tree`.
 
 pub mod admin;
+pub mod api_token;
 pub mod audit;
 pub mod db;
 pub mod federation;

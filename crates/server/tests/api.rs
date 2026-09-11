@@ -1729,3 +1729,223 @@ async fn the_login_page_does_not_reveal_which_realms_exist(db: PgPool) {
             .is_empty()
     );
 }
+
+// ---------------------------------------------------------------------------
+// Machine-to-machine API tokens
+// ---------------------------------------------------------------------------
+
+/// A server that sends a bearer token and no cookies — an automated client.
+fn machine(db: Db, secret: &str) -> TestServer {
+    let leptos_options = LeptosOptions::builder()
+        .output_name("authenc")
+        .site_root(std::sync::Arc::<str>::from("target/site"))
+        .build();
+
+    let config = authenc_server::config::Config::default();
+    let state = authenc_server::state::AppState {
+        master_key: std::sync::Arc::new(config.master_key().unwrap()),
+        relying_party: std::sync::Arc::new(config.relying_party().unwrap()),
+        config: std::sync::Arc::new(config),
+        db,
+        hasher: PasswordHasher::new(),
+        mailer: std::sync::Arc::new(authenc_identity::mail::CapturingMailer::new()),
+        leptos_options,
+    };
+
+    let mut server = TestServer::new(authenc_server::http::router(state));
+    server.add_header("authorization", format!("Bearer {secret}"));
+    server
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_token_authenticates_the_api_without_a_cookie_or_a_csrf_header(db: PgPool) {
+    // The gap this closes: `/api/v1` otherwise needs a session cookie and a
+    // CSRF token, so a Terraform provider had to hold somebody's password.
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut human = server(db.clone());
+    sign_in(&mut human, "operator").await;
+
+    let minted: serde_json::Value = human
+        .post("/api/v1/tokens")
+        .json(&json!({ "name": "ci", "permissions": ["user:read", "role:write"] }))
+        .await
+        .json();
+    let secret = minted["secret"].as_str().unwrap();
+
+    let robot = machine(db, secret);
+    robot.get("/api/v1/users").await.assert_status_ok();
+
+    // The state-changing half, and it has to *succeed*. Asserting a refusal
+    // here would prove nothing: a missing CSRF header is also a 403, so the
+    // test would pass whether or not the token path skips that check. A token
+    // is attached deliberately by the client and never automatically by a
+    // browser, so there is nothing for CSRF to protect against.
+    robot
+        .post("/api/v1/roles")
+        .json(&json!({ "name": "from-a-token", "description": null }))
+        .await
+        .assert_status(StatusCode::CREATED);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_token_is_narrowed_to_what_it_was_granted(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut human = server(db.clone());
+    sign_in(&mut human, "operator").await;
+
+    let minted: serde_json::Value = human
+        .post("/api/v1/tokens")
+        .json(&json!({ "name": "ci", "permissions": ["user:read"] }))
+        .await
+        .json();
+    let secret = minted["secret"].as_str().unwrap();
+
+    let robot = machine(db, secret);
+    robot.get("/api/v1/users").await.assert_status_ok();
+    // Its maker holds every permission. The token holds one.
+    robot
+        .get("/api/v1/clients")
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_token_cannot_be_minted_beyond_its_makers_authority(db: PgPool) {
+    seed_with(&db, "reader", &[Permission::UserRead]).await;
+    let mut human = server(db);
+    sign_in(&mut human, "reader").await;
+
+    let refused = human
+        .post("/api/v1/tokens")
+        .json(&json!({ "name": "ci", "permissions": ["user:write"] }))
+        .await;
+
+    assert_eq!(
+        refused.status_code(),
+        StatusCode::FORBIDDEN,
+        "{}",
+        refused.text()
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn revoking_a_token_stops_it_immediately(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut human = server(db.clone());
+    sign_in(&mut human, "operator").await;
+
+    let minted: serde_json::Value = human
+        .post("/api/v1/tokens")
+        .json(&json!({ "name": "ci", "permissions": ["user:read"] }))
+        .await
+        .json();
+    let secret = minted["secret"].as_str().unwrap().to_owned();
+    let id = minted["id"].as_str().unwrap();
+
+    let robot = machine(db.clone(), &secret);
+    robot.get("/api/v1/users").await.assert_status_ok();
+
+    human
+        .delete(&format!("/api/v1/tokens/{id}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    machine(db, &secret)
+        .get("/api/v1/users")
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_secret_is_returned_once_and_never_listed(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut human = server(db);
+    sign_in(&mut human, "operator").await;
+
+    let created = human
+        .post("/api/v1/tokens")
+        .json(&json!({ "name": "ci", "permissions": ["user:read"] }))
+        .await;
+    created.assert_status(StatusCode::CREATED);
+
+    let secret = created.json::<serde_json::Value>()["secret"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let listed = human.get("/api/v1/tokens").await.text();
+    assert!(!listed.contains(&secret), "the listing carried the secret");
+    // The prefix is public and is how an operator identifies it.
+    assert!(listed.contains("authenc_pat_"), "{listed}");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_unknown_permission_name_says_which_one(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut human = server(db);
+    sign_in(&mut human, "operator").await;
+
+    let refused = human
+        .post("/api/v1/tokens")
+        .json(&json!({ "name": "ci", "permissions": ["user:reed"] }))
+        .await;
+
+    assert_eq!(refused.status_code(), StatusCode::BAD_REQUEST);
+    assert!(refused.text().contains("user:reed"), "{}", refused.text());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_bearer_token_that_is_not_ours_is_refused(db: PgPool) {
+    seed_with(&db, "operator", Permission::ALL).await;
+
+    machine(db, "eyJhbGciOiJub25lIn0.e30.")
+        .get("/api/v1/users")
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn withdrawing_a_permission_from_a_role_narrows_its_tokens(db: PgPool) {
+    // The property that makes offboarding work end to end, over HTTP: the
+    // token's authority is the intersection with what the account holds *now*.
+    seed_with(&db, "operator", Permission::ALL).await;
+    let mut human = server(db.clone());
+    sign_in(&mut human, "operator").await;
+
+    let minted: serde_json::Value = human
+        .post("/api/v1/tokens")
+        .json(&json!({ "name": "ci", "permissions": ["user:read", "client:read"] }))
+        .await
+        .json();
+    let secret = minted["secret"].as_str().unwrap().to_owned();
+
+    machine(db.clone(), &secret)
+        .get("/api/v1/clients")
+        .await
+        .assert_status_ok();
+
+    // Narrow the operator's own role. `seed_with` named it after the user.
+    let roles: serde_json::Value = human.get("/api/v1/roles").await.json();
+    let role_id = roles
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|role| role["name"] == "operator")
+        .expect("the seeded role")["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    human
+        .put(&format!("/api/v1/roles/{role_id}/permissions"))
+        .json(&json!({ "permissions": ["user:read"] }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    let robot = machine(db, &secret);
+    robot.get("/api/v1/users").await.assert_status_ok();
+    robot
+        .get("/api/v1/clients")
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+}

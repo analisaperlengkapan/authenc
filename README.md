@@ -117,6 +117,9 @@ is enforced rather than merely intended.
 | Social login and MFA | a federated sign-in returns the same challenge a password does, so adding a provider is not a way around an enrolled factor |
 | Login CSRF | `state` is bound to a `SameSite=Lax` cookie as well as the URL; the server-side row alone does not stop it |
 | GitHub addresses | read from `/user/emails`, not the profile — the profile address is typed in by the account holder and never checked |
+| API tokens | `Authorization: Bearer` for `/api/v1`, so automation does not have to hold somebody's password |
+| Token authority | never more than its maker had, and narrowed at every request to what the bound account holds *now* |
+| Token revocation | immediate; disabling the account kills its tokens without anybody remembering to revoke them |
 | CLI | `authenc seed`, `migrate`, `purge`, `generate-master-key`, `rotate-keys`, `register-client` — no test endpoints in the router |
 
 Social login is **tested against a mock provider, not a real one.** No

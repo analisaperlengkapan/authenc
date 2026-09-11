@@ -39,7 +39,14 @@ pub async fn ensure(
     })
 }
 
-/// Give a role a set of permissions, creating the permission rows as needed.
+/// Make these the role's permissions, creating the permission rows as needed.
+///
+/// **Replaces.** Anything the role holds and this set does not is removed, in
+/// the same transaction. That is what "set" has to mean: `PUT
+/// /api/v1/roles/{id}/permissions` documents the body as the complete set, and
+/// an earlier version of this function only ever inserted — so withdrawing a
+/// permission returned 200 and kept it. Withdrawing one is the operation an
+/// incident needs, and it was the one that did not work.
 ///
 /// Idempotent, so it is safe to call on every seed or upgrade.
 ///
@@ -86,6 +93,31 @@ pub async fn set_permissions(
         .await
         .map_err(|e| AppError::internal_from("attaching permission to role", e))?;
     }
+
+    // Then withdraw whatever is no longer in the set. Inside the same
+    // transaction, so a role is never briefly empty and never briefly holds
+    // the union of the old and new sets.
+    let keep: Vec<String> = permissions
+        .iter()
+        .map(|permission| permission.as_str().to_owned())
+        .collect();
+
+    sqlx::query!(
+        r#"
+        DELETE FROM role_permissions
+         WHERE role_id = $1
+           AND permission_id IN (
+               SELECT id FROM permissions
+                WHERE realm_id = $2 AND NOT (name = ANY($3))
+           )
+        "#,
+        role_id.0,
+        realm_id.0,
+        &keep,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| AppError::internal_from("withdrawing permissions from role", e))?;
 
     tx.commit()
         .await
@@ -280,6 +312,78 @@ mod tests {
         assert_eq!(
             user::permissions(&db, user_id).await.unwrap(),
             vec![Permission::UserRead],
+        );
+    }
+
+    /// The permissions a role currently holds, sorted so comparisons are
+    /// stable.
+    async fn permissions_of(db: &Db, role_id: RoleId) -> Vec<Permission> {
+        let names = sqlx::query_scalar!(
+            "SELECT p.name FROM role_permissions rp \
+             JOIN permissions p ON p.id = rp.permission_id \
+             WHERE rp.role_id = $1 ORDER BY p.name",
+            role_id.0,
+        )
+        .fetch_all(db)
+        .await
+        .unwrap();
+
+        names.iter().filter_map(|name| name.parse().ok()).collect()
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn setting_permissions_withdraws_the_ones_left_out(db: Db) {
+        // "Set" has to mean set. An earlier version only inserted, so
+        // `PUT /api/v1/roles/{id}/permissions` reported success for a
+        // withdrawal and kept the permission — which is the operation an
+        // incident actually needs.
+        let (realm_id, _user) = fixture(&db).await;
+        let role = ensure(&db, realm_id, "operator", None).await.unwrap();
+
+        set_permissions(
+            &db,
+            realm_id,
+            role.id,
+            &[Permission::UserRead, Permission::UserWrite],
+        )
+        .await
+        .unwrap();
+        assert_eq!(permissions_of(&db, role.id).await.len(), 2);
+
+        set_permissions(&db, realm_id, role.id, &[Permission::UserRead])
+            .await
+            .unwrap();
+
+        let held = permissions_of(&db, role.id).await;
+        assert_eq!(held, vec![Permission::UserRead], "user:write survived");
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn setting_permissions_does_not_disturb_another_role(db: Db) {
+        // The withdrawal is scoped to this role. Deleting by permission name
+        // across the realm would empty every other role that shared one.
+        let (realm_id, _user) = fixture(&db).await;
+        let keeper = ensure(&db, realm_id, "keeper", None).await.unwrap();
+        let loser = ensure(&db, realm_id, "loser", None).await.unwrap();
+
+        set_permissions(&db, realm_id, keeper.id, &[Permission::UserWrite])
+            .await
+            .unwrap();
+        set_permissions(&db, realm_id, loser.id, &[Permission::UserWrite])
+            .await
+            .unwrap();
+
+        set_permissions(&db, realm_id, loser.id, &[Permission::RoleRead])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            permissions_of(&db, keeper.id).await,
+            vec![Permission::UserWrite]
+        );
+        assert_eq!(
+            permissions_of(&db, loser.id).await,
+            vec![Permission::RoleRead]
         );
     }
 

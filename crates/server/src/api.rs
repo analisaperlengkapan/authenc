@@ -315,6 +315,83 @@ pub struct IdentityLinkView {
     pub last_login_at: Option<String>,
 }
 
+/// An API token, as `/api/v1` returns it. Never the secret.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApiTokenView {
+    /// Stable identifier.
+    pub id: Uuid,
+    /// The account it acts as.
+    pub user_id: Uuid,
+    /// What an operator calls it.
+    pub name: String,
+    /// The visible, non-secret prefix, so a token in a log or a CI variable
+    /// can be identified without holding it.
+    pub prefix: String,
+    /// What it was granted. The authority at use is this narrowed by what the
+    /// bound account currently holds.
+    pub permissions: Vec<String>,
+    /// When it was made, RFC 3339.
+    pub created_at: String,
+    /// When it stops working, if ever.
+    pub expires_at: Option<String>,
+    /// When it was last presented.
+    pub last_used_at: Option<String>,
+    /// When it was revoked.
+    pub revoked_at: Option<String>,
+}
+
+impl From<authenc_identity::api_token::ApiToken> for ApiTokenView {
+    fn from(token: authenc_identity::api_token::ApiToken) -> Self {
+        use time::format_description::well_known::Rfc3339;
+        let format = |at: time::OffsetDateTime| at.format(&Rfc3339).unwrap_or_default();
+
+        Self {
+            id: token.id,
+            user_id: token.user_id.0,
+            name: token.name,
+            prefix: token.prefix,
+            permissions: token
+                .permissions
+                .iter()
+                .map(|p| p.as_str().to_owned())
+                .collect(),
+            created_at: format(token.created_at),
+            expires_at: token.expires_at.map(format),
+            last_used_at: token.last_used_at.map(format),
+            revoked_at: token.revoked_at.map(format),
+        }
+    }
+}
+
+/// Body for minting an API token.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MintApiToken {
+    /// The account the token acts as. Defaults to the caller's own.
+    pub user_id: Option<Uuid>,
+    /// What an operator calls it. Unique per account.
+    pub name: String,
+    /// What it may do, by name (`user:read`).
+    ///
+    /// Must be a subset of what the caller holds: a token cannot carry
+    /// authority its maker does not have.
+    pub permissions: Vec<String>,
+    /// When it stops working, RFC 3339. Omitted means never, which is a
+    /// decision rather than an oversight.
+    pub expires_at: Option<String>,
+}
+
+/// A freshly minted token. The only response that carries the secret.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MintedApiToken {
+    /// The stored record.
+    #[serde(flatten)]
+    pub token: ApiTokenView,
+    /// The secret, in full. Shown **once**: only its hash is stored, so a
+    /// caller that loses it has to mint another.
+    pub secret: String,
+}
+
 /// Filters for the audit trail.
 ///
 /// `action_prefix` is a namespace such as `mfa.`, not free text. The stored
@@ -578,6 +655,10 @@ pub struct Whoami {
         list_organization_invitations,
         invite_to_organization,
         revoke_organization_invitation,
+        list_realm_api_tokens,
+        mint_api_token,
+        revoke_api_token,
+        list_api_tokens,
         list_identity_providers,
         create_identity_provider,
         get_identity_provider,
@@ -604,6 +685,9 @@ pub struct Whoami {
         OrganizationView,
         OrganizationMemberView,
         InvitationView,
+        MintApiToken,
+        ApiTokenView,
+        MintedApiToken,
         CreateIdentityProvider,
         IdentityProviderView,
         IdentityLinkView,
@@ -649,6 +733,9 @@ pub fn router() -> Router<AppState> {
             get(get_client).patch(update_client).delete(delete_client),
         )
         .route("/clients/{client_id}/secret", post(rotate_client_secret))
+        .route("/tokens", get(list_realm_api_tokens).post(mint_api_token))
+        .route("/tokens/{token_id}", delete(revoke_api_token))
+        .route("/users/{user_id}/tokens", get(list_api_tokens))
         .route(
             "/identity-providers",
             get(list_identity_providers).post(create_identity_provider),
@@ -934,19 +1021,31 @@ async fn set_role_permissions(
     Path(role_id): Path<Uuid>,
     Json(body): Json<SetRolePermissions>,
 ) -> Result<StatusCode, ApiError> {
-    let mut permissions = Vec::with_capacity(body.permissions.len());
-    for name in &body.permissions {
-        permissions.push(name.parse::<Permission>().map_err(|_| {
-            ApiError::from(authenc_contract::AppError::field(
-                "permissions",
-                format!("`{name}` is not a permission this system grants"),
-            ))
-        })?);
-    }
+    let permissions = parse_permissions(&body.permissions)?;
 
     authenc_identity::admin::set_role_permissions(&state.db, &actor, RoleId(role_id), &permissions)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Turn permission names into typed permissions, naming the one that failed.
+///
+/// A 400 that says *which* name is wrong, rather than a serde rejection saying
+/// only that the body would not parse. Taking `Vec<String>` in the first place
+/// is what `authenc-contract` staying free of `utoipa` costs; this is where
+/// that cost is paid, once.
+fn parse_permissions(names: &[String]) -> Result<Vec<Permission>, ApiError> {
+    names
+        .iter()
+        .map(|name| {
+            name.parse::<Permission>().map_err(|_| {
+                ApiError::from(authenc_contract::AppError::field(
+                    "permissions",
+                    format!("`{name}` is not a permission this system grants"),
+                ))
+            })
+        })
+        .collect()
 }
 
 /// Grant a role to a user.
@@ -1269,6 +1368,114 @@ async fn revoke_organization_invitation(
         InvitationId(invitation_id),
     )
     .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// API tokens
+// ---------------------------------------------------------------------------
+
+/// Every API token in the realm.
+#[utoipa::path(
+    get, path = "/api/v1/tokens", tag = "tokens",
+    responses((status = 200), (status = 403, description = "Missing user:read")),
+)]
+async fn list_realm_api_tokens(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+) -> Result<Json<Vec<ApiTokenView>>, ApiError> {
+    let tokens = authenc_identity::admin::list_realm_api_tokens(&state.db, &actor).await?;
+    Ok(Json(tokens.into_iter().map(ApiTokenView::from).collect()))
+}
+
+/// The tokens one account holds.
+#[utoipa::path(
+    get, path = "/api/v1/users/{user_id}/tokens", tag = "tokens",
+    responses((status = 200), (status = 403), (status = 404)),
+)]
+async fn list_api_tokens(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<Vec<ApiTokenView>>, ApiError> {
+    let tokens =
+        authenc_identity::admin::list_api_tokens(&state.db, &actor, UserId(user_id)).await?;
+    Ok(Json(tokens.into_iter().map(ApiTokenView::from).collect()))
+}
+
+/// Mint an API token.
+///
+/// The response carries the secret **once**. Only its hash is stored, so a
+/// caller that discards it has to mint another.
+#[utoipa::path(
+    post, path = "/api/v1/tokens", tag = "tokens",
+    request_body = MintApiToken,
+    responses(
+        (status = 201, description = "The token, with its secret"),
+        (status = 400, description = "An unknown permission, a blank name, or an expiry in the past"),
+        (status = 403, description = "A permission the caller does not hold"),
+        (status = 404, description = "An account in another realm"),
+        (status = 409, description = "That account already has a token by that name"),
+    ),
+)]
+async fn mint_api_token(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Json(body): Json<MintApiToken>,
+) -> Result<(StatusCode, Json<MintedApiToken>), ApiError> {
+    use time::format_description::well_known::Rfc3339;
+
+    let permissions = parse_permissions(&body.permissions)?;
+
+    let expires_at = body
+        .expires_at
+        .as_deref()
+        .map(|raw| {
+            time::OffsetDateTime::parse(raw, &Rfc3339).map_err(|_| {
+                ApiError(authenc_contract::AppError::field(
+                    "expires_at",
+                    "must be an RFC 3339 timestamp",
+                ))
+            })
+        })
+        .transpose()?;
+
+    let minted = authenc_identity::admin::mint_api_token(
+        &state.db,
+        &actor,
+        authenc_identity::api_token::NewToken {
+            user_id: body.user_id.map_or(actor.user_id, UserId),
+            name: &body.name,
+            permissions: &permissions,
+            expires_at,
+        },
+    )
+    .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(MintedApiToken {
+            token: ApiTokenView::from(minted.token),
+            secret: minted.secret,
+        }),
+    ))
+}
+
+/// Revoke an API token.
+#[utoipa::path(
+    delete, path = "/api/v1/tokens/{token_id}", tag = "tokens",
+    responses(
+        (status = 204),
+        (status = 403, description = "Missing user:write for somebody else's token"),
+        (status = 404),
+    ),
+)]
+async fn revoke_api_token(
+    State(state): State<AppState>,
+    CurrentUser(actor): CurrentUser,
+    Path(token_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    authenc_identity::admin::revoke_api_token(&state.db, &actor, token_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

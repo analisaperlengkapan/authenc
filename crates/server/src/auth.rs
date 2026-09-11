@@ -74,12 +74,43 @@ pub async fn actor_for(db: &Db, session: &Session) -> Result<Actor> {
     })
 }
 
-/// An authenticated caller, extracted from the session cookie.
+/// An authenticated caller: a session cookie, or an API token.
 ///
 /// Used by the HTTP surface. Server functions get the same thing through
 /// [`crate::http`]'s context rather than through an extractor.
+///
+/// # Why two credentials produce one type
+///
+/// Downstream code takes an [`Actor`] and checks it. It cannot tell whether a
+/// person or a token is behind it, and that is the point: every rule already
+/// written — realm isolation, disabled accounts, permission checks — applies
+/// to a token without being restated for it. `authenticate` narrows a token's
+/// authority to the intersection of its grant and what the bound account holds
+/// now, so the `Actor` it produces is never more than a person's would be.
+///
+/// # Why a token skips CSRF
+///
+/// CSRF is a browser problem: it exists because a browser attaches a cookie to
+/// a request the user did not intend. A token is attached by the client that
+/// holds it, deliberately, and is never sent automatically — so there is
+/// nothing to forge. Requiring a CSRF header from a Terraform provider would
+/// be ceremony that protects nobody.
+///
+/// The cookie path keeps its CSRF check exactly as before, and a request
+/// carrying *both* a token and a cookie is treated as a token request — the
+/// `Authorization` header is the deliberate one.
 #[derive(Debug, Clone)]
 pub struct CurrentUser(pub Actor);
+
+/// The bearer token a request presents, if any.
+fn bearer(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+}
 
 impl<S> FromRequestParts<S> for CurrentUser
 where
@@ -99,6 +130,16 @@ where
         let config = std::sync::Arc::<Config>::from_ref(state);
         let policy = cookie_policy(&config);
         let jar = CookieJar::from_headers(&parts.headers);
+
+        // An API token first: it is the deliberate credential, and a client
+        // that sends one means it even if a cookie happens to ride along.
+        if let Some(presented) = bearer(&parts.headers) {
+            let actor = authenc_identity::api_token::authenticate(&db, presented)
+                .await
+                .map_err(ApiError)?
+                .ok_or(ApiError(AppError::Unauthenticated))?;
+            return Ok(Self(actor));
+        }
 
         let session = session_for(&db, policy, &jar)
             .await

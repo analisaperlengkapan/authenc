@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM role_permissions\n         WHERE role_id = $1\n           AND permission_id IN (\n               SELECT id FROM permissions\n                WHERE realm_id = $2 AND NOT (name = ANY($3))\n           )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4bad083b81fc5df67aa54f0b2ffa46327f8d7cbe18d103a0416cffc708ab3286"
+}

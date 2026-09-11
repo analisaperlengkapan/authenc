@@ -18,6 +18,7 @@ use authenc_contract::{
 };
 
 use crate::{
+    api_token,
     audit::{self, Entry},
     db::Db,
     federation, group, organization,
@@ -2057,4 +2058,115 @@ async fn get_identity_provider_for_write(
     let found = federation::by_id(db, id).await?;
     same_realm(actor, found.realm_id)?;
     Ok(found)
+}
+
+// ---------------------------------------------------------------------------
+// API tokens
+// ---------------------------------------------------------------------------
+
+/// Mint a token for an account in the actor's realm.
+///
+/// The permission check lives in [`api_token::mint`], which refuses anything
+/// the actor does not itself hold. There is deliberately no
+/// `api_token:write` permission: the authority to mint a token *is* the
+/// authority the token would carry, so a separate permission would be a way to
+/// grant less than it actually confers.
+///
+/// # Errors
+///
+/// As [`api_token::mint`].
+pub async fn mint_api_token(
+    db: &Db,
+    actor: &Actor,
+    new: api_token::NewToken<'_>,
+) -> Result<api_token::Minted> {
+    let minted = api_token::mint(db, actor, new).await?;
+    let target = user::by_id(db, minted.token.user_id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::ApiTokenMinted)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("user", &target.username)
+            .detail(serde_json::json!({
+                "name": minted.token.name,
+                "prefix": minted.token.prefix,
+                "permissions": minted
+                    .token
+                    .permissions
+                    .iter()
+                    .map(|p| p.as_str())
+                    .collect::<Vec<_>>(),
+                "expires_at": minted.token.expires_at.map(|at| at.unix_timestamp()),
+            })),
+    )
+    .await;
+
+    Ok(minted)
+}
+
+/// The tokens an account holds.
+///
+/// Reading somebody else's needs `user:read`; reading your own needs nothing,
+/// because an account may always see its own credentials.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `user:read` when the account is not the
+/// actor's own, or [`AppError::NotFound`] outside the actor's realm.
+pub async fn list_api_tokens(
+    db: &Db,
+    actor: &Actor,
+    user_id: UserId,
+) -> Result<Vec<api_token::ApiToken>> {
+    if user_id != actor.user_id {
+        actor.require(Permission::UserRead)?;
+        let target = user::by_id(db, user_id).await?;
+        same_realm(actor, target.realm_id)?;
+    }
+    api_token::list(db, user_id).await
+}
+
+/// Every token in the realm, for an administrator auditing what exists.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `user:read`.
+pub async fn list_realm_api_tokens(db: &Db, actor: &Actor) -> Result<Vec<api_token::ApiToken>> {
+    actor.require(Permission::UserRead)?;
+    api_token::list_in_realm(db, actor.realm_id).await
+}
+
+/// Revoke a token.
+///
+/// An account may always revoke its own. Revoking somebody else's needs
+/// `user:write` — the same permission that can disable the account outright,
+/// which is the strictly larger power.
+///
+/// # Errors
+///
+/// [`AppError::Forbidden`] without `user:write` for another account's token,
+/// or [`AppError::NotFound`] outside the actor's realm.
+pub async fn revoke_api_token(db: &Db, actor: &Actor, id: uuid::Uuid) -> Result<()> {
+    let token = api_token::by_id(db, id).await?;
+    same_realm(actor, token.realm_id)?;
+
+    if token.user_id != actor.user_id {
+        actor.require(Permission::UserWrite)?;
+    }
+
+    api_token::revoke(db, id).await?;
+
+    audit::observe(
+        db,
+        Entry::success(Action::ApiTokenRevoked)
+            .in_realm(actor.realm_id)
+            .by(actor.user_id, &actor.username)
+            .to("api_token", &token.name)
+            .detail(serde_json::json!({ "prefix": token.prefix })),
+    )
+    .await;
+
+    Ok(())
 }

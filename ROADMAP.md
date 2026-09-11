@@ -322,10 +322,33 @@ Social login (Google, GitHub, Microsoft, Facebook, Apple) with account linking,
 and LDAP/Active Directory bind plus synchronisation with just-in-time
 provisioning.
 
-Machine-to-machine API tokens also land here: `/api/v1` is currently
-authenticated by the same session cookie the console uses, so an automated
-client must sign in and echo the CSRF token from `/api/v1/csrf`. That works,
-but a long-lived API token is what a Terraform provider actually wants.
+**Machine-to-machine API tokens are built.** `/api/v1` was authenticated by
+the same session cookie the console uses, so an automated client had to sign in
+as a person and echo a CSRF token — which meant a Terraform provider held
+somebody's password and the audit trail recorded their name for everything it
+did.
+
+A token is bound to an account, because something has to be answerable for it
+and a service account is a user: realm isolation, disabled accounts, and
+suspended organisations then apply without being restated. Its authority is
+checked twice. At creation, against the maker's own permissions, so a token
+cannot be an escalation. At *use*, as the **intersection** of its grant and
+what the account holds now — so losing a role narrows every token that account
+owns, immediately, without anybody remembering they exist. A token that kept
+what it was granted reproduces exactly the failure offboarding is supposed to
+prevent.
+
+It skips CSRF, deliberately. CSRF exists because a browser attaches a cookie to
+a request the user did not intend; a token is attached by the client that holds
+it. The test for that asserts a state-changing request **succeeds**, because
+asserting a refusal would have passed whether or not the check was skipped.
+
+Building it surfaced a defect in Stage 3: `role::set_permissions` only ever
+inserted, so `PUT /api/v1/roles/{id}/permissions` — documented as "the complete
+set; anything absent is removed" — returned 200 for a withdrawal and kept the
+permission. Withdrawing one is the operation an incident needs, and it was the
+one that did not work. Now fixed, with tests, and three tests fail if the
+deletion is removed again.
 
 **Social login is built.** A provider is configured per realm with its own
 client id and secret — the secret AES-256-GCM sealed under the master key, the
