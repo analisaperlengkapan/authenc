@@ -1,0 +1,208 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, realm_id, alias, display_name, url, start_tls, bind_dn,\n               user_base_dn, user_filter, attr_username, attr_email,\n               attr_first_name, attr_last_name, allow_provisioning, enabled,\n               created_at\n          FROM ldap_directories WHERE realm_id = $1 ORDER BY created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "realm_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "realm_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "alias",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "alias"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "url",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "url"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "start_tls",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "start_tls"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "bind_dn",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "bind_dn"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "user_base_dn",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "user_base_dn"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "user_filter",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "user_filter"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "attr_username",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "attr_username"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "attr_email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "attr_email"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "attr_first_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "attr_first_name"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "attr_last_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "attr_last_name"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "allow_provisioning",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "allow_provisioning"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b9771327fd5d2c0e05ca393b0db8aa5bc6cf8356bf81d94e79cdfa635bf8baab"
+}

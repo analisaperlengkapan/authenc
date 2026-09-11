@@ -387,8 +387,39 @@ can run in CI, so `Transport` is a trait and the tests exercise the rules that
 are ours. What has *not* been exercised is a real Google or GitHub response;
 `README.md` says so too rather than calling this "tested".
 
-Still to come in this stage: LDAP/Active Directory bind plus synchronisation
-with just-in-time provisioning, and machine-to-machine API tokens.
+**LDAP and Active Directory are built**, as a user source: search for the
+person, bind as their DN with the submitted password, then resolve to a local
+account by DN or create one.
+
+Three rules carry it, and each is a way LDAP authentication is routinely got
+wrong. They are pure functions so they can be tested without a directory, and
+removing any of the first two turns a test red.
+
+* **An empty password never reaches the directory.** A simple bind with an
+  empty password is an *anonymous* bind, and a directory answers it with
+  success — so a server that forwards one has authenticated nobody as
+  somebody. `Credentials::new` is the only way to reach the bind, which makes
+  the check unskippable rather than remembered.
+* **The login is escaped into the filter** per RFC 4515. `*)(uid=*`
+  substituted raw closes the intended clause and opens a match-anything one,
+  and whoever the directory returns first gets in.
+* **Exactly one result, or nothing.** Two matches means the filter does not
+  identify a person, and "pick the first" picks whoever the directory happened
+  to return.
+
+The DN is the identity, not the login name: a `uid` can be reassigned when
+somebody leaves, and a directory handing `jsmith` to a new starter would
+otherwise hand them the previous holder's account and its roles. It is stored
+case-normalised, so two spellings of one identity do not become two accounts.
+
+`ldap3` with `tls-rustls-ring` — not `tls-native` (OpenSSL, which `deny.toml`
+bans) and not `tls-rustls-aws-lc-rs` (the C and assembly crypto stack this
+workspace already declined once).
+
+**Tested against a scripted directory, not a real one**, for the same reason as
+social login: no directory's credentials can run in CI, and standing up
+OpenLDAP for these tests would exercise `ldap3` rather than the rules above.
+What has not been exercised is a live OpenLDAP or Active Directory response.
 
 ## Removed, and why
 

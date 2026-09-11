@@ -26,6 +26,7 @@ pub mod admin;
 pub mod api_token;
 pub mod audit;
 pub mod db;
+pub mod directory;
 pub mod federation;
 pub mod group;
 pub mod login;

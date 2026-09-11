@@ -93,6 +93,14 @@ lettre = { version = "0.11.23", default-features = false, features = [
 ] }
 anyhow = "1.0.104"
 
+# LDAP. `tls-rustls-ring` rather than `tls-native` (OpenSSL, which `deny.toml`
+# bans) or `tls-rustls-aws-lc-rs` (a C and assembly crypto stack this
+# workspace already declined once, when `jsonwebtoken` pulled it in for
+# nothing).
+ldap3 = { version = "0.12.1", default-features = false, features = [
+  "tls-rustls-ring",
+] }
+
 # Outbound HTTP, for talking to a social-login provider. `rustls` and
 # `webpki-roots` rather than the default `native-tls`, matching `lettre` above
 # and keeping OpenSSL out of the graph — `deny.toml` bans it outside the

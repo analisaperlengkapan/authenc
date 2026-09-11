@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE ldap_identities SET last_login_at = now() WHERE directory_id = $1 AND user_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ce87d643c57a3b3a953065d416a61bf46dcbc4cea4bd5cdcdc90a51b772756a7"
+}

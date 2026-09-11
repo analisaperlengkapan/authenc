@@ -24,6 +24,11 @@ uuid = { workspace = true, features = ["v4"] }
 tracing = { workspace = true }
 async-trait = { workspace = true }
 lettre = { workspace = true }
+
+# LDAP / Active Directory. Behind the `Directory` trait, so the rules that are
+# ours — filter escaping, the empty-password refusal, the one-result
+# requirement — are testable without a server.
+ldap3 = { workspace = true }
 thiserror = { workspace = true }
 
 # Credentials
