@@ -20,7 +20,7 @@ jobs:
     name: cargo-deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # `deny.toml` existed in the previous tree and was never invoked by any
       # workflow, so its advisory ignores went stale unnoticed.
       - uses: EmbarkStudios/cargo-deny-action@v2
@@ -31,7 +31,7 @@ jobs:
     name: cargo-audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # Needs Dependency graph plus GitHub Advanced Security, which are
       # repository settings rather than anything a branch can turn on; without
       # them the action errors out. `continue-on-error` sits on the **step**,
