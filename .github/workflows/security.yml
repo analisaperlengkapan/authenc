@@ -60,7 +60,7 @@ jobs:
       # for real the moment those settings are enabled, with no workflow
       # change. `cargo-deny` and `cargo-audit` above cover the same ground for
       # Rust dependencies and do block the build.
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/dependency-review-action@v5
         continue-on-error: true
         with:
           fail-on-severity: high
