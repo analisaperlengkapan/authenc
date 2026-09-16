@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO audit_events\n            (realm_id, action, outcome, actor_id, actor_name,\n             target_type, target, ip_address, user_agent, detail)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::text::inet, $9, $10)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7f65d2a5e93bea28185e87c4c68118dd26f8420a077122a98c749c9f91ee9071"
+}

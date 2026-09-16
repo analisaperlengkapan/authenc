@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE users SET enabled = FALSE WHERE username = 'ada'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "9f872c2a0d45b43fe3fbaab9216c44d8ee51d22ed77280abaf5b12d9f302af9f"
+}

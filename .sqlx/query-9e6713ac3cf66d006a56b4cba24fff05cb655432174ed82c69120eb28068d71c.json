@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO permissions (realm_id, name, description)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (realm_id, name) DO UPDATE SET description = EXCLUDED.description\n            RETURNING id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "permissions",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9e6713ac3cf66d006a56b4cba24fff05cb655432174ed82c69120eb28068d71c"
+}

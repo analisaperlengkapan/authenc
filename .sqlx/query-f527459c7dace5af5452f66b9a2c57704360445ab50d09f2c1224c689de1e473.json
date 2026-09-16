@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO user_passwords (user_id, phc, updated_at)\n        VALUES ($1, $2, now())\n        ON CONFLICT (user_id) DO UPDATE SET phc = EXCLUDED.phc, updated_at = now()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f527459c7dace5af5452f66b9a2c57704360445ab50d09f2c1224c689de1e473"
+}

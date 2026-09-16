@@ -1,0 +1,35 @@
+name: Bug report
+description: Something behaves differently from what is documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: check [ROADMAP.md](../blob/main/ROADMAP.md). Features
+        listed as planned are not built yet, and their absence is not a bug.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Include the exact error, and the `x-request-id` from the response if you have it.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and where that expectation comes from
+      description: A doc line, an RFC section, or a test — whatever led you to expect it.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true

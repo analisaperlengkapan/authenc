@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH RECURSIVE\n        -- Every group the user is in, plus every ancestor of those groups.\n        -- `UNION` rather than `UNION ALL`: it deduplicates, which both keeps\n        -- the walk small when two groups share an ancestor and makes the query\n        -- terminate even against a tree the database trigger somehow let\n        -- through. A permission query that can hang is worse than one that is\n        -- occasionally slow.\n        ancestry AS (\n            SELECT g.id, g.parent_id\n              FROM groups g\n              JOIN group_members gm ON gm.group_id = g.id\n             WHERE gm.user_id = $1\n            UNION\n            SELECT g.id, g.parent_id\n              FROM groups g JOIN ancestry a ON g.id = a.parent_id\n        ),\n        -- Roles held directly, and roles the ancestry carries.\n        held AS (\n            SELECT role_id FROM user_roles WHERE user_id = $1\n            UNION\n            SELECT gr.role_id FROM group_roles gr JOIN ancestry ON ancestry.id = gr.group_id\n        )\n        SELECT DISTINCT p.name\n        FROM held\n        JOIN role_permissions rp ON rp.role_id = held.role_id\n        JOIN permissions p ON p.id = rp.permission_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "permissions",
+            "name": "name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "553d9f00bbfc24ffcadda5bc314cbdf932f20afc5764d6df42f4a98badae4b3a"
+}

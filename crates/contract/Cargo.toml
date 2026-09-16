@@ -1,0 +1,31 @@
+[package]
+name = "authenc-contract"
+description = "Shared vocabulary between the browser and the server: entities, DTOs, errors, validation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+uuid = { workspace = true }
+
+# NOTE: this crate must stay compilable to wasm32. Never add axum, sqlx, tokio
+# or leptos here — CI fails the build if you do (see .github/workflows/ci.yml).
+
+# On wasm there is no OS entropy source, so `Uuid::new_v4` needs the
+# JS-backed RNG. Scoped to the wasm target so native builds do not drag in
+# `wasm-bindgen`.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+uuid = { workspace = true, features = ["js"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

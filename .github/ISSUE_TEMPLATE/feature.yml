@@ -1,0 +1,27 @@
+name: Feature request
+description: Propose something that does not exist yet
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Several large subsystems were deliberately removed in the August 2026
+        rebuild because they returned invented data. [ROADMAP.md](../blob/main/ROADMAP.md)
+        lists them. Asking for one back is fine — describe the use case.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that you cannot do today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you have already tried or considered

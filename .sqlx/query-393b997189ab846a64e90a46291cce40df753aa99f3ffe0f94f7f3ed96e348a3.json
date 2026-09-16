@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT public_key\n        FROM signing_keys\n        WHERE kid = $1 AND (status = 'active' OR not_after > now())\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "public_key",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "public_key"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "393b997189ab846a64e90a46291cce40df753aa99f3ffe0f94f7f3ed96e348a3"
+}

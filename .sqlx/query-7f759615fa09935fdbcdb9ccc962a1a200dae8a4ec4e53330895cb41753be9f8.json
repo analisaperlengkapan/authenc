@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE oauth_clients SET client_secret_phc = $2 WHERE id = $1 AND NOT is_public",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7f759615fa09935fdbcdb9ccc962a1a200dae8a4ec4e53330895cb41753be9f8"
+}

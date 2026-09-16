@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO login_attempts (realm_id, identifier, user_id, ip_address, successful)\n        VALUES ($1, $2, $3, $4::text::inet, $5)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2a9a300350d5956bebdb1d0345a21cec35c3f48b0e8bf133adc08854d25767bf"
+}

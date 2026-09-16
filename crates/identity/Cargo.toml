@@ -1,0 +1,73 @@
+[package]
+name = "authenc-identity"
+description = "The identity directory: realms, users, roles, credentials, sessions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+authenc-contract = { workspace = true }
+
+sqlx = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+lettre = { workspace = true }
+
+# LDAP / Active Directory. Behind the `Directory` trait, so the rules that are
+# ours — filter escaping, the empty-password refusal, the one-result
+# requirement — are testable without a server.
+ldap3 = { workspace = true }
+thiserror = { workspace = true }
+
+# Credentials
+argon2 = { version = "0.5.3", features = ["std"] }
+getrandom = "0.4.3"
+sha2 = "0.11.0"
+subtle = "2.6.1"
+base64 = "0.23.1"
+aes-gcm = "0.11"
+
+# TOTP (RFC 6238). HMAC-SHA1 is not a modern choice, but it is what every
+# authenticator app implements, and the construction's security does not rest
+# on SHA-1 collision resistance. The 30 lines in `mfa::totp` exist so the drift
+# window and the replay check are ours; the primitives are not hand-rolled.
+hmac = "0.13"
+sha1 = "0.11"
+base32 = "0.5"
+
+# WebAuthn. Verification of the challenge, origin, RP ID, signature, and
+# signature counter belongs in a library that specialises in it — the previous
+# tree's hand-written version returned `Ok(true)` without reading its argument.
+webauthn-rs = { version = "0.5.5", default-features = false, features = [
+  # Needed to persist ceremony state across the two HTTP requests a WebAuthn
+  # ceremony takes. Named "danger" because the state must never be handed to
+  # the client; here it goes into a server-side table, keyed by an opaque
+  # token, single-use, and expiring.
+  "danger-allow-state-serialisation",
+] }
+# `default` is `["attestation"]`, which is off here. Attestation answers "is
+# this authenticator a model we permit?", which is an enterprise device policy
+# this server does not have; plain passkeys never consult it. Turning it off
+# does not remove `webauthn-attestation-ca` from the dependency graph — it is a
+# hard dependency of `webauthn-rs-core` either way — it only stops that
+# verification path being compiled in.
+url = "2.5"
+
+# NOTE: never add `axum` or `leptos` here. This crate is the identity domain;
+# it must be usable from a CLI, a test, or a background job with no HTTP stack
+# in sight. CI enforces this with `cargo tree`.
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

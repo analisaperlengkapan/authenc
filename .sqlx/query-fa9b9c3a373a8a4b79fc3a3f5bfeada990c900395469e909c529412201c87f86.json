@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT kid, private_key, private_nonce\n        FROM signing_keys\n        WHERE realm_id = $1 AND status = 'active'\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kid",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "kid"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "private_key",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "private_key"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "private_nonce",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "private_nonce"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fa9b9c3a373a8a4b79fc3a3f5bfeada990c900395469e909c529412201c87f86"
+}

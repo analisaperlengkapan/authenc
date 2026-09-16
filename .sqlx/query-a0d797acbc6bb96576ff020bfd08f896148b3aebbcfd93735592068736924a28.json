@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM organization_invitations WHERE accepted_at IS NULL AND expires_at < now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "a0d797acbc6bb96576ff020bfd08f896148b3aebbcfd93735592068736924a28"
+}

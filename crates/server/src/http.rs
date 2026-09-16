@@ -1,0 +1,258 @@
+//! Router construction and the middleware stack.
+
+use std::{iter::once, time::Duration};
+
+use axum::{
+    Router,
+    body::Body,
+    extract::State,
+    http::{HeaderName, HeaderValue, Request, StatusCode, header},
+    response::{IntoResponse, Response},
+    routing::get,
+};
+use leptos::prelude::{LeptosOptions, provide_context};
+use leptos_axum::{LeptosRoutes, generate_route_list};
+use tower::ServiceBuilder;
+use tower_http::{
+    catch_panic::CatchPanicLayer,
+    compression::CompressionLayer,
+    cors::{AllowOrigin, CorsLayer},
+    limit::RequestBodyLimitLayer,
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    sensitive_headers::SetSensitiveRequestHeadersLayer,
+    set_header::SetResponseHeaderLayer,
+    timeout::TimeoutLayer,
+    trace::TraceLayer,
+};
+
+use crate::{config::Config, health, state::AppState};
+
+/// Header carrying the correlation id for a request.
+const REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
+
+/// Build the application router.
+pub fn router(state: AppState) -> Router {
+    let config = state.config.clone();
+    let leptos_options = state.leptos_options.clone();
+    let routes = generate_route_list(authenc_web::App);
+
+    let app = Router::new()
+        // Probes come first and stay outside any auth: an orchestrator must be
+        // able to reach them without credentials.
+        .route("/health/live", get(health::live))
+        .route("/health/ready", get(health::ready))
+        // REST surface for automation. Authorisation is not applied here — it
+        // lives in the use cases these handlers call.
+        .nest("/api/v1", crate::api::router())
+        // OAuth 2.0 / OpenID Connect. Mounted at the root because the paths
+        // are part of the specification and are what discovery advertises.
+        // Deliberately outside the CSRF-bearing extractors: these endpoints
+        // authenticate clients and tokens, not browser sessions, and the one
+        // that does read the session — the consent form's POST — checks the
+        // token itself.
+        .merge(crate::oidc::router())
+        // Social sign-in: the two redirects a federated login takes. Outside
+        // the CSRF gates for the same reason the OAuth endpoints are — a
+        // provider redirecting a browser here carries no header of ours, and
+        // the `state` cookie is what binds the callback instead.
+        .merge(crate::federation::router())
+        // Leptos SSR routes, with application context injected so server
+        // functions can reach the database.
+        .leptos_routes_with_context(
+            &state,
+            routes,
+            {
+                let state = state.clone();
+                move || provide_app_context(&state)
+            },
+            {
+                let leptos_options = leptos_options.clone();
+                move || authenc_web::shell(leptos_options.clone())
+            },
+        )
+        .fallback(leptos_axum::file_and_error_handler::<AppState, _>(
+            authenc_web::shell,
+        ))
+        .with_state(state);
+
+    // The middleware stack, outermost first.
+    //
+    // `ServiceBuilder` applies layers in written order, so this reads the way
+    // it executes. That matters: the previous server chained `.layer()` calls
+    // with a comment claiming rate limiting ran "first (early rejection)", but
+    // axum's `.layer()` makes the *last* call outermost — so rate limiting was
+    // in fact the innermost layer, running only after the body had already
+    // been read and validated.
+    let stack = ServiceBuilder::new()
+        // 1. Keep credentials out of the trace output.
+        .layer(SetSensitiveRequestHeadersLayer::new(once(
+            header::AUTHORIZATION,
+        )))
+        .layer(SetSensitiveRequestHeadersLayer::new(once(header::COOKIE)))
+        // 2. Correlation id, so a log line can be tied to a request.
+        .layer(SetRequestIdLayer::new(REQUEST_ID, MakeRequestUuid))
+        .layer(PropagateRequestIdLayer::new(REQUEST_ID))
+        // 3. Tracing, outside the handler so panics and timeouts are recorded.
+        .layer(TraceLayer::new_for_http())
+        // 4. The CSRF gate for server functions. A layer over the whole app
+        //    rather than a guard on a route of ours, because the
+        //    `/api/sfn/*` routes are registered by
+        //    `leptos_routes_with_context`, not by this module — an earlier
+        //    attempt put the check on a `/api/sfn/{*path}` route registered
+        //    here, and Leptos's concrete paths matched first, so the check
+        //    compiled, ran, and guarded nothing.
+        //
+        //    Above the body limit and the timeout so a refusal is decided
+        //    before anything is read, and below the tracing layer so it is
+        //    recorded with a request id.
+        .layer(axum::middleware::from_fn_with_state(
+            config.clone(),
+            refuse_cross_origin,
+        ))
+        // 5. Turn a panic into a 500 instead of a dead connection. Paired with
+        //    `panic = "unwind"` in the release profile; with `abort` (as this
+        //    project shipped) one panic in one request killed the process.
+        .layer(CatchPanicLayer::new())
+        // 6. Bound how long a request may occupy a worker.
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            config.server.request_timeout,
+        ))
+        // 7. Bound how much we will read before deciding anything.
+        .layer(RequestBodyLimitLayer::new(config.server.max_body_bytes))
+        // 8. Cross-origin policy, from configuration.
+        .layer(cors(&config))
+        // 9. Security headers.
+        .layer(SetResponseHeaderLayer::overriding(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("cross-origin-opener-policy"),
+            HeaderValue::from_static("same-origin"),
+        ))
+        .option_layer(config.security.hsts.then(|| {
+            SetResponseHeaderLayer::overriding(
+                header::STRICT_TRANSPORT_SECURITY,
+                HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+            )
+        }))
+        // 10. Compression last, so it wraps the finished body.
+        .layer(CompressionLayer::new());
+
+    app.layer(stack)
+}
+
+/// Cross-origin policy built from configuration.
+///
+/// An empty allow-list means same-origin only, which is the right default for
+/// an admin console. It is never `Any`.
+fn cors(config: &Config) -> CorsLayer {
+    let origins: Vec<HeaderValue> = config
+        .security
+        .cors_allowed_origins
+        .iter()
+        .filter_map(|origin| match HeaderValue::from_str(origin) {
+            Ok(value) => Some(value),
+            Err(_) => {
+                tracing::warn!(%origin, "ignoring unparseable CORS origin");
+                None
+            }
+        })
+        .collect();
+
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_credentials(true)
+        .allow_headers([header::CONTENT_TYPE, header::ACCEPT])
+        .max_age(Duration::from_secs(600))
+}
+
+/// Refuse a state-changing server-function call that a browser started
+/// somewhere else.
+///
+/// This is the CSRF gate for `/api/sfn`, and it is a different one from the
+/// gate on `/api/v1`. The REST surface requires the session's CSRF token in a
+/// header, which works because the clients writing that header are scripts.
+/// Server functions are invoked by the Leptos client, which sends no header of
+/// ours, so requiring the token here would mean refusing the console itself.
+///
+/// What is checked instead is where the request came from: `Sec-Fetch-Site`
+/// where the browser sets it, falling back to `Origin`. Neither can be forged
+/// by page script, and a browser always sends `Origin` on a cross-origin POST.
+/// A request carrying neither header is not a browser and therefore cannot be
+/// a forged one, so it passes through to whatever authenticates it.
+///
+/// Together with the `SameSite=Lax` session cookie — which already stops a
+/// genuinely cross-*site* POST from carrying credentials at all — this closes
+/// the same-site-but-cross-origin case that `SameSite` does not: a subdomain
+/// somebody else controls is same-site, and would otherwise be trusted.
+///
+/// It has to sit in front of `log_in` as well as the administrative functions,
+/// which is why it is not expressed as a session-bound token: at that point
+/// there is no session to bind one to.
+///
+/// Scoped to `/api/sfn` deliberately. `/api/v1` may legitimately be called
+/// from another origin — that is what the CORS allow-list is for — and the
+/// token check is its gate. Nothing but this console calls a server function.
+async fn refuse_cross_origin(
+    State(config): State<std::sync::Arc<Config>>,
+    request: Request<Body>,
+    next: axum::middleware::Next,
+) -> Response {
+    use axum::http::Method;
+
+    let guarded = request.uri().path().starts_with("/api/sfn/")
+        && !matches!(
+            *request.method(),
+            Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE
+        );
+
+    if guarded && !crate::auth::is_same_origin(request.headers(), config.origin()) {
+        tracing::warn!(
+            path = %request.uri().path(),
+            "refused a cross-origin server-function call",
+        );
+        return crate::error::ApiError(authenc_contract::AppError::Forbidden).into_response();
+    }
+
+    next.run(request).await
+}
+
+/// Make application state reachable from server functions.
+///
+/// Server functions cannot take an `axum::extract::State`, so anything they
+/// need is placed in the Leptos context — here, in exactly one place, so a
+/// function cannot silently depend on something one router forgot to provide.
+fn provide_app_context(state: &AppState) {
+    provide_context(state.db.clone());
+    provide_context(state.hasher.clone());
+    provide_context(state.mailer.clone());
+    provide_context(crate::auth::cookie_policy(&state.config));
+    provide_context(crate::state::public_urls(&state.config));
+    provide_context(state.master_key.clone());
+    provide_context(state.relying_party.clone());
+}
+
+/// Bind address derived from configuration.
+#[must_use]
+pub fn bind_address(config: &Config) -> std::net::SocketAddr {
+    std::net::SocketAddr::new(config.server.host, config.server.port)
+}
+
+/// Resolve `LeptosOptions` from `cargo-leptos`' generated configuration.
+///
+/// # Errors
+///
+/// Returns an error if the configuration cannot be read.
+pub fn leptos_options() -> Result<LeptosOptions, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(leptos::prelude::get_configuration(None)?.leptos_options)
+}

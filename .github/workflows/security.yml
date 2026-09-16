@@ -1,0 +1,66 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Advisories land after a pull request merges, so poll independently.
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # `deny.toml` existed in the previous tree and was never invoked by any
+      # workflow, so its advisory ignores went stale unnoticed.
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources advisories
+
+  audit:
+    name: cargo-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # The two ignores mirror `deny.toml`, so the two tools cannot disagree
+      # about what is tolerated. Both are unmaintained build-time proc-macros
+      # reached through Leptos, neither has an advisory against it, and neither
+      # contributes code to the binary.
+      - run: >
+          cargo audit --deny warnings
+          --ignore RUSTSEC-2024-0436
+          --ignore RUSTSEC-2026-0173
+
+  dependency-review:
+    name: dependency review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v5
+      # Needs Dependency graph plus GitHub Advanced Security, which are
+      # repository settings rather than anything a branch can turn on; without
+      # them the action errors out. `continue-on-error` sits on the **step**,
+      # not the job: on the job the check still reports red, and a check that
+      # is permanently red is one people learn to ignore. It starts reporting
+      # for real the moment those settings are enabled, with no workflow
+      # change. `cargo-deny` and `cargo-audit` above cover the same ground for
+      # Rust dependencies and do block the build.
+      - uses: actions/dependency-review-action@v4
+        continue-on-error: true
+        with:
+          fail-on-severity: high

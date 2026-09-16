@@ -1,0 +1,52 @@
+//! Page components, one per route.
+
+pub mod admin;
+pub mod audit;
+pub mod clients;
+pub mod consent;
+pub mod groups;
+pub mod home;
+pub mod login;
+pub mod organizations;
+pub mod providers;
+pub mod recovery;
+pub mod security;
+
+pub use admin::{AdminShell, Overview, Roles, Users};
+pub use audit::Audit;
+pub use clients::Clients;
+pub use consent::Consent;
+pub use groups::Groups;
+pub use home::Home;
+pub use login::Login;
+pub use organizations::Organizations;
+pub use providers::Providers;
+pub use recovery::{ForgotPassword, ResetPassword, VerifyEmail};
+pub use security::Security;
+
+use leptos::prelude::*;
+
+/// Shown for any unmatched route.
+#[component]
+pub fn NotFound() -> impl IntoView {
+    // Make the server answer 404 rather than 200-with-a-404-page, so crawlers
+    // and monitoring see the truth.
+    #[cfg(feature = "ssr")]
+    if let Some(response) = use_context::<leptos_axum::ResponseOptions>() {
+        response.set_status(http::StatusCode::NOT_FOUND);
+    }
+
+    view! {
+        <main class="mx-auto flex min-h-full max-w-3xl flex-col gap-4 px-6 py-16">
+            <h1 class="text-3xl font-bold tracking-tight text-ink-900 dark:text-ink-50">
+                "Not found"
+            </h1>
+            <p class="text-sm text-ink-600 dark:text-ink-400">
+                "That page does not exist."
+            </p>
+            <a class="text-sm font-semibold text-brand-600 hover:text-brand-700" href="/">
+                "Back to the start"
+            </a>
+        </main>
+    }
+}

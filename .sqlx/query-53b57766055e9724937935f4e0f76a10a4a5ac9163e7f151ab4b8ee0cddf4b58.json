@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT count(*) AS \"count!\"\n          FROM audit_events\n         WHERE realm_id = $1\n           AND ($2::text IS NULL OR action = $2)\n           AND ($3::text IS NULL OR action LIKE $3 || '%')\n           AND ($4::text IS NULL OR outcome = $4)\n           AND ($5::uuid IS NULL OR actor_id = $5)\n           AND ($6::timestamptz IS NULL OR occurred_at >= $6)\n           AND ($7::timestamptz IS NULL OR occurred_at < $7)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "53b57766055e9724937935f4e0f76a10a4a5ac9163e7f151ab4b8ee0cddf4b58"
+}

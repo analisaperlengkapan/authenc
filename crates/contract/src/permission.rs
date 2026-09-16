@@ -1,0 +1,282 @@
+//! Permissions, and the check that enforces them.
+//!
+//! Authorisation is decided by asking an [`Actor`](crate::model::Actor)
+//! whether it holds a permission, at the point the work is about to happen.
+//! It is deliberately *not* a middleware that matches URL prefixes: in the
+//! previous codebase that is exactly what it was, so a route registered on the
+//! wrong router silently lost its access control, and about thirty-eight
+//! endpoints expected an extension that the middleware they were never wrapped
+//! in would have inserted.
+//!
+//! The permission is an enum rather than a string, so a typo is a compile
+//! error and `Permission::ALL` is the complete, reviewable list of everything
+//! this system can authorise.
+
+use std::{fmt, str::FromStr};
+
+use serde::{Deserialize, Serialize};
+
+/// Something an actor may be allowed to do.
+/// Serialised as its stored name — `user:read`, not `user_read`.
+///
+/// A derived `rename_all` gave a *second* spelling for every permission: the
+/// database, `FromStr`, and `whoami` all said `user:read` while anything
+/// serialising the enum said `user_read`, and only one of the two parsed back.
+/// One name, defined once in [`Permission::as_str`], is the whole point of the
+/// type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Permission {
+    /// View realms.
+    RealmRead,
+    /// Create, change, and delete realms.
+    RealmWrite,
+    /// View users.
+    UserRead,
+    /// Create, change, and delete users.
+    UserWrite,
+    /// View roles and their grants.
+    RoleRead,
+    /// Create and delete roles, and grant or revoke them.
+    RoleWrite,
+    /// View registered OAuth clients.
+    ClientRead,
+    /// Register, change, and delete OAuth clients, and rotate their secrets.
+    ClientWrite,
+    /// View groups and their membership.
+    GroupRead,
+    /// Create, change, and delete groups, and manage their membership and role
+    /// grants.
+    GroupWrite,
+    /// View organisations and their membership.
+    OrganizationRead,
+    /// Create, suspend, and delete organisations, and manage their membership
+    /// and invitations.
+    OrganizationWrite,
+    /// View configured social-login providers.
+    ///
+    /// Reading one never reveals its client secret: the secret is sealed at
+    /// rest and no read path decrypts it outside the sign-in flow.
+    IdentityProviderRead,
+    /// Configure social-login providers.
+    ///
+    /// Effectively the power to add a new way of becoming any user in the
+    /// realm — a provider with `link_by_verified_email` set and an attacker's
+    /// upstream behind it is an account-takeover route — so it is deliberately
+    /// separate from `realm:write` rather than folded into it.
+    IdentityProviderWrite,
+    /// Read the audit log.
+    ///
+    /// Its own permission rather than part of `user:read`, because the trail
+    /// names every account in the realm and where each of them signed in from.
+    /// Someone who may list users has not thereby been given everyone's
+    /// movements. There is deliberately no `audit:write`: the log is written by
+    /// the system, and nothing may edit it.
+    AuditRead,
+}
+
+impl Permission {
+    /// Every permission. The complete list of what can be authorised.
+    pub const ALL: &'static [Self] = &[
+        Self::RealmRead,
+        Self::RealmWrite,
+        Self::UserRead,
+        Self::UserWrite,
+        Self::RoleRead,
+        Self::RoleWrite,
+        Self::ClientRead,
+        Self::ClientWrite,
+        Self::GroupRead,
+        Self::GroupWrite,
+        Self::OrganizationRead,
+        Self::OrganizationWrite,
+        Self::IdentityProviderRead,
+        Self::IdentityProviderWrite,
+        Self::AuditRead,
+    ];
+
+    /// The stable name stored in the database and shown in the console.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::RealmRead => "realm:read",
+            Self::RealmWrite => "realm:write",
+            Self::UserRead => "user:read",
+            Self::UserWrite => "user:write",
+            Self::RoleRead => "role:read",
+            Self::RoleWrite => "role:write",
+            Self::ClientRead => "client:read",
+            Self::ClientWrite => "client:write",
+            Self::GroupRead => "group:read",
+            Self::GroupWrite => "group:write",
+            Self::OrganizationRead => "organization:read",
+            Self::OrganizationWrite => "organization:write",
+            Self::IdentityProviderRead => "identity_provider:read",
+            Self::IdentityProviderWrite => "identity_provider:write",
+            Self::AuditRead => "audit:read",
+        }
+    }
+
+    /// A one-line description, for the console and the OpenAPI document.
+    #[must_use]
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::RealmRead => "View realms",
+            Self::RealmWrite => "Create, change, and delete realms",
+            Self::UserRead => "View users",
+            Self::UserWrite => "Create, change, and delete users",
+            Self::RoleRead => "View roles and their grants",
+            Self::RoleWrite => "Create and delete roles, and grant or revoke them",
+            Self::ClientRead => "View registered OAuth clients",
+            Self::ClientWrite => "Register and delete OAuth clients, and rotate their secrets",
+            Self::GroupRead => "View groups and their membership",
+            Self::GroupWrite => "Create and delete groups, and manage membership and grants",
+            Self::OrganizationRead => "View organisations and their membership",
+            Self::OrganizationWrite => "Create, suspend, and delete organisations",
+            Self::IdentityProviderRead => "View configured social-login providers",
+            Self::IdentityProviderWrite => "Configure social-login providers",
+            Self::AuditRead => "Read the audit log",
+        }
+    }
+
+    /// The read permission implied by this one.
+    ///
+    /// Being allowed to change something implies being allowed to see it;
+    /// granting `user:write` without `user:read` produces a console that can
+    /// edit a list it cannot display.
+    #[must_use]
+    pub const fn implies(self) -> Option<Self> {
+        match self {
+            Self::RealmWrite => Some(Self::RealmRead),
+            Self::UserWrite => Some(Self::UserRead),
+            Self::RoleWrite => Some(Self::RoleRead),
+            Self::ClientWrite => Some(Self::ClientRead),
+            Self::GroupWrite => Some(Self::GroupRead),
+            Self::OrganizationWrite => Some(Self::OrganizationRead),
+            Self::IdentityProviderWrite => Some(Self::IdentityProviderRead),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for Permission {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Permission {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let name = <std::borrow::Cow<'_, str>>::deserialize(deserializer)?;
+        name.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+impl fmt::Display for Permission {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Returned when a permission name from the database matches nothing known.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown permission: {0}")]
+pub struct UnknownPermission(pub String);
+
+impl FromStr for Permission {
+    type Err = UnknownPermission;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|permission| permission.as_str() == value)
+            .ok_or_else(|| UnknownPermission(value.to_owned()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_permission_round_trips_through_its_name() {
+        for permission in Permission::ALL {
+            assert_eq!(permission.as_str().parse(), Ok(*permission));
+        }
+    }
+
+    #[test]
+    fn permission_names_are_unique() {
+        let mut names: Vec<_> = Permission::ALL.iter().map(|p| p.as_str()).collect();
+        names.sort_unstable();
+        let count = names.len();
+        names.dedup();
+        assert_eq!(names.len(), count, "two permissions share a name");
+    }
+
+    #[test]
+    fn an_unknown_name_is_an_error_not_a_default() {
+        // Silently mapping an unknown name to some permission is how a renamed
+        // row turns into either a lockout or an escalation.
+        assert!("user:destroy".parse::<Permission>().is_err());
+        assert!("".parse::<Permission>().is_err());
+    }
+
+    #[test]
+    fn write_implies_read_and_read_implies_nothing() {
+        assert_eq!(Permission::UserWrite.implies(), Some(Permission::UserRead));
+        assert_eq!(Permission::RoleWrite.implies(), Some(Permission::RoleRead));
+        assert_eq!(
+            Permission::RealmWrite.implies(),
+            Some(Permission::RealmRead)
+        );
+        assert_eq!(Permission::UserRead.implies(), None);
+    }
+
+    #[test]
+    fn every_write_permission_implies_its_read() {
+        // Otherwise a role granted `client:write` gets a console that can
+        // register a client into a list it is not allowed to display.
+        for permission in Permission::ALL {
+            if permission.as_str().ends_with(":write") {
+                let read = permission.implies().expect("a write implies a read");
+                assert_eq!(
+                    read.as_str(),
+                    permission.as_str().replace(":write", ":read"),
+                    "{permission} implies the wrong permission",
+                );
+            } else {
+                assert_eq!(permission.implies(), None, "{permission}");
+            }
+        }
+    }
+
+    #[test]
+    fn every_permission_has_a_description() {
+        for permission in Permission::ALL {
+            assert!(!permission.description().is_empty(), "{permission}");
+        }
+    }
+
+    #[test]
+    fn the_wire_name_is_the_stored_name_and_round_trips() {
+        // `whoami` sends `as_str()` and the console deserialises the enum; if
+        // those two spellings differ, one endpoint's output cannot be fed to
+        // another's input, and that is precisely what a shared contract type is
+        // for.
+        for permission in Permission::ALL {
+            let json = serde_json::to_string(permission).unwrap();
+            assert_eq!(json, format!("\"{}\"", permission.as_str()));
+            assert_eq!(
+                serde_json::from_str::<Permission>(&json).unwrap(),
+                *permission,
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_permission_name_fails_to_deserialise() {
+        assert!(serde_json::from_str::<Permission>("\"user:destroy\"").is_err());
+        assert!(serde_json::from_str::<Permission>("\"user_read\"").is_err());
+    }
+}

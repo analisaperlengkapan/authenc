@@ -1,0 +1,11 @@
+# Default owner for everything.
+*                       @analisaperlengkapan
+
+# Security-sensitive areas: credentials, sessions, the HTTP stack, CI, and the
+# supply-chain policy. Changes here should not merge without a deliberate look.
+/crates/identity/       @analisaperlengkapan
+/crates/server/src/http.rs   @analisaperlengkapan
+/migrations/            @analisaperlengkapan
+/.github/workflows/     @analisaperlengkapan
+/deny.toml              @analisaperlengkapan
+/SECURITY.md            @analisaperlengkapan

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM login_attempts\n        WHERE realm_id = $1 AND lower(identifier) = lower($2) AND NOT successful\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "89349033f4c74f9df046e51514d2b48973ae810d3a609e7a024a3f75956c8352"
+}

@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT f.provider_id, f.user_id, f.upstream_email, f.linked_at,\n               f.last_login_at, p.alias, p.display_name\n          FROM federated_identities f\n          JOIN identity_providers p ON p.id = f.provider_id\n         WHERE f.user_id = $1\n         ORDER BY p.display_name\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "provider_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "federated_identities",
+            "name": "provider_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "federated_identities",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "upstream_email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "federated_identities",
+            "name": "upstream_email"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "linked_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "federated_identities",
+            "name": "linked_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "last_login_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "federated_identities",
+            "name": "last_login_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "alias",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "alias"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "display_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "fbc12a241195c58117aa15ce35d97f1eea0d848feaeb63fc43991a9804a35743"
+}

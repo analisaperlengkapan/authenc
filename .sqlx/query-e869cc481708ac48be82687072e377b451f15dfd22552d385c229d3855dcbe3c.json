@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, secret, secret_nonce, last_step FROM totp_credentials\n        WHERE user_id = $1 AND confirmed_at IS NOT NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "totp_credentials",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "secret",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "totp_credentials",
+            "name": "secret"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "secret_nonce",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "totp_credentials",
+            "name": "secret_nonce"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "last_step",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "totp_credentials",
+            "name": "last_step"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "e869cc481708ac48be82687072e377b451f15dfd22552d385c229d3855dcbe3c"
+}

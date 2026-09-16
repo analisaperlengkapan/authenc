@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT kid, public_key\n        FROM signing_keys\n        WHERE realm_id = $1\n          AND (status = 'active' OR not_after > now())\n        ORDER BY created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kid",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "kid"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "public_key",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "public_key"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "cef87b697f89fdff224818970074852d6048e5ca84727642329c272259d63a5b"
+}

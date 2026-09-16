@@ -1,0 +1,103 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE oauth_clients\n        SET redirect_uris   = COALESCE($2, redirect_uris),\n            scopes          = COALESCE($3, scopes),\n            require_consent = COALESCE($4, require_consent)\n        WHERE id = $1\n        RETURNING client_id, name, is_public, redirect_uris,\n                  grant_types, scopes, require_consent\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "client_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "is_public",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "is_public"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "redirect_uris",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "redirect_uris"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "grant_types",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "grant_types"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "scopes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "require_consent",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "require_consent"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray",
+        "TextArray",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1caf1d88046422770acdd901492ce499d481edd7959807c79763a09a7559fc95"
+}

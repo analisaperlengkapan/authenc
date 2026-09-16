@@ -1,0 +1,196 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, realm_id, alias, kind, display_name, client_id,\n               authorization_endpoint, token_endpoint, userinfo_endpoint,\n               issuer, scopes, enabled, allow_provisioning,\n               link_by_verified_email, created_at\n          FROM identity_providers WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "realm_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "realm_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "alias",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "alias"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "client_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "authorization_endpoint",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "authorization_endpoint"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "token_endpoint",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "token_endpoint"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "userinfo_endpoint",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "userinfo_endpoint"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "issuer",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "issuer"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "scopes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "allow_provisioning",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "allow_provisioning"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "link_by_verified_email",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "link_by_verified_email"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "identity_providers",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "35d32a5e972b83880d4f04815b3cdd4bf847e01e5643caf2da4b537749a91606"
+}

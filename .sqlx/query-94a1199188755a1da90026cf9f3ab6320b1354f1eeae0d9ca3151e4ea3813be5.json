@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM password_reset_tokens WHERE expires_at <= now() OR used_at IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "94a1199188755a1da90026cf9f3ab6320b1354f1eeae0d9ca3151e4ea3813be5"
+}

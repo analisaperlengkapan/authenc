@@ -1,0 +1,6 @@
+# An identity provider has nothing a search engine should index: every page is
+# either a sign-in form, a consent screen, or an administrative console behind
+# a session. Indexing them puts login URLs — and the client ids and redirect
+# URIs in their query strings — into public search results.
+User-agent: *
+Disallow: /

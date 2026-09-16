@@ -1,0 +1,151 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, realm_id, action, outcome, actor_id, actor_name,\n               target_type, target, host(ip_address) AS ip_address,\n               user_agent, occurred_at\n          FROM audit_events\n         WHERE realm_id = $1\n           AND ($2::text IS NULL OR action = $2)\n           AND ($3::text IS NULL OR action LIKE $3 || '%')\n           AND ($4::text IS NULL OR outcome = $4)\n           AND ($5::uuid IS NULL OR actor_id = $5)\n           AND ($6::timestamptz IS NULL OR occurred_at >= $6)\n           AND ($7::timestamptz IS NULL OR occurred_at < $7)\n         ORDER BY occurred_at DESC, id DESC\n         LIMIT $8 OFFSET $9\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "realm_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "realm_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "action",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "action"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "outcome",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "outcome"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "actor_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "actor_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "actor_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "actor_name"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "target_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "target_type"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "target",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "target"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "ip_address",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 9,
+        "name": "user_agent",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "user_agent"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "occurred_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "occurred_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      null,
+      true,
+      false
+    ]
+  },
+  "hash": "b40bccced1170b064876dca07e804e4f22492db71d81d8513d5ab29ef682dd46"
+}

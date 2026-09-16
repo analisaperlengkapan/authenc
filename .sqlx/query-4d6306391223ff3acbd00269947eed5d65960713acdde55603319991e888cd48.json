@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH RECURSIVE ancestry AS (\n            SELECT id, parent_id, name, 0 AS depth FROM groups WHERE id = $1\n            UNION\n            SELECT g.id, g.parent_id, g.name, a.depth + 1\n              FROM groups g JOIN ancestry a ON g.id = a.parent_id\n        )\n        SELECT name AS \"name!\" FROM ancestry ORDER BY depth DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4d6306391223ff3acbd00269947eed5d65960713acdde55603319991e888cd48"
+}

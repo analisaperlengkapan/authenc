@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM organization_invitations WHERE organization_id = $1 AND lower(email) = lower($2) AND accepted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "705d5ca17c60c1fa9959c70c53d6ceebc4d6a6db2b299a0441f33cc459417668"
+}

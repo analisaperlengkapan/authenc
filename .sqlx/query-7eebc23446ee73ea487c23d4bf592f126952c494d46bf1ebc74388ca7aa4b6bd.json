@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT bind_password_ciphertext, bind_password_nonce FROM ldap_directories WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "bind_password_ciphertext",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "bind_password_ciphertext"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "bind_password_nonce",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "ldap_directories",
+            "name": "bind_password_nonce"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "7eebc23446ee73ea487c23d4bf592f126952c494d46bf1ebc74388ca7aa4b6bd"
+}
