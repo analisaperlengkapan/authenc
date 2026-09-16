@@ -35,7 +35,7 @@ url = "2.5"
 # header — is a property of the call site, not of the encoder. `jsonwebtoken`
 # was declared here and never used; it pulled in aws-lc-rs, a C and assembly
 # crypto stack, for nothing.
-ed25519-dalek = { version = "2.2", features = ["pkcs8", "rand_core"] }
+ed25519-dalek = { version = "3.0", features = ["pkcs8", "rand_core"] }
 aes-gcm = "0.11"
 sha2 = "0.11"
 base64 = "0.23"
